@@ -1,0 +1,15 @@
+version: '3'
+
+services:
+  sfda-chatbot:
+    build: .
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./data:/app/data
+      - ./processed_data:/app/processed_data
+      - ./logs:/app/logs
+    env_file:
+      - .env
+    restart: unless-stopped
+    command: gunicorn --bind 0.0.0.0:5000 --workers 2 --threads 2 app:app

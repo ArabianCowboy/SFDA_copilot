@@ -1,0 +1,45 @@
+# Basic configuration for the Flask backend
+# Add specific settings like API keys, database URLs, etc., as needed.
+
+# Server configuration
+server:
+  debug: false
+  host: 0.0.0.0
+  port: 5000
+  rate_limit:  # requests per time period
+    per_day: 200
+    per_hour: 50
+    per_minute: 10
+
+# Embedding configuration
+search_engine:
+  embedding_type: local  # 'openai' or 'local'
+  embedding_model: all-mpnet-base-v2  # Only used when type=local
+  embedding_dimension: 768  # 768 for local, 1536 for OpenAI
+  k: 3 # Default number of final results to return
+  semantic_weight: 0.7 # Weight for semantic search score in hybrid combination
+  lexical_weight: 0.3 # Weight for lexical search score in hybrid combination
+  semantic_multiplier: 3 # Multiplier for fetching semantic candidates (k * multiplier)
+  lexical_multiplier: 3 # Multiplier for fetching lexical candidates (k * multiplier)
+
+# OpenAI configuration
+openai:
+  api_key: ${OPENAI_API_KEY}
+  model: gpt-4o-mini
+  temperature: 0.1
+
+# Supabase configuration
+supabase:
+  url: ${SUPABASE_URL}
+  key: ${SUPABASE_KEY}
+
+# Data Processing configuration
+data_processing:
+  chunk_size: 10000
+  chunk_overlap: 800
+  embedding_batch_size: 100 # Default batch size for embedding generation
+
+# Logging configuration
+logging:
+  level: INFO
+  format: '%(asctime)s - %(levelname)s - %(message)s'

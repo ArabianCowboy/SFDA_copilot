@@ -1,0 +1,34 @@
+# Web Framework
+flask
+Flask-Limiter
+Flask-Talisman
+Flask-Cors
+gunicorn
+Werkzeug
+
+# Environment Variables
+python-dotenv
+
+# Data Processing
+pandas
+numpy
+scikit-learn
+faiss-cpu
+PyPDF2
+
+# OpenAI
+openai
+
+# Text Processing
+langchain
+PyYAML
+
+# Utilities
+tqdm
+requests
+Jinja2
+MarkupSafe
+itsdangerous
+click
+sentence_transformers
+supabase
