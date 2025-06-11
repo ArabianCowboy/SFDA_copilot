@@ -11,6 +11,10 @@ server:
     per_hour: 50
     per_minute: 10
 
+# Paths configuration
+paths:
+  processed_data: web/processed_data # Explicitly define the processed data directory
+
 # Embedding configuration
 search_engine:
   embedding_type: local  # 'openai' or 'local'
@@ -25,7 +29,8 @@ search_engine:
 # OpenAI configuration
 openai:
   api_key: ${OPENAI_API_KEY}
-  model: gpt-4o-mini
+  #model: gpt-4o-mini
+  model: gpt-4.1-nano
   temperature: 0.1
 
 # Supabase configuration

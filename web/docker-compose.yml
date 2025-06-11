@@ -10,6 +10,6 @@ services:
       - ./processed_data:/app/processed_data
       - ./logs:/app/logs
     env_file:
-      - .env
+      - ../.env
     restart: unless-stopped
     command: gunicorn --bind 0.0.0.0:5000 --workers 2 --threads 2 app:app

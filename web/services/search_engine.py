@@ -10,7 +10,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 # MinMaxScaler is available but not currently used for normalization in this implementation
 # from sklearn.preprocessing import MinMaxScaler 
 
-from ..utils.config_loader import config
+from ..utils.config_loader import config, project_root
 from ..utils.openai_client import OpenAIClientManager
 from ..utils.local_embedding_client import LocalEmbeddingClient
 
@@ -56,11 +56,17 @@ class ImprovedSearchEngine:
         """
         logger.info("Initializing ImprovedSearchEngine...")
         # Load paths from config with defaults
-        self.processed_data_dir: str = config.get("paths", "processed_data", "web/processed_data")
+        self.processed_data_dir: str = os.path.join(project_root, config.get("paths", "processed_data", "web/processed_data"))
+        logger.debug(f"Project root: {project_root}")
+        logger.debug(f"Processed data directory: {self.processed_data_dir}")
         self.faiss_index_path: str = os.path.join(self.processed_data_dir, config.get("filenames", "faiss_index", "faiss_index.bin"))
         self.dataframe_path: str = os.path.join(self.processed_data_dir, config.get("filenames", "chunks_data", "chunks_data.csv"))
         self.tfidf_path: str = os.path.join(self.processed_data_dir, config.get("filenames", "tfidf_vectorizer", "tfidf_vectorizer.pkl"))
         self.tfidf_matrix_path: str = os.path.join(self.processed_data_dir, config.get("filenames", "tfidf_matrix", "tfidf_matrix.pkl"))
+        logger.debug(f"FAISS index path: {self.faiss_index_path}")
+        logger.debug(f"DataFrame path: {self.dataframe_path}")
+        logger.debug(f"TF-IDF vectorizer path: {self.tfidf_path}")
+        logger.debug(f"TF-IDF matrix path: {self.tfidf_matrix_path}")
         
         # --- Initialize Embedding Client ---
         embedding_type: str = config.get("search_engine", "embedding_type", "local")
@@ -108,47 +114,74 @@ class ImprovedSearchEngine:
             logger.info("Starting search engine initialization...")
             # Check if all required processed data files exist
             required_files: List[str] = [self.faiss_index_path, self.dataframe_path, self.tfidf_path, self.tfidf_matrix_path]
+            logger.debug(f"Checking for required files: {required_files}")
             if not all(os.path.exists(f) for f in required_files):
                 missing = [f for f in required_files if not os.path.exists(f)]
                 logger.error(f"Processed data files missing: {missing}. Cannot initialize search engine. Please run data processing first.")
                 self.initialized = False
                 return
+            logger.info("All required processed data files found.")
 
             # --- Load FAISS Index ---
-            logger.info(f"Loading FAISS index from: {self.faiss_index_path}")
-            self.faiss_index = faiss.read_index(self.faiss_index_path)
-            logger.info(f"FAISS index loaded with {self.faiss_index.ntotal} vectors.")
+            logger.info(f"Attempting to load FAISS index from: {self.faiss_index_path}")
+            try:
+                self.faiss_index = faiss.read_index(self.faiss_index_path)
+                logger.info(f"FAISS index loaded successfully with {self.faiss_index.ntotal} vectors.")
+            except Exception as faiss_e:
+                logger.error(f"Failed to load FAISS index from {self.faiss_index_path}: {faiss_e}")
+                self.initialized = False
+                return
             
             # --- Load DataFrame ---
-            logger.info(f"Loading DataFrame from: {self.dataframe_path}")
-            self.df = pd.read_csv(self.dataframe_path)
-            logger.info(f"DataFrame loaded with {len(self.df)} rows.")
+            logger.info(f"Attempting to load DataFrame from: {self.dataframe_path}")
+            try:
+                self.df = pd.read_csv(self.dataframe_path)
+                logger.info(f"DataFrame loaded successfully with {len(self.df)} rows.")
+            except Exception as df_e:
+                logger.error(f"Failed to load DataFrame from {self.dataframe_path}: {df_e}")
+                self.initialized = False
+                return
+
             # Ensure required columns exist
             required_cols: List[str] = ['text', 'document', 'category', 'page', 'chunk_id']
+            logger.debug(f"Checking DataFrame for required columns: {required_cols}")
             if not all(col in self.df.columns for col in required_cols):
                  missing_cols = [col for col in required_cols if col not in self.df.columns]
                  logger.error(f"DataFrame missing required columns: {missing_cols}. Initialization failed.")
                  self.initialized = False
                  return
+            logger.debug("DataFrame contains all required columns.")
             # Handle potential NaN values in critical text fields
-            self.df['text'] = self.df['text'].fillna('') 
+            self.df['text'] = self.df['text'].fillna('')
             logger.debug("DataFrame text column NaN values filled.")
             
             # --- Load TF-IDF Vectorizer and Matrix ---
-            logger.info(f"Loading TF-IDF vectorizer from: {self.tfidf_path}")
-            with open(self.tfidf_path, 'rb') as f:
-                self.tfidf_vectorizer = pickle.load(f)
+            logger.info(f"Attempting to load TF-IDF vectorizer from: {self.tfidf_path}")
+            try:
+                with open(self.tfidf_path, 'rb') as f:
+                    self.tfidf_vectorizer = pickle.load(f)
+                logger.info("TF-IDF vectorizer loaded successfully.")
+            except Exception as tfidf_vec_e:
+                logger.error(f"Failed to load TF-IDF vectorizer from {self.tfidf_path}: {tfidf_vec_e}")
+                self.initialized = False
+                return
             
-            logger.info(f"Loading TF-IDF matrix from: {self.tfidf_matrix_path}")
-            with open(self.tfidf_matrix_path, 'rb') as f:
-                self.tfidf_matrix = pickle.load(f)
-            logger.info(f"TF-IDF matrix loaded with shape: {self.tfidf_matrix.shape}")
+            logger.info(f"Attempting to load TF-IDF matrix from: {self.tfidf_matrix_path}")
+            try:
+                with open(self.tfidf_matrix_path, 'rb') as f:
+                    self.tfidf_matrix = pickle.load(f)
+                logger.info(f"TF-IDF matrix loaded successfully with shape: {self.tfidf_matrix.shape}")
+            except Exception as tfidf_mat_e:
+                logger.error(f"Failed to load TF-IDF matrix from {self.tfidf_matrix_path}: {tfidf_mat_e}")
+                self.initialized = False
+                return
             
             # --- Verify Dimensions Match ---
             df_len = len(self.df)
             tfidf_rows = self.tfidf_matrix.shape[0]
             faiss_vectors = self.faiss_index.ntotal
             
+            logger.info(f"Verifying data dimensions: DataFrame rows={df_len}, TF-IDF matrix rows={tfidf_rows}, FAISS vectors={faiss_vectors}")
             if not (tfidf_rows == df_len and faiss_vectors == df_len):
                  logger.error(
                      f"Data dimension mismatch: DataFrame rows ({df_len}), "
@@ -163,13 +196,14 @@ class ImprovedSearchEngine:
                  self.tfidf_vectorizer = None
                  self.tfidf_matrix = None
                  return
+            logger.info("Data dimensions verified successfully.")
 
             # --- Set Initialized Flag ---
             self.initialized = True
             logger.info("Search engine initialized successfully.")
         
         except Exception as e:
-            logger.exception(f"Critical error during search engine initialization: {str(e)}") 
+            logger.exception(f"Critical error during search engine initialization: {str(e)}")
             self.initialized = False
             # Ensure potentially partially loaded data is cleared
             self.faiss_index = None

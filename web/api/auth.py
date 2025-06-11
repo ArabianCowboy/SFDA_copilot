@@ -21,14 +21,13 @@ def signup():
             'password': password,
         })
         
-        # Store additional user data in Supabase DB
-        user = response.user
-        supabase.table('users').insert({
-            'id': user.id,
-            'email': user.email,
-            'created_at': user.created_at
-        }).execute()
+        if response.error:
+            return jsonify({'error': response.error.message}), 400
+            
+        # Access user data from the response
+        user = response.user if hasattr(response, 'user') else response.data.user
         
+        # Return success response
         return jsonify({
             'message': 'User created successfully',
             'user': {
@@ -57,12 +56,21 @@ def login():
             'password': password
         })
         
+        if response.error:
+            return jsonify({'error': response.error.message}), 401
+            
+        # Access user and session data from the response
+        user = response.user if hasattr(response, 'user') else response.data.user
+        session = response.session if hasattr(response, 'session') else response.data.session
+        
         return jsonify({
-            'access_token': response.session.access_token,
-            'refresh_token': response.session.refresh_token,
             'user': {
-                'id': response.user.id,
-                'email': response.user.email
+                'id': user.id,
+                'email': user.email
+            },
+            'session': {
+                'access_token': session.access_token,
+                'refresh_token': session.refresh_token
             }
         })
         
@@ -72,5 +80,10 @@ def login():
 @auth_bp.route('/logout', methods=['POST'])
 def logout():
     supabase = get_supabase()
-    supabase.auth.sign_out()
-    return jsonify({'message': 'Logged out successfully'})
+    try:
+        response = supabase.auth.sign_out()
+        if response.error:
+            return jsonify({'error': response.error.message}), 400
+        return jsonify({'message': 'Logged out successfully'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400

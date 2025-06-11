@@ -14,6 +14,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy the rest of the application
 COPY . .
+COPY .env /app/.env
 
 # Create necessary directories
 RUN mkdir -p data/regulatory data/pharmacovigilance processed_data logs
