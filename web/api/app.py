@@ -1,14 +1,17 @@
 import logging
 import os
 import sys
-from dotenv import load_dotenv
 import json
 import re
 from functools import wraps
 from typing import List, Dict, Any, Tuple, Optional
 
-from flask import Flask, render_template, request, jsonify, current_app, session, redirect, url_for
-from flask_limiter import Limiter # Import Limiter class
+from dotenv import load_dotenv
+from flask import (
+    Flask, render_template, request, jsonify, 
+    current_app, session, redirect, url_for
+)
+from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_talisman import Talisman
 from flask_cors import CORS
@@ -20,15 +23,25 @@ if PROJECT_ROOT not in sys.path:
 
 DOTENV_PATH = os.path.join(PROJECT_ROOT, '.env')
 load_dotenv(dotenv_path=DOTENV_PATH, override=True)
-logging.info(f"Attempting to load .env file from: {DOTENV_PATH}")
+logging.info(f"Loading .env file from: {DOTENV_PATH}")
 
 # --- Logging Configuration ---
 LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO').upper()
-logging.basicConfig(level=LOG_LEVEL, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-logging.getLogger('web.services.search_engine').setLevel(os.getenv('LOG_LEVEL_SEARCH_ENGINE', 'DEBUG').upper())
-logging.getLogger('web.utils.config_loader').setLevel(os.getenv('LOG_LEVEL_CONFIG_LOADER', 'DEBUG').upper())
-logging.getLogger('web.utils.openai_client').setLevel(os.getenv('LOG_LEVEL_OPENAI_CLIENT', 'DEBUG').upper())
-logging.getLogger('web.utils.local_embedding_client').setLevel(os.getenv('LOG_LEVEL_EMBEDDING_CLIENT', 'DEBUG').upper())
+logging.basicConfig(
+    level=LOG_LEVEL,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+
+# Set logger levels
+for logger_name, default_level in [
+    ('web.services.search_engine', 'DEBUG'),
+    ('web.utils.config_loader', 'DEBUG'),
+    ('web.utils.openai_client', 'DEBUG'),
+    ('web.utils.local_embedding_client', 'DEBUG')
+]:
+    logging.getLogger(logger_name).setLevel(
+        os.getenv(f'LOG_LEVEL_{logger_name.split(".")[-1].upper()}', default_level).upper()
+    )
 
 # --- Application-Specific Imports ---
 from web.utils.config_loader import config
@@ -40,7 +53,7 @@ from web.utils.supabase_client import get_supabase
 # --- Constants ---
 MAX_SESSION_CHAT_HISTORY_CHARS = 3500
 DEFAULT_MAX_CHAT_MESSAGES_COUNT = 5
-PHARMA_TERMS_EXPANSION: Dict[str, List[str]] = {
+PHARMA_TERMS_EXPANSION = {
     "side effects": ["adverse events", "adverse reactions", "safety concerns", "undesirable effects"],
     "dosage": ["dose", "administration", "regimen", "dosing schedule", "posology"],
     "safety": ["toxicity", "contraindications", "warnings", "precautions", "safety profile"],
@@ -63,40 +76,44 @@ PHARMA_TERMS_EXPANSION: Dict[str, List[str]] = {
     "variation": ["post-approval change", "variation application", "label update", "manufacturing change"],
     "gmp": ["good manufacturing practices", "manufacturing standards", "quality systems", "facility compliance"],
     "gvp": ["good pharmacovigilance practices", "pv system", "pharmacovigilance guidelines", "drug safety standards"]
+    
 }
 
 # --- Helper Functions ---
 def preprocess_query(query: str) -> str:
-    """Expands query with relevant pharmaceutical terms using word boundaries."""
+    """Expand query with relevant pharmaceutical terms using word boundaries."""
     expanded_terms = []
     query_lower = query.lower()
+    
     for term, related_terms in PHARMA_TERMS_EXPANSION.items():
         if re.search(r'\b' + re.escape(term) + r'\b', query_lower):
             expanded_terms.extend(related_terms)
-    unique_expanded_terms_str = " ".join(list(set(expanded_terms)))
-    if unique_expanded_terms_str:
-        processed_query = f"{query} {unique_expanded_terms_str}"
-        logging.info(f"Original Query: '{query}', Expanded Query: '{processed_query}'")
+    
+    if expanded_terms:
+        processed_query = f"{query} {' '.join(set(expanded_terms))}"
+        logging.info(
+            "Query expanded: '%s' -> '%s'", 
+            query, processed_query
+        )
         return processed_query
     return query
 
 def _get_token_from_request() -> Optional[str]:
-    """Extracts authentication token from request headers, cookies, or session."""
-    auth_header = request.headers.get('Authorization')
-    if auth_header:
-        return auth_header.replace('Bearer ', '') if auth_header.startswith('Bearer ') else auth_header
+    """Extract authentication token from request headers, cookies, or session."""
+    if auth_header := request.headers.get('Authorization'):
+        return auth_header.split('Bearer ')[-1] if auth_header.startswith('Bearer ') else auth_header
     if 'sb-access-token' in request.cookies:
         return request.cookies.get('sb-access-token')
     return session.get('supabase_access_token')
 
-def _handle_unauthorized(is_page_request: bool) -> Tuple[Any, int]:
-    """Handles unauthorized access by redirecting or returning JSON error."""
+def _handle_unauthorized(is_page_request: bool) -> Any:
+    """Handle unauthorized access by redirecting or returning JSON error."""
     if is_page_request:
         return redirect(url_for('index'))
     return jsonify({'error': 'Authorization required'}), 401
 
 def clear_auth_session():
-    """Clears authentication-related data from the session."""
+    """Clear authentication-related data from session."""
     session.pop('supabase_access_token', None)
     session.pop('user_email', None)
 
@@ -104,6 +121,7 @@ def auth_required(f):
     """Decorator to enforce authentication for routes."""
     @wraps(f)
     def decorated_function(*args, **kwargs):
+        # Testing mode handling
         if current_app.config.get('TESTING'):
             auth_header = request.headers.get('Authorization')
             if auth_header and 'fake_token' in auth_header:
@@ -112,7 +130,7 @@ def auth_required(f):
             return jsonify({'error': 'Invalid or missing test token'}), 401
 
         token = _get_token_from_request()
-        is_page_request = request.method == 'GET' and request.endpoint in ['chat_page', 'index'] 
+        is_page_request = request.method == 'GET' and request.endpoint in ['chat_page', 'index']
 
         if not token:
             return _handle_unauthorized(is_page_request)
@@ -120,311 +138,386 @@ def auth_required(f):
         try:
             supabase = get_supabase()
             response = supabase.auth.get_user(token)
-            user = getattr(response, 'user', None) or getattr(getattr(response, 'data', None), 'user', None)
+            user = None
+            if hasattr(response, 'user'):
+                user = getattr(response, 'user', None)
+            elif hasattr(response, 'data'):
+                data = getattr(response, 'data')
+                if hasattr(data, 'user'):
+                    user = getattr(data, 'user', None)
 
             if not user:
-                logging.warning(f"Token validation failed for endpoint {request.endpoint}. User could not be retrieved from token.")
+                logging.warning(
+                    "Token validation failed for endpoint %s: User not found",
+                    request.endpoint
+                )
                 clear_auth_session()
                 return _handle_unauthorized(is_page_request)
             
+            # Update session with valid credentials
             session['supabase_access_token'] = token
             session['user_email'] = user.email
             return f(*args, **kwargs)
         
         except Exception as e:
-            logging.error(f"Authentication error for endpoint {request.endpoint}: {str(e)}", exc_info=True)
+            logging.error(
+                "Authentication error for endpoint %s: %s",
+                request.endpoint, str(e), exc_info=True
+            )
             clear_auth_session()
             return _handle_unauthorized(is_page_request)
     return decorated_function
 
-def _truncate_chat_history(chat_history: List[Dict[str, str]], 
-                           max_messages_pairs: int, 
-                           max_chars: int) -> List[Dict[str, str]]:
-    """Truncates chat history based on message count and total character length."""
+def _truncate_chat_history(
+    chat_history: List[Dict[str, str]],
+    max_messages_pairs: int,
+    max_chars: int
+) -> List[Dict[str, str]]:
+    """Truncate chat history based on message count and total character length."""
     max_total_messages = max_messages_pairs * 2
+    
+    # Truncate by message count
     if len(chat_history) > max_total_messages:
         chat_history = chat_history[-max_total_messages:]
     
-    current_history_json = json.dumps(chat_history)
-    while len(current_history_json) > max_chars and len(chat_history) > 1:
-        chat_history = chat_history[2:] 
-        current_history_json = json.dumps(chat_history)
+    # Truncate by character count
+    current_json = json.dumps(chat_history)
+    if len(current_json) <= max_chars:
+        return chat_history
+
+    # Remove oldest pairs until under limit
+    while len(chat_history) > 1 and len(current_json) > max_chars:
+        chat_history = chat_history[2:]
+        current_json = json.dumps(chat_history)
     
-    if len(current_history_json) > max_chars and len(chat_history) > 0: 
-        logging.warning(f"Chat history still too long ({len(current_history_json)} chars) after pair truncation, removing oldest entry.")
-        chat_history = chat_history[1:] 
-        if not chat_history:
-             logging.warning("Chat history completely cleared due to size constraints.")
-    return chat_history
+    # Handle case where single message exceeds limit
+    if len(current_json) > max_chars and chat_history:
+        logging.warning(
+            "Chat history still too long (%d chars) after truncation",
+            len(current_json)
+        )
+        chat_history = chat_history[1:]
+    
+    return chat_history or []
 
 # --- Flask App Factory Components ---
 def _configure_app_settings(app: Flask, testing: bool):
-    """Configures basic Flask app settings."""
-    app.secret_key = os.getenv('FLASK_SECRET_KEY')
-    if not app.secret_key:
-        app.secret_key = os.urandom(24) 
-        if not testing and config.get("server", "debug", True):
-            logging.warning("FLASK_SECRET_KEY not set from environment, using a temporary key. Set this in .env for production.")
-
-    app.config['TESTING'] = testing
-    if testing:
-        app.config['SERVER_NAME'] = 'localhost' 
-        app.config['PREFERRED_URL_SCHEME'] = 'http'
+    """Configure basic Flask app settings."""
+    app.secret_key = os.getenv('FLASK_SECRET_KEY') or os.urandom(24)
     
-    app.config['MAX_CHAT_HISTORY_MESSAGE_PAIRS'] = config.get("server", "chat_history_length", DEFAULT_MAX_CHAT_MESSAGES_COUNT)
+    if not os.getenv('FLASK_SECRET_KEY') and not testing:
+        logging.warning(
+            "FLASK_SECRET_KEY not set. Using temporary key. "
+            "Set in .env for production."
+        )
 
-def _initialize_extensions(app: Flask, testing: bool):
-    """Initializes Flask extensions."""
+    app.config.update({
+        'TESTING': testing,
+        'MAX_CHAT_HISTORY_MESSAGE_PAIRS': config.get(
+            "server", "chat_history_length", DEFAULT_MAX_CHAT_MESSAGES_COUNT
+        )
+    })
+    
+    if testing:
+        app.config.update({
+            'SERVER_NAME': 'localhost',
+            'PREFERRED_URL_SCHEME': 'http'
+        })
+
+def _initialize_extensions(app: Flask, testing: bool) -> Limiter:
+    """Initialize Flask extensions and return Limiter instance."""
     is_debug_mode = config.get("server", "debug", True) or testing
+    
+    # Initialize CORS
     if is_debug_mode:
         CORS(app, supports_credentials=True)
-        logging.info("CORS initialized in debug mode (all origins).")
+        logging.info("CORS initialized in debug mode (all origins)")
     else:
         allowed_origins = config.get("server", "allowed_origins", [])
         CORS(app, origins=allowed_origins, supports_credentials=True)
-        logging.info(f"CORS initialized for origins: {allowed_origins}")
+        logging.info("CORS initialized for origins: %s", allowed_origins)
 
+    # Initialize Talisman
     talisman_force_https = not testing
-    Talisman(app, force_https=talisman_force_https, content_security_policy={
+    csp = {
         'default-src': ["'self'"],
         'script-src': ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net"],
         'style-src': ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net"],
         'img-src': ["'self'", "data:", "https://cdn.jsdelivr.net"],
         'font-src': ["'self'", "https://cdn.jsdelivr.net"],
-        'connect-src': ["'self'", "https://*.supabase.co", f"wss://{os.getenv('SUPABASE_PROJECT_REF')}.supabase.co"] if os.getenv('SUPABASE_PROJECT_REF') else ["'self'", "https://*.supabase.co"]
-    })
-    logging.info(f"Talisman initialized. force_https={talisman_force_https}")
+        'connect-src': ["'self'", "https://*.supabase.co"]
+    }
+    
+    if project_ref := os.getenv('SUPABASE_PROJECT_REF'):
+        csp['connect-src'].append(f"wss://{project_ref}.supabase.co")
+    
+    Talisman(app, force_https=talisman_force_https, content_security_policy=csp)
+    logging.info("Talisman initialized. force_https=%s", talisman_force_https)
 
+    # Initialize Rate Limiting
     rate_limit_config = config.get_section('server', {}).get('rate_limit', {})
     default_limits = [
-        f"{rate_limit_config.get('per_day', 200)} per day",
-        f"{rate_limit_config.get('per_hour', 50)} per hour",
-        f"{rate_limit_config.get('per_minute', 10)} per minute"
+        lambda: f"{rate_limit_config.get('per_day', 200)} per day",
+        lambda: f"{rate_limit_config.get('per_hour', 50)} per hour",
+        lambda: f"{rate_limit_config.get('per_minute', 10)} per minute"
     ]
-    storage_uri = "memory://"
-    if not testing and storage_uri == "memory://":
-        logging.warning("Rate limiter using 'memory://' storage. Consider persistent store for production.")
     
+    storage_uri = "memory://"
     limiter = Limiter(
         get_remote_address,
-        app=None, 
-        default_limits=default_limits,
+        default_limits=default_limits,  # type: ignore[arg-type]
         storage_uri=storage_uri
     )
-    limiter.init_app(app) 
-
-    logging.info(f"Flask-Limiter initialized with limits: {default_limits}")
-    # This log helps confirm what Limiter's init_app did.
-    logging.debug(f"Type of app.extensions['limiter'] after init_app: {type(app.extensions.get('limiter'))}")
-    logging.debug(f"Value of app.extensions['limiter'] after init_app: {str(app.extensions.get('limiter'))[:200]}")
-
+    limiter.init_app(app)
+    
+    if not testing and storage_uri == "memory://":
+        logging.warning(
+            "Rate limiter using 'memory://' storage. "
+            "Use persistent store for production."
+        )
+    
+    logging.info("Flask-Limiter initialized with limits: %s", default_limits)
+    return limiter
 
 def _initialize_services(app: Flask, testing: bool):
-    """Initializes application-specific services."""
+    """Initialize application-specific services."""
     if testing:
         from unittest.mock import MagicMock
-        app.openai_handler = MagicMock(spec=OpenAIHandler)
-        app.openai_handler.generate_response.return_value = "Mocked test response"
-        app.search_engine = MagicMock(spec=ImprovedSearchEngine)
-        app.search_engine.search.return_value = []
-        app.search_engine.is_initialized.return_value = True
-        logging.info("Using MOCK OpenAIHandler and SearchEngine for testing.")
+        app.config['openai_handler'] = MagicMock(spec=OpenAIHandler)
+        app.config['openai_handler'].generate_response.return_value = "Mocked test response"
+        
+        app.config['search_engine'] = MagicMock(spec=ImprovedSearchEngine)
+        app.config['search_engine'].search.return_value = []
+        app.config['search_engine'].is_initialized.return_value = True
+        
+        logging.info("Using MOCK services for testing")
     else:
         if not os.getenv("OPENAI_API_KEY"):
-            logging.error("OPENAI_API_KEY not set. OpenAIHandler may not function correctly.")
-        app.openai_handler = OpenAIHandler()
-        app.search_engine = ImprovedSearchEngine()
-        logging.info("Initialized REAL OpenAIHandler and SearchEngine.")
-        if not app.search_engine.is_initialized():
-            logging.info("Attempting to initialize search engine...")
+            logging.error("OPENAI_API_KEY not set. OpenAIHandler may fail")
+        
+        app.config['openai_handler'] = OpenAIHandler()
+        app.config['search_engine'] = ImprovedSearchEngine()
+        logging.info("Initialized REAL services")
+        
+        if not app.config['search_engine'].is_initialized():
             try:
-                app.search_engine.initialize()
-                logging.info("Search engine initialized successfully.")
+                app.config['search_engine'].initialize()
+                logging.info("Search engine initialized successfully")
             except Exception as e:
-                logging.error(f"Failed to initialize search engine: {str(e)}", exc_info=True)
+                logging.error("Failed to initialize search engine: %s", str(e), exc_info=True)
 
-def _register_routes(app: Flask, limiter_to_use: Limiter): # Expect a Limiter instance
-    """Registers Flask routes and blueprints, using the provided Limiter instance."""
+def _register_routes(app: Flask, limiter: Limiter):
+    """Register Flask routes and blueprints."""
     app.register_blueprint(auth_bp, url_prefix='/auth')
-    logging.info("Registered auth_bp blueprint at /auth.")
-    ALLOWED_CHAT_CATEGORIES = ['all', 'regulatory', 'pharmacovigilance']
+    logging.info("Registered auth_bp blueprint at /auth")
+    
+    ALLOWED_CHAT_CATEGORIES = {'all', 'regulatory', 'pharmacovigilance'}
 
     @app.route('/')
     def index():
-        """Render the landing page. Authentication state determines UI."""
+        """Render landing page with authentication status."""
         supabase_url = os.getenv('SUPABASE_URL')
         supabase_anon_key = os.getenv('SUPABASE_ANON_KEY')
+        
         if not supabase_url or not supabase_anon_key:
-            logging.warning("SUPABASE_URL or SUPABASE_ANON_KEY not found in environment variables.")
+            logging.warning("Supabase credentials missing in environment")
         
-        is_authenticated = bool(session.get('supabase_access_token') and session.get('user_email'))
-        user_email = session.get('user_email')
-
-        if not is_authenticated and not current_app.config.get('TESTING'):
-            token = _get_token_from_request()
-            if token:
-                try:
-                    supabase = get_supabase()
-                    response = supabase.auth.get_user(token)
-                    user = getattr(response, 'user', None) or getattr(getattr(response, 'data', None), 'user', None)
-                    if user:
-                        is_authenticated = True
-                        user_email = user.email
-                        session['supabase_access_token'] = token
-                        session['user_email'] = user_email
-                except Exception as e:
-                    logging.error(f"Error validating token for index page: {e}")
-                    clear_auth_session()
+        # Check authentication
+        token = _get_token_from_request()
+        user_email = None
+        is_authenticated = False
         
-        return render_template('landing.html',
-                               SUPABASE_URL=supabase_url,
-                               SUPABASE_ANON_KEY=supabase_anon_key,
-                               is_authenticated=is_authenticated,
-                               user_email=user_email)
+        if token and not current_app.config.get('TESTING'):
+            try:
+                supabase = get_supabase()
+                response = supabase.auth.get_user(token)
+                user = None
+                if hasattr(response, 'user'):
+                    user = getattr(response, 'user', None)
+                elif hasattr(response, 'data'):
+                    data = getattr(response, 'data')
+                    if hasattr(data, 'user'):
+                        user = getattr(data, 'user', None)
+                
+                if user:
+                    is_authenticated = True
+                    user_email = user.email
+                    session.update({
+                        'supabase_access_token': token,
+                        'user_email': user_email
+                    })
+            except Exception as e:
+                logging.error("Token validation error: %s", str(e))
+                clear_auth_session()
+        
+        return render_template(
+            'landing.html',
+            SUPABASE_URL=supabase_url,
+            SUPABASE_ANON_KEY=supabase_anon_key,
+            is_authenticated=is_authenticated,
+            user_email=user_email
+        )
 
     @app.route('/chat')
     @auth_required
     def chat_page():
-        """Render the chat interface. Protected by auth_required."""
-        supabase_url = os.getenv('SUPABASE_URL')
-        supabase_anon_key = os.getenv('SUPABASE_ANON_KEY')
-        return render_template('index.html',
-                               SUPABASE_URL=supabase_url,
-                               SUPABASE_ANON_KEY=supabase_anon_key,
-                               user_email=session.get('user_email'))
+        """Render chat interface (authenticated only)."""
+        return render_template(
+            'index.html',
+            SUPABASE_URL=os.getenv('SUPABASE_URL'),
+            SUPABASE_ANON_KEY=os.getenv('SUPABASE_ANON_KEY'),
+            user_email=session.get('user_email')
+        )
 
     @app.route('/api/check-auth')
     @auth_required
     def check_auth():
-        """Endpoint to verify authentication status. Returns user email if authenticated."""
-        return jsonify({'authenticated': True, 'email': session.get('user_email')})
+        """Verify authentication status."""
+        return jsonify({
+            'authenticated': True, 
+            'email': session.get('user_email')
+        })
 
     @app.route('/api/chat', methods=['POST'])
     @auth_required
-    @limiter_to_use.limit(config.get_section('server', {}).get('rate_limit', {}).get('chat_api', "10 per minute")) 
+    @limiter.limit(
+        config.get_section('server', {})
+        .get('rate_limit', {})
+        .get('chat_api', "10 per minute")
+    )
     def handle_chat():
-        """Processes chat requests, performs search, generates LLM response, and manages chat history."""
+        """Process chat requests with search and LLM response generation."""
         try:
-            data = request.json
-            if not data: 
+            data = request.get_json()
+            if not data:
                 return jsonify({'error': 'Request body must be JSON'}), 400
             
+            # Validate input
             query = data.get('query', '').strip()
             category = data.get('category', 'all').lower()
-
-            if not query: 
+            
+            if not query:
                 return jsonify({'error': 'Query cannot be empty'}), 400
             if category not in ALLOWED_CHAT_CATEGORIES:
-                return jsonify({'error': f'Invalid category. Allowed: {", ".join(ALLOWED_CHAT_CATEGORIES)}'}), 400
+                return jsonify({
+                    'error': f'Invalid category. Allowed: {", ".join(ALLOWED_CHAT_CATEGORIES)}'
+                }), 400
 
+            # Process query and search
             processed_query = preprocess_query(query)
             
-            if not current_app.search_engine or not current_app.search_engine.is_initialized():
-                logging.error("Search engine not available or not initialized for /api/chat.")
-                return jsonify({'error': 'Search service is temporarily unavailable.'}), 503
+            if not (current_app.config.get('search_engine') and 
+                    current_app.config['search_engine'].is_initialized()):
+                logging.error("Search engine unavailable for /api/chat")
+                return jsonify({
+                    'error': 'Search service unavailable'
+                }), 503
 
-            search_results: List[SearchResult] = current_app.search_engine.search(processed_query, category)
+            search_results = current_app.config['search_engine'].search(
+                processed_query, 
+                category
+            )
             context_for_llm = [
-                {"text": r.text, "document": r.document, "category": r.category, "page": r.page} 
-                for r in search_results
+                {
+                    "text": r.text, 
+                    "document": r.document, 
+                    "category": r.category, 
+                    "page": r.page
+                } for r in search_results
             ]
-            chat_history: List[Dict[str, str]] = session.get('chat_history', [])
             
-            if not current_app.openai_handler:
-                logging.error("OpenAI handler not available for /api/chat.")
-                return jsonify({'error': 'Chat generation service is temporarily unavailable.'}), 503
+            # Generate LLM response
+            chat_history = session.get('chat_history', [])
+            
+            if not current_app.config.get('openai_handler'):
+                logging.error("OpenAI handler unavailable for /api/chat")
+                return jsonify({
+                    'error': 'Chat service unavailable'
+                }), 503
 
-            response_text = current_app.openai_handler.generate_response(query, context_for_llm, category, chat_history)
-            chat_history.append({"role": "user", "content": query})
-            chat_history.append({"role": "assistant", "content": response_text})
+            response_text = current_app.config['openai_handler'].generate_response(
+                query, context_for_llm, category, chat_history
+            )
             
-            max_pairs = current_app.config.get('MAX_CHAT_HISTORY_MESSAGE_PAIRS', DEFAULT_MAX_CHAT_MESSAGES_COUNT)
-            chat_history = _truncate_chat_history(chat_history, max_pairs, MAX_SESSION_CHAT_HISTORY_CHARS)
+            # Update and truncate chat history
+            chat_history.extend([
+                {"role": "user", "content": query},
+                {"role": "assistant", "content": response_text}
+            ])
             
+            max_pairs = current_app.config.get(
+                'MAX_CHAT_HISTORY_MESSAGE_PAIRS', 
+                DEFAULT_MAX_CHAT_MESSAGES_COUNT
+            )
+            chat_history = _truncate_chat_history(
+                chat_history, 
+                max_pairs, 
+                MAX_SESSION_CHAT_HISTORY_CHARS
+            )
             session['chat_history'] = chat_history
+            
             return jsonify({'response': response_text})
 
         except Exception as e:
-            logging.error(f"Error processing chat request: {str(e)}", exc_info=True)
-            return jsonify({'error': 'An internal error occurred. Please try again.'}), 500
+            logging.error(
+                "Chat processing error: %s", 
+                str(e), exc_info=True
+            )
+            return jsonify({
+                'error': 'Internal server error'
+            }), 500
 
 def create_app(testing: bool = False) -> Flask:
     """Create and configure the Flask application."""
-    app = Flask(__name__, template_folder='../templates', static_folder='../../static')
+    app = Flask(
+        __name__,
+        template_folder='../templates',
+        static_folder='../../static'
+    )
 
+    # Configure application
     _configure_app_settings(app, testing)
-    _initialize_extensions(app, testing) 
+    limiter = _initialize_extensions(app, testing)
     _initialize_services(app, testing)
 
-    # Retrieve the Limiter instance, accommodating the observed 'set' behavior
-    # This is the workaround for the unusual 'set' in app.extensions['limiter']
-    retrieved_limiter_value = app.extensions.get('limiter')
-    limiter_to_pass_to_routes: Optional[Limiter] = None
+    # Register routes with the limiter instance
+    _register_routes(app, limiter)
 
-    if isinstance(retrieved_limiter_value, Limiter):
-        limiter_to_pass_to_routes = retrieved_limiter_value
-        logging.info("Successfully retrieved Limiter instance directly from app.extensions.")
-    elif isinstance(retrieved_limiter_value, set):
-        logging.warning(
-            f"app.extensions['limiter'] is a set. Value: {str(retrieved_limiter_value)[:200]}. "
-            "Attempting to extract Limiter instance from the set."
-        )
-        # Extract the first item if the set is not empty and it's a Limiter instance
-        if retrieved_limiter_value: # Check if the set is not empty
-            potential_limiter = next(iter(retrieved_limiter_value), None)
-            if isinstance(potential_limiter, Limiter):
-                limiter_to_pass_to_routes = potential_limiter
-                logging.info("Successfully extracted Limiter instance from the set in app.extensions.")
-            else:
-                logging.error(
-                    f"Object extracted from set in app.extensions['limiter'] is not a Limiter instance. "
-                    f"Type: {type(potential_limiter).__name__}"
-                )
-        else:
-            logging.error("app.extensions['limiter'] is an empty set.")
-    else:
-        logging.error(
-            f"app.extensions['limiter'] is neither a Limiter instance nor a set. "
-            f"Type: {type(retrieved_limiter_value).__name__}. Value: {str(retrieved_limiter_value)[:200]}"
-        )
-
-    # If after all attempts, we don't have a valid Limiter instance, raise an error.
-    if not limiter_to_pass_to_routes:
-        error_message = (
-            "CRITICAL FAILURE: Could not obtain a valid Flask-Limiter instance. "
-            "Application cannot proceed with rate limiting."
-        )
-        logging.error(error_message)
-        raise TypeError(error_message)
-    
-    _register_routes(app, limiter_to_pass_to_routes) # Pass the verified/extracted Limiter instance
-
+    # Request logging
     @app.before_request
     def log_request_info():
         if current_app.debug:
-            logging.debug(f"Request: {request.method} {request.path} Args: {request.args.to_dict()}")
+            logging.debug(
+                "%s %s - Args: %s",
+                request.method,
+                request.path,
+                request.args.to_dict()
+            )
 
     @app.after_request
     def log_response_info(response):
         if current_app.debug:
-            logging.debug(f"Response: {response.status_code} Path: {request.path}")
+            logging.debug(
+                "%s %s - Status: %s",
+                request.method,
+                request.path,
+                response.status
+            )
         return response
         
     return app
 
 # --- Application Entry Point ---
 if __name__ == '__main__':
-    flask_app_instance = create_app(testing=os.getenv('FLASK_TESTING', 'false').lower() == 'true')
+    app = create_app(testing=os.getenv('FLASK_TESTING', 'false').lower() == 'true')
     
-    is_debug_mode = config.get("server", "debug", True)
+    debug_mode = config.get("server", "debug", True)
+    host = config.get("server", "host", '0.0.0.0')
+    port = int(config.get("server", "port", 5000))
     
-    if is_debug_mode and not flask_app_instance.config.get('TESTING'):
-        logging.warning("Flask is running in DEBUG MODE. Ensure this is disabled in production.")
-    elif not is_debug_mode:
-        logging.info("Flask is running in PRODUCTION MODE.")
+    if debug_mode and not app.config.get('TESTING'):
+        logging.warning("Running in DEBUG MODE - Not suitable for production")
+    else:
+        logging.info("Running in PRODUCTION MODE")
 
-    flask_app_instance.run(
-        debug=is_debug_mode, 
-        host=config.get("server", "host", '0.0.0.0'),
-        port=int(config.get("server", "port", 5000)) 
-    )
+    app.run(debug=debug_mode, host=host, port=port)
