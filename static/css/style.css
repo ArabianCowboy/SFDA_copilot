@@ -22,6 +22,7 @@
     --border-color-light: #EAEAEA;
     --border-color-medium: #ced4da;
     --border-color-dark: #495057;
+    --border-color-modal: rgba(209, 213, 219, 0.3); /* Specific border for auth modal */
 
     --alpha-white-10: rgba(255, 255, 255, 0.1);
     --alpha-white-15: rgba(255, 255, 255, 0.15);
@@ -46,10 +47,13 @@
     --alpha-black-40: rgba(0, 0, 0, 0.4);
 
     --color-success: #28a745;
+    --color-success-hover: #21633d; /* Darken(var(--primary-color), 10%) */
     --color-error: #dc3545;
     --color-warning: #FFC107; /* Bootstrap yellow */
     --color-warning-background: rgba(255, 243, 205, 0.8); /* For auth modal invalid input */
     --color-warning-focus-shadow: rgba(255, 193, 7, 0.4);
+    --color-secondary-hover: #164666; /* Darken(var(--secondary-color), 10%) */
+    --alpha-primary-color-25: rgba(46, 139, 87, 0.25); /* For focus shadow */
 
     /* Fonts */
     --font-family-primary: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -65,6 +69,18 @@
     --transition-duration-short: 0.2s;
     --transition-duration-medium: 0.3s;
     --transition-duration-long: 0.6s;
+
+    /* Shadows */
+    --shadow-sm: 0 2px 5px var(--alpha-black-10);
+    --shadow-md: 0 4px 12px var(--alpha-black-08);
+    --shadow-lg: 0 6px 15px var(--alpha-black-15);
+    --shadow-xl: 0 8px 32px 0 rgba(31, 38, 135, 0.15); /* Specific shadow for modal */
+    --shadow-chat-input: 0 -5px 15px var(--alpha-black-05);
+    --shadow-chat-bubble: 0 3px 8px var(--alpha-black-06);
+    --shadow-user-bubble: 0 4px 10px rgba(30, 95, 140, 0.15);
+    --shadow-landing-hero: 0 8px 32px rgba(31, 38, 135, 0.1);
+    --shadow-gateway-content: 0 10px 25px rgba(0, 0, 0, 0.08);
+    --shadow-primary-button-hover: 0 4px 12px rgba(46, 139, 87, 0.2);
 }
 
 /* --- Global Styles --- */
@@ -86,8 +102,8 @@ body {
 
 /* --- Mobile Header (Bootstrap Navbar Override) --- */
 .navbar.d-lg-none { /* Specific to mobile view */
-    background-color: var(--primary-color) !important; /* !important to override Bootstrap potentially */
-    box-shadow: 0 2px 5px var(--alpha-black-10);
+    background-color: var(--primary-color); /* Removed !important by increasing specificity */
+    box-shadow: var(--shadow-sm);
 }
 
 .navbar.d-lg-none .navbar-brand {
@@ -111,7 +127,7 @@ body {
     overflow-y: auto;
     color: var(--text-color-light);
     background-color: var(--primary-color);
-    box-shadow: 0 4px 12px var(--alpha-black-08);
+    box-shadow: var(--shadow-md);
 }
 
 .offcanvas.offcanvas-start .offcanvas-header {
@@ -143,15 +159,17 @@ body {
     color: var(--alpha-white-80);
 }
 
-.sidebar-header .text-muted { /* Overrides Bootstrap's default text-muted for this context */
+/* Overrides Bootstrap's default text-muted for this context */
+.sidebar-header .text-muted {
     font-size: 1rem;
     font-weight: 500;
-    color: var(--accent-color-light-teal) !important;
+    color: var(--accent-color-light-teal); /* Removed !important by increasing specificity */
     letter-spacing: 0.5px;
 }
 
+/* Overriding potential Bootstrap margins */
 .sidebar-header .auth-status-container {
-    margin-top: 15px !important; /* Overriding potential Bootstrap margins */
+    margin-top: 15px; /* Removed !important by increasing specificity */
     padding: 8px 12px;
     background-color: var(--background-dark-accent);
     border-radius: 6px;
@@ -195,8 +213,8 @@ body {
     font-size: 0.9rem;
     color: var(--text-color-light);
     text-align: left;
-    background-color: var(--alpha-white-15);
-    border: none;
+    background-color: var(--alpha-white-30);
+    border: 1px solid var(--alpha-white-20);
     border-radius: var(--border-radius-base);
     opacity: 0; /* Initial state for scroll animation */
     transform-style: preserve-3d;
@@ -213,7 +231,7 @@ body {
 .faq-section .nav-link:focus {
     cursor: pointer;
     background-color: var(--alpha-white-25);
-    box-shadow: 0 6px 15px var(--alpha-black-15);
+    box-shadow: var(--shadow-lg);
     transform: perspective(1000px) rotateX(5deg) rotateY(-5deg) scale(1.05);
 }
 
@@ -222,7 +240,18 @@ body {
     background-color: var(--secondary-color);
     font-weight: 600;
     transform: none; /* Reset transform for active state */
-    box-shadow: none;
+    box-shadow: 0 0 0 3px var(--accent-color-light-teal), var(--shadow-lg);
+    border: 1px solid var(--accent-color-light-teal);
+}
+
+/* !important retained for disabled state to ensure override */
+.faq-button:disabled {
+    background-color: var(--alpha-white-10) !important;
+    color: var(--text-color-light-muted) !important;
+    opacity: 1 !important;
+    box-shadow: none !important;
+    transform: none !important;
+    cursor: not-allowed;
 }
 
 /* --- Category Selector (Common Styles for Selects) --- */
@@ -416,14 +445,14 @@ body {
     max-width: 100%; /* Bubble can take full width of .message */
     word-wrap: break-word; /* Ensure long words break */
     border-radius: var(--border-radius-message);
-    box-shadow: 0 3px 8px var(--alpha-black-06);
+    box-shadow: var(--shadow-chat-bubble);
     transition: box-shadow var(--transition-duration-medium);
 }
 .user-message .message-bubble {
     color: var(--text-color-light);
     background-color: var(--secondary-color);
     border-bottom-right-radius: var(--border-radius-small);
-    box-shadow: 0 4px 10px rgba(30, 95, 140, 0.15); /* Specific shadow for user */
+    box-shadow: var(--shadow-user-bubble); /* Specific shadow for user */
 }
 .chatbot-message .message-bubble {
     background-color: var(--background-light);
@@ -476,7 +505,7 @@ body {
     background: linear-gradient(to bottom, var(--background-light), var(--background-light-alt));
     border-top: 1px solid var(--border-color-light);
     border-radius: 0 0 var(--border-radius-large) var(--border-radius-large); /* Assuming rounded corners for chat container */
-    box-shadow: 0 -5px 15px var(--alpha-black-05);
+    box-shadow: var(--shadow-chat-input);
     transition: box-shadow var(--transition-duration-medium);
 }
 .input-area .input-group {
@@ -494,7 +523,7 @@ body {
 #query-input:focus {
     outline: none;
     border-color: var(--primary-color);
-    box-shadow: 0 0 0 0.2rem rgba(46, 139, 87, 0.25); /* Direct RGBA for specific focus color */
+    box-shadow: 0 0 0 0.2rem var(--alpha-primary-color-25); /* Using new variable */
 }
 #send-button {
     padding: 12px 24px;
@@ -510,7 +539,7 @@ body {
 }
 #send-button:hover:not(:disabled) {
     background-color: var(--secondary-color);
-    box-shadow: 0 6px 15px var(--alpha-black-15);
+    box-shadow: var(--shadow-lg);
     transform: translateY(-2px) scale(1.03);
 }
 .input-label { /* Generic label style if used within input-area */
@@ -538,14 +567,14 @@ body {
     background-color: var(--background-light);
     border: 1px solid var(--border-color-medium);
     border-radius: var(--border-radius-small);
-    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23333333' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m2 5 6 6 6-6'/%3e%3c/svg%3e"); /* Dark arrow */
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23333333' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m2 5 6 6 6-6'/%3e%3csvg%3e"); /* Dark arrow */
 }
 .input-area .category-selector .form-select:hover {
     border-color: var(--primary-color);
 }
 .input-area .category-selector .form-select:focus {
     border-color: var(--primary-color);
-    box-shadow: 0 0 0 0.2rem rgba(46, 139, 87, 0.25);
+    box-shadow: 0 0 0 0.2rem var(--alpha-primary-color-25);
 }
 .input-area .category-selector .form-select option {
     color: var(--text-color-dark);
@@ -583,9 +612,9 @@ body {
 #authModal .modal-content {
     overflow: hidden; /* For border-radius to affect children */
     background: linear-gradient(135deg, rgba(46,139,87,0.75), rgba(30,95,140,0.75));
-    border: 1px solid rgba(209, 213, 219, 0.3); /* Using direct value as it's very specific */
+    border: 1px solid var(--border-color-modal); /* Using new variable */
     border-radius: var(--border-radius-large);
-    box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.15); /* Specific shadow */
+    box-shadow: var(--shadow-xl); /* Specific shadow */
     backdrop-filter: blur(12px) saturate(150%);
     -webkit-backdrop-filter: blur(12px) saturate(150%);
 }
@@ -663,7 +692,7 @@ body {
 #authModal .form-floating > .form-control:not(:placeholder-shown) ~ label {
     opacity: 1;
     transform: scale(0.85) translateY(-0.5rem) translateX(0.15rem);
-    color: var(--text-color-dark-muted); /* <<< THIS IS THE FIX: Floated label will be dark (muted) */
+    color: var(--text-color-dark-muted); /* Floated label will be dark (muted) */
     font-weight: 500;
 }
 
@@ -671,17 +700,17 @@ body {
     background-color: var(--alpha-white-90);
     border-color: var(--text-color-light); /* Focus border color can remain light or match label */
     box-shadow: 0 0 0 0.25rem var(--alpha-white-30);
-    color: var(--text-color-dark); 
+    color: var(--text-color-dark);
 }
 
 #authModal .form-control.is-invalid {
     background-color: var(--color-warning-background);
     border-color: var(--color-warning);
-    color: var(--text-color-dark); 
+    color: var(--text-color-dark);
 }
 #authModal .form-control.is-invalid:focus {
     box-shadow: 0 0 0 0.25rem var(--color-warning-focus-shadow);
-    color: var(--text-color-dark); 
+    color: var(--text-color-dark);
 }
 #authModal .invalid-feedback {
     display: inline-block; /* To allow background and padding */
@@ -713,16 +742,16 @@ body {
     border-color: var(--secondary-color);
 }
 #authModal .btn-primary:hover {
-    background-color: #164666; /* Darken(var(--secondary-color), 10%) */
-    border-color: #164666;
+    background-color: var(--color-secondary-hover); /* Using new variable */
+    border-color: var(--color-secondary-hover); /* Using new variable */
 }
 #authModal .btn-success {
     background-color: var(--primary-color);
     border-color: var(--primary-color);
 }
 #authModal .btn-success:hover {
-    background-color: #21633d; /* Darken(var(--primary-color), 10%) */
-    border-color: #21633d;
+    background-color: var(--color-success-hover); /* Using new variable */
+    border-color: var(--color-success-hover); /* Using new variable */
 }
 #authModal .btn .spinner-border { /* For loading spinners in buttons */
     color: var(--text-color-light);
@@ -748,7 +777,7 @@ body {
     border: 1px solid var(--border-color-light);
     border-radius: var(--border-radius-message);
     border-bottom-left-radius: var(--border-radius-small); /* Match chatbot bubble */
-    box-shadow: 0 3px 8px var(--alpha-black-06);
+    box-shadow: var(--shadow-chat-bubble);
 }
 .skeleton-avatar {
     flex-shrink: 0; /* Prevent avatar from shrinking */
@@ -815,7 +844,7 @@ body {
 .landing-hero {
     background: var(--alpha-white-90);
     border: 1px solid var(--alpha-white-20);
-    box-shadow: 0 8px 32px rgba(31, 38, 135, 0.1);
+    box-shadow: var(--shadow-landing-hero);
     backdrop-filter: blur(4px);
     -webkit-backdrop-filter: blur(4px);
 }
@@ -847,7 +876,7 @@ body {
 .gateway-content {
     background: var(--background-light); /* Solid white background for a classic card */
     border: 1px solid var(--border-color-light); /* Standard light border */
-    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08); /* Refined shadow for more definition */
+    box-shadow: var(--shadow-gateway-content); /* Refined shadow for more definition */
     /* Removed backdrop-filter for a solid card appearance */
 }
 
@@ -875,8 +904,8 @@ body {
                 box-shadow var(--transition-duration-medium) ease;
 }
 .gateway-content .btn-success:hover {
-    background-color: #3aa76d; /* Slightly lighter green */
-    border-color: #3aa76d;
+    background-color: var(--color-success-hover); /* Slightly lighter green */
+    border-color: var(--color-success-hover);
     transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(46, 139, 87, 0.2); /* var(--primary-color) with alpha */
+    box-shadow: var(--shadow-primary-button-hover); /* var(--primary-color) with alpha */
 }

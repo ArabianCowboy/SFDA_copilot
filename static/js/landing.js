@@ -1,284 +1,433 @@
+/**
+ * @file Main application script for the SFDA Copilot frontend.
+ * @description This script handles Supabase initialization, user authentication,
+ * API requests, and all UI interactions. It is structured as a modular application
+ * within an IIFE to ensure encapsulation, robustness, and maintainability.
+ * This version combines a clean modular architecture with defensive programming practices.
+ */
+
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm';
 
-// --- Constants ---
-const SUPABASE_URL = window.SUPABASE_URL;
-const SUPABASE_ANON_KEY = window.SUPABASE_ANON_KEY;
-const AUTH_COOKIE_NAME = 'sb-access-token';
-const AUTH_COOKIE_MAX_AGE_SECONDS = 3600; // 1 hour
-const TOAST_VISIBILITY_DURATION_MS = 3000;
-
-// --- Supabase Client Initialization ---
-let supabase;
-try {
-    if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-        throw new Error('Supabase URL or Anonymous Key is not configured.');
-    }
-    supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-} catch (error) {
-    console.error('Failed to initialize Supabase client:', error.message);
-    // Optionally, display a persistent error to the user if Supabase is critical
-    // document.body.innerHTML = '<p>Application configuration error. Please contact support.</p>';
-}
-
-// --- Authentication Utilities ---
-async function getSupabaseAuthToken() {
-    if (!supabase) return null;
-    try {
-        const { data: { session }, error } = await supabase.auth.getSession();
-        if (error) throw error;
-        return session?.access_token ?? null;
-    } catch (error) {
-        console.error('Error getting Supabase auth token:', error.message);
-        return null;
-    }
-}
-
-function setAuthCookie(token) {
-    if (!token) return;
-    document.cookie = `${AUTH_COOKIE_NAME}=${token}; path=/; max-age=${AUTH_COOKIE_MAX_AGE_SECONDS}; SameSite=Lax; Secure`; // Added Secure attribute
-}
-
-function clearAuthCookie() {
-    document.cookie = `${AUTH_COOKIE_NAME}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax; Secure`; // Added Secure attribute
-}
-
-// --- API Request Handler ---
 /**
- * Makes an authenticated API request.
- * @param {string} url - The URL to request.
- * @param {object} options - Fetch options (method, body, etc.).
- * @param {object} [DOMCache.toastElement] - Optional toast element for displaying messages.
- * @returns {Promise<object|null>} - The JSON response or null on failure.
+ * Main application module, created using an IIFE (Immediately Invoked Function Expression)
+ * to encapsulate all logic and avoid polluting the global scope.
+ * @module App
  */
-async function makeAuthenticatedRequest(url, options = {}, toastElement = null) {
-    if (!supabase) {
-        if (toastElement) showToastNotification(toastElement, 'Core services unavailable. Please try again later.', 'error');
-        return null;
-    }
+const App = (function () {
 
-    const token = await getSupabaseAuthToken();
-    if (!token) {
-        if (toastElement) showToastNotification(toastElement, 'Please login to access this feature.', 'error');
-        // Consider redirecting to login or showing auth modal here if appropriate
-        return null;
-    }
+    // --- Private State and Configuration ---
 
-    const fetchOptions = {
-        ...options,
-        headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`,
-            ...(options.headers || {}),
-        },
+    /**
+     * Application-wide configuration constants.
+     * @private
+     */
+    const config = {
+        SUPABASE_URL: window.SUPABASE_URL,
+        SUPABASE_ANON_KEY: window.SUPABASE_ANON_KEY,
+        AUTH_COOKIE_NAME: 'sb-access-token',
+        AUTH_COOKIE_MAX_AGE_SECONDS: 3600, // 1 hour
+        TOAST_VISIBILITY_DURATION_MS: 3000,
     };
 
-    try {
-        const response = await fetch(url, fetchOptions);
+    /**
+     * Cached DOM elements for efficient access. Populated by _cacheDomElements().
+     * @private
+     */
+    const dom = {};
 
-        if (response.status === 401) { // Unauthorized - session likely expired
-            if (toastElement) showToastNotification(toastElement, 'Session expired. Please login again.', 'error');
-            await supabase.auth.signOut(); // This should trigger onAuthStateChange if listeneing elsewhere
-            clearAuthCookie(); // Explicitly clear cookie as part of this flow
-            window.location.reload(); // Reload to reflect logged-out state
-            return null;
+    /**
+     * Runtime state of the application.
+     * @private
+     */
+    const state = {
+        supabase: null,
+        authModalInstance: null,
+    };
+
+    // --- Private Helper Functions ---
+
+    /**
+     * Formats a raw authentication error from Supabase into a user-friendly message.
+     * @private
+     * @param {Error} error - The error object from Supabase.
+     * @returns {string} A user-friendly error message.
+     */
+    function _formatAuthError(error) {
+        const message = error.message.toLowerCase();
+        if (message.includes('invalid login credentials')) {
+            return 'Incorrect email or password. Please try again.';
         }
+        if (message.includes('email not confirmed')) {
+            return 'Please confirm your email before logging in.';
+        }
+        if (message.includes('to be a valid email')) {
+            return 'Please provide a valid email address.';
+        }
+        return error.message || 'An unknown error occurred.';
+    }
 
-        if (!response.ok) {
-            let errorData;
-            try {
-                errorData = await response.json();
-            } catch (jsonError) {
-                // If response is not JSON, use status text
-                throw new Error(response.statusText || `Request failed with status ${response.status}`);
+    /**
+     * Validates that a list of DOM elements exists.
+     * @private
+     * @param {HTMLElement[]} elements - An array of DOM elements to check.
+     * @returns {boolean} True if all elements exist, false otherwise.
+     */
+    function _validateDomElements(elements) {
+        return elements.every(el => el !== null && el !== undefined);
+    }
+
+
+    // --- Private Core Modules (Services) ---
+
+    const AuthService = {
+        /**
+         * Retrieves the current user's JWT from the Supabase session.
+         * @returns {Promise<string|null>} The access token or null if not available.
+         */
+        async getSessionToken() {
+            if (!state.supabase) {
+                console.warn('Cannot get session token: Supabase not initialized.');
+                return null;
             }
-            throw new Error(errorData.message || `Request failed with status ${response.status}`);
+            try {
+                const { data: { session }, error } = await state.supabase.auth.getSession();
+                if (error) throw error;
+                return session?.access_token ?? null;
+            } catch (error) {
+                console.error('Error getting Supabase session token:', error.message);
+                return null;
+            }
+        },
+
+        /**
+         * Sets the authentication token in a secure cookie.
+         * @param {string} token - The JWT to set.
+         */
+        setAuthCookie(token) {
+            if (!token) return;
+            document.cookie = `${config.AUTH_COOKIE_NAME}=${token}; path=/; max-age=${config.AUTH_COOKIE_MAX_AGE_SECONDS}; SameSite=Lax; Secure`;
+        },
+
+        /**
+         * Clears the authentication cookie.
+         */
+        clearAuthCookie() {
+            document.cookie = `${config.AUTH_COOKIE_NAME}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax; Secure`;
         }
-
-        return await response.json();
-    } catch (error) {
-        console.error('API request error:', error.message);
-        if (toastElement) showToastNotification(toastElement, error.message || 'An unexpected error occurred.', 'error');
-        return null;
-    }
-}
-
-// --- DOMContentLoaded: UI Interactions and Event Listeners ---
-document.addEventListener('DOMContentLoaded', () => {
-    // --- DOM Element Cache ---
-    const DOM = {
-        authModalElement: document.getElementById('authModal'),
-        loginForm: document.getElementById('login-form'),
-        signupForm: document.getElementById('signup-form'),
-        authButton: document.getElementById('auth-button-main'), // Renamed for clarity if it's the main trigger
-        logoutButton: document.getElementById('logout-button-main'),
-        toastElement: document.getElementById('toast'),
-        authErrorFeedback: document.getElementById('auth-error'), // Element to display auth form errors
-        loginEmailInput: document.getElementById('login-email'),
-        loginPasswordInput: document.getElementById('login-password'),
-        signupEmailInput: document.getElementById('signup-email'),
-        signupPasswordInput: document.getElementById('signup-password'),
     };
 
-    // --- Bootstrap Component Instances ---
-    const authModalInstance = DOM.authModalElement ? new bootstrap.Modal(DOM.authModalElement) : null;
+    const ApiService = {
+        /**
+         * Makes a generic, authenticated API request.
+         * @param {string} url - The URL to request.
+         * @param {object} options - Standard Fetch API options (method, body, etc.).
+         * @returns {Promise<object>} The JSON response.
+         * @throws {Error} Throws an error if the request fails or the response is not ok.
+         */
+        async makeAuthenticatedRequest(url, options = {}) {
+            if (!state.supabase) {
+                throw new Error('Core services unavailable. Please try again later.');
+            }
 
-    // --- UI Helper Functions (DOM-dependent) ---
-    function showToastNotification(toastEl, message, type = 'success') { // type can be 'success' or 'error'
-        if (!toastEl) return;
-        toastEl.textContent = message;
-        toastEl.className = 'toast-notification'; // Reset to base class
-        toastEl.classList.add(type); // Add type-specific class ('success' or 'error')
-        toastEl.classList.remove('hidden');
+            const token = await AuthService.getSessionToken();
+            if (!token) {
+                // This error will be caught and shown to the user.
+                throw new Error('Authentication required. Please login to continue.');
+            }
+
+            const fetchOptions = {
+                ...options,
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`,
+                    ...(options.headers || {}),
+                },
+            };
+
+            const response = await fetch(url, fetchOptions);
+
+            if (response.status === 401) {
+                // Handle session expiration gracefully
+                await state.supabase.auth.signOut();
+                AuthService.clearAuthCookie();
+                window.location.reload();
+                // Throw an error that stops the current flow and is shown to the user
+                throw new Error('Your session has expired. Please login again.');
+            }
+
+            if (!response.ok) {
+                let errorData;
+                try {
+                    errorData = await response.json();
+                } catch {
+                    // If response is not JSON, use the status text as the error.
+                    throw new Error(response.statusText || `Request failed with status ${response.status}`);
+                }
+                throw new Error(errorData.message || `Request failed with status ${response.status}`);
+            }
+
+            return response.json();
+        }
+    };
+
+
+    // --- Private UI and Event Handlers ---
+
+    /**
+     * Caches frequently accessed DOM elements into the private `dom` object.
+     * @private
+     */
+    function _cacheDomElements() {
+        const elementIds = {
+            authModalElement: 'authModal',
+            loginForm: 'login-form',
+            signupForm: 'signup-form',
+            authButton: 'auth-button-main',
+            logoutButton: 'logout-button-main',
+            toastElement: 'toast',
+            authErrorFeedback: 'auth-error',
+            loginEmailInput: 'login-email',
+            loginPasswordInput: 'login-password',
+            signupEmailInput: 'signup-email',
+            signupPasswordInput: 'signup-password',
+        };
+        for (const key in elementIds) {
+            dom[key] = document.getElementById(elementIds[key]);
+        }
+    }
+
+    /**
+     * Visibly disables authentication UI elements if Supabase fails to initialize.
+     * Provides clear user feedback that a core service is unavailable.
+     * @private
+     */
+    function _disableAuthUI() {
+        console.warn("Authentication features are disabled due to Supabase initialization failure.");
+        const elementsToDisable = [
+            dom.loginForm,
+            dom.signupForm,
+            dom.authButton,
+            dom.logoutButton
+        ];
+
+        elementsToDisable.forEach(element => {
+            if (element) {
+                element.classList.add('disabled-form'); // Assumes a CSS class to style disabled forms
+                if (element.tagName === 'BUTTON') {
+                    element.setAttribute('disabled', 'true');
+                    element.title = "Authentication service unavailable";
+                }
+            }
+        });
+    }
+    
+    /**
+     * Displays a toast notification message.
+     * @private
+     * @param {string} message - The message to display.
+     * @param {'success'|'error'} type - The type of toast to show.
+     */
+    function _showToastNotification(message, type = 'success') {
+        if (!dom.toastElement) return;
+        dom.toastElement.textContent = message;
+        dom.toastElement.className = `toast-notification ${type}`;
+        dom.toastElement.classList.remove('hidden');
 
         setTimeout(() => {
-            toastEl.classList.add('hidden');
-        }, TOAST_VISIBILITY_DURATION_MS);
+            dom.toastElement.classList.add('hidden');
+        }, config.TOAST_VISIBILITY_DURATION_MS);
     }
 
-    function clearAuthFormError() {
-        if (DOM.authErrorFeedback) {
-            DOM.authErrorFeedback.classList.add('d-none');
-            DOM.authErrorFeedback.innerHTML = ''; // Clear previous error content
-        }
-        // Remove 'is-invalid' from all relevant form inputs
-        [DOM.loginEmailInput, DOM.loginPasswordInput, DOM.signupEmailInput, DOM.signupPasswordInput].forEach(input => {
-            input?.classList.remove('is-invalid');
-        });
-    }
+    /**
+     * Displays an error message within the authentication form.
+     * @private
+     * @param {string} message - The error message to display.
+     * @param {string[]} fieldIdsToMarkInvalid - An array of input IDs to mark as invalid.
+     */
+    function _displayAuthFormError(message, fieldIdsToMarkInvalid = []) {
+        if (!dom.authErrorFeedback) return;
+        
+        const container = document.createElement('div');
+        container.className = 'd-flex align-items-center';
+        
+        const icon = document.createElement('i');
+        icon.className = 'bi bi-exclamation-triangle-fill me-2';
+        
+        const strongMessage = document.createElement('strong');
+        strongMessage.textContent = message;
+        
+        container.appendChild(icon);
+        container.appendChild(strongMessage);
 
-    function displayAuthFormError(message, fieldIdsToMarkInvalid = []) {
-        if (DOM.authErrorFeedback) {
-            // Using textContent for the main message for security, then constructing HTML for icon
-            const strongMessage = document.createElement('strong');
-            strongMessage.textContent = message;
-
-            const icon = document.createElement('i');
-            icon.className = 'bi bi-exclamation-triangle-fill me-2';
-
-            const container = document.createElement('div');
-            container.className = 'd-flex align-items-center';
-            container.appendChild(icon);
-            container.appendChild(strongMessage);
-
-            DOM.authErrorFeedback.innerHTML = ''; // Clear previous content
-            DOM.authErrorFeedback.appendChild(container);
-            DOM.authErrorFeedback.classList.remove('d-none');
-        }
+        dom.authErrorFeedback.innerHTML = '';
+        dom.authErrorFeedback.appendChild(container);
+        dom.authErrorFeedback.classList.remove('d-none');
+        
         fieldIdsToMarkInvalid.forEach(id => {
-            const field = document.getElementById(id);
-            field?.classList.add('is-invalid');
+            document.getElementById(id)?.classList.add('is-invalid');
         });
     }
 
-    // --- Authentication Event Handlers ---
-    async function handleLogin(event) {
-        event.preventDefault();
-        if (!supabase || !DOM.loginEmailInput || !DOM.loginPasswordInput) return;
-        clearAuthFormError();
+    /**
+     * Clears any visible authentication form errors.
+     * @private
+     */
+    function _clearAuthFormError() {
+        if (dom.authErrorFeedback) {
+            dom.authErrorFeedback.classList.add('d-none');
+            dom.authErrorFeedback.innerHTML = '';
+        }
+        [dom.loginEmailInput, dom.loginPasswordInput, dom.signupEmailInput, dom.signupPasswordInput]
+            .forEach(input => input?.classList.remove('is-invalid'));
+    }
 
-        const email = DOM.loginEmailInput.value;
-        const password = DOM.loginPasswordInput.value;
+    /**
+     * Handles the user login form submission with robust validation.
+     * @private
+     * @param {Event} event - The form submission event.
+     */
+    async function _handleLogin(event) {
+        event.preventDefault();
+        _clearAuthFormError();
+
+        // Defensive check for required DOM elements
+        if (!_validateDomElements([dom.loginForm, dom.loginEmailInput, dom.loginPasswordInput])) {
+             console.error('Login form or its inputs are missing from the DOM.');
+             return;
+        }
+
+        const email = dom.loginEmailInput.value.trim();
+        const password = dom.loginPasswordInput.value;
+
+        // Explicit validation before making an API call
+        if (!email || !password) {
+            _displayAuthFormError('Please provide both email and password.', ['login-email', 'login-password']);
+            return;
+        }
 
         try {
-            const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+            const { data, error } = await state.supabase.auth.signInWithPassword({ email, password });
             if (error) throw error;
 
             if (data.session?.access_token) {
-                setAuthCookie(data.session.access_token);
+                AuthService.setAuthCookie(data.session.access_token);
             }
-            authModalInstance?.hide();
-            window.location.href = '/chat'; // Redirect to chat page
+            state.authModalInstance?.hide();
+            window.location.href = '/chat';
         } catch (error) {
-            let errorMessage = error.message;
-            const invalidFields = [];
-            if (error.message.includes('Invalid login credentials')) {
-                errorMessage = 'Incorrect email or password. Please try again.';
-                invalidFields.push('login-email', 'login-password');
-            } else if (error.message.includes('Email not confirmed')) {
-                errorMessage = 'Please confirm your email before logging in.';
-                invalidFields.push('login-email');
+            console.error('Login failed:', error.message);
+            const friendlyMessage = _formatAuthError(error);
+            _displayAuthFormError(friendlyMessage, ['login-email', 'login-password']);
+        }
+    }
+
+    /**
+     * Handles the user signup form submission with robust validation.
+     * @private
+     * @param {Event} event - The form submission event.
+     */
+    async function _handleSignup(event) {
+        event.preventDefault();
+        _clearAuthFormError();
+
+        if (!_validateDomElements([dom.signupForm, dom.signupEmailInput, dom.signupPasswordInput])) {
+             console.error('Signup form or its inputs are missing from the DOM.');
+             return;
+        }
+
+        const email = dom.signupEmailInput.value.trim();
+        const password = dom.signupPasswordInput.value;
+
+        if (!email || !password) {
+             _displayAuthFormError('Please provide both email and password.', ['signup-email', 'signup-password']);
+            return;
+        }
+
+        try {
+            const { data, error } = await state.supabase.auth.signUp({ email, password });
+            if (error) throw error;
+            
+            if (data.session?.access_token) {
+                AuthService.setAuthCookie(data.session.access_token);
+            }
+            state.authModalInstance?.hide();
+
+            // Provide clear user feedback based on whether email confirmation is needed
+            if (data.user && !data.session) {
+                _showToastNotification('Signup successful! Please check your email to confirm your account.');
             } else {
-                invalidFields.push('login-email', 'login-password');
+                window.location.href = '/chat';
             }
-            displayAuthFormError(errorMessage, invalidFields);
-        }
-    }
-
-    async function handleSignup(event) {
-        event.preventDefault();
-        if (!supabase || !DOM.signupEmailInput || !DOM.signupPasswordInput) return;
-        clearAuthFormError();
-
-        const email = DOM.signupEmailInput.value;
-        const password = DOM.signupPasswordInput.value;
-
-        try {
-            // Supabase sends a confirmation email by default if enabled in project settings.
-            // The session might be null immediately after signup if confirmation is required.
-            const { data, error } = await supabase.auth.signUp({ email, password });
-            if (error) throw error;
-
-            // Session and token might be available if auto-confirm is on or for the first login after confirm.
-            if (data.session?.access_token) {
-                setAuthCookie(data.session.access_token);
-            }
-            authModalInstance?.hide();
-
-            // Redirect or show success message
-            // If email confirmation is required, user won't be logged in yet.
-            // A message prompting to check email is usually better than immediate redirect to /chat here.
-            if (data.user && !data.session) { // User created, but no session (likely email confirmation pending)
-                showToastNotification(DOM.toastElement, 'Signup successful! Please check your email to confirm your account.', 'success');
-            } else { // User created and session active (e.g. auto-confirm on, or already confirmed)
-                 window.location.href = '/chat';
-            }
-
         } catch (error) {
-            displayAuthFormError(error.message, ['signup-email', 'signup-password']);
+            console.error('Signup failed:', error.message);
+            const friendlyMessage = _formatAuthError(error);
+            _displayAuthFormError(friendlyMessage, ['signup-email', 'signup-password']);
         }
     }
 
-    async function handleLogout() {
-        if (!supabase) return;
+    /**
+     * Handles the user logout action.
+     * @private
+     */
+    async function _handleLogout() {
+        if (!state.supabase) return;
         try {
-            const { error } = await supabase.auth.signOut();
+            const { error } = await state.supabase.auth.signOut();
             if (error) throw error;
-            clearAuthCookie();
-            window.location.reload(); // Reload to reflect logged-out state
+            AuthService.clearAuthCookie();
+            window.location.reload();
         } catch (error) {
-            showToastNotification(DOM.toastElement, `Logout failed: ${error.message}`, 'error');
+            _showToastNotification(`Logout failed: ${error.message}`, 'error');
+        }
+    }
+    
+    /**
+     * Binds all necessary event listeners to DOM elements.
+     * @private
+     */
+    function _bindEventListeners() {
+        // Stop if Supabase failed, UI is already disabled
+        if (!state.supabase) return;
+        
+        dom.loginForm?.addEventListener('submit', _handleLogin);
+        dom.signupForm?.addEventListener('submit', _handleSignup);
+        dom.authButton?.addEventListener('click', () => state.authModalInstance?.show());
+        dom.logoutButton?.addEventListener('click', _handleLogout);
+    }
+    
+    /**
+     * Initializes the application.
+     * This is the only public method exposed by the App module.
+     * @public
+     */
+    function init() {
+        _cacheDomElements();
+        
+        if (!config.SUPABASE_URL || !config.SUPABASE_ANON_KEY) {
+            console.error('CRITICAL: Supabase URL or Anonymous Key is not configured.');
+            _disableAuthUI();
+            return;
+        }
+        
+        try {
+            state.supabase = createClient(config.SUPABASE_URL, config.SUPABASE_ANON_KEY);
+            if (dom.authModalElement) {
+                state.authModalInstance = new bootstrap.Modal(dom.authModalElement);
+            }
+            _bindEventListeners();
+        } catch (error) {
+            console.error('CRITICAL: Failed to initialize application dependencies:', error.message);
+            _disableAuthUI();
         }
     }
 
-    // --- Attach Event Listeners ---
-    if (!supabase) {
-        // If Supabase failed to initialize, disable auth-related UI or show error
-        DOM.loginForm?.classList.add('disabled-form');
-        DOM.signupForm?.classList.add('disabled-form');
-        DOM.authButton?.setAttribute('disabled', 'true');
-        DOM.logoutButton?.setAttribute('disabled', 'true');
-        console.warn("Authentication features are disabled due to Supabase initialization failure.");
-        if (DOM.authButton) {
-            DOM.authButton.title = "Authentication service unavailable";
-        }
-        if (DOM.logoutButton) {
-            DOM.logoutButton.title = "Authentication service unavailable";
-        }
-        // Optionally display a message in the auth modal area
-        return; // Stop further auth-related event listener setup
-    }
+    // --- Public API ---
+    // Expose only what is absolutely necessary to the global scope.
+    return {
+        init: init
+    };
 
-    DOM.loginForm?.addEventListener('submit', handleLogin);
-    DOM.signupForm?.addEventListener('submit', handleSignup);
-    DOM.authButton?.addEventListener('click', () => authModalInstance?.show());
-    DOM.logoutButton?.addEventListener('click', handleLogout);
+})();
 
-    // Example of using makeAuthenticatedRequest if needed (not in original snippet's DOM events)
-    // async function fetchSomeUserData() {
-    //     const userData = await makeAuthenticatedRequest('/api/user-data', { method: 'GET' }, DOM.toastElement);
-    //     if (userData) {
-    //         console.log('User data:', userData);
-    //     }
-    // }
-    // document.getElementById('fetch-user-data-button')?.addEventListener('click', fetchSomeUserData);
-});
+// --- Application Entry Point ---
+document.addEventListener('DOMContentLoaded', App.init);

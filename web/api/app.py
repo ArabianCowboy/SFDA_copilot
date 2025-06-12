@@ -1,6 +1,7 @@
 import logging
 import os
 import sys
+import yaml
 import json
 import re
 from functools import wraps
@@ -308,6 +309,31 @@ def _initialize_services(app: Flask, testing: bool):
 
 def _register_routes(app: Flask, limiter: Limiter):
     """Register Flask routes and blueprints."""
+    # --- Start of new code for FAQ loading and endpoint ---
+    
+    # Load frequent questions from the YAML file on startup
+    try:
+        faq_path = os.path.join(PROJECT_ROOT, 'faq.yaml') # Using PROJECT_ROOT for robustness
+        with open(faq_path, 'r') as f:
+            frequent_questions_data = yaml.safe_load(f)
+        app.config['FREQUENT_QUESTIONS'] = frequent_questions_data
+        logging.info("Successfully loaded frequent questions from faq.yaml.")
+    except FileNotFoundError:
+        app.config['FREQUENT_QUESTIONS'] = {}
+        logging.error("faq.yaml not found. FAQs will not be available.")
+    except Exception as e:
+        app.config['FREQUENT_QUESTIONS'] = {}
+        logging.error(f"Error loading faq.yaml: {e}")
+
+    @app.route('/api/frequent-questions')
+    @auth_required # Protect this endpoint if needed
+    def get_frequent_questions():
+        """API endpoint to provide the list of frequent questions."""
+        faqs = current_app.config.get('FREQUENT_QUESTIONS', {})
+        return jsonify(faqs)
+
+    # --- End of new code for FAQ loading and endpoint ---
+
     app.register_blueprint(auth_bp, url_prefix='/auth')
     logging.info("Registered auth_bp blueprint at /auth")
     
