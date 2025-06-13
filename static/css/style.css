@@ -3,26 +3,26 @@
    ================================= */
 
 :root {
-    /* Colors */
-    --primary-color: #2E8B57; /* SFDA Green */
-    --secondary-color: #1E5F8C; /* Dark Blue/Green */
-    --accent-color-light-teal: #A8DADC;
+    /* Light Theme Colors */
+    --primary-color: #89A8B2; /* Muted Blue-Grey */
+    --accent-color: #B3C8CF; /* Lighter Blue-Grey */
+    --gradient-background: linear-gradient(135deg, #F1F0E8 0%, #E5E1DA 100%); /* Light gradient */
 
-    --text-color-light: #fff;
-    --text-color-light-secondary: #e9ecef;
-    --text-color-light-muted: #adb5bd;
-    --text-color-dark: #333;
-    --text-color-dark-muted: #6c757d;
+    --text-color-light: #89A8B2; /* Muted Blue-Grey */
+    --text-color-light-secondary: #B3C8CF; /* Lighter Blue-Grey */
+    --text-color-light-muted: #bdc3c7; /* Muted shade for less important text */
+    --text-color-dark: #34495e; /* Darker shade for main text */
+    --text-color-dark-muted: #7f8c8d; /* Muted dark text */
 
-    --background-light: #fff;
-    --background-light-alt: #F8F9FA;
-    --background-dark-accent: rgba(0, 0, 0, 0.1);
-    --background-dark-accent-strong: rgba(33, 99, 61, 0.9); /* For select dropdown */
+    --background-light: #F1F0E8; /* Very Light Warm Off-White */
+    --background-light-alt: #E5E1DA; /* Light Warm Beige/Off-White */
+    --background-dark-accent: rgba(44, 62, 80, 0.8); /* Primary color with opacity */
+    --background-dark-accent-strong: rgba(44, 62, 80, 0.95); /* Stronger primary color with opacity */
 
-    --border-color-light: #EAEAEA;
-    --border-color-medium: #ced4da;
-    --border-color-dark: #495057;
-    --border-color-modal: rgba(209, 213, 219, 0.3); /* Specific border for auth modal */
+    --border-color-light: #dcdfe4; /* Light border */
+    --border-color-medium: #bdc3c7; /* Medium border */
+    --border-color-dark: #7f8c8d; /* Dark border */
+    --border-color-modal: rgba(189, 195, 199, 0.3); /* Specific border for auth modal */
 
     --alpha-white-10: rgba(255, 255, 255, 0.1);
     --alpha-white-15: rgba(255, 255, 255, 0.15);
@@ -46,17 +46,18 @@
     --alpha-black-20: rgba(0, 0, 0, 0.2);
     --alpha-black-40: rgba(0, 0, 0, 0.4);
 
-    --color-success: #28a745;
-    --color-success-hover: #21633d; /* Darken(var(--primary-color), 10%) */
-    --color-error: #dc3545;
-    --color-warning: #FFC107; /* Bootstrap yellow */
-    --color-warning-background: rgba(255, 243, 205, 0.8); /* For auth modal invalid input */
-    --color-warning-focus-shadow: rgba(255, 193, 7, 0.4);
-    --color-secondary-hover: #164666; /* Darken(var(--secondary-color), 10%) */
-    --alpha-primary-color-25: rgba(46, 139, 87, 0.25); /* For focus shadow */
+    --color-success: #27ae60; /* Emerald Green */
+    --color-success-hover: #229954; /* Darker Emerald Green */
+    --color-error: #e74c3c; /* Alizarin Red */
+    --color-warning: #f39c12; /* Orange */
+    --color-warning-background: rgba(241, 196, 15, 0.2); /* Yellow with opacity */
+    --color-warning-focus-shadow: rgba(243, 156, 18, 0.4);
+    --color-accent-hover: #7A939F; /* Darker Blue-Grey - Earthy Hover */
+    --alpha-primary-color-25: rgba(44, 62, 80, 0.25); /* Primary color with opacity */
 
     /* Fonts */
-    --font-family-primary: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    --font-family-primary: 'Open Sans', sans-serif;
+    --font-family-headings: 'Roboto', sans-serif;
     --font-family-monospace: monospace;
 
     /* Sizing & Spacing */
@@ -77,10 +78,64 @@
     --shadow-xl: 0 8px 32px 0 rgba(31, 38, 135, 0.15); /* Specific shadow for modal */
     --shadow-chat-input: 0 -5px 15px var(--alpha-black-05);
     --shadow-chat-bubble: 0 3px 8px var(--alpha-black-06);
-    --shadow-user-bubble: 0 4px 10px rgba(30, 95, 140, 0.15);
+    --shadow-user-bubble: 0 4px 10px rgba(1, 87, 155, 0.15); /* Updated for new secondary color */
     --shadow-landing-hero: 0 8px 32px rgba(31, 38, 135, 0.1);
     --shadow-gateway-content: 0 10px 25px rgba(0, 0, 0, 0.08);
-    --shadow-primary-button-hover: 0 4px 12px rgba(46, 139, 87, 0.2);
+    --shadow-primary-button-hover: 0 4px 12px rgba(0, 121, 107, 0.2); /* Updated for new primary color */
+}
+
+[data-bs-theme="dark"] {
+    /* Dark Theme Colors */
+    --primary-color: #556B2F; /* Dark Olive Green - Earthy Green */
+    --accent-color: #8FBC8F; /* Dark Sea Green - Earthy Green */
+    --gradient-background: linear-gradient(135deg, #222831 0%, #393E46 100%); /* Dark gradient */
+
+    --text-color-light: #DFD0B8; /* Light text for dark background */
+    --text-color-light-secondary: #948979; /* Muted light text */
+    --text-color-light-muted: #A9A9A9; /* Even more muted light text */
+    --text-color-dark: #DFD0B8; /* Light text for dark background */
+    --text-color-dark-muted: #948979; /* Muted light text */
+
+    --background-light: #222831; /* Dark background */
+    --background-light-alt: #393E46; /* Alternative dark background */
+    --background-dark-accent: rgba(26, 43, 60, 0.8); /* Darker primary with opacity */
+    --background-dark-accent-strong: rgba(26, 43, 60, 0.95); /* Stronger darker primary with opacity */
+
+    --border-color-light: #414345; /* Dark light border */
+    --border-color-medium: #5a6a7a; /* Dark medium border */
+    --border-color-dark: #bdc3c7; /* Dark dark border */
+    --border-color-modal: rgba(90, 106, 122, 0.3); /* Specific border for auth modal in dark mode */
+
+    --alpha-white-10: rgba(236, 240, 241, 0.1); /* Using light text color for alpha */
+    --alpha-white-15: rgba(236, 240, 241, 0.15);
+    --alpha-white-20: rgba(236, 240, 241, 0.2);
+    --alpha-white-25: rgba(236, 240, 241, 0.25);
+    --alpha-white-30: rgba(236, 240, 241, 0.3);
+    --alpha-white-40: rgba(236, 240, 241, 0.4);
+    --alpha-white-60: rgba(236, 240, 241, 0.6);
+    --alpha-white-70: rgba(236, 240, 241, 0.7);
+    --alpha-white-80: rgba(236, 240, 241, 0.8);
+    --alpha-white-85: rgba(236, 240, 241, 0.85);
+    --alpha-white-90: rgba(236, 240, 241, 0.9);
+    --alpha-white-95: rgba(236, 240, 241, 0.95);
+
+    --alpha-black-05: rgba(0, 0, 0, 0.05); /* Keep black alpha for shadows etc. */
+    --alpha-black-06: rgba(0, 0, 0, 0.06);
+    --alpha-black-07: rgba(0, 0, 0, 0.07);
+    --alpha-black-08: rgba(0, 0, 0, 0.08);
+    --alpha-black-10: rgba(0, 0, 0, 0.1);
+    --alpha-black-15: rgba(0, 0, 0, 0.15);
+    --alpha-black-20: rgba(0, 0, 0, 0.2);
+    --alpha-black-40: rgba(0, 0, 0, 0.4);
+
+    --color-success: #2ecc71; /* Brighter Emerald Green for dark mode */
+    --color-success-hover: #27ae60; /* Darker Brighter Emerald Green */
+    --color-error: #e74c3c; /* Alizarin Red */
+    --color-warning: #f1c40f; /* Brighter Yellow for dark mode */
+    --color-warning-background: rgba(241, 196, 15, 0.3); /* Yellow with more opacity */
+    --color-warning-focus-shadow: rgba(241, 196, 15, 0.5);
+    --color-accent-hover: #4A5B29; /* Darker Earthy Green - Earthy Hover */
+    --alpha-primary-color-25: rgba(26, 43, 60, 0.25); /* Darker primary with opacity */
 }
 
 /* --- Global Styles --- */
@@ -94,6 +149,11 @@ body {
     overflow: hidden; /* Prevent page-level scrolling */
 }
 
+h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-family-headings);
+    font-weight: 500;
+}
+
 .container-fluid,
 .row {
     height: 100%;
@@ -104,8 +164,9 @@ body {
 
 /* --- Mobile Header (Bootstrap Navbar Override) --- */
 .navbar.d-lg-none { /* Specific to mobile view */
-    background-color: var(--primary-color); /* Removed !important by increasing specificity */
+    background: var(--gradient-background); /* Use gradient for mobile header */
     box-shadow: var(--shadow-sm);
+    color: var(--text-color-light); /* Ensure text is readable on gradient */
 }
 
 .navbar.d-lg-none .navbar-brand {
@@ -128,10 +189,11 @@ body {
     padding: 20px;
     overflow-y: auto;
     color: var(--text-color-light);
-    background-color: var(--primary-color);
+    background: var(--gradient-background); /* Use gradient for sidebar */
     box-shadow: var(--shadow-md);
     position: sticky; /* Keep sidebar in place during scroll */
     top: 0; /* Stick to top of viewport */
+    /* Ensure text color is set by the theme */
 }
 
 .offcanvas.offcanvas-start .offcanvas-header {
@@ -156,19 +218,21 @@ body {
     margin-bottom: 8px;
     font-size: 1.3rem;
     font-weight: 600;
+    color: var(--text-color-dark); /* Use dark text color for the title */
 }
 
 .sidebar-header h3 i {
     font-size: 1.2rem;
-    color: var(--alpha-white-80);
+    color: var(--primary-color); /* Use primary color for the icon */
 }
 
 /* Overrides Bootstrap's default text-muted for this context */
 .sidebar-header .text-muted {
     font-size: 1rem;
     font-weight: 500;
-    color: var(--accent-color-light-teal); /* Removed !important by increasing specificity */
+    color: var(--text-color-light-secondary); /* Use a lighter secondary text color */
     letter-spacing: 0.5px;
+    /* Ensure color is set by the theme */
 }
 
 /* Overriding potential Bootstrap margins */
@@ -177,6 +241,7 @@ body {
     padding: 8px 12px;
     background-color: var(--background-dark-accent);
     border-radius: 6px;
+    /* Ensure background color is set by the theme */
 }
 
 .sidebar-header .auth-status-container .small {
@@ -196,13 +261,15 @@ body {
     padding-top: 15px;
     border-top: 1px solid var(--alpha-white-15);
     font-size: 1.1rem;
-    color: var(--text-color-light-secondary);
+    color: var(--text-color-dark); /* Use dark text color for better visibility in light mode */
+    /* Ensure color is set by the theme */
 }
 
 .faq-section h4 i {
     margin-right: 8px;
     font-size: 1rem;
-    color: var(--text-color-light-muted);
+    color: var(--text-color-dark); /* Use dark text color for better visibility and theme switching */
+    /* Ensure color is set by the theme */
 }
 
 .faq-section .nav-pills {
@@ -215,10 +282,10 @@ body {
     padding: 8px 12px;
     margin-bottom: 5px; /* Replaces gap for older browsers, complements flex gap */
     font-size: 0.9rem;
-    color: var(--text-color-light);
+    color: var(--text-color-dark); /* Use dark text color for light theme */
     text-align: left;
-    background-color: var(--alpha-white-30);
-    border: 1px solid var(--alpha-white-20);
+    background-color: var(--background-light); /* Use light background color */
+    border: 1px solid var(--border-color-medium); /* Use medium border color */
     border-radius: var(--border-radius-base);
     opacity: 0; /* Initial state for scroll animation */
     transform-style: preserve-3d;
@@ -229,29 +296,32 @@ body {
     animation: faqItemFadeIn linear forwards; /* Needs to be applied directly for timeline */
     animation-timeline: faq-scroll-timeline; /* Experimental scroll-driven animation */
     animation-range: entry 20% cover 50%; /* Experimental scroll-driven animation */
+    /* Ensure colors are set by the theme */
 }
 
 .faq-section .nav-link:hover,
 .faq-section .nav-link:focus {
     cursor: pointer;
-    background-color: var(--alpha-white-25);
+    background-color: var(--background-light-alt); /* Use alternative light background on hover */
     box-shadow: var(--shadow-lg);
     transform: perspective(1000px) rotateX(5deg) rotateY(-5deg) scale(1.05);
+    /* Ensure background color is set by the theme */
 }
 
 .faq-section .nav-link.active {
-    color: var(--text-color-light);
-    background-color: var(--secondary-color);
+    color: var(--text-color-dark); /* Dark text for active state on light background */
+    background-color: var(--background-light); /* Light background for active state */
     font-weight: 600;
     transform: none; /* Reset transform for active state */
-    box-shadow: 0 0 0 3px var(--accent-color-light-teal), var(--shadow-lg);
-    border: 1px solid var(--accent-color-light-teal);
+    box-shadow: 0 0 0 3px var(--accent-color), var(--shadow-lg); /* Use accent color for focus ring */
+    border: 1px solid var(--accent-color); /* Use accent color for border */
+    /* Ensure colors are set by the theme */
 }
 
 /* !important retained for disabled state to ensure override */
 .faq-button:disabled {
-    background-color: var(--alpha-white-10) !important;
-    color: var(--text-color-light-muted) !important;
+    background-color: var(--background-light-alt) !important;
+    color: var(--text-color-dark) !important;
     opacity: 1 !important;
     box-shadow: none !important;
     transform: none !important;
@@ -264,6 +334,7 @@ body {
     margin-bottom: 8px;
     font-weight: 500;
     color: var(--text-color-light-secondary); /* Default for sidebar */
+    /* Ensure color is set by the theme */
 }
 
 .styled-select {
@@ -282,20 +353,23 @@ body {
     transition: background-color var(--transition-duration-medium),
                 border-color var(--transition-duration-medium),
                 box-shadow var(--transition-duration-medium);
+    /* Ensure colors are set by the theme */
 }
 .styled-select:hover {
     background-color: var(--alpha-white-25); /* Default for sidebar */
     border-color: var(--alpha-white-40); /* Default for sidebar */
+    /* Ensure colors are set by the theme */
 }
 .styled-select:focus {
     outline: none;
     background-color: var(--alpha-white-25); /* Default for sidebar */
     border-color: var(--text-color-light); /* Default for sidebar */
     box-shadow: 0 0 0 0.2rem var(--alpha-white-30); /* Default for sidebar */
+    /* Ensure colors are set by the theme */
 }
 .styled-select option { /* Styling for native dropdown options */
-    color: var(--text-color-light); /* Ensure contrast if select is dark */
-    background-color: var(--primary-color); /* Match select background if possible */
+    color: var(--text-color-dark); /* Ensure contrast */
+    background-color: var(--background-light); /* Match background */
 }
 
 /* Sidebar Specific Category Selector */
@@ -337,10 +411,12 @@ body {
     transition: background-color var(--transition-duration-medium),
                 border-color var(--transition-duration-medium),
                 box-shadow var(--transition-duration-medium);
+    /* Ensure colors are set by the theme */
 }
 .custom-select-wrapper .custom-select-trigger:hover {
     background-color: var(--alpha-white-25);
     border-color: var(--alpha-white-40);
+    /* Ensure colors are set by the theme */
 }
 .custom-select-wrapper .custom-select-trigger:focus,
 .custom-select-wrapper .custom-select-trigger.open {
@@ -348,6 +424,7 @@ body {
     background-color: var(--alpha-white-25);
     border-color: var(--text-color-light);
     box-shadow: 0 0 0 0.2rem var(--alpha-white-30);
+    /* Ensure colors are set by the theme */
 }
 .custom-select-wrapper .custom-select-trigger .selected-value {
     overflow: hidden;
@@ -363,6 +440,7 @@ body {
     border-right: 5px solid transparent;
     border-top: 6px solid var(--text-color-light);
     transition: transform var(--transition-duration-medium);
+    /* Ensure color is set by the theme */
 }
 .custom-select-wrapper .custom-select-trigger.open .arrow {
     transform: rotate(180deg);
@@ -388,6 +466,7 @@ body {
     transition: opacity var(--transition-duration-short),
                 transform var(--transition-duration-short),
                 visibility 0s var(--transition-duration-short); /* Delay visibility change */
+    /* Ensure colors are set by the theme */
 }
 .custom-select-wrapper .custom-select-options.open {
     opacity: 1;
@@ -402,9 +481,11 @@ body {
     color: var(--text-color-light);
     cursor: pointer;
     transition: background-color var(--transition-duration-short);
+    /* Ensure colors are set by the theme */
 }
 .custom-select-wrapper .custom-select-options div:hover {
     background-color: var(--alpha-white-15);
+    /* Ensure colors are set by the theme */
 }
 .custom-select-wrapper .custom-select-options > div.selected {
     display: none; /* Hide already selected option from dropdown list */
@@ -417,6 +498,7 @@ body {
     height: 100vh; /* Use viewport height for proper constraint */
     padding: 0;
     overflow: hidden; /* Prevent chat area from contributing to page scroll */
+    background-color: var(--background-light); /* Set chat area background */
 }
 .chat-container { /* Inner container with padding - no longer a flex container */
     padding: 20px;
@@ -457,15 +539,17 @@ body {
     transition: box-shadow var(--transition-duration-medium);
 }
 .user-message .message-bubble {
-    color: var(--text-color-light);
-    background-color: var(--secondary-color);
+    color: var(--text-color-dark);
+    background-color: var(--primary-color); /* Use primary color for user messages */
     border-bottom-right-radius: var(--border-radius-small);
     box-shadow: var(--shadow-user-bubble); /* Specific shadow for user */
 }
 .chatbot-message .message-bubble {
-    background-color: var(--background-light);
-    border: 1px solid var(--border-color-light);
+    background-color: linear-gradient(135deg, var(--background-light) 0%, var(--background-light-alt) 100%); /* Subtle gradient background */
+    border: 2px solid var(--border-color-dark); /* Reverted to original thickness and dark border color */
     border-bottom-left-radius: var(--border-radius-small);
+    color: var(--text-color-dark); /* Ensure text color is set by theme */
+    box-shadow: 0 8px 24px var(--alpha-black-25); /* Further enhanced shadow for more depth */
 }
 .message-content {
     overflow: hidden; /* For potential text expansion effects */
@@ -502,6 +586,7 @@ body {
     font-size: 0.75rem;
     color: var(--text-color-dark-muted);
     text-align: right;
+    /* Ensure color is set by the theme */
 }
 .user-message .timestamp {
     color: var(--alpha-white-70);
@@ -518,6 +603,7 @@ body {
     box-shadow: var(--shadow-chat-input);
     transition: box-shadow var(--transition-duration-medium);
     z-index: 10; /* Ensure input area stays above messages */
+    /* Ensure background and border colors are set by the theme */
 }
 .input-area .input-group {
     box-shadow: 0 4px 10px var(--alpha-black-07);
@@ -530,15 +616,18 @@ body {
     border-radius: var(--border-radius-large) 0 0 var(--border-radius-large);
     transition: border-color var(--transition-duration-medium),
                 box-shadow var(--transition-duration-medium);
+    background-color: var(--background-light); /* Ensure input background is set by theme */
+    color: var(--text-color-dark); /* Ensure input text color is set by theme */
 }
 #query-input:focus {
     outline: none;
     border-color: var(--primary-color);
     box-shadow: 0 0 0 0.2rem var(--alpha-primary-color-25); /* Using new variable */
+    /* Ensure border and shadow colors are set by the theme */
 }
 #send-button {
     padding: 12px 24px;
-    color: var(--text-color-light);
+    color: var(--text-color-dark);
     font-weight: 500;
     background-color: var(--primary-color);
     border: none;
@@ -549,7 +638,7 @@ body {
                 box-shadow var(--transition-duration-short);
 }
 #send-button:hover:not(:disabled) {
-    background-color: var(--secondary-color);
+    background-color: var(--accent-color); /* Use accent color for send button hover */
     box-shadow: var(--shadow-lg);
     transform: translateY(-2px) scale(1.03);
 }
@@ -559,6 +648,7 @@ body {
     font-size: 0.9rem;
     font-weight: 500;
     color: var(--primary-color);
+    /* Ensure color is set by the theme */
 }
 /* Category selector specific to input area */
 .input-area .category-selector {
@@ -570,6 +660,7 @@ body {
     font-size: 0.85rem;
     font-weight: 500;
     color: var(--text-color-dark); /* Dark text for light background */
+    /* Ensure color is set by the theme */
 }
 .input-area .category-selector .form-select { /* Uses .styled-select but with overrides */
     padding: 6px 10px;
@@ -579,17 +670,21 @@ body {
     border: 1px solid var(--border-color-medium);
     border-radius: var(--border-radius-small);
     background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23333333' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m2 5 6 6 6-6'/%3e%3csvg%3e"); /* Dark arrow */
+    /* Ensure colors are set by the theme */
 }
 .input-area .category-selector .form-select:hover {
     border-color: var(--primary-color);
+    /* Ensure border color is set by the theme */
 }
 .input-area .category-selector .form-select:focus {
     border-color: var(--primary-color);
     box-shadow: 0 0 0 0.2rem var(--alpha-primary-color-25);
+    /* Ensure border and shadow colors are set by the theme */
 }
 .input-area .category-selector .form-select option {
     color: var(--text-color-dark);
     background-color: var(--background-light);
+    /* Ensure colors are set by the theme */
 }
 
 /* --- Toast Notification --- */
@@ -604,6 +699,7 @@ body {
     box-shadow: 0 4px 12px var(--alpha-black-15);
     opacity: 1;
     transition: opacity var(--transition-duration-medium);
+    /* Ensure colors are set by the theme */
 }
 .toast-notification.hidden {
     opacity: 0;
@@ -622,17 +718,19 @@ body {
 }
 #authModal .modal-content {
     overflow: hidden; /* For border-radius to affect children */
-    background: linear-gradient(135deg, rgba(46,139,87,0.75), rgba(30,95,140,0.75));
+    background: var(--gradient-background); /* Use gradient background for modal */
     border: 1px solid var(--border-color-modal); /* Using new variable */
     border-radius: var(--border-radius-large);
     box-shadow: var(--shadow-xl); /* Specific shadow */
     backdrop-filter: blur(12px) saturate(150%);
     -webkit-backdrop-filter: blur(12px) saturate(150%);
+    /* Ensure background and border colors are set by the theme */
 }
 #authModal .modal-header {
     color: var(--text-color-light);
-    background-color: rgba(30, 95, 140, 0.85); /* Specific color */
+    background-color: var(--primary-color); /* Use primary color for modal header */
     border-bottom: none;
+    /* Ensure colors are set by the theme */
 }
 #authModal .modal-header .btn-close-white { /* Specific Bootstrap class */
     filter: brightness(1.2);
@@ -652,15 +750,18 @@ body {
     border-radius: 0; /* Override Bootstrap's default nav-link radius */
     transition: color var(--transition-duration-medium),
                 border-bottom-color var(--transition-duration-medium);
+    /* Ensure colors are set by the theme */
 }
 #authModal .nav-tabs .nav-link:hover {
     color: var(--text-color-light);
     border-bottom-color: var(--alpha-white-60);
+    /* Ensure colors are set by the theme */
 }
 #authModal .nav-tabs .nav-link.active {
     color: var(--text-color-light);
     font-weight: 600;
     border-bottom-color: var(--text-color-light);
+    /* Ensure colors are set by the theme */
 }
 #authModal .tab-content {
     padding: 1.5rem;
@@ -681,12 +782,13 @@ body {
 #authModal .form-floating > .form-control {
     padding: 1.625rem 0.75rem 0.625rem 0.75rem; /* Bootstrap's default with adjustments */
     color: var(--text-color-dark); /* Ensures typed text is dark */
-    background-color: var(--alpha-white-95);
-    border: 1px solid var(--alpha-black-20);
+    background-color: var(--background-light); /* Ensure background is set by theme */
+    border: 1px solid var(--border-color-medium); /* Ensure border is set by theme */
 }
 #authModal .form-floating > .form-control::placeholder { /* Style placeholder text */
     color: var(--text-color-dark-muted);
     opacity: 1; /* Ensure placeholder is visible */
+    /* Ensure color is set by the theme */
 }
 #authModal .form-floating > label {
     padding: 0.8rem 0.75rem; /* Adjust to match form-control changes */
@@ -696,21 +798,51 @@ body {
     transition: opacity var(--transition-duration-short),
                 transform var(--transition-duration-short),
                 color var(--transition-duration-short);
+    background: none; /* Comprehensive background reset */
+    background-color: transparent;
+    /* Ensure color is set by the theme */
 }
 
-/* MODIFICATION: Change floating label color */
+/*
+ * MODIFICATION: Force transparent background on floating labels in the auth modal.
+ * The !important declaration is necessary here to override a conflicting
+ * style from the core Bootstrap CSS that is causing a white background.
+ */
 #authModal .form-floating > .form-control:focus ~ label,
-#authModal .form-floating > .form-control:not(:placeholder-shown) ~ label {
+#authModal .form-floating > .form-control:not(:placeholder-shown) ~ label,
+#authModal .form-floating > .form-control:focus ~ label::before,
+#authModal .form-floating > .form-control:not(:placeholder-shown) ~ label::before,
+#authModal .form-floating > .form-control:focus ~ label::after,
+#authModal .form-floating > .form-control:not(:placeholder-shown) ~ label::after {
     opacity: 1;
     transform: scale(0.85) translateY(-0.5rem) translateX(0.15rem);
     color: var(--text-color-dark-muted); /* Floated label will be dark (muted) */
     font-weight: 500;
+    background: none; /* Comprehensive background reset */
+    background-color: transparent;
+    /* Ensure color is set by the theme */
+}
+
+/* MODIFICATION: Ensure transparent background for the span inside floating labels */
+#authModal .form-floating > .form-control:focus ~ label span,
+#authModal .form-floating > .form-control:not(:placeholder-shown) ~ label span {
+    background: none; /* Comprehensive background reset */
+    background-color: transparent;
+    /* Ensure background is transparent */
+}
+
+/* Ensure transparent background for the icon inside floating labels */
+#authModal .form-floating > .form-control:focus ~ label i,
+#authModal .form-floating > .form-control:not(:placeholder-shown) ~ label i {
+    background: none; /* Comprehensive background reset */
+    background-color: transparent;
+    /* Ensure background is transparent */
 }
 
 #authModal .form-control:focus {
-    background-color: var(--alpha-white-90);
-    border-color: var(--text-color-light); /* Focus border color can remain light or match label */
-    box-shadow: 0 0 0 0.25rem var(--alpha-white-30);
+    background-color: var(--background-light-alt); /* Ensure background is set by theme */
+    border-color: var(--primary-color); /* Use primary color for focus border */
+    box-shadow: 0 0 0 0.25rem var(--alpha-primary-color-25); /* Use primary color with opacity for shadow */
     color: var(--text-color-dark);
 }
 
@@ -718,10 +850,12 @@ body {
     background-color: var(--color-warning-background);
     border-color: var(--color-warning);
     color: var(--text-color-dark);
+    /* Ensure colors are set by the theme */
 }
 #authModal .form-control.is-invalid:focus {
     box-shadow: 0 0 0 0.25rem var(--color-warning-focus-shadow);
     color: var(--text-color-dark);
+    /* Ensure colors are set by the theme */
 }
 #authModal .invalid-feedback {
     display: inline-block; /* To allow background and padding */
@@ -731,10 +865,12 @@ body {
     color: var(--color-warning);
     background-color: var(--alpha-black-40);
     border-radius: 3px;
+    /* Ensure colors are set by the theme */
 }
 #authModal .form-text {
     font-size: 0.8rem;
-    color: var(--alpha-white-85);
+    color: var(--text-color-light-muted); /* Use muted light text for form text */
+    /* Ensure color is set by the theme */
 }
 #authModal .btn-lg { /* Bootstrap class */
     padding: 0.75rem 1.25rem;
@@ -749,31 +885,34 @@ body {
     transform: translateY(-2px);
 }
 #authModal .btn-primary {
-    background-color: var(--secondary-color);
-    border-color: var(--secondary-color);
+    background-color: var(--primary-color); /* Use primary color for primary button */
+    border-color: var(--primary-color);
+    color: var(--text-color-dark);
 }
 #authModal .btn-primary:hover {
-    background-color: var(--color-secondary-hover); /* Using new variable */
-    border-color: var(--color-secondary-hover); /* Using new variable */
+    background-color: var(--accent-color); /* Use accent hover color */
+    border-color: var(--accent-color); /* Use accent hover color */
 }
 #authModal .btn-success {
-    background-color: var(--primary-color);
-    border-color: var(--primary-color);
+    background-color: var(--accent-color); /* Use accent color for success button */
+    border-color: var(--accent-color);
 }
 #authModal .btn-success:hover {
-    background-color: var(--color-success-hover); /* Using new variable */
-    border-color: var(--color-success-hover); /* Using new variable */
+    background-color: var(--color-success-hover); /* Use success hover color */
+    border-color: var(--color-success-hover); /* Use success hover color */
 }
 #authModal .btn .spinner-border { /* For loading spinners in buttons */
-    color: var(--text-color-light);
+    color: var(--text-color-dark);
+    /* Ensure color is set by the theme */
 }
 #authModal .btn-outline-secondary .spinner-border {
     color: var(--primary-color); /* Spinner color for outline buttons */
+    /* Ensure color is set by the theme */
 }
 
 /* --- Skeleton Loader --- */
 .skeleton {
-    background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+    background: linear-gradient(90deg, var(--background-light) 25%, var(--background-light-alt) 50%, var(--background-light) 75%); /* Use theme colors for skeleton */
     background-size: 200% 100%;
     border-radius: var(--border-radius-small);
     animation: shimmer 1.5s infinite linear;
@@ -789,6 +928,7 @@ body {
     border-radius: var(--border-radius-message);
     border-bottom-left-radius: var(--border-radius-small); /* Match chatbot bubble */
     box-shadow: var(--shadow-chat-bubble);
+    /* Ensure colors are set by the theme */
 }
 .skeleton-avatar {
     flex-shrink: 0; /* Prevent avatar from shrinking */
@@ -841,7 +981,8 @@ body {
 
 /* --- Landing Page Styles --- */
 .landing-page {
-    background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+    background: var(--gradient-background); /* Use the new gradient for the landing page */
+    color: var(--text-color-dark); /* Ensure text color is set by theme */
 }
 
 .landing-hero,
@@ -853,11 +994,12 @@ body {
 
 /* Unauthenticated Hero Specifics */
 .landing-hero {
-    background: var(--alpha-white-90);
-    border: 1px solid var(--alpha-white-20);
+    background: var(--background-light); /* Use light background for hero */
+    border: 1px solid var(--border-color-light); /* Use light border color */
     box-shadow: var(--shadow-landing-hero);
     backdrop-filter: blur(4px);
     -webkit-backdrop-filter: blur(4px);
+    /* Ensure colors are set by the theme */
 }
 
 .hero-title-wrapper {
@@ -875,7 +1017,7 @@ body {
 }
 
 .landing-hero h1 { /* Targets h1 specifically within .landing-hero */
-    color: #2c3e50;
+    color: var(--text-color-dark); /* Ensure color is set by theme */
     font-weight: 700; /* fw-bold in HTML handles this, but explicit for clarity */
     margin-bottom: 0; /* Remove bottom margin as wrapper handles spacing */
     line-height: 1.2; /* Adjust line height for larger font size */
@@ -889,10 +1031,11 @@ body {
     border: 1px solid var(--border-color-light); /* Standard light border */
     box-shadow: var(--shadow-gateway-content); /* Refined shadow for more definition */
     /* Removed backdrop-filter for a solid card appearance */
+    /* Ensure colors are set by the theme */
 }
 
 .gateway-content h1 {
-    color: #2c3e50;
+    color: var(--text-color-dark); /* Ensure color is set by theme */
     font-weight: 700; /* Keep consistent with hero */
 }
 
@@ -900,23 +1043,40 @@ body {
     color: var(--primary-color);
     opacity: 0.9;
     transition: transform var(--transition-duration-medium) ease;
+    /* Ensure color is set by the theme */
 }
 .gateway-image:hover {
     transform: scale(1.05);
 }
-.gateway-content .btn-success { /* Specific styling for landing page button */
+/* Unified Button Style for Landing Page */
+.unified-button {
+    display: inline-block; /* Ensures padding and other box model properties apply correctly */
     padding: 1rem 2rem;
+    font-size: 1.1rem; /* Explicitly set font size for consistent sizing */
     font-weight: 600;
+    color: var(--text-color-dark); /* Ensure text is visible */
     background-color: var(--primary-color);
-    border-color: var(--primary-color);
+    border: 1px solid var(--primary-color); /* Use primary color for border */
+    border-radius: var(--border-radius-base); /* Apply a consistent border-radius */
+    text-decoration: none; /* Remove underline for anchor tags */
     transition: background-color var(--transition-duration-medium) ease,
                 border-color var(--transition-duration-medium) ease,
                 transform var(--transition-duration-medium) ease,
                 box-shadow var(--transition-duration-medium) ease;
+    /* Ensure colors are set by the theme */
 }
-.gateway-content .btn-success:hover {
-    background-color: var(--color-success-hover); /* Slightly lighter green */
-    border-color: var(--color-success-hover);
+
+.unified-button:hover {
+    background-color: var(--color-accent-hover); /* Use accent hover color for unified button hover */
+    border-color: var(--color-accent-hover);
     transform: translateY(-2px);
-    box-shadow: var(--shadow-primary-button-hover); /* var(--primary-color) with alpha */
+    box-shadow: var(--shadow-primary-button-hover);
+    /* Ensure colors are set by the theme */
+}
+
+/* Specific styling for landing page buttons - now using unified-button */
+.gateway-content .btn-success,
+#auth-button-main { /* Target both buttons for consistent sizing/spacing */
+    padding: 1rem 2rem; /* Keep consistent padding */
+    font-weight: 600; /* Keep consistent font weight */
 }

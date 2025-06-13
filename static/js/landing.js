@@ -76,6 +76,33 @@ const App = (function () {
         return elements.every(el => el !== null && el !== undefined);
     }
 
+    // --- Theme Management ---
+    /**
+     * Initializes the theme based on local storage or system preference.
+     * @private
+     */
+    function _initTheme() {
+        const storedTheme = localStorage.getItem('theme');
+        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        const defaultTheme = storedTheme || (prefersDark ? 'dark' : 'light');
+        _setTheme(defaultTheme);
+    }
+
+    /**
+     * Sets the theme attribute on the HTML element and saves to local storage.
+     * @private
+     * @param {'light'|'dark'} theme - The theme to set.
+     */
+    function _setTheme(theme) {
+        if (theme === 'dark') {
+            document.documentElement.setAttribute('data-bs-theme', 'dark');
+            localStorage.setItem('theme', 'dark');
+        } else {
+            document.documentElement.setAttribute('data-bs-theme', 'light');
+            localStorage.setItem('theme', 'light');
+        }
+    }
+
 
     // --- Private Core Modules (Services) ---
 
@@ -190,6 +217,7 @@ const App = (function () {
             loginPasswordInput: 'login-password',
             signupEmailInput: 'signup-email',
             signupPasswordInput: 'signup-password',
+            themeToggleMain: 'theme-toggle-main',
         };
         for (const key in elementIds) {
             dom[key] = document.getElementById(elementIds[key]);
@@ -393,6 +421,13 @@ const App = (function () {
         dom.signupForm?.addEventListener('submit', _handleSignup);
         dom.authButton?.addEventListener('click', () => state.authModalInstance?.show());
         dom.logoutButton?.addEventListener('click', _handleLogout);
+
+        // Theme toggle listener
+        dom.themeToggleMain?.addEventListener('click', () => {
+            const currentTheme = document.documentElement.getAttribute('data-bs-theme');
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            _setTheme(newTheme);
+        });
     }
     
     /**
@@ -402,6 +437,7 @@ const App = (function () {
      */
     function init() {
         _cacheDomElements();
+        _initTheme(); // Initialize theme on landing page load
         
         if (!config.SUPABASE_URL || !config.SUPABASE_ANON_KEY) {
             console.error('CRITICAL: Supabase URL or Anonymous Key is not configured.');

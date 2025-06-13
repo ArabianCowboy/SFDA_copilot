@@ -57,7 +57,8 @@ const App = (function () {
                 authButton: 'auth-button', authButtonOffcanvas: 'auth-button-offcanvas',
                 userStatusSpan: 'user-status', userStatusSpanOffcanvas: 'user-status-offcanvas',
                 authErrorDiv: 'auth-error', sidebarOffcanvasElement: 'sidebarOffcanvas',
-                sidebarContentRegular: 'sidebarContentRegular',
+                sidebarContentRegular: 'sidebarContentRegular', themeToggle: 'theme-toggle',
+                themeToggleOffcanvas: 'theme-toggle-offcanvas',
             };
             for (const key in elements) {
                 dom[key] = document.getElementById(elements[key]);
@@ -188,6 +189,60 @@ const App = (function () {
                     });
                     containers[category].forEach(c => c.appendChild(fragment.cloneNode(true)));
                 }
+            }
+        },
+
+        // --- Theme Management ---
+        initTheme() {
+            const storedTheme = localStorage.getItem('theme');
+            const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            const defaultTheme = storedTheme || (prefersDark ? 'dark' : 'light');
+            this.setTheme(defaultTheme);
+        },
+
+        setTheme(theme) {
+            if (theme === 'dark') {
+                document.documentElement.setAttribute('data-bs-theme', 'dark');
+                localStorage.setItem('theme', 'dark');
+            } else {
+                document.documentElement.setAttribute('data-bs-theme', 'light');
+                localStorage.setItem('theme', 'light');
+            }
+        },
+
+        // --- Theme Management ---
+        initTheme() {
+            const storedTheme = localStorage.getItem('theme');
+            const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            const defaultTheme = storedTheme || (prefersDark ? 'dark' : 'light');
+            this.setTheme(defaultTheme);
+        },
+
+        setTheme(theme) {
+            if (theme === 'dark') {
+                document.documentElement.setAttribute('data-bs-theme', 'dark');
+                localStorage.setItem('theme', 'dark');
+            } else {
+                document.documentElement.setAttribute('data-bs-theme', 'light');
+                localStorage.setItem('theme', 'light');
+            }
+        },
+
+        // --- Theme Management ---
+        initTheme() {
+            const storedTheme = localStorage.getItem('theme');
+            const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            const defaultTheme = storedTheme || (prefersDark ? 'dark' : 'light');
+            this.setTheme(defaultTheme);
+        },
+
+        setTheme(theme) {
+            if (theme === 'dark') {
+                document.documentElement.setAttribute('data-bs-theme', 'dark');
+                localStorage.setItem('theme', 'dark');
+            } else {
+                document.documentElement.setAttribute('data-bs-theme', 'light');
+                localStorage.setItem('theme', 'light');
             }
         }
     };
@@ -335,6 +390,15 @@ const App = (function () {
         
         [dom.authButton, dom.authButtonOffcanvas].forEach(btn => btn?.addEventListener('click', () => state.authModal?.show()));
         [dom.logoutButton, dom.logoutButtonOffcanvas].forEach(btn => btn?.addEventListener('click', auth.logout));
+
+        // Theme toggle listeners
+        [dom.themeToggle, dom.themeToggleOffcanvas].forEach(btn => {
+            btn?.addEventListener('click', () => {
+                const currentTheme = document.documentElement.getAttribute('data-bs-theme');
+                const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+                ui.setTheme(newTheme);
+            });
+        });
     }
 
     /**
@@ -342,6 +406,7 @@ const App = (function () {
      */
     async function init() {
         ui.cacheDomElements();
+        ui.initTheme(); // Initialize theme on app load
 
         // Initialize date-fns fallback
         (() => {
