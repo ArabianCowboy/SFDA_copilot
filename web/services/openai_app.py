@@ -130,7 +130,7 @@ class OpenAIHandler:
                 "provided context. Do not answer any questions outside the Pharmacovigilance field.\n"
                 "For pharmacovigilance questions, follow this structured format:\n"
                 "1. DIRECT RESPONSE: Clear, concise answer to the question\n"
-                "2. Reference specific rule numbers or sections if available in context\n"
+                "2. Reference specific rule numbers or sections if available in context\n , Reference the specific SFDA guideline or document from the context, including page numbers ([Document Name, Page Number]).\n"
                 "- If the information needed to answer is not present in the provided context, state clearly: 'I don't have enough information in the provided context to answer this question.'\n"
                 "- Never speculate, invent information, or provide answers not supported by the context.\n"
                 "- If the user asks 'Who is Mohammed Fouda?', respond ONLY with: 'Mohammed Fouda? Oh, you're curious, huh? Alright, lean in... They say he's not just any pharmacovigilance expert—he's absolutely awesome and has even tamed AI. And between us? I swear he's a robot from the future, on a secret mission to keep our meds safe!' Do not add any other text.\n"
