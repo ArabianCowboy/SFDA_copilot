@@ -20,7 +20,7 @@ search_engine:
   embedding_type: local  # 'openai' or 'local'
   embedding_model: all-mpnet-base-v2  # Only used when type=local
   embedding_dimension: 768  # 768 for local, 1536 for OpenAI
-  k: 3 # Default number of final results to return
+  k: 5 # Default number of final results to return
   semantic_weight: 0.7 # Weight for semantic search score in hybrid combination
   lexical_weight: 0.3 # Weight for lexical search score in hybrid combination
   semantic_multiplier: 3 # Multiplier for fetching semantic candidates (k * multiplier)

@@ -2,25 +2,53 @@
 # This file stores the frequent questions for the application.
 
 regulatory:
-  - text: "What are the requirements for drug registration in Saudi Arabia?"
-    short: "Drug Registration"
-  - text: "How to submit variations for approved drugs?"
-    short: "Variation Submission"
-  - text: "What are the GMP requirements for manufacturing sites?"
-    short: "GMP Requirements"
-  - text: "What is the process for clinical trial approval?"
-    short: "Clinical Trial Approval"
-  - text: "What are the labeling requirements for pharmaceutical products?"
-    short: "Labeling Requirements"
+  title: "Regulatory FAQs"
+  icon: "bi-journal-text"
+  questions:
+    - text: "What are the requirements for drug registration in Saudi Arabia?"
+      short: "Drug Registration"
+    - text: "How to submit variations for approved drugs?"
+      short: "Variation Submission"
+    - text: "What are the GMP requirements for manufacturing sites?"
+      short: "GMP Requirements"
+    - text: "What is the process for clinical trial approval?"
+      short: "Clinical Trial Approval"
+    - text: "What are the labeling requirements for pharmaceutical products?"
+      short: "Labeling Requirements"
 
 pharmacovigilance:
-  - text: "What are the adverse event reporting requirements in Saudi Arabia?"
-    short: "Adverse Event Reporting"
-  - text: "What is the role of a QPPV in Saudi Arabia?"
-    short: "QPPV Role"
-  - text: "What should be included in a Periodic Safety Update Report (PSUR)?"
-    short: "PSUR Requirements"
-  - text: "Could you provide a table outlining the reporting time frames for submitting Individual Case Safety Reports (ICSRs)?"
-    short: "Reporting Timeline"
-  - text: "What are the requirements for a Risk Management Plan?"
-    short: "Risk Management Plan"
+  title: "Pharmacovigilance FAQs"
+  icon: "bi-shield-check"
+  questions:
+    - text: "What are the adverse event reporting requirements in Saudi Arabia?"
+      short: "Adverse Event Reporting"
+    - text: "What is the role of a QPPV in Saudi Arabia?"
+      short: "QPPV Role"
+    - text: "What should be included in a Periodic Safety Update Report (PSUR)?"
+      short: "PSUR Requirements"
+    - text: "Could you provide a table outlining the reporting time frames for submitting Individual Case Safety Reports (ICSRs)?"
+      short: "Reporting Timeline"
+    - text: "What are the requirements for a Risk Management Plan?"
+      short: "Risk Management Plan"
+
+veterinary:
+  title: "Veterinary Medicines FAQs"
+  icon: "bi-box-seam"
+  questions:
+    - text: "What are the data requirements for veterinary products?"
+      short: "Veterinary Data Requirements"
+    - text: "What are the labeling requirements for veterinary medicines?"
+      short: "Veterinary Labeling"
+    - text: "What are the bioequivalence requirements for veterinary products?"
+      short: "Veterinary Bioequivalence"
+
+biological:
+  title: "Biological Products FAQs"
+  icon: "bi-droplet"
+  questions:
+    - text: "What are the guidelines for biosimilar products?"
+      short: "Biosimilar Guidelines"
+    - text: "What are the requirements for vaccine manufacturing?"
+      short: "Vaccine Manufacturing"
+    - text: "What are the blood product quality control requirements?"
+      short: "Blood Product QC"

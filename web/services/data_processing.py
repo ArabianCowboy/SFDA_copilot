@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Dict, List
 
 # Ensure project root is on `sys.path` (kept from original script)
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT))
 
 # ─────────────────────────── 3rd‑party libs ──────────────────────────
@@ -71,6 +71,8 @@ class DataProcessor:
     PROCESSED_DATA_DIR = Path("web/processed_data")
     REGULATORY_DIR = RAW_DATA_DIR / "regulatory"
     PHARMA_DIR = RAW_DATA_DIR / "pharmacovigilance"
+    VETERINARY_DIR = RAW_DATA_DIR / "Veterinary_Medicines"
+    BIOLOGICAL_DIR = RAW_DATA_DIR / "Biological_Products_and_Quality_Control"
 
     def __init__(self) -> None:
         """Load settings, prepare embedding client and paths."""
@@ -99,6 +101,8 @@ class DataProcessor:
         categories: Dict[str, Path] = {
             "regulatory": self.REGULATORY_DIR,
             "pharmacovigilance": self.PHARMA_DIR,
+            "veterinary": self.VETERINARY_DIR,
+            "biological": self.BIOLOGICAL_DIR,
         }
 
         chunks: List[Dict[str, str | int]] = []
@@ -158,7 +162,7 @@ class DataProcessor:
                     if cleaned:
                         pages.append({"text": cleaned, "page": page_idx})
             return pages
-        except (PyPDF2.errors.PdfReadError, OSError) as exc:
+        except Exception as exc:
             LOGGER.error("Failed to read %s: %s", path.name, exc)
             return []
 
@@ -182,7 +186,7 @@ class DataProcessor:
         chunks: List[Dict[str, str | int]] = []
 
         for page_info in pages_data:
-            is_table = self._has_table(page_info["text"])
+            is_table = self._has_table(str(page_info["text"]))
             size = 3_000 if is_table else self.chunk_size
             overlap = 600 if is_table else self.chunk_overlap
 
@@ -195,7 +199,7 @@ class DataProcessor:
             )
 
             try:
-                for chunk in splitter.split_text(page_info["text"]):
+                for chunk in splitter.split_text(str(page_info["text"])):
                     if not chunk.strip():
                         continue
                     chunks.append(
@@ -232,11 +236,11 @@ class DataProcessor:
         try:
             embeddings = self._get_embeddings(texts.tolist())
             index = faiss.IndexFlatL2(self.embedding_dimension)
-            index.add(embeddings.astype("float32"))
+            index.add(np.array(embeddings).astype("float32"))
 
             faiss.write_index(index, str(self.PROCESSED_DATA_DIR / FAISS_INDEX_NAME))
             LOGGER.info("FAISS index saved ✓")
-        except faiss.FaissException as exc:
+        except Exception as exc:
             LOGGER.error("FAISS index creation failed: %s", exc)
 
     # Embeddings ------------------------------------------------------

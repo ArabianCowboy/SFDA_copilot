@@ -31,7 +31,7 @@ class OpenAIClientManager:
         Returns:
             list: List of embedding vectors
         """
-        embeddings = []
+        embeddings = np.empty((0, self.embedding_dimension), dtype=np.float32)
         
         for i in range(0, len(texts), batch_size):
             batch_texts = texts[i:i+batch_size]
@@ -41,11 +41,13 @@ class OpenAIClientManager:
                     model=self.embedding_model,
                     input=batch_texts
                 )
-                embeddings.extend([item.embedding for item in response.data])
+                batch_embeddings = np.array([item.embedding for item in response.data], dtype=np.float32)
+                embeddings = np.vstack([embeddings, batch_embeddings])
             except Exception as e:
                 print(f"Error getting embeddings for batch: {str(e)}")
                 # Fallback to zero vectors
-                embeddings.extend([[0] * self.embedding_dimension] * len(batch_texts))
+                zero_vectors = np.zeros((len(batch_texts), self.embedding_dimension), dtype=np.float32)
+                embeddings = np.vstack([embeddings, zero_vectors])
         
         return embeddings
     

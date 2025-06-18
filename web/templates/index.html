@@ -186,13 +186,8 @@
                         </button>
                     </div>
                 </header>
-                <div class="faq-section">
-                    <h4 class="ps-2"><i class="bi bi-journal-text"></i>Regulatory FAQs</h4>
-                    <nav class="nav nav-pills flex-column" id="regulatory-faq-container" aria-label="Regulatory FAQs">
-                        </nav>
-                    <h4 class="ps-2 mt-3"><i class="bi bi-shield-check"></i>Pharmacovigilance FAQs</h4>
-                    <nav class="nav nav-pills flex-column" id="pharmacovigilance-faq-container" aria-label="Pharmacovigilance FAQs">
-                        </nav>
+                <div class="faq-section" id="faq-sidebar-section">
+                    <!-- FAQ categories will be dynamically loaded here by JavaScript -->
                 </div>
             </aside><div class="offcanvas offcanvas-start text-white d-lg-none"
                  tabindex="-1"
@@ -217,13 +212,8 @@
                             <i class="bi bi-circle-half me-2"></i>Toggle Theme
                         </button>
                     </div>
-                    <div class="faq-section">
-                        <h4 class="ps-2"><i class="bi bi-journal-text"></i>Regulatory FAQs</h4>
-                        <nav class="nav nav-pills flex-column" id="regulatory-faq-offcanvas-container" aria-label="Regulatory FAQs">
-                            </nav>
-                        <h4 class="ps-2 mt-3"><i class="bi bi-shield-check"></i>Pharmacovigilance FAQs</h4>
-                        <nav class="nav nav-pills flex-column" id="pharmacovigilance-faq-offcanvas-container" aria-label="Pharmacovigilance FAQs">
-                            </nav>
+                    <div class="faq-section" id="faq-offcanvas-section">
+                        <!-- FAQ categories will be dynamically loaded here by JavaScript -->
                     </div>
                 </div>
             </div><section class="col-12 col-lg-9 chat-area h-100 d-flex flex-column">
@@ -262,6 +252,8 @@
                             <option value="all" selected>All Categories</option>
                             <option value="regulatory">Regulatory</option>
                             <option value="pharmacovigilance">Pharmacovigilance</option>
+                            <option value="veterinary">Veterinary Medicines</option>
+                            <option value="biological">Biological Products</option>
                         </select>
                     </div>
                     <div class="input-group">

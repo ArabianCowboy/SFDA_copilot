@@ -24,7 +24,7 @@
 ### Response Generation
 - OpenAI GPT for contextual responses
 - System prompts structured by:
-  - Category (Regulatory/Pharmacovigilance)
+  - Category (Regulatory/Pharmacovigilance/Veterinary_Medicines/Biological_Products_and_Quality_Control)
   - Response format requirements
   - Source document references
 

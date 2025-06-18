@@ -10,7 +10,7 @@ AI-powered regulatory assistant for the Saudi Food and Drug Authority (SFDA) tha
 4. Simplify access to SFDA regulatory documents and requirements
 
 ## Key Features
-- Chat interface with categorization (Regulatory/Pharmacovigilance)
+- Chat interface with categorization (Regulatory/Pharmacovigilance/Veterinary_Medicines/Biological_Products_and_Quality_Control)
 - Query expansion with pharmaceutical terminology
 - Hybrid search (FAISS + TF-IDF) on regulatory documents
 - OpenAI integration for generating responses

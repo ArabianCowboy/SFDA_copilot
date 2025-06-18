@@ -317,7 +317,8 @@ def _register_routes(app: Flask, limiter: Limiter):
         with open(faq_path, 'r') as f:
             frequent_questions_data = yaml.safe_load(f)
         app.config['FREQUENT_QUESTIONS'] = frequent_questions_data
-        logging.info("Successfully loaded frequent questions from faq.yaml.")
+        print(f"DEBUG: Loaded FAQ Data: {frequent_questions_data}", file=sys.stdout) # Direct print for debugging
+        logging.info("Successfully loaded frequent questions from faq.yaml. Data: %s", frequent_questions_data)
     except FileNotFoundError:
         app.config['FREQUENT_QUESTIONS'] = {}
         logging.error("faq.yaml not found. FAQs will not be available.")
@@ -326,10 +327,10 @@ def _register_routes(app: Flask, limiter: Limiter):
         logging.error(f"Error loading faq.yaml: {e}")
 
     @app.route('/api/frequent-questions')
-    @auth_required # Protect this endpoint if needed
     def get_frequent_questions():
         """API endpoint to provide the list of frequent questions."""
         faqs = current_app.config.get('FREQUENT_QUESTIONS', {})
+        print(f"DEBUG: FAQs being sent to frontend: {faqs}", file=sys.stdout) # Added for debugging
         return jsonify(faqs)
 
     # --- End of new code for FAQ loading and endpoint ---
@@ -337,7 +338,7 @@ def _register_routes(app: Flask, limiter: Limiter):
     app.register_blueprint(auth_bp, url_prefix='/auth')
     logging.info("Registered auth_bp blueprint at /auth")
     
-    ALLOWED_CHAT_CATEGORIES = {'all', 'regulatory', 'pharmacovigilance'}
+    ALLOWED_CHAT_CATEGORIES = {'all', 'regulatory', 'pharmacovigilance', 'veterinary', 'biological'}
 
     @app.route('/')
     def index():
@@ -415,19 +416,29 @@ def _register_routes(app: Flask, limiter: Limiter):
         """Process chat requests with search and LLM response generation."""
         try:
             data = request.get_json()
+            logging.debug(f"Received JSON data: {data}") # New debug log
             if not data:
                 return jsonify({'error': 'Request body must be JSON'}), 400
             
             # Validate input
             query = data.get('query', '').strip()
-            category = data.get('category', 'all').lower()
+            category = data.get('category', 'all')
+            logging.debug(f"Extracted category: '{category}'") # New debug log
+            
+            logging.debug(f"Received chat request with category: '{category}'") # Debug log
             
             if not query:
                 return jsonify({'error': 'Query cannot be empty'}), 400
-            if category not in ALLOWED_CHAT_CATEGORIES:
+            
+            # Ensure category is valid and handle potential casing issues
+            if category.lower() not in [c.lower() for c in ALLOWED_CHAT_CATEGORIES]:
+                logging.warning(f"Invalid category received: '{category}'. Allowed: {', '.join(ALLOWED_CHAT_CATEGORIES)}")
                 return jsonify({
                     'error': f'Invalid category. Allowed: {", ".join(ALLOWED_CHAT_CATEGORIES)}'
                 }), 400
+            
+            # Normalize category to match internal representation if needed
+            category = next((c for c in ALLOWED_CHAT_CATEGORIES if c.lower() == category.lower()), category)
 
             # Process query and search
             processed_query = preprocess_query(query)

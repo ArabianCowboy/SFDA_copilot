@@ -428,7 +428,7 @@ class ImprovedSearchEngine:
                 valid_indices: np.ndarray = np.where(category_mask)[0]
                 # If no documents match the category, return early
                 if len(valid_indices) == 0:
-                     logger.debug(f"No documents found for category '{category}' in lexical search.")
+                     logger.debug(f"No documents found for category '{category.lower()}' in lexical search.")
                      return results_raw
                 # Filter the similarity scores and keep only those for matching indices
                 filtered_sims: np.ndarray = similarities[valid_indices]

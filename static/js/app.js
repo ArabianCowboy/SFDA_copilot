@@ -1,25 +1,25 @@
-// SFDA Copilot — Main Application Script (Consolidated Version)
+// SFDA Copilot — Main Application Script (Refactored Version)
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm';
 import { marked } from 'https://cdn.jsdelivr.net/npm/marked@12.0.0/+esm';
 import DOMPurify from 'https://cdn.jsdelivr.net/npm/dompurify@3.0.8/+esm';
 
-/**
- * Main application module, wrapped in an IIFE to create a private scope.
- */
 const App = (() => {
-
-    /* 1. CONFIGURATION & STATE -------------------- */
-
-    const config = {
+    /* 1. CONSTANTS & CONFIGURATION -------------------- */
+    const C = {
         TOAST_DURATION: 3000,
         DEBOUNCE_DELAY: 300,
+        DATE_FNS_POLL_INTERVAL: 100,
+        DATE_FNS_MAX_ATTEMPTS: 50,
         SUPABASE_URL: window.SUPABASE_URL,
         SUPABASE_ANON_KEY: window.SUPABASE_ANON_KEY,
+        // CSS classes
+        HIDDEN_CLASS: 'hidden',
+        INVALID_CLASS: 'is-invalid',
+        DARK_THEME_CLASS: 'dark',
+        LIGHT_THEME_CLASS: 'light',
     };
 
-    // DOM cache, populated by ui.cacheDomElements()
-    const dom = {};
-
+    const dom = {}; // DOM element cache
     const state = {
         supabase: null,
         authModal: null,
@@ -28,18 +28,46 @@ const App = (() => {
         debounceTimer: null,
         isRequestInProgress: false,
         originalSendButtonText: 'Send',
-        // Fallback formatter, will be replaced by date-fns if it loads
-        formatRelativeDate: (date) => date.toLocaleString(),
+        formatRelativeDate: (date) => date.toLocaleString(), // Fallback
     };
 
+    /* 2. UTILITY & HELPER FUNCTIONS -------------------- */
 
-    /* 2. UTILITY FUNCTIONS -------------------- */
+    /** Safely creates and sanitizes message content. */
+    const createMessageContent = (text, isBot) => {
+        const contentDiv = document.createElement('div');
+        contentDiv.className = 'message-content';
+        if (isBot) {
+            const sanitizedHtml = DOMPurify.sanitize(marked.parse(text), { USE_PROFILES: { html: true } });
+            contentDiv.innerHTML = sanitizedHtml;
+        } else {
+            // This is the safest way to insert user-provided text into the DOM.
+            // It treats the text as plain text, not HTML, preventing XSS attacks.
+            contentDiv.textContent = text;
+        }
+        return contentDiv;
+    };
 
-    /**
-     * Formats a raw Supabase auth error into a user-friendly message.
-     * @param {Error} error The error object from Supabase.
-     * @returns {string} A user-friendly error message.
-     */
+    /** Waits for the date-fns library to be available on the window object. */
+    const waitForDateFns = () => {
+        return new Promise((resolve) => {
+            let attempts = 0;
+            const check = () => {
+                if (window.dateFns?.formatRelative) {
+                    state.formatRelativeDate = (date) => window.dateFns.formatRelative(date, new Date());
+                    resolve();
+                } else if (attempts++ < C.DATE_FNS_MAX_ATTEMPTS) {
+                    setTimeout(check, C.DATE_FNS_POLL_INTERVAL);
+                } else {
+                    console.warn('date-fns library not found after polling.');
+                    resolve(); // Resolve anyway to not block initialization
+                }
+            };
+            check();
+        });
+    };
+    
+    /** Formats a Supabase auth error into a user-friendly message. */
     const formatAuthError = (error) => {
         const message = error?.message?.toLowerCase() || '';
         if (message.includes('invalid login credentials')) return 'Incorrect email or password.';
@@ -47,33 +75,10 @@ const App = (() => {
         return error.message || 'An unknown error occurred.';
     };
 
-    /**
-     * Polls for the date-fns library to become available on the window object.
-     */
-    const pollForDateFns = () => {
-        let attempts = 0;
-        const maxAttempts = 50;
-        const pollInterval = 100;
-
-        const check = () => {
-            if (window.dateFns?.formatRelative) {
-                state.formatRelativeDate = window.dateFns.formatRelative;
-            } else if (attempts++ < maxAttempts) {
-                setTimeout(check, pollInterval);
-            }
-        };
-        check();
-    };
-
-
     /* 3. UI LAYER -------------------- */
-
     const ui = {
-        /**
-         * Caches all necessary DOM elements into the `dom` object for performance.
-         */
         cacheDomElements() {
-            const elementIds = {
+            const ids = {
                 toastElem: 'toast', messagesContainer: 'messages', queryInput: 'query-input',
                 sendButton: 'send-button', queryCategorySelect: 'query-category',
                 authModalElement: 'authModal', loginForm: 'login-form', signupForm: 'signup-form',
@@ -84,83 +89,70 @@ const App = (() => {
                 sidebarContentRegular: 'sidebarContentRegular', themeToggle: 'theme-toggle',
                 themeToggleOffcanvas: 'theme-toggle-offcanvas',
             };
-            // Use Object.entries for a modern loop over the IDs
-            Object.entries(elementIds).forEach(([key, id]) => {
-                dom[key] = document.getElementById(id);
-            });
+            for (const key in ids) {
+                dom[key] = document.getElementById(ids[key]);
+            }
         },
 
-        /**
-         * Displays a toast notification.
-         * @param {string} message The message to display.
-         * @param {boolean} [isError=false] True if the toast should have an error style.
-         */
         showToast(message, isError = false) {
             if (!dom.toastElem) return;
-
             dom.toastElem.textContent = message;
             dom.toastElem.className = `toast-notification ${isError ? 'error' : 'success'}`;
-            dom.toastElem.classList.remove('hidden');
-            setTimeout(() => dom.toastElem.classList.add('hidden'), config.TOAST_DURATION);
+            dom.toastElem.classList.remove(C.HIDDEN_CLASS);
+            setTimeout(() => dom.toastElem.classList.add(C.HIDDEN_CLASS), C.TOAST_DURATION);
         },
-
-        /**
-         * Scrolls the messages container to the bottom.
-         */
+        
         scrollMessagesToBottom() {
-            dom.messagesContainer?.scrollTo({
-                top: dom.messagesContainer.scrollHeight,
-                behavior: 'smooth',
-            });
+            dom.messagesContainer?.scrollTo({ top: dom.messagesContainer.scrollHeight, behavior: 'smooth' });
         },
 
-        /**
-         * Adds a new message to the chat interface.
-         * @param {string} text The message text.
-         * @param {'user'|'bot'} sender The sender of the message.
-         */
+        /** Creates and appends a new message element to the chat interface. */
         addMessage(text, sender) {
             const isBot = sender === 'bot';
-            // Sanitize bot HTML; escape user text to prevent XSS attacks.
-            const safeHtml = isBot
-                ? DOMPurify.sanitize(marked.parse(text), { USE_PROFILES: { html: true } })
-                : text.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+            
+            // Create elements programmatically to ensure security
+            const messageWrapper = document.createElement('div');
+            messageWrapper.className = `message ${isBot ? 'chatbot-message' : 'user-message'} animated-message mb-3`;
+            
+            const messageBubble = document.createElement('div');
+            messageBubble.className = 'message-bubble';
 
-            const messageHtml = `
-                <div class="message ${isBot ? 'chatbot-message' : 'user-message'} animated-message mb-3">
-                    <div class="message-bubble">
-                        ${isBot ? '<div class="avatar mb-2"><img src="/static/images/bot.jpg" alt="Bot Avatar" class="rounded-circle" loading="lazy"></div>' : ''}
-                        <div class="message-content">${safeHtml}</div>
-                        <div class="timestamp">${state.formatRelativeDate(new Date())}</div>
-                    </div>
-                </div>`;
+            if (isBot) {
+                const avatarDiv = document.createElement('div');
+                avatarDiv.className = 'avatar mb-2';
+                avatarDiv.innerHTML = `<img src="/static/images/bot.jpg" alt="Bot Avatar" class="rounded-circle" loading="lazy">`;
+                messageBubble.appendChild(avatarDiv);
+            }
+
+            const contentEl = createMessageContent(text, isBot);
+            messageBubble.appendChild(contentEl);
+
+            const timestampEl = document.createElement('div');
+            timestampEl.className = 'timestamp';
+            timestampEl.textContent = state.formatRelativeDate(new Date());
+            messageBubble.appendChild(timestampEl);
+
+            messageWrapper.appendChild(messageBubble);
 
             const render = () => {
-                dom.messagesContainer.insertAdjacentHTML('beforeend', messageHtml);
+                dom.messagesContainer.appendChild(messageWrapper);
                 if (isBot) {
-                    const lastMessage = dom.messagesContainer.lastElementChild;
-                    // Add styling classes to lists and code blocks from the parsed markdown
-                    lastMessage.querySelectorAll('ul, ol').forEach(el => el.classList.add('message-list'));
-                    lastMessage.querySelectorAll('pre code').forEach(el => el.parentElement.classList.add('message-code-block'));
-                    lastMessage.querySelectorAll(':not(pre) > code').forEach(el => el.classList.add('message-inline-code'));
+                    messageWrapper.querySelectorAll('ul, ol').forEach(el => el.classList.add('message-list'));
+                    messageWrapper.querySelectorAll('pre code').forEach(el => el.parentElement.classList.add('message-code-block'));
+                    messageWrapper.querySelectorAll(':not(pre) > code').forEach(el => el.classList.add('message-inline-code'));
                 }
-                ui.scrollMessagesToBottom();
+                this.scrollMessagesToBottom();
             };
 
-            // Use the View Transitions API for smooth rendering if available
             document.startViewTransition ? document.startViewTransition(render) : render();
         },
-
-        /**
-         * Toggles the visibility of the skeleton loader/typing indicator.
-         * @param {boolean} show True to show the indicator, false to hide it.
-         */
+        
         toggleTypingIndicator(show) {
             const indicatorId = 'typing-indicator';
-            let indicator = document.getElementById(indicatorId);
+            const existingIndicator = document.getElementById(indicatorId);
 
             if (show) {
-                if (indicator) return; // Already visible
+                if (existingIndicator) return;
                 const skeletonHtml = `
                     <div id="${indicatorId}" class="skeleton-message-container animated-message">
                         <div class="skeleton skeleton-avatar"></div>
@@ -173,150 +165,139 @@ const App = (() => {
                 dom.messagesContainer.insertAdjacentHTML('beforeend', skeletonHtml);
                 this.scrollMessagesToBottom();
             } else {
-                indicator?.remove();
+                existingIndicator?.remove();
             }
         },
 
-        /**
-         * Updates all auth-related UI elements based on user login status.
-         * @param {object|null} user The Supabase user object, or null if logged out.
-         */
         updateAuthUI(user) {
             const isLoggedIn = !!user;
             const statusText = isLoggedIn ? `Logged in as: ${user.email}` : 'Not logged in';
-
             const uiGroups = [
                 { status: dom.userStatusSpan, auth: dom.authButton, logout: dom.logoutButton },
                 { status: dom.userStatusSpanOffcanvas, auth: dom.authButtonOffcanvas, logout: dom.logoutButtonOffcanvas },
             ];
-
-            uiGroups.forEach(group => {
-                if (group.status) group.status.textContent = statusText;
-                group.auth?.classList.toggle('d-none', isLoggedIn);
-                group.logout?.classList.toggle('d-none', !isLoggedIn);
+            uiGroups.forEach(({ status, auth, logout }) => {
+                if (status) status.textContent = statusText;
+                auth?.classList.toggle('d-none', isLoggedIn);
+                logout?.classList.toggle('d-none', !isLoggedIn);
             });
         },
-
-        /**
-         * Displays an error message in the authentication modal.
-         * @param {string} message The error message to display.
-         */
+        
         displayAuthError(message) {
             if (!dom.authErrorDiv) return;
             dom.authErrorDiv.innerHTML = `<i class="bi bi-exclamation-triangle-fill me-2"></i><strong>${message}</strong>`;
             dom.authErrorDiv.classList.remove('d-none');
         },
-
-        /**
-         * Clears any visible auth errors and removes invalid input styles.
-         */
+        
         clearAuthError() {
             if (dom.authErrorDiv) {
                 dom.authErrorDiv.classList.add('d-none');
                 dom.authErrorDiv.innerHTML = '';
             }
-            // Clear validation styles from both forms
             [dom.loginForm, dom.signupForm].forEach(form => {
-                form?.querySelectorAll('.is-invalid').forEach(input => input.classList.remove('is-invalid'));
+                form?.querySelectorAll(`.${C.INVALID_CLASS}`).forEach(input => input.classList.remove(C.INVALID_CLASS));
             });
         },
-
-        /**
-         * Toggles the UI into a "sending" state, disabling inputs.
-         * @param {boolean} isSending True to enter sending state, false to exit.
-         */
+        
         setSendingState(isSending) {
             state.isRequestInProgress = isSending;
-            if (!dom.sendButton || !dom.queryInput) return;
+            const elementsToToggle = [dom.queryInput, dom.sendButton, ...document.querySelectorAll('.faq-button')];
+            elementsToToggle.forEach(el => { if (el) el.disabled = isSending; });
 
-            // Collect all interactive elements and disable them in one go
-            [dom.queryInput, dom.sendButton, ...document.querySelectorAll('.faq-button')].forEach(el => {
-                if (el) el.disabled = isSending;
-            });
-
-            dom.sendButton.innerHTML = isSending
-                ? `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Sending...`
-                : `<i class="bi bi-send"></i> ${state.originalSendButtonText}`;
-
-            if (!isSending) {
-                state.abortController = null;
+            if (dom.sendButton) {
+                 dom.sendButton.innerHTML = isSending
+                    ? `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Sending...`
+                    : `<i class="bi bi-send"></i> ${state.originalSendButtonText}`;
             }
+           
+            if (!isSending) state.abortController = null;
         },
 
-        /**
-         * Initializes the color theme based on user preference or system settings.
-         */
         initTheme() {
             const storedTheme = localStorage.getItem('theme');
-            const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-            const defaultTheme = storedTheme || (prefersDark ? 'dark' : 'light');
-            this.setTheme(defaultTheme, false);
+            const prefersDark = window.matchMedia(`(prefers-color-scheme: ${C.DARK_THEME_CLASS})`).matches;
+            this.setTheme(storedTheme || (prefersDark ? C.DARK_THEME_CLASS : C.LIGHT_THEME_CLASS), false);
         },
 
-        /**
-         * Sets the color theme for the entire application.
-         * @param {'light'|'dark'} theme The theme to apply.
-         * @param {boolean} [save=true] Whether to save the choice to localStorage.
-         */
         setTheme(theme, save = true) {
             document.documentElement.setAttribute('data-bs-theme', theme);
-            if (save) {
-                localStorage.setItem('theme', theme);
-            }
+            if (save) localStorage.setItem('theme', theme);
+        },
+        
+        toggleTheme() {
+            const currentTheme = document.documentElement.getAttribute('data-bs-theme');
+            this.setTheme(currentTheme === C.DARK_THEME_CLASS ? C.LIGHT_THEME_CLASS : C.DARK_THEME_CLASS);
         },
 
-        /**
-         * Renders the FAQ buttons from the fetched data.
-         * @param {object} faqData The FAQ data grouped by category.
-         */
         renderFaqButtons(faqData) {
-            const containers = {
-                regulatory: document.querySelectorAll('[aria-label="Regulatory FAQs"]'),
-                pharmacovigilance: document.querySelectorAll('[aria-label="Pharmacovigilance FAQs"]'),
-            };
+            const mainFaqContainer = document.getElementById('faq-sidebar-section');
+            const offcanvasFaqContainer = document.getElementById('faq-offcanvas-section');
 
-            // Clear any existing buttons from all containers first
-            Object.values(containers).flat().forEach(container => container.innerHTML = '');
+            // Clear existing content
+            if (mainFaqContainer) mainFaqContainer.innerHTML = '';
+            if (offcanvasFaqContainer) offcanvasFaqContainer.innerHTML = '';
 
-            Object.entries(faqData).forEach(([category, items]) => {
-                if (!containers[category]) return;
+            Object.entries(faqData).forEach(([category, categoryData]) => {
+                console.log("Processing category:", category); // Debug log
+                if (!categoryData.questions || categoryData.questions.length === 0) return; // Skip empty categories
 
-                const fragment = document.createDocumentFragment();
-                items.forEach(({ short, text }) => {
+                const iconClass = categoryData.icon || 'bi-question-circle'; // Default icon
+                const titleText = categoryData.title || `${category.charAt(0).toUpperCase() + category.slice(1)} FAQs`;
+
+                // Create elements for main sidebar
+                const mainCategoryHeader = document.createElement('h4');
+                mainCategoryHeader.className = 'ps-2' + (category !== 'regulatory' ? ' mt-3' : ''); // Add margin top for all but first
+                mainCategoryHeader.innerHTML = `<i class="bi ${iconClass}"></i>${titleText}`;
+                
+                const mainCategoryNav = document.createElement('nav');
+                mainCategoryNav.className = 'nav nav-pills flex-column';
+                mainCategoryNav.id = `${category}-faq-container`; // Keep old IDs for compatibility if needed
+
+                // Create elements for offcanvas sidebar
+                const offcanvasCategoryHeader = document.createElement('h4');
+                offcanvasCategoryHeader.className = 'ps-2' + (category !== 'regulatory' ? ' mt-3' : '');
+                offcanvasCategoryHeader.innerHTML = `<i class="bi ${iconClass}"></i>${titleText}`;
+                
+                const offcanvasCategoryNav = document.createElement('nav');
+                offcanvasCategoryNav.className = 'nav nav-pills flex-column';
+                offcanvasCategoryNav.id = `${category}-faq-offcanvas-container`; // Keep old IDs for compatibility if needed
+
+                categoryData.questions.forEach(({ short, text }) => {
                     const button = document.createElement('button');
                     button.className = 'nav-link faq-button';
-                    // Use Object.assign for a clean way to set multiple data attributes
-                    Object.assign(button.dataset, { category: category, question: text });
+                    Object.assign(button.dataset, { category, question: text });
                     button.textContent = short;
-                    fragment.appendChild(button);
+                    
+                    mainCategoryNav.appendChild(button.cloneNode(true)); // Clone for main sidebar
+                    offcanvasCategoryNav.appendChild(button); // Use original for offcanvas
                 });
 
-                // Append the created buttons to all relevant containers
-                containers[category].forEach(container => container.appendChild(fragment.cloneNode(true)));
+                if (mainFaqContainer) {
+                    mainFaqContainer.appendChild(mainCategoryHeader);
+                    mainFaqContainer.appendChild(mainCategoryNav);
+                }
+                if (offcanvasFaqContainer) {
+                    offcanvasFaqContainer.appendChild(offcanvasCategoryHeader);
+                    offcanvasFaqContainer.appendChild(offcanvasCategoryNav);
+                }
             });
         },
     };
 
-
     /* 4. API SERVICES -------------------- */
-
     const services = {
-        /**
-         * Fetches FAQ data, using a cache-first strategy.
-         * @returns {Promise<object|null>} The FAQ data or null on failure.
-         */
         async getFaqData() {
             const cacheKey = 'frequentQuestionsData';
+            localStorage.removeItem(cacheKey); // Temporarily clear cache for debugging
             const cached = localStorage.getItem(cacheKey);
             if (cached) {
                 try {
                     return JSON.parse(cached);
                 } catch (e) {
                     console.error("Failed to parse cached FAQ data:", e);
-                    localStorage.removeItem(cacheKey); // Clear corrupted cache
+                    localStorage.removeItem(cacheKey);
                 }
             }
-
             try {
                 const response = await fetch('/api/frequent-questions');
                 if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
@@ -329,13 +310,6 @@ const App = (() => {
             }
         },
 
-        /**
-         * Sends a chat request to the backend API.
-         * @param {string} query The user's query.
-         * @param {string} category The selected category.
-         * @param {string} token The user's JWT.
-         * @returns {Promise<object>} The server's JSON response.
-         */
         async sendChatRequest(query, category, token) {
             state.abortController = new AbortController();
             const response = await fetch('/api/chat', {
@@ -348,35 +322,21 @@ const App = (() => {
             if (!response.ok) {
                 let errorMsg = `Network error (${response.status})`;
                 try {
-                    const errorJson = await response.json();
-                    errorMsg = errorJson.error || errorMsg;
-                } catch {
-                    // Ignore if response body is not valid JSON
-                }
+                    errorMsg = (await response.json()).error || errorMsg;
+                } catch { /* Ignore if response body is not valid JSON */ }
                 throw new Error(errorMsg);
             }
             return response.json();
         },
     };
 
-
     /* 5. AUTHENTICATION LOGIC -------------------- */
-
     const auth = {
-        /**
-         * Retrieves the current session's JWT.
-         * @returns {Promise<string|null>} The access token or null.
-         */
         async getSessionToken() {
             const { data, error } = await state.supabase.auth.getSession();
             return error ? null : data.session?.access_token ?? null;
         },
 
-        /**
-         * Handles user login.
-         * @param {string} email
-         * @param {string} password
-         */
         async login(email, password) {
             try {
                 const { error } = await state.supabase.auth.signInWithPassword({ email, password });
@@ -386,15 +346,10 @@ const App = (() => {
                 ui.showToast('Login successful!');
             } catch (error) {
                 ui.displayAuthError(formatAuthError(error));
-                dom.loginForm?.querySelectorAll('input').forEach(i => i.classList.add('is-invalid'));
+                dom.loginForm?.querySelectorAll('input').forEach(i => i.classList.add(C.INVALID_CLASS));
             }
         },
 
-        /**
-         * Handles user signup.
-         * @param {string} email
-         * @param {string} password
-         */
         async signup(email, password) {
             const { error } = await state.supabase.auth.signUp({ email, password });
             if (error) {
@@ -406,9 +361,6 @@ const App = (() => {
             }
         },
 
-        /**
-         * Handles user logout.
-         */
         async logout() {
             const { error } = await state.supabase.auth.signOut();
             if (error) {
@@ -417,56 +369,40 @@ const App = (() => {
         },
     };
 
-
     /* 6. EVENT HANDLERS -------------------- */
-
     const handlers = {
-        /**
-         * Handles submissions for both login and signup forms.
-         */
         handleAuthFormSubmit(event) {
             event.preventDefault();
             ui.clearAuthError();
             const form = event.target;
-            const email = form.querySelector('input[type="email"]')?.value;
-            const password = form.querySelector('input[type="password"]')?.value;
-
-            if (form.id === 'login-form') {
-                auth.login(email, password);
-            } else if (form.id === 'signup-form') {
-                auth.signup(email, password);
-            }
+            const email = form.elements.email.value;
+            const password = form.elements.password.value;
+            
+            if (form.id === 'login-form') auth.login(email, password);
+            else if (form.id === 'signup-form') auth.signup(email, password);
         },
 
-        /**
-         * Handles clicks on FAQ buttons using event delegation.
-         */
         handleFaqClick(event) {
             const button = event.target.closest('.faq-button');
             if (!button || state.isRequestInProgress) return;
 
-            // Deactivate other buttons and activate the clicked one
             document.querySelectorAll('.faq-button.active').forEach(btn => btn.classList.remove('active'));
             button.classList.add('active');
 
-            // Populate input and submit
             dom.queryInput.value = button.dataset.question;
             dom.queryCategorySelect.value = button.dataset.category;
 
-            // Hide the offcanvas sidebar if the click came from it
-            if (state.sidebarOffcanvas && button.closest('#sidebarOffcanvas')) {
-                state.sidebarOffcanvas.hide();
+            console.log("Category from button dataset:", button.dataset.category); // Debug log
+            console.log("Category set in select element:", dom.queryCategorySelect.value); // Debug log
+
+            if (button.closest('#sidebarOffcanvas')) {
+                state.sidebarOffcanvas?.hide();
             }
             handlers.processQuery();
         },
 
-        /**
-         * The main logic for processing a user's query.
-         */
         async processQuery() {
-            // Abort any previous request that might still be running
             state.abortController?.abort();
-
             const query = dom.queryInput.value.trim();
             if (!query) return;
 
@@ -484,10 +420,10 @@ const App = (() => {
 
             try {
                 const category = dom.queryCategorySelect.value;
+                console.log("Category being sent to API:", category); // Debug log
                 const data = await services.sendChatRequest(query, category, token);
                 ui.addMessage(data.response || `Error: ${data.error}`, 'bot');
             } catch (error) {
-                // Don't show an error message if the request was intentionally aborted
                 if (error.name !== 'AbortError') {
                     ui.addMessage(`Sorry, there was an error: ${error.message}`, 'bot');
                 }
@@ -497,77 +433,48 @@ const App = (() => {
             }
         },
 
-        /**
-         * A debounced wrapper for processQuery to prevent spamming.
-         */
         debouncedProcessQuery() {
             clearTimeout(state.debounceTimer);
-            state.debounceTimer = setTimeout(handlers.processQuery, config.DEBOUNCE_DELAY);
+            state.debounceTimer = setTimeout(handlers.processQuery, C.DEBOUNCE_DELAY);
         }
     };
 
-
     /* 7. EVENT BINDING -------------------- */
-
-    /**
-     * Binds all application event listeners to the DOM.
-     */
     function bindEventListeners() {
-        // Chat Input
-        dom.sendButton?.addEventListener('click', handlers.debouncedProcessQuery);
+        dom.sendButton?.addEventListener('click', handlers.processQuery);
         dom.queryInput?.addEventListener('keypress', (e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault(); // Prevent new line on enter
+                e.preventDefault();
                 handlers.debouncedProcessQuery();
             }
         });
-
-        // Auth Forms
+        
         dom.loginForm?.addEventListener('submit', handlers.handleAuthFormSubmit);
         dom.signupForm?.addEventListener('submit', handlers.handleAuthFormSubmit);
 
-        // FAQ Buttons (using delegation)
         dom.sidebarContentRegular?.addEventListener('click', handlers.handleFaqClick);
         dom.sidebarOffcanvasElement?.addEventListener('click', handlers.handleFaqClick);
 
-        // Auth/Logout and Theme Toggle Buttons
         [dom.authButton, dom.authButtonOffcanvas].forEach(btn => btn?.addEventListener('click', () => state.authModal?.show()));
         [dom.logoutButton, dom.logoutButtonOffcanvas].forEach(btn => btn?.addEventListener('click', auth.logout));
-        [dom.themeToggle, dom.themeToggleOffcanvas].forEach(btn => {
-            btn?.addEventListener('click', () => {
-                const currentTheme = document.documentElement.getAttribute('data-bs-theme');
-                ui.setTheme(currentTheme === 'dark' ? 'light' : 'dark');
-            });
-        });
+        [dom.themeToggle, dom.themeToggleOffcanvas].forEach(btn => btn?.addEventListener('click', () => ui.toggleTheme()));
     }
 
-
     /* 8. INITIALIZATION -------------------- */
-
-    /**
-     * Initializes the entire application. This is the only public method.
-     */
     async function init() {
         ui.cacheDomElements();
         ui.initTheme();
-        pollForDateFns();
+        await waitForDateFns();
 
-        if (!config.SUPABASE_URL || !config.SUPABASE_ANON_KEY) {
-            return ui.showToast("Authentication is not configured. Please check environment variables.", true);
+        if (!C.SUPABASE_URL || !C.SUPABASE_ANON_KEY) {
+            return ui.showToast("Authentication is not configured.", true);
         }
 
         try {
-            state.supabase = createClient(config.SUPABASE_URL, config.SUPABASE_ANON_KEY);
-            // Initialize Bootstrap components only if their elements exist
-            if (dom.authModalElement) {
-                state.authModal = new bootstrap.Modal(dom.authModalElement);
-            }
-            if (dom.sidebarOffcanvasElement) {
-                state.sidebarOffcanvas = new bootstrap.Offcanvas(dom.sidebarOffcanvasElement);
-            }
-            if (dom.sendButton) {
-                state.originalSendButtonText = dom.sendButton.textContent.trim() || 'Send';
-            }
+            state.supabase = createClient(C.SUPABASE_URL, C.SUPABASE_ANON_KEY);
+            if (dom.authModalElement) state.authModal = new bootstrap.Modal(dom.authModalElement);
+            if (dom.sidebarOffcanvasElement) state.sidebarOffcanvas = new bootstrap.Offcanvas(dom.sidebarOffcanvasElement);
+            if (dom.sendButton) state.originalSendButtonText = dom.sendButton.textContent.trim() || 'Send';
         } catch (error) {
             console.error("Initialization error:", error);
             return ui.showToast("Failed to initialize application UI.", true);
@@ -576,29 +483,23 @@ const App = (() => {
         bindEventListeners();
 
         const faqData = await services.getFaqData();
-        if (faqData) {
+        console.log("FAQ Data received by frontend:", faqData); // New debug log
+        if (faqData && Object.keys(faqData).length > 0) { // Check if faqData is not empty
             ui.renderFaqButtons(faqData);
         } else {
-            // Display an error if FAQs couldn't be loaded
             document.querySelectorAll('[aria-label$="FAQs"]').forEach(container => {
-                container.innerHTML = '<div class="text-danger small text-center py-3">Failed to load FAQs.</div>';
+                container.innerHTML = '<div class="text-danger small text-center py-3">Failed to load FAQs or FAQs are empty.</div>';
             });
         }
 
-        // Set initial auth state and listen for changes
         const { data: { session } } = await state.supabase.auth.getSession();
         ui.updateAuthUI(session?.user ?? null);
         state.supabase.auth.onAuthStateChange((_event, session) => {
             ui.updateAuthUI(session?.user ?? null);
         });
     }
-
-    // Public API: only expose the init function
-    return {
-        init: init
-    };
-
+    
+    return { init };
 })();
 
-// Start the application once the DOM is fully loaded
 document.addEventListener('DOMContentLoaded', App.init);

@@ -34,7 +34,7 @@ This project aims to:
 
 2. **Document Search**:
    - Hybrid semantic + keyword search
-   - Filters by category (Regulatory/Pharmacovigilance)
+   - Filters by category (Regulatory/Pharmacovigilance/Veterinary_Medicines/Biological_Products_and_Quality_Control)
    - Ranks results by relevance
 
 3. **Response Generation**:

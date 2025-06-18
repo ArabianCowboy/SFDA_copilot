@@ -14,17 +14,21 @@ def test_data_processing():
     # Check if data directories exist
     regulatory_dir = os.path.join("data", "regulatory")
     pharmacovigilance_dir = os.path.join("data", "pharmacovigilance")
-    
-    if not os.path.exists(regulatory_dir) or not os.path.exists(pharmacovigilance_dir):
-        print(f"Error: Data directories not found. Please create {regulatory_dir} and {pharmacovigilance_dir}")
+    veterinary_medicines_dir = os.path.join("data", "Veterinary_Medicines")
+    biological_products_dir = os.path.join("data", "Biological_Products_and_Quality_Control")
+
+    if not os.path.exists(regulatory_dir) or not os.path.exists(pharmacovigilance_dir) or not os.path.exists(veterinary_medicines_dir) or not os.path.exists(biological_products_dir):
+        print(f"Error: Data directories not found. Please create {regulatory_dir}, {pharmacovigilance_dir}, {veterinary_medicines_dir}, and {biological_products_dir}")
         print("and add PDF documents before running this test.")
         return False
-    
+
     # Check if there are PDF files
     regulatory_pdfs = [f for f in os.listdir(regulatory_dir) if f.lower().endswith('.pdf')]
     pharmacovigilance_pdfs = [f for f in os.listdir(pharmacovigilance_dir) if f.lower().endswith('.pdf')]
-    
-    if not regulatory_pdfs and not pharmacovigilance_pdfs:
+    veterinary_medicines_pdfs = [f for f in os.listdir(veterinary_medicines_dir) if f.lower().endswith('.pdf')]
+    biological_products_pdfs = [f for f in os.listdir(biological_products_dir) if f.lower().endswith('.pdf')]
+
+    if not regulatory_pdfs and not pharmacovigilance_pdfs and not veterinary_medicines_pdfs and not biological_products_pdfs:
         print("Error: No PDF files found in data directories.")
         print("Please add PDF documents before running this test.")
         return False
@@ -75,6 +79,8 @@ def test_search_engine():
     test_queries = [
         ("What are the requirements for drug registration?", "regulatory"),
         ("How to report adverse events?", "pharmacovigilance"),
+        ("What are the requirements for veterinary medicines?", "Veterinary_Medicines"),
+        ("What are the guidelines for biological products?", "Biological_Products_and_Quality_Control"),
         ("What is the role of QPPV?", "all")
     ]
     
@@ -87,10 +93,10 @@ def test_search_engine():
         else:
             print(f"Found {len(results)} results.")
             print("Top result:")
-            print(f"- Document: {results[0].get('document', 'Unknown')}")
-            print(f"- Category: {results[0].get('category', 'Unknown')}")
-            print(f"- Score: {results[0].get('score', 0)}")
-            print(f"- Text snippet: {results[0].get('text', '')[:100]}...")
+            print(f"- Document: {results[0].document}")
+            print(f"- Category: {results[0].category}")
+            print(f"- Score: {results[0].score}")
+            print(f"- Text snippet: {results[0].text[:100]}...")
     
     print("\nSearch engine test completed.")
     return True

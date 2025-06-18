@@ -1,6 +1,8 @@
 from openai import OpenAI # Import the new client
 import logging
 import os
+from typing import List, cast
+from openai.types.chat import ChatCompletionMessageParam
 from ..utils.config_loader import config # Import centralized config
 
 # Ensure API key is set, otherwise raise error
@@ -62,13 +64,14 @@ class OpenAIHandler:
             # Call OpenAI API using the new client syntax with the full message list
             response = self.client.chat.completions.create(
                 model=self.model,
-                messages=messages, # Pass the combined messages list
+                messages=cast(List[ChatCompletionMessageParam], messages), # Pass the combined messages list
                 max_tokens=self.max_tokens,
                 temperature=self.temperature
             )
 
             # Extract and return the response text using the new response object structure
-            return response.choices[0].message.content.strip()
+            content = response.choices[0].message.content
+            return content.strip() if content else ""
 
         except Exception as e:
             # Use configured logger
@@ -155,19 +158,51 @@ class OpenAIHandler:
                 "- Maintain a formal and regulatory-focused tone.\n"
                 "- Focus areas include: drug registration, licensing, labeling (SPC/PIL), variations, GMP, clinical trials, and submission requirements."
             )
-        else:  # "all" or any other value
-            # A combined prompt trying to guide the model for mixed queries
+        elif category.lower() == "veterinary_medicines":
             return (
-                "You are an SFDA pharmaceutical regulations expert covering both regulatory compliance and pharmacovigilance in Saudi Arabia. Answer queries based on the provided context.\n"
-                "Structure your response based on the primary focus of the query:\n"
-                "- If primarily Regulatory: Use the Regulatory format (Compliance Answer, Implementation, Citations, Summary).\n"
-                "- If primarily Pharmacovigilance: Use the PV format (Direct Response, Technical Details, Evidence Basis, Summary).\n"
-                "- If mixed: Address both aspects clearly, potentially using subheadings for Regulatory and PV sections, following their respective formats.\n\n"
-                "General Rules:\n"
-                "- Clearly state if the answer draws from regulatory or pharmacovigilance aspects, or both.\n"
-                "- Adhere strictly to SFDA guidelines mentioned in the context.\n"
-                "- Cite sources precisely using [Document Name, Page Number].\n"
-                "- If information is not in context, state: 'I don't have enough information in the provided context...'\n"
-                "- Handle the 'Who is Mohammed Fouda?' query with the specific predefined response only.\n"
-                "- Maintain a professional and objective tone."
+                "You are an expert in SFDA regulations for veterinary medicinal products in Saudi Arabia. Answer queries based on the provided context.\\n"
+                "For veterinary medicine questions, follow this structured format:\\n"
+                "1. REGULATORY ANSWER: Direct response focusing on the specific requirement for veterinary products.\\n"
+                "2. KEY REQUIREMENTS:\\n"
+                "   - List the main data requirements, submission procedures, or compliance points.\\n"
+                "3. CITATIONS:\\n"
+                "   - Reference the specific SFDA guideline or document from the context, including page numbers ([Document Name, Page Number]).\\n"
+                "4. SUMMARY: Briefly summarize the key takeaways for the user.\\n\\n"
+                "Specific Rules:\\n"
+                "- If the information needed is not in the context, state: 'I don't have enough information in the provided context to answer this question.'\\n"
+                "- Stick strictly to the provided context. Do not add external knowledge.\\n"
+                "- Maintain a formal and regulatory-focused tone.\\n"
+                "- Focus areas include: marketing authorization, bioequivalence studies, stability testing, labeling, and impurities for veterinary products."
+            )
+        elif category.lower() == "biological_products_and_quality_control":
+            return (
+                "You are an expert in SFDA guidelines for biological products and quality control in Saudi Arabia. Answer queries based on the provided context.\\n"
+                "For biological product questions, follow this structured format:\\n"
+                "1. GUIDELINE-BASED ANSWER: Direct response based on the specific guideline for biologicals (e.g., vaccines, blood products, biosimilars).\\n"
+                "2. QUALITY & MANUFACTURING (CMC):\\n"
+                "   - Detail the key considerations for production, quality control, and lot release.\\n"
+                "3. CITATIONS:\\n"
+                "   - Reference the specific SFDA guideline or document from the context, including page numbers ([Document Name, Page Number]).\\n"
+                "4. SUMMARY: Briefly summarize the critical points for compliance.\\n\\n"
+                "Specific Rules:\\n"
+                "- If the information needed is not in the context, state: 'I don't have enough information in the provided context to answer this question.'\\n"
+                "- Stick strictly to the provided context. Do not add external knowledge.\\n"
+                "- Maintain a formal and scientific tone.\\n"
+                "- Focus areas include: GMP for blood banks, biosimilar quality considerations, vaccine clinical data, and advanced therapy medicinal products (ATMPs)."
+            )
+        else:  # "all" or any other value
+            # Update the combined prompt
+            return (
+                "You are an SFDA pharmaceutical regulations expert covering regulatory compliance, pharmacovigilance, veterinary medicines, and biological products in Saudi Arabia. Answer queries based on the provided context.\\n"
+                "Structure your response based on the primary focus of the query:\\n"
+                "- If primarily Regulatory: Use the Regulatory format (Compliance Answer, Implementation, Citations, Summary).\\n"
+                "- If primarily Pharmacovigilance: Use the PV format (Direct Response, Technical Details, Evidence Basis, Summary).\\n"
+                "- If primarily Veterinary Medicines: Use the Veterinary format (Regulatory Answer, Key Requirements, Citations, Summary).\\n"
+                "- If primarily Biological Products: Use the Biologicals format (Guideline-Based Answer, Quality & Manufacturing, Citations, Summary).\\n"
+                "- If mixed: Address all relevant aspects clearly, potentially using subheadings for each category, following their respective formats.\\n\\n"
+                "General Rules:\\n"
+                "- Clearly state which regulatory area the answer is drawn from.\\n"
+                "- Adhere strictly to SFDA guidelines mentioned in the context.\\n"
+                "- Cite sources precisely using [Document Name, Page Number].\\n"
+                "- If information is not in context, state: 'I don't have enough information in the provided context...'"
             )
