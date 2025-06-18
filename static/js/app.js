@@ -1,4 +1,4 @@
-// SFDA Copilot — Main Application Script (Production Optimized)
+// SFDA Copilot — Unified Single-Page Application Script
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm';
 import { marked } from 'https://cdn.jsdelivr.net/npm/marked@12.0.0/+esm';
 import DOMPurify from 'https://cdn.jsdelivr.net/npm/dompurify@3.0.8/+esm';
@@ -8,12 +8,11 @@ const App = (() => {
     const CONFIG = {
         TOAST_DURATION: 3000,
         DEBOUNCE_DELAY: 300,
-        DATE_FNS_POLL_INTERVAL: 100,
-        DATE_FNS_MAX_ATTEMPTS: 50,
         SUPABASE_URL: window.SUPABASE_URL,
         SUPABASE_ANON_KEY: window.SUPABASE_ANON_KEY,
         CSS_CLASSES: {
             HIDDEN: 'hidden',
+            D_NONE: 'd-none',
             INVALID: 'is-invalid',
             DARK_THEME: 'dark',
             LIGHT_THEME: 'light',
@@ -23,13 +22,11 @@ const App = (() => {
     const DOMElements = {}; // Cache for frequently accessed DOM elements.
     const state = {
         supabase: null,
-        authModal: null,
-        sidebarOffcanvas: null,
         abortController: null,
         debounceTimer: null,
         isRequestInProgress: false,
         originalSendButtonText: 'Send',
-        formatRelativeDate: (date) => date.toLocaleString(), // Fallback date formatter.
+        authModal: null,
     };
 
     /* 2. UTILITY & HELPER FUNCTIONS -------------------- */
@@ -47,31 +44,10 @@ const App = (() => {
             const sanitizedHtml = DOMPurify.sanitize(marked.parse(text), { USE_PROFILES: { html: true } });
             contentDiv.innerHTML = sanitizedHtml;
         } else {
-            contentDiv.textContent = text; // Safest method for user input, prevents XSS.
+            contentDiv.textContent = text;
         }
         return contentDiv;
     };
-
-    /**
-     * Polls for the date-fns library on the window object and updates the state formatter.
-     * @returns {Promise<void>}
-     */
-    const waitForDateFns = () => new Promise((resolve) => {
-        let attempts = 0;
-        const check = () => {
-            if (window.dateFns?.formatRelative) {
-                state.formatRelativeDate = (date) => window.dateFns.formatRelative(date, new Date());
-                resolve();
-            } else if (attempts++ < CONFIG.DATE_FNS_MAX_ATTEMPTS) {
-                setTimeout(check, CONFIG.DATE_FNS_POLL_INTERVAL);
-            } else {
-                // This is a valuable operational warning for developers.
-                console.warn('date-fns library not found after polling; using fallback.');
-                resolve(); // Resolve anyway to not block initialization.
-            }
-        };
-        check();
-    });
 
     /**
      * Formats a Supabase auth error into a user-friendly message.
@@ -84,6 +60,7 @@ const App = (() => {
             'invalid login credentials': 'Incorrect email or password.',
             'email not confirmed': 'Please confirm your email before logging in.',
             'user already registered': 'This email is already registered. Please log in.',
+            'to be a valid email': 'Please provide a valid email address.',
         };
         for (const key in errorMap) {
             if (message.includes(key)) return errorMap[key];
@@ -96,16 +73,30 @@ const App = (() => {
         /** Caches DOM elements for performance. */
         cacheDomElements() {
             const selectors = {
-                toastElem: '#toast', messagesContainer: '#messages', queryInput: '#query-input',
-                sendButton: '#send-button', queryCategorySelect: '#query-category',
-                authModalElement: '#authModal', loginForm: '#login-form', signupForm: '#signup-form',
-                logoutButton: '#logout-button', logoutButtonOffcanvas: '#logout-button-offcanvas',
-                authButton: '#auth-button', authButtonOffcanvas: '#auth-button-offcanvas',
-                userStatusSpan: '#user-status', userStatusSpanOffcanvas: '#user-status-offcanvas',
-                authErrorDiv: '#auth-error', sidebarOffcanvasElement: '#sidebarOffcanvas',
-                sidebarContentRegular: '#sidebarContentRegular', themeToggle: '#theme-toggle',
-                themeToggleOffcanvas: '#theme-toggle-offcanvas', faqSidebarSection: '#faq-sidebar-section',
-                faqOffcanvasSection: '#faq-offcanvas-section',
+                // Views
+                unauthenticatedView: '#unauthenticated-view',
+                authenticatedView: '#authenticated-view',
+                // Auth
+                loginForm: '#login-form',
+                signupForm: '#signup-form',
+                logoutButton: '#logout-button',
+                logoutButtonOffcanvas: '#logout-button-offcanvas',
+                authButton: '#auth-button',
+                authButtonOffcanvas: '#auth-button-offcanvas',
+                authButtonMain: '#auth-button-main',
+                userStatusSpan: '#user-status',
+                userStatusOffcanvas: '#user-status-offcanvas',
+                authErrorDiv: '#auth-error',
+                // Chat
+                messagesContainer: '#messages',
+                queryInput: '#query-input',
+                sendButton: '#send-button',
+                queryCategorySelect: '#query-category',
+                // Shared
+                themeToggle: '#theme-toggle',
+                toastElem: '#toast',
+                // FAQ
+                faqSidebarSection: '#faq-sidebar-section',
             };
             for (const key in selectors) {
                 DOMElements[key] = document.querySelector(selectors[key]);
@@ -155,7 +146,7 @@ const App = (() => {
 
             const timestampEl = document.createElement('div');
             timestampEl.className = 'timestamp';
-            timestampEl.textContent = state.formatRelativeDate(new Date());
+            timestampEl.textContent = new Date().toLocaleTimeString();
             messageBubble.appendChild(timestampEl);
 
             messageWrapper.appendChild(messageBubble);
@@ -182,7 +173,7 @@ const App = (() => {
         /** Displays or hides the typing indicator skeleton loader. */
         toggleTypingIndicator(show) {
             const indicatorId = 'typing-indicator';
-            const existingIndicator = document.getElementById(indicatorId);
+            let existingIndicator = document.getElementById(indicatorId);
 
             if (show && !existingIndicator) {
                 const skeletonHtml = `
@@ -191,7 +182,6 @@ const App = (() => {
                         <div class="skeleton-content">
                             <div class="skeleton skeleton-line medium"></div>
                             <div class="skeleton skeleton-line"></div>
-                            <div class="skeleton skeleton-line short"></div>
                         </div>
                     </div>`;
                 DOMElements.messagesContainer.insertAdjacentHTML('beforeend', skeletonHtml);
@@ -205,26 +195,36 @@ const App = (() => {
         updateAuthUI(user) {
             const isLoggedIn = !!user;
             const statusText = isLoggedIn ? `Logged in as: ${user.email}` : 'Not logged in';
-
-            const updateGroup = ({ status, auth, logout }) => {
-                if (status) status.textContent = statusText;
-                auth?.classList.toggle('d-none', isLoggedIn);
-                logout?.classList.toggle('d-none', !isLoggedIn);
-            };
-
-            updateGroup({ status: DOMElements.userStatusSpan, auth: DOMElements.authButton, logout: DOMElements.logoutButton });
-            updateGroup({ status: DOMElements.userStatusSpanOffcanvas, auth: DOMElements.authButtonOffcanvas, logout: DOMElements.logoutButtonOffcanvas });
+        
+            // Update all status displays
+            [DOMElements.userStatusSpan, DOMElements.userStatusOffcanvas].forEach(el => {
+                if (el) el.textContent = statusText;
+            });
+        
+            // Toggle main view visibility
+            DOMElements.unauthenticatedView?.classList.toggle(CONFIG.CSS_CLASSES.D_NONE, isLoggedIn);
+            DOMElements.authenticatedView?.classList.toggle(CONFIG.CSS_CLASSES.D_NONE, !isLoggedIn);
+        
+            // Toggle visibility of all login/signup buttons
+            [DOMElements.authButton, DOMElements.authButtonOffcanvas, DOMElements.authButtonMain].forEach(button => {
+                button?.classList.toggle(CONFIG.CSS_CLASSES.D_NONE, isLoggedIn);
+            });
+        
+            // Toggle visibility of all logout buttons
+            [DOMElements.logoutButton, DOMElements.logoutButtonOffcanvas].forEach(button => {
+                button?.classList.toggle(CONFIG.CSS_CLASSES.D_NONE, !isLoggedIn);
+            });
         },
 
         displayAuthError(message) {
             if (!DOMElements.authErrorDiv) return;
             DOMElements.authErrorDiv.innerHTML = `<i class="bi bi-exclamation-triangle-fill me-2"></i><strong>${message}</strong>`;
-            DOMElements.authErrorDiv.classList.remove('d-none');
+            DOMElements.authErrorDiv.classList.remove(CONFIG.CSS_CLASSES.D_NONE);
         },
 
         clearAuthError() {
             if (DOMElements.authErrorDiv) {
-                DOMElements.authErrorDiv.classList.add('d-none');
+                DOMElements.authErrorDiv.classList.add(CONFIG.CSS_CLASSES.D_NONE);
                 DOMElements.authErrorDiv.innerHTML = '';
             }
             [DOMElements.loginForm, DOMElements.signupForm].forEach(form => {
@@ -232,10 +232,6 @@ const App = (() => {
             });
         },
 
-        /**
-         * Sets the UI state for sending a message (disabling inputs, showing spinner).
-         * @param {boolean} isSending - True to enter sending state, false to exit.
-         */
         setSendingState(isSending) {
             state.isRequestInProgress = isSending;
             const elementsToToggle = [DOMElements.queryInput, DOMElements.sendButton, ...document.querySelectorAll('.faq-button')];
@@ -266,77 +262,48 @@ const App = (() => {
             this.setTheme(currentTheme === CONFIG.CSS_CLASSES.DARK_THEME ? CONFIG.CSS_CLASSES.LIGHT_THEME : CONFIG.CSS_CLASSES.DARK_THEME);
         },
 
-        /** Creates a document fragment for a single FAQ category. */
-        createFaqCategoryFragment(category, categoryData) {
-            if (!categoryData.questions?.length) return null;
-
-            const fragment = document.createDocumentFragment();
-            const iconClass = categoryData.icon || 'bi-question-circle';
-            const titleText = categoryData.title || `${category.charAt(0).toUpperCase() + category.slice(1)} FAQs`;
-
-            const header = document.createElement('h4');
-            header.className = 'ps-2 mt-3';
-            header.innerHTML = `<i class="bi ${iconClass}"></i>${titleText}`;
-
-            const nav = document.createElement('nav');
-            nav.className = 'nav nav-pills flex-column';
-
-            categoryData.questions.forEach(({ short, text }) => {
-                const button = document.createElement('button');
-                button.className = 'nav-link faq-button';
-                Object.assign(button.dataset, { category, question: text });
-                button.textContent = short;
-                nav.appendChild(button);
-            });
-
-            fragment.appendChild(header);
-            fragment.appendChild(nav);
-            return fragment;
-        },
-        
-        /** Renders all FAQ buttons into their containers. */
         renderFaqButtons(faqData) {
-            const { faqSidebarSection, faqOffcanvasSection } = DOMElements;
-            if (!faqSidebarSection || !faqOffcanvasSection) return;
+            const { faqSidebarSection } = DOMElements;
+            if (!faqSidebarSection) return;
 
             faqSidebarSection.innerHTML = '';
-            faqOffcanvasSection.innerHTML = '';
+            const fragment = document.createDocumentFragment();
 
             Object.entries(faqData).forEach(([category, data]) => {
-                const fragment = this.createFaqCategoryFragment(category, data);
-                if (fragment) {
-                    faqSidebarSection.appendChild(fragment.cloneNode(true)); // Append a clone to the main sidebar
-                    faqOffcanvasSection.appendChild(fragment); // Append the original to the offcanvas
-                }
+                if (!data.questions?.length) return;
+
+                const header = document.createElement('h4');
+                header.className = 'ps-2 mt-3';
+                header.innerHTML = `<i class="bi ${data.icon || 'bi-question-circle'}"></i>${data.title || category}`;
+                
+                const nav = document.createElement('nav');
+                nav.className = 'nav nav-pills flex-column';
+                
+                data.questions.forEach(({ short, text }) => {
+                    const button = document.createElement('button');
+                    button.className = 'nav-link faq-button';
+                    Object.assign(button.dataset, { category, question: text });
+                    button.textContent = short;
+                    nav.appendChild(button);
+                });
+
+                fragment.appendChild(header);
+                fragment.appendChild(nav);
             });
-            // Remove margin from the very first category header for cleaner look
+            
+            faqSidebarSection.appendChild(fragment);
             faqSidebarSection.querySelector('h4:first-of-type')?.classList.remove('mt-3');
-            faqOffcanvasSection.querySelector('h4:first-of-type')?.classList.remove('mt-3');
         },
     };
 
-    /* 4. API SERVICES MODULE -------------------- */
-    const API = {
+    /* 4. API & AUTH SERVICES -------------------- */
+    const Services = {
         async getFaqData() {
-            const cacheKey = 'frequentQuestionsData';
-            const cached = localStorage.getItem(cacheKey);
-            if (cached) {
-                try {
-                    return JSON.parse(cached);
-                } catch (e) {
-                    // Important: Log error if cache is corrupted.
-                    console.error("Failed to parse cached FAQ data:", e);
-                    localStorage.removeItem(cacheKey);
-                }
-            }
             try {
                 const response = await fetch('/api/frequent-questions');
                 if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
-                const data = await response.json();
-                localStorage.setItem(cacheKey, JSON.stringify(data));
-                return data;
+                return await response.json();
             } catch (error) {
-                // Important: Log error if API fails.
                 console.error('Failed to fetch FAQs:', error);
                 return null;
             }
@@ -352,19 +319,12 @@ const App = (() => {
             });
 
             if (!response.ok) {
-                let errorMsg = `Network error (${response.status})`;
-                try {
-                    const errorJson = await response.json();
-                    errorMsg = errorJson.error || errorMsg;
-                } catch { /* Ignore if response body isn't valid JSON */ }
-                throw new Error(errorMsg);
+                const errorJson = await response.json().catch(() => ({}));
+                throw new Error(errorJson.error || `Network error (${response.status})`);
             }
             return response.json();
         },
-    };
 
-    /* 5. AUTHENTICATION SERVICE MODULE -------------------- */
-    const AuthService = {
         async getSessionToken() {
             const { data, error } = await state.supabase.auth.getSession();
             return error ? null : data.session?.access_token ?? null;
@@ -374,12 +334,13 @@ const App = (() => {
             try {
                 const { error } = await state.supabase.auth.signInWithPassword({ email, password });
                 if (error) throw error;
+
+                // On success, hide the modal and let onAuthStateChange handle the view transition.
                 state.authModal?.hide();
                 DOMElements.loginForm?.reset();
                 UI.showToast('Login successful!');
             } catch (error) {
                 UI.displayAuthError(formatAuthError(error));
-                DOMElements.loginForm?.querySelectorAll('input').forEach(i => i.classList.add(CONFIG.CSS_CLASSES.INVALID));
             }
         },
 
@@ -388,7 +349,6 @@ const App = (() => {
             if (error) {
                 UI.displayAuthError(formatAuthError(error));
             } else {
-                state.authModal?.hide();
                 DOMElements.signupForm?.reset();
                 UI.showToast('Signup initiated! Please check your email to confirm.');
             }
@@ -399,20 +359,25 @@ const App = (() => {
             if (error) {
                 UI.showToast(`Logout failed: ${error.message}`, true);
             }
+            // onAuthStateChange will handle the UI update.
         },
     };
 
-    /* 6. EVENT HANDLERS -------------------- */
+    /* 5. EVENT HANDLERS -------------------- */
     const Handlers = {
         handleAuthFormSubmit(event) {
             event.preventDefault();
             UI.clearAuthError();
             const form = event.target;
-            const email = form.elements.email.value;
-            const password = form.elements.password.value;
+            const email = form.querySelector('input[type="email"]').value.trim();
+            const password = form.querySelector('input[type="password"]').value;
 
-            if (form.id === 'login-form') AuthService.login(email, password);
-            else if (form.id === 'signup-form') AuthService.signup(email, password);
+            if (!email || !password) {
+                return UI.displayAuthError('Please provide both email and password.');
+            }
+
+            if (form.id === 'login-form') Services.login(email, password);
+            else if (form.id === 'signup-form') Services.signup(email, password);
         },
 
         handleFaqClick(event) {
@@ -424,10 +389,7 @@ const App = (() => {
 
             DOMElements.queryInput.value = button.dataset.question;
             DOMElements.queryCategorySelect.value = button.dataset.category;
-
-            if (button.closest('#sidebarOffcanvas')) {
-                state.sidebarOffcanvas?.hide();
-            }
+            
             this.processQuery();
         },
 
@@ -436,10 +398,10 @@ const App = (() => {
             const query = DOMElements.queryInput.value.trim();
             if (!query) return;
 
-            const token = await AuthService.getSessionToken();
+            const token = await Services.getSessionToken();
             if (!token) {
-                UI.showToast('You must be logged in to chat.', true);
-                state.authModal?.show();
+                UI.showToast('Your session has expired. Please log in again.', true);
+                Services.logout(); // Force logout to reset state
                 return;
             }
 
@@ -450,7 +412,7 @@ const App = (() => {
 
             try {
                 const category = DOMElements.queryCategorySelect.value;
-                const data = await API.sendChatRequest(query, category, token);
+                const data = await Services.sendChatRequest(query, category, token);
                 UI.addMessage(data.response || `Error: ${data.error}`, 'bot');
             } catch (error) {
                 if (error.name !== 'AbortError') {
@@ -468,8 +430,13 @@ const App = (() => {
         }
     };
 
-    /* 7. EVENT BINDING -------------------- */
+    /* 6. EVENT BINDING -------------------- */
     function bindEventListeners() {
+        // Auth forms
+        DOMElements.loginForm?.addEventListener('submit', Handlers.handleAuthFormSubmit);
+        DOMElements.signupForm?.addEventListener('submit', Handlers.handleAuthFormSubmit);
+        
+        // Chat
         DOMElements.sendButton?.addEventListener('click', () => Handlers.processQuery());
         DOMElements.queryInput?.addEventListener('keypress', (e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
@@ -478,23 +445,21 @@ const App = (() => {
             }
         });
 
-        DOMElements.loginForm?.addEventListener('submit', Handlers.handleAuthFormSubmit);
-        DOMElements.signupForm?.addEventListener('submit', Handlers.handleAuthFormSubmit);
+        // FAQ (Event Delegation)
+        DOMElements.faqSidebarSection?.addEventListener('click', (e) => Handlers.handleFaqClick(e));
 
-        // Use event delegation for FAQ clicks for better performance
-        DOMElements.sidebarContentRegular?.addEventListener('click', (e) => Handlers.handleFaqClick(e));
-        DOMElements.sidebarOffcanvasElement?.addEventListener('click', (e) => Handlers.handleFaqClick(e));
-
-        [DOMElements.authButton, DOMElements.authButtonOffcanvas].forEach(btn => btn?.addEventListener('click', () => state.authModal?.show()));
-        [DOMElements.logoutButton, DOMElements.logoutButtonOffcanvas].forEach(btn => btn?.addEventListener('click', () => AuthService.logout()));
-        [DOMElements.themeToggle, DOMElements.themeToggleOffcanvas].forEach(btn => btn?.addEventListener('click', () => UI.toggleTheme()));
+        // Shared controls
+        [DOMElements.logoutButton, DOMElements.logoutButtonOffcanvas].forEach(btn => btn?.addEventListener('click', () => Services.logout()));
+        [DOMElements.authButton, DOMElements.authButtonOffcanvas, DOMElements.authButtonMain].forEach(btn => btn?.addEventListener('click', () => {
+            state.authModal?.show();
+        }));
+        DOMElements.themeToggle?.addEventListener('click', () => UI.toggleTheme());
     }
 
-    /* 8. INITIALIZATION -------------------- */
+    /* 7. INITIALIZATION -------------------- */
     async function init() {
         UI.cacheDomElements();
         UI.initTheme();
-        await waitForDateFns();
 
         if (!CONFIG.SUPABASE_URL || !CONFIG.SUPABASE_ANON_KEY) {
             return UI.showToast("Authentication services are not configured.", true);
@@ -502,34 +467,38 @@ const App = (() => {
 
         try {
             state.supabase = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
-            if (DOMElements.authModalElement) state.authModal = new bootstrap.Modal(DOMElements.authModalElement);
-            if (DOMElements.sidebarOffcanvasElement) state.sidebarOffcanvas = new bootstrap.Offcanvas(DOMElements.sidebarOffcanvasElement);
-            
-            // **FIX APPLIED:** Store the raw text content for robustness.
+
+            // Initialize the Bootstrap modal instance once and cache it.
+            const authModalEl = document.getElementById('authModal');
+            if (authModalEl) {
+                state.authModal = new bootstrap.Modal(authModalEl);
+            }
+
             if (DOMElements.sendButton) {
                 state.originalSendButtonText = DOMElements.sendButton.textContent.trim() || 'Send';
             }
         } catch (error) {
-            // Important: Log error if Bootstrap or Supabase fail to initialize.
             console.error("Initialization error:", error);
-            return UI.showToast("Failed to initialize core application UI.", true);
+            return UI.showToast("Failed to initialize core application services.", true);
         }
 
         bindEventListeners();
 
-        const faqData = await API.getFaqData();
-        if (faqData && Object.keys(faqData).length > 0) {
-            UI.renderFaqButtons(faqData);
-        } else {
-            document.querySelectorAll('[id^="faq-"]').forEach(container => {
-                container.innerHTML = '<div class="text-secondary small text-center py-3">No frequently asked questions available.</div>';
-            });
-        }
+        // Central Authentication Handler
+        state.supabase.auth.onAuthStateChange(async (_event, session) => {
+            const user = session?.user;
+            UI.updateAuthUI(user);
 
-        const { data: { session } } = await state.supabase.auth.getSession();
-        UI.updateAuthUI(session?.user ?? null);
-        state.supabase.auth.onAuthStateChange((_event, session) => {
-            UI.updateAuthUI(session?.user ?? null);
+            if (user) {
+                // User is logged in, initialize the authenticated experience
+                const faqData = await Services.getFaqData();
+                if (faqData) {
+                    UI.renderFaqButtons(faqData);
+                } else {
+                    DOMElements.faqSidebarSection.innerHTML = '<div class="text-secondary small text-center py-3">No FAQs available.</div>';
+                }
+            }
+            // If not logged in, the UI is already correctly set by updateAuthUI
         });
     }
 

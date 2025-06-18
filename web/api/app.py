@@ -291,20 +291,10 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
     @app.route("/")
     def index():
         return render_template(
-            "landing.html",
-            SUPABASE_URL=os.getenv("SUPABASE_URL"),
-            SUPABASE_ANON_KEY=os.getenv("SUPABASE_ANON_KEY"),
-            is_authenticated=bool(session.get("user_email")),
-            user_email=session.get("user_email"),
-        )
-
-    @app.route("/chat")
-    @auth_required
-    def chat_page():
-        return render_template(
             "index.html",
             SUPABASE_URL=os.getenv("SUPABASE_URL"),
             SUPABASE_ANON_KEY=os.getenv("SUPABASE_ANON_KEY"),
+            is_authenticated=bool(session.get("user_email")),
             user_email=session.get("user_email"),
         )
 
