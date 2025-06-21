@@ -32,8 +32,10 @@ pip install -r web/requirements.txt
 ### Configuration
 - `config.yaml` contains:
   - Search parameters (weights, multipliers)
-  - Server settings
-  - Rate limiting
+  - Server settings (host, port)
+  - Rate limiting (per day, hour, minute)
+  - Embedding settings (model, dimension)
+  - Data processing parameters (chunk size, overlap)
 - `.env` for secrets:
   - OPENAI_API_KEY
   - SUPABASE_URL

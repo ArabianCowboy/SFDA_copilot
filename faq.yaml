@@ -20,16 +20,18 @@ pharmacovigilance:
   title: "Pharmacovigilance FAQs"
   icon: "bi-shield-check"
   questions:
-    - text: "What are the adverse event reporting requirements in Saudi Arabia?"
-      short: "Adverse Event Reporting"
+    - text: "Could you provide a detailed outline, preferably in a bullet-point list, of the essential information that should be included in the national pharmacovigilance sub-system file (PSSF)? Please highlight the key components and any relevant regulatory requirements"
+      short: "PV Sub-System file (PSSF)"
     - text: "What is the role of a QPPV in Saudi Arabia?"
       short: "QPPV Role"
-    - text: "What should be included in a Periodic Safety Update Report (PSUR)?"
+    - text: "What should be included in a Periodic Safety Update Report (PSUR) with comprehensive explanation,outlining its key components and regulatory significance? Please structure your response using a clear format (e.g., a table) for ease of reference?"
       short: "PSUR Requirements"
     - text: "Could you provide a table outlining the reporting time frames for submitting Individual Case Safety Reports (ICSRs)?"
       short: "Reporting Timeline"
-    - text: "What are the requirements for a Risk Management Plan?"
+    - text: "Could you provide a comprehensive explanation of what a Risk Management Plan (RMP) is in Saudi Arabia, outlining its key components and regulatory significance? Please structure your response using a clear format (e.g., a table) for ease of reference"
       short: "Risk Management Plan"
+    - text: "Could you please provide a structured table outlining the steps and essential elements required to complete the cover letter for a reported signal? Please include clear guidelines for each component"
+      short: "Signal-Cover Letter Guidance"
 
 veterinary:
   title: "Veterinary Medicines FAQs"

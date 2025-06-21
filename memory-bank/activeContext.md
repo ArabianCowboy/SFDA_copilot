@@ -12,6 +12,8 @@
 - Created new Git branch `feature/All-Guideline` for new feature development.
 - Transferred all uncommitted changes to the new `feature/All-Guideline` branch.
 - Pushed `feature/All-Guideline` branch to remote GitHub repository.
+2025-06-21:
+- Reviewed and updated memory bank with detailed structure and configuration of the 'web/' folder, focusing on Flask backend and Docker setups.
 2024-04-26:
 - Implemented local sentence-transformers embeddings
 - Added query preprocessing with pharma-specific terms

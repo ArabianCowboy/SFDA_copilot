@@ -190,6 +190,9 @@
   - Added debug element with red background between the dropdown and separator to further isolate the source of text duplication.
   - Added CSS rule to hide any direct text nodes that appear after the custom dropdown wrapper in the sidebar (`.sidebar > .custom-select-wrapper + :not(div):not(hr):not(h4):not(nav)`) to address the text duplication issue.
 
+## [2025-06-21]
+- Updated project memory bank and documentation to reflect the current structure and configuration of the 'web/' folder, focusing on the Flask backend components and settings.
+
 ## [2025-04-25]
 - Fixed `TypeError` in `web/api/app.py` by correcting the arguments passed to `config.get()` for rate limiting settings.
 - Upgraded UX with major accessibility improvements:

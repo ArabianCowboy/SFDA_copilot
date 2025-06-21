@@ -5,6 +5,9 @@
 
 1. **Frontend**: Bootstrap 5 responsive web interface
 2. **Backend**: Python Flask REST API
+   - **API**: Core application logic and endpoints in 'web/api/'
+   - **Services**: Modular components for data processing, search, and OpenAI integration in 'web/services/'
+   - **Utilities**: Helper functions and clients for configuration, embeddings, and database access in 'web/utils/'
 3. **Services**:
    - Search Engine (FAISS + TF-IDF)
    - OpenAI Integration

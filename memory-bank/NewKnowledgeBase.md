@@ -211,3 +211,6 @@
     - Implement basic keyboard accessibility (Enter/Space/Escape on trigger).
 56. Custom Dropdown UX Refinement (Hide Selected): To prevent the selected item from appearing redundantly in both the trigger and the top of the open options list, applying `display: none;` to the `.selected` class *within* the `.custom-select-options` container is the standard approach. (Reverted from applying a background color).
 57. Custom Dropdown Contrast: Ensure the background color of the `.custom-select-options` container is sufficiently distinct from the `.custom-select-trigger` for clarity. Using a darker or more opaque version of a theme color for the options list often works well (e.g., `rgba(33, 99, 61, 0.9)`).
+
+## 2025-06-21
+1. Reviewed and documented the structure of the 'web/' folder, which includes the Flask backend for the SFDA Copilot. Key components noted are 'api/' for core application logic, 'services/' for modular functionalities like data processing and search, 'utils/' for helper functions and clients, and configuration files like 'config.yaml' detailing server settings, rate limiting, and embedding parameters.
