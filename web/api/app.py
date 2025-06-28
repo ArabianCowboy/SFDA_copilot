@@ -226,11 +226,11 @@ def _init_extensions(app: Flask, testing: bool) -> Limiter:
     # Talisman (Security Headers)
     csp = {
         "default-src": ["'self'"],
-        "script-src": ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net"],
-        "style-src": ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net"],
+        "script-src": ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net", "https://cdn.lordicon.com", "https://cdnjs.cloudflare.com"],
+        "style-src": ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net", "https://cdnjs.cloudflare.com"],
         "img-src": ["'self'", "data:"],
         "font-src": ["'self'", "https://cdn.jsdelivr.net"],
-        "connect-src": ["'self'", "https://*.supabase.co"],
+        "connect-src": ["'self'", "https://*.supabase.co", "https://cdn.lordicon.com"],
     }
     if project_ref := os.getenv("SUPABASE_PROJECT_REF"):
         csp["connect-src"].append(f"wss://{project_ref}.supabase.co")

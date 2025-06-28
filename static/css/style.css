@@ -138,6 +138,18 @@
 /* ---------------------------------------------------------
    3 ▸  Global Reset & Layout
    --------------------------------------------------------- */
+#particles-js {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  background-color: var(--background-light); /* Fallback */
+  background-image: var(--gradient-background);
+  background-repeat: no-repeat;
+  background-size: cover;
+  background-position: 50% 50%;
+  z-index: -1; /* Ensure it's behind other content */
+}
+
 body {
   height: 100vh;
   margin: 0;
@@ -146,7 +158,7 @@ body {
 
   font-family: var(--font-primary);
   color: var(--text-color-dark);
-  background-color: var(--background-light);
+  background-color: transparent; /* Make body background transparent to show particles */
 }
 
 h1,
@@ -317,7 +329,7 @@ h6 {
 .faq-section .nav-link:focus {
   background-color: var(--background-light-alt);
   box-shadow: var(--shadow-lg);
-  transform: perspective(1000px) rotateX(5deg) rotateY(-5deg) scale(1.05);
+  transform: translateY(-3px) scale(1.02); /* More subtle and direct */
   cursor: pointer;
 }
 
@@ -421,8 +433,8 @@ h6 {
   max-width: 85%;
   margin-bottom: 15px;
 
-  opacity: 0;
-  animation: fadeIn var(--duration-m) ease-out forwards;
+  /* opacity: 0; */ /* Removed as Animate.css handles this */
+  /* animation: fadeIn var(--duration-m) ease-out forwards; */ /* Replaced by Animate.css */
   transition: transform var(--duration-m);
 }
 
@@ -525,6 +537,16 @@ h6 {
     box-shadow var(--duration-m);
 }
 
+#query-input:hover {
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 .1rem var(--focus-shadow-color);
+}
+
+#query-input:hover {
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 .1rem var(--focus-shadow-color);
+}
+
 #query-input:focus {
   outline: none;
   border-color: var(--primary-color);
@@ -551,6 +573,7 @@ h6 {
   background-color: var(--accent-color);
   box-shadow: var(--shadow-lg);
   transform: translateY(-2px) scale(1.03);
+  cursor: pointer; /* Ensure cursor indicates interactivity */
 }
 
 .input-area .category-selector {
@@ -687,6 +710,11 @@ h6 {
   font-weight: 500;
   color: var(--text-color-dark-muted);
   transform: scale(.85) translateY(-.5rem) translateX(.15rem);
+}
+
+#authModal .form-control:hover {
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 .15rem var(--focus-shadow-color);
 }
 
 #authModal .form-control:focus {
@@ -883,10 +911,6 @@ h6 {
   to { opacity: 1; transform: translateY(0); }
 }
 
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
-}
 
 @scroll-timeline faq-scroll-timeline {
   source: auto;

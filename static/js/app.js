@@ -355,11 +355,20 @@ const App = (() => {
         },
 
         async logout() {
-            const { error } = await state.supabase.auth.signOut();
-            if (error) {
-                UI.showToast(`Logout failed: ${error.message}`, true);
+            try {
+                const { error } = await state.supabase.auth.signOut();
+                if (error) {
+                    UI.showToast(`Logout failed: ${error.message}. Session cleared locally.`, true);
+                    // Force clear local session even if server request fails
+                    state.supabase.auth._removeSession();
+                    UI.updateAuthUI(null);
+                }
+            } catch (err) {
+                UI.showToast(`Logout error: ${err.message}. Session cleared locally.`, true);
+                // Force clear local session on any error
+                state.supabase.auth._removeSession();
+                UI.updateAuthUI(null);
             }
-            // onAuthStateChange will handle the UI update.
         },
     };
 
@@ -460,6 +469,28 @@ const App = (() => {
     async function init() {
         UI.cacheDomElements();
         UI.initTheme();
+
+        // Initialize Typed.js animation
+        const typedOutput = document.getElementById('typed-output');
+        if (typedOutput && typeof Typed !== 'undefined') {
+            new Typed('#typed-output', {
+                strings: [
+                    '<i class="bi bi-search me-2 text-primary"></i>For better results, be specific with your questions.',
+                    '<i class="bi bi-lightbulb me-2 text-success"></i>For example: \'What are the GMP guidelines for sterile products?\'',
+                    '<i class="bi bi-arrow-left-right me-2 text-info"></i>You can also ask for comparisons, like \'Compare requirements for local vs. imported drugs.\''
+                ],
+                typeSpeed: 50,
+                backSpeed: 25,
+                backDelay: 1500,
+                startDelay: 1000,
+                loop: true,
+                showCursor: true,
+                cursorChar: '|',
+            });
+        } else if (typedOutput) {
+            console.error('Typed.js library not loaded, but DOM is ready. Skipping initialization.');
+            typedOutput.textContent = 'Ask me specific questions about regulatory requirements';
+        }
 
         if (!CONFIG.SUPABASE_URL || !CONFIG.SUPABASE_ANON_KEY) {
             return UI.showToast("Authentication services are not configured.", true);

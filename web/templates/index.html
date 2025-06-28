@@ -7,7 +7,8 @@
     <meta name="description"
           content="SFDA Copilot - AI-powered regulatory guidance for pharmaceutical regulations in Saudi Arabia">
     <title>SFDA Copilot</title>
-    <link rel="preload" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" as="style">
+    <!-- Temporarily removed preload for Bootstrap CSS to test credentials mismatch issue -->
+    <!-- <link rel="preload" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" as="style" crossorigin="anonymous"> -->
     <link rel="preload" href="{{ url_for('static', filename='css/style.css') }}" as="style">
 
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
@@ -16,7 +17,10 @@
     <link rel="stylesheet"
           href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
     <link rel="stylesheet"
+          href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css">
+    <link rel="stylesheet"
           href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/simplebar@latest/dist/simplebar.css"/>
 
     <script>
         // This script passes configuration from the Flask backend to the frontend JavaScript.
@@ -26,6 +30,7 @@
 </head>
 
 <body class="d-flex flex-column min-vh-100">
+    <div id="particles-js"></div>
 
     <!-- ‑‑ AUTH MODAL ‑‑ -->
     <div
@@ -299,8 +304,8 @@
             </div>
             <section class="col-12 col-lg-9 chat-area h-100 d-flex flex-column">
                 <div class="chat-container">
-                    <div id="messages" class="messages" aria-live="polite">
-                        <div class="message chatbot-message animated-message mb-3 message-medium">
+                    <div id="messages" class="messages" aria-live="polite" data-simplebar>
+                        <div class="message chatbot-message animate__animated animate__fadeInUp mb-3 message-medium">
                             <div class="message-bubble">
                                 <div class="avatar mb-2">
                                     <img src="{{ url_for('static', filename='images/bot.jpg') }}"
@@ -317,6 +322,7 @@
                                         <li><i class="bi bi-filter-circle me-2 text-success"></i>Select a category to focus your search</li>
                                         <li><i class="bi bi-hand-index-thumb me-2 text-info"></i>Click on FAQ buttons for common questions</li>
                                     </ul>
+                                    <span id="typed-output"></span>
                                     <p>How can I assist you today?</p>
                                 </div>
                                 <div class="timestamp">{{ now }}</div>
@@ -347,7 +353,7 @@
                                 type="button"
                                 id="send-button"
                                 aria-label="Send message">
-                            <i class="bi bi-send"></i> Send
+                            <i class="bi bi-send" style="font-size: 1.2rem;"></i> Send
                         </button>
                     </div>
                 </footer>
@@ -366,9 +372,133 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"
             crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/particles.js@2.0.0/particles.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/simplebar@latest/dist/simplebar.min.js"></script>
+    
+    <!-- CDN-first Typed.js with local fallback -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/typed.js/2.0.12/typed.min.js"
+            integrity="sha512-3J8teBiHrSyaaRBajZyIEtpDsXdPq1gsznKWIVb5CnorQuFhjWGhWe54z8YNnHHr7MZuExb9m5kvf964HiT1Sw=="
+            crossorigin="anonymous"
+            referrerpolicy="no-referrer"
+            onerror="this.onerror=null;this.src='{{ url_for('static', filename='js/typed.min.js') }}'">
+    </script>
+
     <script src="{{ url_for('static', filename='js/date-fns-setup.js') }}" defer></script>
     <script type="module"
             src="{{ url_for('static', filename='js/app.js') }}"></script>
+
+    <script>
+        particlesJS('particles-js', {
+            "particles": {
+                "number": {
+                    "value": 80,
+                    "density": {
+                        "enable": true,
+                        "value_area": 800
+                    }
+                },
+                "color": {
+                    "value": "#b3c8cf"
+                },
+                "shape": {
+                    "type": "circle",
+                    "stroke": {
+                        "width": 0,
+                        "color": "#000000"
+                    },
+                    "polygon": {
+                        "nb_sides": 5
+                    },
+                    "image": {
+                        "src": "img/github.svg",
+                        "width": 100,
+                        "height": 100
+                    }
+                },
+                "opacity": {
+                    "value": 0.5,
+                    "random": false,
+                    "anim": {
+                        "enable": false,
+                        "speed": 1,
+                        "opacity_min": 0.1,
+                        "sync": false
+                    }
+                },
+                "size": {
+                    "value": 3,
+                    "random": true,
+                    "anim": {
+                        "enable": false,
+                        "speed": 40,
+                        "size_min": 0.1,
+                        "sync": false
+                    }
+                },
+                "line_linked": {
+                    "enable": true,
+                    "distance": 150,
+                    "color": "#b3c8cf",
+                    "opacity": 0.4,
+                    "width": 1
+                },
+                "move": {
+                    "enable": true,
+                    "speed": 6,
+                    "direction": "none",
+                    "random": false,
+                    "straight": false,
+                    "out_mode": "out",
+                    "bounce": false,
+                    "attract": {
+                        "enable": false,
+                        "rotateX": 600,
+                        "rotateY": 1200
+                    }
+                }
+            },
+            "interactivity": {
+                "detect_on": "canvas",
+                "events": {
+                    "onhover": {
+                        "enable": true,
+                        "mode": "grab"
+                    },
+                    "onclick": {
+                        "enable": true,
+                        "mode": "push"
+                    },
+                    "resize": true
+                },
+                "modes": {
+                    "grab": {
+                        "distance": 140,
+                        "line_linked": {
+                            "opacity": 1
+                        }
+                    },
+                    "bubble": {
+                        "distance": 400,
+                        "size": 40,
+                        "duration": 2,
+                        "opacity": 8,
+                        "speed": 3
+                    },
+                    "repulse": {
+                        "distance": 200,
+                        "duration": 0.4
+                    },
+                    "push": {
+                        "particles_nb": 4
+                    },
+                    "remove": {
+                        "particles_nb": 2
+                    }
+                }
+            },
+            "retina_detect": true
+        });
+    </script>
 
 </body>
 </html>
