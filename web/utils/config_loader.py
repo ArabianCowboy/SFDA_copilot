@@ -60,7 +60,7 @@ class ConfigLoader:
         # Override other values if corresponding env vars are set
         # OpenAI settings
         self.config["openai"]["model"] = os.getenv("OPENAI_MODEL", self.config["openai"].get("model", "gpt-4o-mini"))
-        self.config["openai"]["max_tokens"] = int(os.getenv("MAX_TOKENS", self.config["openai"].get("max_tokens", 1000)))
+        self.config["openai"]["max_tokens"] = int(self.config["openai"].get("max_tokens", 10000))
         self.config["openai"]["temperature"] = float(os.getenv("TEMPERATURE", self.config["openai"].get("temperature", 0.7)))
 
         # Search Engine settings

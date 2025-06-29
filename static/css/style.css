@@ -1,10 +1,10 @@
-/* =========================================================
-   SFDA Copilot – Unified, WCAG‑AA‑compliant Stylesheet
-   Refactored for maintainability and modern standards (June 2025)
-   ========================================================= */
+/* ===================================================================
+   SFDA Copilot – Unified, WCAG‑AA‑compliant Stylesheet
+   Refactored & Combined for optimal maintainability (June 2025)
+   =================================================================== */
 
 /* ---------------------------------------------------------
-   1 ▸  Custom Properties – LIGHT THEME
+   1 ▸ Custom Properties – LIGHT THEME
    --------------------------------------------------------- */
 :root {
   /* Brand */
@@ -65,10 +65,14 @@
   --duration-s: .2s;
   --duration-m: .3s;
   --duration-l: .6s;
+  --btn-transition: background var(--duration-s) ease,
+                    border-color var(--duration-s) ease,
+                    box-shadow var(--duration-s) ease,
+                    color var(--duration-s) ease;
 
   /* Icons */
   --navbar-toggler-icon: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3e%3cpath stroke='rgba%28255,255,255,.8%29' stroke-linecap='round' stroke-width='2' d='M4 7h22M4 15h22M4 23h22'/%3e%3c/svg%3e");
-  --select-arrow-icon: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23ffffff' stroke-linecap='round' stroke-width='2' d='m2 5 6 6 6-6'/%3e%3c/svg%3e");
+  --select-arrow-icon: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23ffffff' stroke-linecap='round' stroke-width='2' d='m2 5 6 6 6-6'/%3e%3csvg%3e");
   --input-select-arrow-icon: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%2334495e' stroke-linecap='round' stroke-width='2' d='m2 5 6 6 6-6'/%3e%3csvg%3e");
 
   /* Transparency Helpers */
@@ -96,7 +100,7 @@
 }
 
 /* ---------------------------------------------------------
-   2 ▸  Custom Properties – DARK THEME
+   2 ▸ Custom Properties – DARK THEME
    --------------------------------------------------------- */
 [data-bs-theme="dark"] {
   /* Brand */
@@ -132,18 +136,22 @@
   --focus-shadow-color: rgba(43 122 120 / 0.25);
 
   /* Icons */
-  --input-select-arrow-icon: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23ffffff' stroke-linecap='round' stroke-width='2' d='m2 5 6 6 6-6'/%3e%3c/svg%3e");
+  --input-select-arrow-icon: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23ffffff' stroke-linecap='round' stroke-width='2' d='m2 5 6 6 6-6'/%3e%3csvg%3e");
 }
 
 /* ---------------------------------------------------------
-   3 ▸  Global Reset & Layout
+   3 ▸ Global Reset & Layout
    --------------------------------------------------------- */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
 body {
   height: 100vh;
   margin: 0;
   padding: 0;
-  overflow: hidden;
-
   font-family: var(--font-primary);
   color: var(--text-color-dark);
   background-color: var(--background-light);
@@ -164,11 +172,10 @@ h6 {
   height: 100%;
   margin: 0;
   padding: 0;
-  overflow: hidden;
 }
 
 /* ---------------------------------------------------------
-   4 ▸  Mobile Header (Bootstrap overrides)
+   4 ▸ Mobile Header (Bootstrap overrides)
    --------------------------------------------------------- */
 .navbar.d-lg-none {
   color: var(--text-color-light);
@@ -190,7 +197,7 @@ h6 {
 }
 
 /* ---------------------------------------------------------
-   5 ▸  Sidebar & Off‑canvas
+   5 ▸ Sidebar & Off‑canvas
    --------------------------------------------------------- */
 .sidebar,
 .offcanvas.offcanvas-start {
@@ -201,7 +208,6 @@ h6 {
   height: 100vh;
   padding: 20px;
   overflow-y: auto;
-
   color: var(--text-color-light);
   background: var(--gradient-background);
   box-shadow: var(--shadow-md);
@@ -220,7 +226,6 @@ h6 {
   padding-bottom: 15px;
   margin-bottom: 25px;
   border-bottom: 1px solid var(--border-color-dark);
-
   opacity: 0;
   animation: headerFadeIn var(--duration-l) ease-out forwards;
 }
@@ -245,10 +250,9 @@ h6 {
 }
 
 .sidebar-header .auth-status-container {
-  margin-top: 15px;
   padding: 8px 12px;
+  margin-top: 15px;
   border-radius: 6px;
-
   background-color: var(--background-dark-accent);
 }
 
@@ -257,7 +261,7 @@ h6 {
 }
 
 /* ---------------------------------------------------------
-   6 ▸  FAQ Section
+   6 ▸ FAQ Section
    --------------------------------------------------------- */
 .faq-section {
   flex: 1;
@@ -269,10 +273,9 @@ h6 {
 .faq-section h4 {
   display: flex;
   align-items: center;
-  margin: 20px 0 15px;
   padding-top: 15px;
+  margin: 20px 0 15px;
   border-top: 1px solid var(--white-15);
-
   font-size: 1.1rem;
   color: var(--text-color-dark);
 }
@@ -294,22 +297,16 @@ h6 {
   margin-bottom: 5px;
   border: 1px solid var(--border-color-medium);
   border-radius: var(--radius-sm);
-
   font-size: .9rem;
   color: var(--text-color-dark);
   text-align: left;
-
   background-color: var(--background-light);
   opacity: 0;
   transform-style: preserve-3d;
-
   animation: faqItemFadeIn linear forwards;
   animation-timeline: faq-scroll-timeline;
   animation-range: entry 20% cover 50%;
-  transition:
-    background-color var(--duration-s),
-    transform var(--duration-s),
-    box-shadow var(--duration-s);
+  transition: var(--btn-transition), transform var(--duration-s) ease;
   will-change: transform, opacity, background-color;
 }
 
@@ -323,26 +320,28 @@ h6 {
 
 .faq-section .nav-link.active {
   border: 1px solid var(--accent-color);
-  box-shadow: 0 0 0 3px var(--accent-color), var(--shadow-lg);
-
   font-weight: 600;
   color: var(--text-color-dark);
   background-color: var(--background-light);
+  box-shadow: 0 0 0 3px var(--accent-color), var(--shadow-lg);
   transform: none;
 }
 
-/* Override for disabled FAQ buttons using higher specificity */
-.faq-section .nav-link.faq-button:disabled {
+/* Override for disabled FAQ buttons.
+  Using :where() gives this selector zero specificity, making it 
+  easy to override later if needed, without specificity wars.
+*/
+.faq-section .nav-link:where(.faq-button:disabled) {
   color: var(--text-color-dark);
   background-color: var(--background-light-alt);
-  box-shadow: none;
   opacity: 1;
+  box-shadow: none;
   transform: none;
   cursor: not-allowed;
 }
 
 /* ---------------------------------------------------------
-   7 ▸  Styled Selects
+   7 ▸ Styled Selects
    --------------------------------------------------------- */
 .styled-select-label {
   display: block;
@@ -355,14 +354,11 @@ h6 {
   padding: 10px 15px;
   border: 1px solid var(--white-25);
   border-radius: var(--radius-sm);
-
+  font-family: var(--font-primary);
   color: var(--text-color-light);
   background: var(--white-15) var(--select-arrow-icon) no-repeat right .75rem center / 16px 12px;
   appearance: none;
-  transition:
-    background-color var(--duration-m),
-    border-color var(--duration-m),
-    box-shadow var(--duration-m);
+  transition: var(--btn-transition);
 }
 
 .styled-select:hover {
@@ -373,8 +369,8 @@ h6 {
 .styled-select:focus {
   outline: none;
   border-color: var(--text-color-light);
-  box-shadow: 0 0 0 .2rem var(--white-30);
   background-color: var(--white-25);
+  box-shadow: 0 0 0 .2rem var(--white-30);
 }
 
 .styled-select option {
@@ -389,7 +385,7 @@ h6 {
 }
 
 /* ---------------------------------------------------------
-   8 ▸  Chat Area
+   8 ▸ Chat Area
    --------------------------------------------------------- */
 .chat-area {
   display: flex;
@@ -397,7 +393,6 @@ h6 {
   height: 100vh;
   padding: 0;
   overflow: hidden;
-
   background-color: var(--background-light);
 }
 
@@ -420,7 +415,6 @@ h6 {
 .message {
   max-width: 85%;
   margin-bottom: 15px;
-
   opacity: 0;
   animation: fadeIn var(--duration-m) ease-out forwards;
   transition: transform var(--duration-m);
@@ -440,14 +434,12 @@ h6 {
   padding: 15px;
   border-radius: var(--radius-msg);
   word-wrap: break-word;
-
   box-shadow: var(--shadow-chat-bubble);
   transition: box-shadow var(--duration-m);
 }
 
 .user-message .message-bubble {
   border-bottom-right-radius: var(--radius-xs);
-
   color: var(--text-color-dark);
   background-color: var(--primary-color);
   box-shadow: var(--shadow-user-bubble);
@@ -456,7 +448,6 @@ h6 {
 .chatbot-message .message-bubble {
   border: 2px solid var(--border-color-dark);
   border-bottom-left-radius: var(--radius-xs);
-
   color: var(--text-color-dark);
   background: linear-gradient(135deg, var(--background-light) 0%, var(--background-light-alt) 100%);
   box-shadow: 0 8px 24px var(--black-25);
@@ -467,7 +458,6 @@ h6 {
   padding: 10px;
   overflow-x: auto;
   border-radius: var(--radius-xs);
-
   font-family: var(--font-mono);
   background-color: var(--black-05);
 }
@@ -491,7 +481,7 @@ h6 {
 }
 
 /* ---------------------------------------------------------
-   9 ▸  Input Area
+   9 ▸ Input Area
    --------------------------------------------------------- */
 .input-area {
   position: sticky;
@@ -500,7 +490,6 @@ h6 {
   padding: 20px;
   border-top: 1px solid var(--border-color-light);
   border-radius: 0 0 var(--radius-md) var(--radius-md);
-
   background: linear-gradient(to bottom, var(--background-light), var(--background-light-alt));
   box-shadow: var(--shadow-chat-input);
   transition: box-shadow var(--duration-m);
@@ -515,14 +504,15 @@ h6 {
   padding: 12px 20px;
   border: 1px solid var(--border-color-medium);
   border-radius: var(--radius-md) 0 0 var(--radius-md);
-
   font-size: .95rem;
   color: var(--text-color-dark);
   background-color: var(--background-light);
+  transition: var(--btn-transition);
+}
 
-  transition:
-    border-color var(--duration-m),
-    box-shadow var(--duration-m);
+#query-input:hover {
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 .1rem var(--focus-shadow-color);
 }
 
 #query-input:focus {
@@ -535,15 +525,10 @@ h6 {
   padding: 12px 24px;
   border: none;
   border-radius: 0 var(--radius-md) var(--radius-md) 0;
-
   font-weight: 500;
   color: var(--text-color-dark);
   background-color: var(--primary-color);
-
-  transition:
-    background-color var(--duration-s),
-    transform var(--duration-s),
-    box-shadow var(--duration-s);
+  transition: var(--btn-transition), transform var(--duration-s) ease;
   will-change: transform, box-shadow;
 }
 
@@ -569,7 +554,6 @@ h6 {
   padding: 6px 10px;
   border: 1px solid var(--border-color-medium);
   border-radius: var(--radius-xs);
-
   font-size: .9rem;
   color: var(--text-color-dark);
   background: var(--background-light) var(--input-select-arrow-icon) no-repeat right .75rem center / 16px 12px;
@@ -586,7 +570,7 @@ h6 {
 }
 
 /* ---------------------------------------------------------
-   10 ▸  Auth Modal
+   10 ▸ Auth Modal
    --------------------------------------------------------- */
 #authModal .modal-dialog {
   transition: transform var(--duration-m);
@@ -596,7 +580,6 @@ h6 {
   overflow: hidden;
   border: 1px solid var(--border-color-modal);
   border-radius: var(--radius-md);
-
   background: var(--gradient-background);
   box-shadow: var(--shadow-xl);
   backdrop-filter: blur(12px) saturate(150%);
@@ -626,13 +609,9 @@ h6 {
   border: none;
   border-bottom: 3px solid transparent;
   border-radius: 0;
-
   color: var(--white-80);
   background-color: transparent;
-
-  transition:
-    color var(--duration-m),
-    border-bottom-color var(--duration-m);
+  transition: var(--btn-transition);
 }
 
 #authModal .nav-tabs .nav-link:hover {
@@ -660,7 +639,6 @@ h6 {
 #authModal .form-floating > .form-control {
   padding: 1.625rem .75rem .625rem;
   border: 1px solid var(--border-color-medium);
-
   color: var(--text-color-dark);
   background-color: var(--background-light);
 }
@@ -672,15 +650,10 @@ h6 {
 
 #authModal .form-floating > label {
   padding: .8rem .75rem;
-
   font-weight: 600;
   color: var(--text-color-dark);
   background: none;
-
-  transition:
-    opacity var(--duration-s),
-    transform var(--duration-s),
-    color var(--duration-s);
+  transition: opacity var(--duration-s), transform var(--duration-s), color var(--duration-s);
 }
 
 #authModal .form-floating > .form-control:is(:focus, :not(:placeholder-shown))~label {
@@ -691,17 +664,16 @@ h6 {
 
 #authModal .form-control:focus {
   border-color: var(--primary-color);
-  box-shadow: 0 0 0 .25rem var(--focus-shadow-color);
   color: var(--text-color-dark);
   background-color: var(--background-light-alt);
+  box-shadow: 0 0 0 .25rem var(--focus-shadow-color);
 }
 
 #authModal .invalid-feedback {
   display: inline-block;
-  margin-top: 4px;
   padding: 2px 5px;
+  margin-top: 4px;
   border-radius: 3px;
-
   font-weight: 600;
   color: var(--color-warning);
   background-color: var(--black-40);
@@ -711,6 +683,7 @@ h6 {
   border-color: var(--primary-color);
   color: var(--text-color-dark);
   background-color: var(--primary-color);
+  transition: var(--btn-transition);
 }
 
 #authModal .btn-primary:hover {
@@ -719,7 +692,7 @@ h6 {
 }
 
 /* ---------------------------------------------------------
-   11 ▸  Skeleton Loader
+   11 ▸ Skeleton Loader
    --------------------------------------------------------- */
 .skeleton {
   border-radius: var(--radius-xs);
@@ -732,12 +705,11 @@ h6 {
   display: flex;
   align-items: flex-start;
   width: 80%;
-  margin-bottom: 15px;
   padding: 15px;
+  margin-bottom: 15px;
   border: 1px solid var(--border-color-light);
   border-radius: var(--radius-msg);
   border-bottom-left-radius: var(--radius-xs);
-
   background-color: var(--background-light);
   box-shadow: var(--shadow-chat-bubble);
 }
@@ -773,25 +745,22 @@ h6 {
 }
 
 /* ---------------------------------------------------------
-   12 ▸  Landing Page
+   12 ▸ Landing Page
    --------------------------------------------------------- */
 .landing-page {
   color: var(--text-color-dark);
   background: var(--gradient-background);
 }
 
-/* Common styles for both cards */
 .landing-hero,
 .gateway-content {
   padding: 3rem 2rem;
   border: 1px solid var(--border-color-light);
   border-radius: 1rem;
-
   text-align: center;
   background: var(--background-light);
 }
 
-/* Unique styles for each card */
 .landing-hero {
   box-shadow: var(--shadow-landing-hero);
   backdrop-filter: blur(4px);
@@ -800,6 +769,27 @@ h6 {
 
 .gateway-content {
   box-shadow: var(--shadow-gateway-content);
+}
+
+.landing-header-utility {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.utility-icon-link {
+  font-size: 1.5rem;
+  color: var(--text-color-dark);
+  transition: color var(--duration-s) ease, transform var(--duration-s) ease;
+}
+
+.utility-icon-link:hover {
+  color: var(--primary-color);
+  transform: scale(1.1);
 }
 
 .hero-title-wrapper {
@@ -816,14 +806,12 @@ h6 {
   color: var(--primary-color);
 }
 
-/* Common styles for h1 in both cards */
 .landing-hero h1,
 .gateway-content h1 {
   font-weight: 700;
   color: var(--text-color-dark);
 }
 
-/* Unique styles for h1 in the hero card */
 .landing-hero h1 {
   margin: 0;
   line-height: 1.2;
@@ -844,18 +832,12 @@ h6 {
   padding: 1rem 2rem;
   border: 1px solid var(--primary-color);
   border-radius: var(--radius-sm);
-
   font-size: 1.1rem;
   font-weight: 600;
   color: var(--text-color-dark);
   text-decoration: none;
   background-color: var(--primary-color);
-
-  transition:
-    background-color var(--duration-m) ease,
-    border-color var(--duration-m) ease,
-    transform var(--duration-m) ease,
-    box-shadow var(--duration-m) ease;
+  transition: var(--btn-transition), transform var(--duration-m) ease;
 }
 
 .unified-button:hover {
@@ -865,27 +847,81 @@ h6 {
   transform: translateY(-2px);
 }
 
+/* Why Use Our Platform? Section */
+.why-use-platform-section .feature-card {
+  border: 1px solid var(--border-color-light);
+  background-color: var(--background-light);
+  /* Transitions handled by Anime.js */
+}
+
+.animate-card {
+  opacity: 0;
+  transform: translateY(20px);
+}
+
+.why-use-platform-section .feature-icon-wrapper {
+  width: 60px;
+  height: 60px;
+  border: 1px solid var(--border-color-medium);
+  background-color: var(--background-light-alt);
+}
+
+.why-use-platform-section .feature-icon {
+  font-size: 2.2rem;
+  color: var(--primary-color);
+}
+
+.why-use-platform-section h3 {
+  color: var(--text-color-dark);
+}
+
+.why-use-platform-section p {
+  color: var(--text-color-dark-muted);
+}
+
 /* ---------------------------------------------------------
-   13 ▸  Animations & Experimental
+   13 ▸ Animations & Experimental
    --------------------------------------------------------- */
 @keyframes shimmer {
-  from { background-position: 200% 0; }
-  to { background-position: -200% 0; }
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
 }
 
 @keyframes headerFadeIn {
-  from { opacity: 0; transform: translateY(-10px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @keyframes faqItemFadeIn {
-  from { opacity: 0; transform: translateY(20px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @scroll-timeline faq-scroll-timeline {
@@ -894,7 +930,111 @@ h6 {
 }
 
 /* ---------------------------------------------------------
-   14 ▸  Toast Notification
+   14 ▸ Landing Page Toggle
+   --------------------------------------------------------- */
+.theme-switch-landing {
+  position: relative;
+  display: inline-block;
+  width: 3.5em;
+  height: 1.5em;
+}
+
+.theme-switch-checkbox {
+  display: none;
+}
+
+.theme-switch-label {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: var(--radius-md);
+  background: linear-gradient(90deg, var(--primary-color) 0%, var(--accent-color) 100%);
+  transition: background var(--duration-m) ease;
+  cursor: pointer;
+}
+
+[data-bs-theme="dark"] .theme-switch-label {
+  background: linear-gradient(90deg, var(--accent-color-hover) 0%, var(--primary-color) 100%);
+}
+
+.theme-switch-label .sun-icon,
+.theme-switch-label .moon-icon {
+  position: absolute;
+  top: 50%;
+  font-size: 0.8em;
+  color: var(--text-color-dark);
+  transform: translateY(-50%);
+  transition: opacity var(--duration-m) ease;
+}
+
+.theme-switch-label .sun-icon {
+  left: 0.4em;
+  opacity: 1;
+}
+
+[data-bs-theme="dark"] .theme-switch-label .sun-icon {
+  opacity: 0;
+}
+
+.theme-switch-label .moon-icon {
+  right: 0.4em;
+  opacity: 0;
+}
+
+[data-bs-theme="dark"] .theme-switch-label .moon-icon {
+  opacity: 1;
+}
+
+.theme-switch-ball {
+  position: absolute;
+  top: 0.2em;
+  left: 0.2em;
+  width: 1.1em;
+  height: 1.1em;
+  border-radius: 50%;
+  background-color: var(--background-light);
+  box-shadow: 0 0 5px rgba(0, 0, 0, 0.3);
+  transform: translateX(0);
+  transition: transform var(--duration-m) ease;
+}
+
+[data-bs-theme="dark"] .theme-switch-ball {
+  transform: translateX(2.1em);
+}
+
+.theme-switch-label:focus-within {
+  outline: 2px solid var(--focus-shadow-color);
+  outline-offset: 2px;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .theme-switch-landing {
+    width: 3em;
+    height: 1.3em;
+  }
+
+  .theme-switch-ball {
+    width: 0.9em;
+    height: 0.9em;
+    top: 0.2em;
+    left: 0.2em;
+  }
+
+  [data-bs-theme="dark"] .theme-switch-ball {
+    transform: translateX(1.7em);
+  }
+
+  .theme-switch-label .sun-icon,
+  .theme-switch-label .moon-icon {
+    font-size: 0.7em;
+  }
+}
+
+/* ---------------------------------------------------------
+   15 ▸ Toast Notification
    --------------------------------------------------------- */
 .toast-notification {
   position: fixed;
@@ -903,18 +1043,13 @@ h6 {
   z-index: 1056;
   padding: 12px 24px;
   border-radius: var(--radius-sm);
-
   color: var(--toast-text);
   background-color: var(--toast-bg);
   box-shadow: var(--shadow-lg);
-
   opacity: 0;
   visibility: hidden;
   transform: translateY(20px);
-  transition:
-    opacity var(--duration-m) ease,
-    transform var(--duration-m) ease,
-    visibility 0s var(--duration-m);
+  transition: opacity var(--duration-m) ease, transform var(--duration-m) ease, visibility 0s var(--duration-m);
 }
 
 .toast-notification:not(.hidden) {
@@ -939,4 +1074,204 @@ h6 {
 .toast-notification.error {
   color: var(--white-95);
   background-color: var(--color-error);
+}
+
+/* ---------------------------------------------------------
+   16 ▸ Enhanced Suggested Question Buttons
+   --------------------------------------------------------- */
+.suggested-question-enhanced {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  padding: 12px 20px;
+  margin: 0 8px 8px 0;
+  border: 2px solid var(--primary-color);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-primary);
+  font-size: 0.95rem;
+  font-weight: 500;
+  letter-spacing: 0.3px;
+  color: var(--text-color-dark);
+  text-decoration: none;
+  background: linear-gradient(135deg, var(--primary-color) 0%, var(--accent-color) 100%);
+  box-shadow: var(--shadow-md);
+  transition: var(--btn-transition), transform var(--duration-s) ease;
+  will-change: transform, box-shadow;
+  cursor: pointer;
+}
+
+.suggested-question-enhanced:hover {
+  border-color: var(--accent-color-hover);
+  color: var(--text-color-dark);
+  background: linear-gradient(135deg, var(--accent-color) 0%, var(--accent-color-hover) 100%);
+  box-shadow: var(--shadow-lg);
+  transform: translateY(-3px) scale(1.02);
+}
+
+.suggested-question-enhanced:focus {
+  outline: none;
+  box-shadow: var(--shadow-lg), 0 0 0 3px var(--focus-shadow-color);
+}
+
+.suggested-question-enhanced:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+}
+
+.suggested-question-enhanced:active {
+  transform: translateY(-1px) scale(0.98);
+  transition-duration: 0.1s;
+}
+
+.suggested-question-icon {
+  margin-right: 8px;
+  font-size: 0.9em;
+  transition: transform var(--duration-s) ease;
+}
+
+.suggested-question-enhanced:hover .suggested-question-icon {
+  transform: rotate(15deg) scale(1.1);
+}
+
+/* Pulse animation for enhanced visual appeal */
+@keyframes suggestedQuestionPulse {
+  0% {
+    box-shadow: var(--shadow-md);
+  }
+  50% {
+    box-shadow: var(--shadow-lg), 0 0 0 4px rgba(137, 168, 178, 0.2);
+  }
+  100% {
+    box-shadow: var(--shadow-md);
+  }
+}
+
+.suggested-question-enhanced.pulse {
+  animation: suggestedQuestionPulse 2s ease-in-out infinite;
+}
+
+/* Loading state for suggested questions */
+.suggested-question-enhanced.loading {
+  opacity: 0.7;
+  background: linear-gradient(90deg, var(--primary-color) 25%, var(--accent-color) 50%, var(--primary-color) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite linear;
+  pointer-events: none;
+}
+
+/* Dark theme specific adjustments */
+[data-bs-theme="dark"] .suggested-question-enhanced {
+  border-color: var(--primary-color);
+  color: var(--text-color-light);
+  background: linear-gradient(135deg, var(--primary-color) 0%, var(--accent-color) 100%);
+}
+
+[data-bs-theme="dark"] .suggested-question-enhanced:hover {
+  border-color: var(--accent-color-hover);
+  color: var(--text-color-light);
+  background: linear-gradient(135deg, var(--accent-color) 0%, var(--accent-color-hover) 100%);
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  .suggested-question-enhanced {
+    border-width: 3px;
+    font-weight: 600;
+  }
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  .suggested-question-enhanced,
+  .suggested-question-icon {
+    transition: none;
+    animation: none;
+  }
+
+  .suggested-question-enhanced:hover {
+    transform: none;
+  }
+
+  .suggested-question-enhanced:hover .suggested-question-icon {
+    transform: none;
+  }
+}
+
+/* Responsive design for mobile devices */
+@media (max-width: 768px) {
+  .suggested-question-enhanced {
+    padding: 10px 16px;
+    margin: 0 6px 6px 0;
+    font-size: 0.9rem;
+  }
+
+  .suggested-question-enhanced:hover {
+    transform: translateY(-2px) scale(1.01);
+  }
+}
+
+/* ---------------------------------------------------------
+   17 ▸ Authenticated View Theme Switcher
+   --------------------------------------------------------- */
+.sidebar .theme-switch {
+  position: relative;
+  display: inline-block;
+  width: 50px;
+  height: 28px;
+  margin-left: 1rem;
+}
+
+.sidebar .theme-switch-checkbox {
+  width: 0;
+  height: 0;
+  opacity: 0;
+}
+
+.sidebar .theme-switch-label {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px;
+  border-radius: 34px;
+  background-color: var(--border-color-medium);
+  transition: .4s;
+  cursor: pointer;
+}
+
+.sidebar .sun-icon,
+.sidebar .moon-icon {
+  color: var(--background-light);
+  transition: .4s;
+}
+
+.sidebar .sun-icon {
+  margin-left: 4px;
+}
+
+.sidebar .moon-icon {
+  margin-right: 4px;
+}
+
+.sidebar .theme-switch-ball {
+  position: absolute;
+  bottom: 3px;
+  left: 3px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background-color: var(--background-light);
+  transition: .4s;
+}
+
+.sidebar .theme-switch-checkbox:checked + .theme-switch-label {
+  background-color: var(--primary-color);
+}
+
+.sidebar .theme-switch-checkbox:checked + .theme-switch-label .theme-switch-ball {
+  transform: translateX(22px);
 }

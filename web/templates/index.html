@@ -7,7 +7,7 @@
     <meta name="description"
           content="SFDA Copilot - AI-powered regulatory guidance for pharmaceutical regulations in Saudi Arabia">
     <title>SFDA Copilot</title>
-    <link rel="preload" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" as="style">
+    <link rel="preload" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" as="style" crossorigin="anonymous">
     <link rel="preload" href="{{ url_for('static', filename='css/style.css') }}" as="style">
 
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
@@ -210,25 +210,84 @@
 
     <!-- Unauthenticated View -->
     <main id="unauthenticated-view" class="container-fluid flex-grow-1">
+        <div class="landing-header-utility">
+            <a href="https://aifoudahub.com" target="_blank" aria-label="AI Fouda Hub Website" class="utility-icon-link"><i class="bi bi-globe"></i></a>
+            <a href="https://www.linkedin.com/in/mohfouda/" target="_blank" aria-label="Mohamed Fouda's LinkedIn" class="utility-icon-link"><i class="bi bi-linkedin"></i></a>
+            <div class="theme-switch-landing">
+                <input type="checkbox" id="landing-theme-toggle" class="theme-switch-checkbox" aria-label="Toggle theme between light and dark mode">
+                <label for="landing-theme-toggle" class="theme-switch-label">
+                    <i class="bi bi-sun-fill sun-icon"></i>
+                    <i class="bi bi-moon-fill moon-icon"></i>
+                    <span class="theme-switch-ball"></span>
+                </label>
+            </div>
+        </div>
         <div class="row h-100 align-items-center justify-content-center">
             <div class="col-md-8 text-center">
                 <div class="landing-hero">
                     <div class="hero-title-wrapper">
                         <i class="bi bi-shield-shaded hero-icon"></i>
-                        <h1 class="display-3 fw-bold">SFDA Copilot</h1>
+                        <h1 class="display-3 fw-bold">SFDA Copilot: Streamline Regulatory Compliance</h1>
                     </div>
                     <p class="lead mb-4">
                         Your AI‑powered assistant for pharmaceutical regulations in Saudi Arabia
                     </p>
+                    <!-- Placeholder for hero image or video -->
+                    <div class="hero-visual mb-4">
+<img src="{{ url_for('static', filename='images/hero-image.jpg') }}" alt="AI Regulatory Guidance" class="img-fluid rounded" style="max-width: 100%; height: auto; max-height: 400px;" loading="lazy">
+                        <!-- Replace with actual image or video illustrating AI-driven regulatory guidance -->
+                    </div>
                     <button
                         id="auth-button-main"
-                        class="unified-button"
+                        class="unified-button btn-lg"
                         type="button"
                         data-bs-toggle="modal"
                         data-bs-target="#authModal"
                     >
                         <i class="bi bi-box-arrow-in-right me-2"></i>Login / Signup
                     </button>
+                </div>
+                <!-- Why Use Our Platform? Section -->
+                <div class="why-use-platform-section mt-5">
+                    <h2 class="h3 mb-5 text-center fw-bold">Why Use Our Platform?</h2>
+                    <div class="row justify-content-center">
+                        <div class="col-md-6 col-lg-5 mb-4">
+                            <div class="feature-card p-4 rounded-3 shadow-sm animate-card" data-delay="100">
+                                <div class="feature-icon-wrapper rounded-circle bg-light d-flex align-items-center justify-content-center mb-3">
+                                    <i class="bi bi-shield-fill-check feature-icon"></i>
+                                </div>
+                                <h3 class="h5 fw-bold">Authoritative Guidance</h3>
+                                <p class="text-muted">Gain confidence with every answer, backed by precise page and paragraph citations from official SFDA guidelines, ensuring unparalleled accuracy and traceability.</p>
+                            </div>
+                        </div>
+                        <div class="col-md-6 col-lg-5 mb-4">
+                            <div class="feature-card p-4 rounded-3 shadow-sm animate-card" data-delay="200">
+                                <div class="feature-icon-wrapper rounded-circle bg-light d-flex align-items-center justify-content-center mb-3">
+                                    <i class="bi bi-book feature-icon"></i>
+                                </div>
+                                <h3 class="h5 fw-bold">Streamlined Regulatory Access</h3>
+                                <p class="text-muted">Navigate complex drug registration procedures and requirements effortlessly with comprehensive, easy-to-access guidelines.</p>
+                            </div>
+                        </div>
+                        <div class="col-md-6 col-lg-5 mb-4">
+                            <div class="feature-card p-4 rounded-3 shadow-sm animate-card" data-delay="300">
+                                <div class="feature-icon-wrapper rounded-circle bg-light d-flex align-items-center justify-content-center mb-3">
+                                    <i class="bi bi-check-circle feature-icon"></i>
+                                </div>
+                                <h3 class="h5 fw-bold">Unwavering Accuracy</h3>
+                                <p class="text-muted">Rely on consistently updated and verified information, providing the most current insights into Saudi Arabian pharmaceutical regulations.</p>
+                            </div>
+                        </div>
+                        <div class="col-md-6 col-lg-5 mb-4">
+                            <div class="feature-card p-4 rounded-3 shadow-sm animate-card" data-delay="400">
+                                <div class="feature-icon-wrapper rounded-circle bg-light d-flex align-items-center justify-content-center mb-3">
+                                    <i class="bi bi-cpu feature-icon"></i>
+                                </div>
+                                <h3 class="h5 fw-bold">Intelligent Search Capabilities</h3>
+                                <p class="text-muted">Leverage cutting-edge AI to swiftly comprehend intricate regulatory queries and deliver highly precise, actionable answers.</p>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -252,17 +311,22 @@
         <div class="row h-100">
             <aside class="col-lg-3 col-md-4 sidebar d-none d-lg-block h-100" id="sidebarContentRegular">
                 <header class="sidebar-header">
-                    <h3 class="d-flex align-items-center"><i class="bi bi-shield-shaded me-2"></i>SFDA Copilot</h3>
+                    <h3 class="d-flex align-items-center justify-content-between">
+                        <span><i class="bi bi-shield-shaded me-2"></i>SFDA Copilot</span>
+                        <div class="theme-switch">
+                            <input type="checkbox" id="theme-toggle" class="theme-switch-checkbox" aria-label="Toggle theme">
+                            <label for="theme-toggle" class="theme-switch-label">
+                                <i class="bi bi-sun-fill sun-icon"></i>
+                                <i class="bi bi-moon-fill moon-icon"></i>
+                                <span class="theme-switch-ball"></span>
+                            </label>
+                        </div>
+                    </h3>
                     <p class="text-muted small mb-3">Your AI Regulatory Assistant</p>
                     <div class="auth-status-container mt-2">
                         <span id="user-status" class="small">Checking status...</span>
                         <button id="auth-button" class="btn btn-sm btn-primary ms-2" type="button">Login / Signup</button>
                         <button id="logout-button" class="btn btn-sm btn-outline-warning ms-2 d-none" type="button">Logout</button>
-                    </div>
-                    <div class="theme-toggle-container mt-3">
-                        <button id="theme-toggle" class="btn btn-sm btn-secondary w-100" type="button">
-                            <i class="bi bi-circle-half me-2"></i>Toggle Theme
-                        </button>
                     </div>
                 </header>
                 <div class="faq-section" id="faq-sidebar-section">
@@ -274,23 +338,30 @@
                  id="sidebarOffcanvas"
                  aria-labelledby="sidebarOffcanvasLabel">
                 <header class="offcanvas-header">
-                    <h5 class="offcanvas-title" id="sidebarOffcanvasLabel">Menu</h5>
+                    <h5 class="offcanvas-title d-flex align-items-center justify-content-between w-100" id="sidebarOffcanvasLabel">
+                        <span>Menu</span>
+                    </h5>
                     <button type="button" class="btn-close btn-close-white text-reset" data-bs-dismiss="offcanvas" aria-label="Close"></button>
                 </header>
                 <div class="offcanvas-body sidebar">
                     <div class="sidebar-header">
-                        <h3 class="d-flex align-items-center"><i class="bi bi-shield-shaded me-2"></i>SFDA Copilot</h3>
+                        <h3 class="d-flex align-items-center justify-content-between">
+                            <span><i class="bi bi-shield-shaded me-2"></i>SFDA Copilot</span>
+                            <div class="theme-switch">
+                                <input type="checkbox" id="theme-toggle-offcanvas" class="theme-switch-checkbox" aria-label="Toggle theme">
+                                <label for="theme-toggle-offcanvas" class="theme-switch-label">
+                                    <i class="bi bi-sun-fill sun-icon"></i>
+                                    <i class="bi bi-moon-fill moon-icon"></i>
+                                    <span class="theme-switch-ball"></span>
+                                </label>
+                            </div>
+                        </h3>
                         <p class="text-muted small mb-3">Your AI Regulatory Assistant</p>
                         <div class="auth-status-container mt-2">
                             <span id="user-status-offcanvas" class="small">Checking status...</span>
                             <button id="auth-button-offcanvas" class="btn btn-sm btn-primary ms-2" type="button">Login / Signup</button>
                             <button id="logout-button-offcanvas" class="btn btn-sm btn-outline-warning ms-2 d-none" type="button">Logout</button>
                         </div>
-                    </div>
-                    <div class="theme-toggle-container mt-3">
-                        <button id="theme-toggle-offcanvas" class="btn btn-sm btn-secondary w-100" type="button">
-                            <i class="bi bi-circle-half me-2"></i>Toggle Theme
-                        </button>
                     </div>
                     <div class="faq-section" id="faq-offcanvas-section">
                         <!-- FAQ categories will be dynamically loaded here by JavaScript -->
@@ -309,21 +380,24 @@
                                          loading="lazy"
                                          width="40"
                                          height="40">
-                                </div>
-                                <div class="message-content">
-                                    <p>Welcome to SFDA Copilot! Your AI assistant for pharmaceutical regulations in Saudi Arabia. You can:</p>
-                                    <ul class="message-list">
-                                        <li><i class="bi bi-question-circle me-2 text-primary"></i>Ask me specific questions about regulatory requirements</li>
-                                        <li><i class="bi bi-filter-circle me-2 text-success"></i>Select a category to focus your search</li>
-                                        <li><i class="bi bi-hand-index-thumb me-2 text-info"></i>Click on FAQ buttons for common questions</li>
-                                    </ul>
-                                    <p>How can I assist you today?</p>
-                                </div>
-                                <div class="timestamp">{{ now }}</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+    </div>
+    <div class="message-content">
+        <p>Welcome to SFDA Copilot! Your AI assistant for pharmaceutical regulations in Saudi Arabia. You can:</p>
+        <ul class="message-list">
+            <li><i class="bi bi-question-circle me-2 text-primary"></i>Ask me specific questions about regulatory requirements</li>
+            <li><i class="bi bi-filter-circle me-2 text-success"></i>Select a category to focus your search</li>
+            <li><i class="bi bi-hand-index-thumb me-2 text-info"></i>Click on FAQ buttons for common questions</li>
+        </ul>
+        <p>How can I assist you today?</p>
+    </div>
+    <div class="timestamp">{{ now }}</div>
+</div>
+<div class="suggested-questions-container mt-2">
+    <!-- Suggested questions will be dynamically loaded here -->
+</div>
+</div>
+</div>
+</div>
                 <footer class="input-area">
                     <div class="category-selector mb-2">
                         <label for="query-category" class="form-label">Search in:</label>
@@ -365,6 +439,8 @@
 
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"
+            crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@3.2.1/lib/anime.min.js"
             crossorigin="anonymous"></script>
     <script src="{{ url_for('static', filename='js/date-fns-setup.js') }}" defer></script>
     <script type="module"

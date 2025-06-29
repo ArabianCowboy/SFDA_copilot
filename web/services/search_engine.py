@@ -76,6 +76,20 @@ class ImprovedSearchEngine:
         else: # Default to local
             self.embedding_client = LocalEmbeddingClient() # Assumes this class has get_embedding
 
+        # --- Category Mapping for Robust Matching ---
+        # This map helps translate simplified frontend categories to their expected full names
+        # found in the processed data (e.g., directory names).
+        # This map is not strictly used for direct lookup in the current implementation,
+        # but serves as a reference for expected category names and can be expanded
+        # if more complex mapping logic is required in the future.
+        self.category_map = {
+            "biological": "biological_products_and_quality_control",
+            "veterinary": "veterinary_medicines",
+            "pharmacovigilance": "pharmacovigilance",
+            "regulatory": "regulatory",
+            "all": "all" # Special case for no category filtering
+        }
+
         # --- Initialize Data Attributes ---
         # Type hints for clarity
         self.faiss_index: Optional[faiss.Index] = None 
@@ -126,7 +140,8 @@ class ImprovedSearchEngine:
             logger.info(f"Attempting to load FAISS index from: {self.faiss_index_path}")
             try:
                 self.faiss_index = faiss.read_index(self.faiss_index_path)
-                logger.info(f"FAISS index loaded successfully with {self.faiss_index.ntotal} vectors.")
+                if self.faiss_index: # Add check for None
+                    logger.info(f"FAISS index loaded successfully with {self.faiss_index.ntotal} vectors.")
             except Exception as faiss_e:
                 logger.error(f"Failed to load FAISS index from {self.faiss_index_path}: {faiss_e}")
                 self.initialized = False
@@ -170,16 +185,17 @@ class ImprovedSearchEngine:
             try:
                 with open(self.tfidf_matrix_path, 'rb') as f:
                     self.tfidf_matrix = pickle.load(f)
-                logger.info(f"TF-IDF matrix loaded successfully with shape: {self.tfidf_matrix.shape}")
+                if self.tfidf_matrix is not None: # Add check for None
+                    logger.info(f"TF-IDF matrix loaded successfully with shape: {self.tfidf_matrix.shape}")
             except Exception as tfidf_mat_e:
                 logger.error(f"Failed to load TF-IDF matrix from {self.tfidf_matrix_path}: {tfidf_mat_e}")
                 self.initialized = False
                 return
             
             # --- Verify Dimensions Match ---
-            df_len = len(self.df)
-            tfidf_rows = self.tfidf_matrix.shape[0]
-            faiss_vectors = self.faiss_index.ntotal
+            df_len = len(self.df) if self.df is not None else 0
+            tfidf_rows = self.tfidf_matrix.shape[0] if self.tfidf_matrix is not None else 0
+            faiss_vectors = self.faiss_index.ntotal if self.faiss_index is not None else 0
             
             logger.info(f"Verifying data dimensions: DataFrame rows={df_len}, TF-IDF matrix rows={tfidf_rows}, FAISS vectors={faiss_vectors}")
             if not (tfidf_rows == df_len and faiss_vectors == df_len):
@@ -366,10 +382,17 @@ class ImprovedSearchEngine:
                 chunk_data: Dict = self.df.iloc[idx].to_dict()
                 
                 # --- Category Filtering ---
-                chunk_category: str = chunk_data.get("category", "").lower()
+                chunk_category_raw: str = chunk_data.get("category", "")
                 # Apply filter only if a specific category (not 'all') is requested
-                if category.lower() != "all" and chunk_category != category.lower():
-                    continue # Skip this result if category doesn't match
+                if category.lower() != "all":
+                    query_cat_norm = self._normalize_category_for_comparison(category)
+                    chunk_cat_norm = self._normalize_category_for_comparison(chunk_category_raw)
+                    logger.debug(f"Semantic search: Query category (raw)='{category}', (norm)='{query_cat_norm}', Chunk category (raw)='{chunk_category_raw}', (norm)='{chunk_cat_norm}'")
+                    # Check if the normalized query category is a substring of the normalized chunk category
+                    is_match = query_cat_norm in chunk_cat_norm
+                    logger.debug(f"Semantic search: Category match result: {is_match}")
+                    if not is_match:
+                        continue # Skip this result if category doesn't match
 
                 # --- Score Calculation (Convert Distance to Similarity) ---
                 # Assuming L2 distance from FAISS search. Lower distance means higher similarity.
@@ -422,13 +445,22 @@ class ImprovedSearchEngine:
             # --- Category Filtering (Optimized) ---
             # Filter indices *before* sorting for efficiency if a specific category is needed
             if category.lower() != "all":
-                # Create a boolean mask for the desired category in the DataFrame
-                category_mask: pd.Series = self.df["category"].str.lower() == category.lower()
+                query_cat_norm = self._normalize_category_for_comparison(category)
+                # Apply normalization to the entire 'category' column for vectorized comparison
+                normalized_df_categories = self.df["category"].apply(self._normalize_category_for_comparison)
+                
+                logger.debug(f"Lexical search: Query category (raw)='{category}', (norm)='{query_cat_norm}'")
+                logger.debug(f"Lexical search: Sample normalized chunk categories: {normalized_df_categories.unique()[:5]}")
+                
+                # Check if the normalized query category is contained within the normalized chunk categories
+                category_mask: pd.Series = normalized_df_categories.str.contains(query_cat_norm, na=False)
+                logger.debug(f"Lexical search: Category mask generated. Number of matches: {category_mask.sum()}")
+                
                 # Get the original indices from the DataFrame where the category matches
                 valid_indices: np.ndarray = np.where(category_mask)[0]
                 # If no documents match the category, return early
                 if len(valid_indices) == 0:
-                     logger.debug(f"No documents found for category '{category.lower()}' in lexical search.")
+                     logger.debug(f"No documents found for category '{category.lower()}' in lexical search after normalization.")
                      return results_raw
                 # Filter the similarity scores and keep only those for matching indices
                 filtered_sims: np.ndarray = similarities[valid_indices]
@@ -562,12 +594,16 @@ class ImprovedSearchEngine:
                     document=chunk_data.get('document', 'Unknown'),
                     category=chunk_data.get('category', 'Unknown'),
                     # Safely get page number, handle potential float/NaN from CSV read
-                    page=int(chunk_data.get('page')) if pd.notna(chunk_data.get('page')) else None, 
+                    page=(
+                        int(chunk_data['page'])
+                        if pd.notna(chunk_data.get('page')) and str(chunk_data.get('page')).strip().isdigit()
+                        else None
+                    ),
                     chunk_id=chunk_id,
                     metadata={ # Store individual scores and original index for potential analysis/debugging
                         'semantic_score': scores['semantic'],
                         'lexical_score': scores['lexical'],
-                        'original_index': original_df_index 
+                        'original_index': original_df_index
                     }
                 ))
             except Exception as e:
@@ -582,3 +618,10 @@ class ImprovedSearchEngine:
         # --- Return Top 'final_k' Results ---
         logger.debug(f"Returning {min(len(final_results), final_k)} combined results after sorting.")
         return final_results[:final_k]
+
+    def _normalize_category_for_comparison(self, category_name: str) -> str:
+        """
+        Helper method to normalize category names for consistent comparison.
+        Converts to lowercase and removes underscores and spaces.
+        """
+        return category_name.lower().replace('_', '').replace(' ', '')

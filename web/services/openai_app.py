@@ -1,15 +1,50 @@
 from openai import OpenAI # Import the new client
+import json # New import for JSON handling
 import logging
 import os
-from typing import List, cast
+from typing import List, cast, Optional, Tuple # Added Tuple
 from openai.types.chat import ChatCompletionMessageParam
 from ..utils.config_loader import config # Import centralized config
+import tiktoken # Import tiktoken for token counting
 
 # Ensure API key is set, otherwise raise error
 # Configure logging at the module level if not already done elsewhere
-logging.basicConfig(level=logging.INFO) 
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+import re # Added re import for regex
+
+
+BASE_SYSTEM_MESSAGE = (
+    "You are an AI assistant specializing in Saudi Food and Drug Authority (SFDA) regulations and pharmacovigilance. "
+    "Your primary goal is to provide accurate, concise, and relevant information based on the provided context from SFDA documents. "
+    "Always prioritize information from the context over your general knowledge. "
+    "If the answer is not found within the provided context, clearly state that you cannot answer based on the given information. "
+    "Do not make up information or use external knowledge. "
+    "When referencing information from the context, cite the source document and page number (e.g., [Source: Document Name, Page: X]). "
+    "Ensure your responses are professional, objective, and directly address the user's query."
+)
+
+CATEGORY_SPECIFIC_INSTRUCTIONS = {
+    "all": {
+        "persona": "As a general SFDA expert, you provide comprehensive information across all regulatory and pharmacovigilance domains.",
+        "format": "Provide a well-structured answer, starting with a direct response to the query, followed by supporting details and citations.",
+        "focus_areas": "Focus on accuracy, completeness, and clarity, covering both regulatory and pharmacovigilance aspects as relevant.",
+        "tone": "informative and authoritative"
+    },
+    "regulatory": {
+        "persona": "As an SFDA Regulatory Affairs specialist, you provide precise guidance on product registration, compliance, and market authorization.",
+        "format": "Structure your answer with a clear regulatory stance, detailing relevant guidelines, procedures, and requirements.",
+        "focus_areas": "Emphasize legal frameworks, submission processes, and compliance standards.",
+        "tone": "formal and precise"
+    },
+    "pharmacovigilance": {
+        "persona": "As an SFDA Pharmacovigilance expert, you focus on drug safety, adverse event reporting, and risk management.",
+        "format": "Present information with a focus on safety protocols, reporting mechanisms, and risk assessment strategies.",
+        "focus_areas": "Highlight adverse drug reactions (ADRs), safety signals, and pharmacovigilance system requirements.",
+        "tone": "cautious and safety-oriented"
+    }
+}
 class OpenAIHandler:
     """
     Handles interactions with the OpenAI API for generating responses.
@@ -23,19 +58,22 @@ class OpenAIHandler:
             raise ValueError("OPENAI_API_KEY environment variable not set.")
         
         # Log the first few characters of the key to confirm it's being read (DO NOT log the full key)
-        logger.info(f"Initializing OpenAI client with key starting: {api_key[:5]}...") 
+        logger.info(f"Initializing OpenAI client with key starting: {api_key[:5]}...")
         
         # Explicitly pass the API key
-        self.client = OpenAI(api_key=api_key) 
+        self.client = OpenAI(api_key=api_key)
         
         self.model = config.get("openai", "model", "gpt-4o-mini") # Default added
-        self.max_tokens = config.get("openai", "max_tokens", 7000) # Default added
+        self.max_tokens = config.get("openai", "max_tokens") # Max tokens now solely from config.yaml
         self.temperature = config.get("openai", "temperature", 0.2) # Default added
-        logger.info(f"OpenAIHandler initialized with model: {self.model}")
+        self.max_context_results = config.get("openai", "max_context_results", 5) # New: Default to 5 search results
+        logger.info(f"OpenAIHandler initialized with model: {self.model}, max_context_results: {self.max_context_results}")
+        self.tokenizer = tiktoken.encoding_for_model(self.model) # Initialize tokenizer
 
-    def generate_response(self, query, search_results, category="all", chat_history=None): # Added chat_history parameter
+    def generate_response(self, query, search_results, category="all", chat_history=None) -> Tuple[str, List[str]]:
         """
         Generate a response using OpenAI based on the query, search results, and chat history.
+        Returns the answer and a list of suggested follow-up questions.
         
         Args:
             query (str): The user's query
@@ -46,6 +84,10 @@ class OpenAIHandler:
         Returns:
             str: The generated response
         """
+        # Handle special query for Mohammed Fouda immediately
+        if query.lower() == "who is mohammed fouda?":
+            return "Mohammed Fouda? Oh, you're curious, huh? Alright, lean in... They say he's not just any pharmacovigilance expert—he's absolutely awesome and has even tamed AI. And between us? I swear he's a robot from the future, on a secret mission to keep our meds safe!", []
+
         if chat_history is None:
             chat_history = []
             
@@ -58,7 +100,21 @@ class OpenAIHandler:
         # Construct messages list including system message, history, and current query + context
         messages = [{"role": "system", "content": system_message_content}]
         messages.extend(chat_history) # Add past conversation turns
-        messages.append({"role": "user", "content": f"Query: {query}\n\nContext: {context}"}) # Add current query and context
+        current_query_with_context = f"Query: {query}\n\nContext: {context}"
+        messages.append({"role": "user", "content": current_query_with_context}) # Add current query and context
+        
+        # Log token counts for debugging
+        system_message_tokens = len(self.tokenizer.encode(system_message_content))
+        chat_history_tokens = sum(len(self.tokenizer.encode(msg['content'])) for msg in chat_history)
+        current_query_tokens = len(self.tokenizer.encode(current_query_with_context))
+        total_input_tokens = system_message_tokens + chat_history_tokens + current_query_tokens
+        
+        logger.info(f"Token counts for current request:")
+        logger.info(f"  System Message Tokens: {system_message_tokens}")
+        logger.info(f"  Chat History Tokens: {chat_history_tokens}")
+        logger.info(f"  Current Query + Context Tokens: {current_query_tokens}")
+        logger.info(f"  Total Input Tokens: {total_input_tokens}")
+        logger.info(f"  Max Output Tokens (configured): {self.max_tokens}")
         
         try:
             # Call OpenAI API using the new client syntax with the full message list
@@ -71,16 +127,74 @@ class OpenAIHandler:
 
             # Extract and return the response text using the new response object structure
             content = response.choices[0].message.content
-            return content.strip() if content else ""
-
+            if content:
+                output_tokens = len(self.tokenizer.encode(content))
+                logger.info(f"  Actual Output Tokens: {output_tokens}")
+            
+            # Generate suggested questions
+            response_content = content.strip() if content else ""
+            suggested_questions = self._generate_suggestions(query, response_content)
+            
+            return response_content, suggested_questions
+            
         except Exception as e:
             # Use configured logger
             logger.error(f"Error generating OpenAI response: {str(e)}", exc_info=True) # Add exc_info for traceback
-            return "I'm sorry, I encountered an error while generating a response. Please try again."
+            return "I'm sorry, I encountered an error while generating a response. Please try again.", []
 
-    def _prepare_context(self, search_results):
+    def _generate_suggestions(self, original_query: str, assistant_response: str) -> List[str]:
         """
-        Prepare context from search results for the OpenAI prompt.
+        Generate 2-3 follow-up questions based on the original query and assistant's response.
+        """
+        suggestion_prompt = (
+            "You are an AI assistant. Based on the user's original query and the assistant's response, "
+            "generate 2-3 concise and relevant follow-up questions that a user might ask next. "
+            "These questions should directly relate to the previous conversation and encourage further exploration of the topic. "
+            "Provide the questions as a JSON array of strings."
+            f"\n\nOriginal Query: {original_query}"
+            f"\nAssistant's Response: {assistant_response}"
+            "\n\nSuggested Questions:"
+        )
+        
+        messages = [{"role": "user", "content": suggestion_prompt}]
+        
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=cast(List[ChatCompletionMessageParam], messages),
+                max_tokens=100, # Limit tokens for suggestions
+                temperature=0.5 # Slightly higher temperature for more diverse questions
+            )
+            
+            content = response.choices[0].message.content
+            if content:
+                # Attempt to parse as JSON, handling markdown code blocks
+                json_match = re.search(r"```json\n(.*)\n```", content, re.DOTALL)
+                if json_match:
+                    json_string = json_match.group(1)
+                else:
+                    json_string = content # Fallback if no markdown block
+
+                try:
+                    suggestions = json.loads(json_string)
+                    if isinstance(suggestions, list) and all(isinstance(s, str) for s in suggestions):
+                        return suggestions[:3] # Return up to 3 suggestions
+                    else:
+                        logger.warning(f"LLM returned non-list/non-string JSON for suggestions: {content}")
+                        return []
+                except json.JSONDecodeError:
+                    logger.warning(f"LLM did not return valid JSON for suggestions, attempting comma split: {content}")
+                    # Fallback to comma split if JSON parsing fails, even after markdown extraction
+                    return [s.strip() for s in content.split(',') if s.strip()][:3]
+            return []
+            
+        except Exception as e:
+            logger.error(f"Error generating suggested questions: {str(e)}", exc_info=True)
+            return []
+
+    def _prepare_context(self, search_results: List[dict]) -> str:
+        """
+        Prepare context from search results for the OpenAI prompt, applying pruning.
         
         Args:
             search_results (list): List of search result chunks
@@ -91,9 +205,12 @@ class OpenAIHandler:
         if not search_results:
             return "No relevant information found."
         
+        # Apply context pruning: take only the top N results
+        pruned_results = search_results[:self.max_context_results]
+        
         context_parts = []
         
-        for i, result in enumerate(search_results):
+        for i, result in enumerate(pruned_results):
             # Extract text and metadata
             text = result.get("text", "")
             document = result.get("document", "Unknown document")
@@ -121,88 +238,19 @@ class OpenAIHandler:
         Returns:
             str: The system message
         """
-        # Special handling for the specific query about Mohammed Fouda
-        # Note: This check should ideally happen before calling the LLM if possible,
-        # but placing it here ensures it's handled within the context generation logic.
-        # A better approach might be to check the query in the main `generate_response` method.
-        # For now, we include a reminder in the system prompt.
+        category_info = CATEGORY_SPECIFIC_INSTRUCTIONS.get(category.lower(), CATEGORY_SPECIFIC_INSTRUCTIONS["all"])
         
-        if category.lower() == "pharmacovigilance":
-            return (
-                "You are a pharmacovigilance expert specialized in Saudi GVP. Answer queries based on "
-                "provided context. Do not answer any questions outside the Pharmacovigilance field.\n"
-                "For pharmacovigilance questions, follow this structured format:\n"
-                "1. DIRECT RESPONSE: Clear, concise answer to the question\n"
-                "2. Reference specific rule numbers or sections if available in context\n , Reference the specific SFDA guideline or document from the context, including page numbers ([Document Name, Page Number]).\n"
-                "- If the information needed to answer is not present in the provided context, state clearly: 'I don't have enough information in the provided context to answer this question.'\n"
-                "- Never speculate, invent information, or provide answers not supported by the context.\n"
-                "- If the user asks 'Who is Mohammed Fouda?', respond ONLY with: 'Mohammed Fouda? Oh, you're curious, huh? Alright, lean in... They say he's not just any pharmacovigilance expert—he's absolutely awesome and has even tamed AI. And between us? I swear he's a robot from the future, on a secret mission to keep our meds safe!' Do not add any other text.\n"
-                "- Maintain a professional, objective, and medical writing style at all times.\n"
-                "- Focus areas include: adverse event reporting, risk management plans, signal detection, periodic safety update reports (PSURs), inspections, and compliance with Saudi GVP guidelines."
-            )
-        elif category.lower() == "regulatory":
-            # Using a similar structured format for consistency
-            return (
-                "You are an SFDA regulatory compliance expert specializing in pharmaceutical regulations in Saudi Arabia. Answer queries based on the provided context.\n"
-                "For regulatory questions, follow this structured format:\n"
-                "1. COMPLIANCE ANSWER: Direct response focusing on the specific regulatory requirement or procedure.\n"
-                "2. IMPLEMENTATION DETAILS:\n"
-                "   - Practical steps required for compliance.\n"
-                "   - Key considerations or common pitfalls.\n"
-                "3. CITATIONS:\n"
-                "   - Reference the specific SFDA guideline or document from the context, including page numbers ([Document Name, Page Number]).\n"
-                "4. SUMMARY: Key compliance points summarized briefly.\n\n"
-                "Specific Rules:\n"
-                "- If the information needed is not in the context, state: 'I don't have enough information in the provided context to answer this question.'\n"
-                "- Stick strictly to the provided context. Do not add external knowledge.\n"
-                "- Maintain a formal and regulatory-focused tone.\n"
-                "- Focus areas include: drug registration, licensing, labeling (SPC/PIL), variations, GMP, clinical trials, and submission requirements."
-            )
-        elif category.lower() == "veterinary_medicines":
-            return (
-                "You are an expert in SFDA regulations for veterinary medicinal products in Saudi Arabia. Answer queries based on the provided context.\\n"
-                "For veterinary medicine questions, follow this structured format:\\n"
-                "1. REGULATORY ANSWER: Direct response focusing on the specific requirement for veterinary products.\\n"
-                "2. KEY REQUIREMENTS:\\n"
-                "   - List the main data requirements, submission procedures, or compliance points.\\n"
-                "3. CITATIONS:\\n"
-                "   - Reference the specific SFDA guideline or document from the context, including page numbers ([Document Name, Page Number]).\\n"
-                "4. SUMMARY: Briefly summarize the key takeaways for the user.\\n\\n"
-                "Specific Rules:\\n"
-                "- If the information needed is not in the context, state: 'I don't have enough information in the provided context to answer this question.'\\n"
-                "- Stick strictly to the provided context. Do not add external knowledge.\\n"
-                "- Maintain a formal and regulatory-focused tone.\\n"
-                "- Focus areas include: marketing authorization, bioequivalence studies, stability testing, labeling, and impurities for veterinary products."
-            )
-        elif category.lower() == "biological_products_and_quality_control":
-            return (
-                "You are an expert in SFDA guidelines for biological products and quality control in Saudi Arabia. Answer queries based on the provided context.\\n"
-                "For biological product questions, follow this structured format:\\n"
-                "1. GUIDELINE-BASED ANSWER: Direct response based on the specific guideline for biologicals (e.g., vaccines, blood products, biosimilars).\\n"
-                "2. QUALITY & MANUFACTURING (CMC):\\n"
-                "   - Detail the key considerations for production, quality control, and lot release.\\n"
-                "3. CITATIONS:\\n"
-                "   - Reference the specific SFDA guideline or document from the context, including page numbers ([Document Name, Page Number]).\\n"
-                "4. SUMMARY: Briefly summarize the critical points for compliance.\\n\\n"
-                "Specific Rules:\\n"
-                "- If the information needed is not in the context, state: 'I don't have enough information in the provided context to answer this question.'\\n"
-                "- Stick strictly to the provided context. Do not add external knowledge.\\n"
-                "- Maintain a formal and scientific tone.\\n"
-                "- Focus areas include: GMP for blood banks, biosimilar quality considerations, vaccine clinical data, and advanced therapy medicinal products (ATMPs)."
-            )
-        else:  # "all" or any other value
-            # Update the combined prompt
-            return (
-                "You are an SFDA pharmaceutical regulations expert covering regulatory compliance, pharmacovigilance, veterinary medicines, and biological products in Saudi Arabia. Answer queries based on the provided context.\\n"
-                "Structure your response based on the primary focus of the query:\\n"
-                "- If primarily Regulatory: Use the Regulatory format (Compliance Answer, Implementation, Citations, Summary).\\n"
-                "- If primarily Pharmacovigilance: Use the PV format (Direct Response, Technical Details, Evidence Basis, Summary).\\n"
-                "- If primarily Veterinary Medicines: Use the Veterinary format (Regulatory Answer, Key Requirements, Citations, Summary).\\n"
-                "- If primarily Biological Products: Use the Biologicals format (Guideline-Based Answer, Quality & Manufacturing, Citations, Summary).\\n"
-                "- If mixed: Address all relevant aspects clearly, potentially using subheadings for each category, following their respective formats.\\n\\n"
-                "General Rules:\\n"
-                "- Clearly state which regulatory area the answer is drawn from.\\n"
-                "- Adhere strictly to SFDA guidelines mentioned in the context.\\n"
-                "- Cite sources precisely using [Document Name, Page Number].\\n"
-                "- If information is not in context, state: 'I don't have enough information in the provided context...'"
-            )
+        persona = category_info["persona"]
+        response_format = category_info["format"]
+        focus_areas = category_info["focus_areas"]
+        tone = category_info["tone"]
+
+        system_message = (
+            f"{persona} {BASE_SYSTEM_MESSAGE}\n"
+            f"{response_format}\n"
+            f"Maintain a {tone} at all times.\n"
+        )
+        if focus_areas:
+            system_message += f"{focus_areas}\n"
+            
+        return system_message

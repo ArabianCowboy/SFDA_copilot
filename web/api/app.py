@@ -12,7 +12,8 @@ import re
 import sys
 from functools import wraps
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union, Tuple, cast, Sequence, Callable # Added Callable
+from logging.handlers import RotatingFileHandler # New import for logging
 
 import yaml
 from dotenv import load_dotenv
@@ -48,10 +49,22 @@ logging.info("Loaded .env from %s", DOTENV_PATH)
 # Logging Configuration
 # ──────────────────────────────────────────────────────────
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
-logging.basicConfig(
-    level=LOG_LEVEL,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-)
+
+# Configure a root logger if not already configured
+# This ensures all logs, including those from openai_app, are handled
+if not logging.getLogger().handlers:
+    logging.basicConfig(level=LOG_LEVEL,
+                        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+# Explicitly set the level for the openai_app logger to INFO
+logging.getLogger('web.services.openai_app').setLevel(logging.INFO)
+
+# Optional: Add a file handler for persistent logs
+# handler = RotatingFileHandler('app.log', maxBytes=10000, backupCount=3)
+# handler.setLevel(logging.INFO)
+# formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+# handler.setFormatter(formatter)
+# logging.getLogger().addHandler(handler)
 
 for module, default_level in [
     ("web.services.search_engine", "DEBUG"),
@@ -130,11 +143,11 @@ def _get_token_from_request() -> Optional[str]:
     return request.cookies.get("sb-access-token") or session.get("supabase_access_token")
 
 
-def _handle_unauthorized(is_page_request: bool) -> Response:
+def _handle_unauthorized(is_page_request: bool) -> Union[Response, Tuple[Response, int]]:
     """Redirect for page requests or return a JSON error for API requests."""
     clear_auth_session()
     if is_page_request:
-        return redirect(url_for("index"))
+        return cast(Response, redirect(url_for("index")))
     return jsonify({"error": "Authorization required"}), 401
 
 
@@ -226,11 +239,11 @@ def _init_extensions(app: Flask, testing: bool) -> Limiter:
     # Talisman (Security Headers)
     csp = {
         "default-src": ["'self'"],
-        "script-src": ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net"],
-        "style-src": ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net"],
+        "script-src": ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net", "https://cdn.lordicon.com", "https://cdnjs.cloudflare.com"],
+        "style-src": ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net", "https://cdnjs.cloudflare.com"],
         "img-src": ["'self'", "data:"],
         "font-src": ["'self'", "https://cdn.jsdelivr.net"],
-        "connect-src": ["'self'", "https://*.supabase.co"],
+        "connect-src": ["'self'", "https://*.supabase.co", "https://cdn.lordicon.com"],
     }
     if project_ref := os.getenv("SUPABASE_PROJECT_REF"):
         csp["connect-src"].append(f"wss://{project_ref}.supabase.co")
@@ -239,7 +252,7 @@ def _init_extensions(app: Flask, testing: bool) -> Limiter:
 
     # Rate Limiter
     rate_limit_config = config.get("server", "rate_limit", {})
-    default_limits = [
+    default_limits: List[Union[str, Callable[[], str]]] = [
         f"{rate_limit_config.get('per_day', 200)} per day",
         f"{rate_limit_config.get('per_hour', 50)} per hour",
         f"{rate_limit_config.get('per_minute', 10)} per minute",
@@ -305,7 +318,7 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
     @app.route("/api/chat", methods=["POST"])
     @auth_required
     @limiter.limit(lambda: config.get("server", "rate_limit", {}).get("chat_api", "10 per minute"))
-    def handle_chat() -> Response:
+    def handle_chat() -> Union[Response, Tuple[Response, int]]:
         try:
             payload = request.get_json(force=True)
             query = payload.get("query", "").strip()
@@ -327,12 +340,12 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
 
             openai_handler: OpenAIHandler = current_app.config["openai_handler"]
             chat_history = session.get("chat_history", [])
-            answer = openai_handler.generate_response(query, llm_context, category, chat_history)
+            answer, suggested_questions = openai_handler.generate_response(query, llm_context, category, chat_history)
 
             chat_history.extend([{"role": "user", "content": query}, {"role": "assistant", "content": answer}])
             session["chat_history"] = _truncate_chat_history(chat_history, current_app.config["MAX_CHAT_HISTORY_MESSAGE_PAIRS"], MAX_SESSION_CHAT_HISTORY_CHARS)
             
-            return jsonify(response=answer)
+            return jsonify(response=answer, suggested_questions=suggested_questions)
 
         except Exception as exception:
             logging.error("Unhandled error in /api/chat: %s", exception, exc_info=True)
