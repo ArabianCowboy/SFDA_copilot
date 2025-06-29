@@ -208,6 +208,50 @@
         </div>
     </div>
 
+    <!-- ‑‑ PROFILE MODAL ‑‑ -->
+    <div class="modal fade" id="profileModal" tabindex="-1" aria-labelledby="profileModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header text-white">
+                    <h2 class="modal-title h5" id="profileModalLabel">Edit Your Profile</h2>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <form id="profile-form" novalidate>
+                        <div class="form-floating mb-3">
+                            <input type="text" class="form-control" id="profile-full-name" name="full_name" placeholder=" ">
+                            <label for="profile-full-name"><i class="bi bi-person me-2"></i>Full Name</label>
+                        </div>
+                        <div class="form-floating mb-3">
+                            <input type="text" class="form-control" id="profile-organization" name="organization" placeholder=" ">
+                            <label for="profile-organization"><i class="bi bi-building me-2"></i>Organization</label>
+                        </div>
+                        <div class="form-floating mb-3">
+                            <input type="text" class="form-control" id="profile-specialization" name="specialization" placeholder=" ">
+                            <label for="profile-specialization"><i class="bi bi-briefcase me-2"></i>Specialization</label>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label"><i class="bi bi-palette me-2"></i>Theme Preference</label>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="theme-preference" id="theme-light" value="light">
+                                <label class="form-check-label" for="theme-light">Light</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="theme-preference" id="theme-dark" value="dark">
+                                <label class="form-check-label" for="theme-dark">Dark</label>
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-primary w-100 btn-lg py-2 fw-bold">
+                            <span class="spinner-border spinner-border-sm d-none me-2" role="status" aria-hidden="true"></span>
+                            Save Changes
+                        </button>
+                    </form>
+                    <div id="profile-error" class="alert alert-danger mt-3 d-none" role="alert"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Unauthenticated View -->
     <main id="unauthenticated-view" class="container-fluid flex-grow-1">
         <div class="landing-header-utility">
@@ -327,6 +371,7 @@
                         <span id="user-status" class="small">Checking status...</span>
                         <button id="auth-button" class="btn btn-sm btn-primary ms-2" type="button">Login / Signup</button>
                         <button id="logout-button" class="btn btn-sm btn-outline-warning ms-2 d-none" type="button">Logout</button>
+                        <button id="profile-button" class="btn btn-sm btn-outline-info ms-2 d-none" type="button" data-bs-toggle="modal" data-bs-target="#profileModal"><i class="bi bi-person-circle"></i> Profile</button>
                     </div>
                 </header>
                 <div class="faq-section" id="faq-sidebar-section">
@@ -361,6 +406,7 @@
                             <span id="user-status-offcanvas" class="small">Checking status...</span>
                             <button id="auth-button-offcanvas" class="btn btn-sm btn-primary ms-2" type="button">Login / Signup</button>
                             <button id="logout-button-offcanvas" class="btn btn-sm btn-outline-warning ms-2 d-none" type="button">Logout</button>
+                            <button id="profile-button-offcanvas" class="btn btn-sm btn-outline-info ms-2 d-none" type="button" data-bs-toggle="modal" data-bs-target="#profileModal"><i class="bi bi-person-circle"></i> Profile</button>
                         </div>
                     </div>
                     <div class="faq-section" id="faq-offcanvas-section">

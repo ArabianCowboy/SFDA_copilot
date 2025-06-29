@@ -247,7 +247,11 @@ def _init_extensions(app: Flask, testing: bool) -> Limiter:
     }
     if project_ref := os.getenv("SUPABASE_PROJECT_REF"):
         csp["connect-src"].append(f"wss://{project_ref}.supabase.co")
-    Talisman(app, force_https=not testing, content_security_policy=csp)
+    Talisman(
+        app,
+        force_https=not (is_debug_mode or testing), # Disable HTTPS in debug or testing
+        content_security_policy=csp
+    )
     logging.info("Talisman initialized. force_https=%s", not testing)
 
     # Rate Limiter

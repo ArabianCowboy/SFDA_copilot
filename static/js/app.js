@@ -29,6 +29,9 @@ const App = (() => {
         isRequestInProgress: false,
         originalSendButtonText: 'Send',
         authModal: null,
+        profileModal: null,
+        userProfile: null,
+        eventListenersBound: false,
     };
 
     /* 2. UTILITY & HELPER FUNCTIONS -------------------- */
@@ -101,6 +104,11 @@ const App = (() => {
                 toastElem: '#toast',
                 // FAQ
                 faqSidebarSection: '#faq-sidebar-section',
+                // Profile
+                profileButton: '#profile-button',
+                profileButtonOffcanvas: '#profile-button-offcanvas',
+                profileForm: '#profile-form',
+                profileErrorDiv: '#profile-error',
             };
             for (const key in selectors) {
                 DOMElements[key] = document.querySelector(selectors[key]);
@@ -260,6 +268,9 @@ const App = (() => {
             [DOMElements.logoutButton, DOMElements.logoutButtonOffcanvas].forEach(button => {
                 button?.classList.toggle(CONFIG.CSS_CLASSES.D_NONE, !isLoggedIn);
             });
+            [DOMElements.profileButton, DOMElements.profileButtonOffcanvas].forEach(button => {
+                button?.classList.toggle(CONFIG.CSS_CLASSES.D_NONE, !isLoggedIn);
+            });
         },
 
         displayAuthError(message) {
@@ -276,6 +287,30 @@ const App = (() => {
             [DOMElements.loginForm, DOMElements.signupForm].forEach(form => {
                 form?.querySelectorAll(`.${CONFIG.CSS_CLASSES.INVALID}`).forEach(input => input.classList.remove(CONFIG.CSS_CLASSES.INVALID));
             });
+        },
+
+        displayProfileError(message) {
+            if (!DOMElements.profileErrorDiv) return;
+            DOMElements.profileErrorDiv.textContent = message;
+            DOMElements.profileErrorDiv.classList.remove(CONFIG.CSS_CLASSES.D_NONE);
+        },
+
+        clearProfileError() {
+            if (DOMElements.profileErrorDiv) {
+                DOMElements.profileErrorDiv.classList.add(CONFIG.CSS_CLASSES.D_NONE);
+                DOMElements.profileErrorDiv.textContent = '';
+            }
+        },
+
+        populateProfileForm(profile) {
+            if (!profile || !DOMElements.profileForm) return;
+            DOMElements.profileForm.querySelector('#profile-full-name').value = profile.full_name || '';
+            DOMElements.profileForm.querySelector('#profile-organization').value = profile.organization || '';
+            DOMElements.profileForm.querySelector('#profile-specialization').value = profile.specialization || '';
+            
+            const themePreference = profile.preferences?.theme || 'light';
+            const themeRadio = DOMElements.profileForm.querySelector(`input[name="theme-preference"][value="${themePreference}"]`);
+            if (themeRadio) themeRadio.checked = true;
         },
 
         setSendingState(isSending) {
@@ -332,36 +367,50 @@ const App = (() => {
         },
 
         renderFaqButtons(faqData) {
-            const { faqSidebarSection } = DOMElements;
-            if (!faqSidebarSection) return;
+            // Get both FAQ sections (desktop and mobile offcanvas)
+            const faqSections = [
+                document.querySelector('#faq-sidebar-section'),
+                document.querySelector('#faq-offcanvas-section')
+            ].filter(Boolean); // Remove any null elements
+            
+            if (faqSections.length === 0) return;
 
-            faqSidebarSection.innerHTML = '';
-            const fragment = document.createDocumentFragment();
+            // Create FAQ content once and clone it for each section
+            const createFaqContent = () => {
+                const fragment = document.createDocumentFragment();
 
-            Object.entries(faqData).forEach(([category, data]) => {
-                if (!data.questions?.length) return;
+                Object.entries(faqData).forEach(([category, data]) => {
+                    if (!data.questions?.length) return;
 
-                const header = document.createElement('h4');
-                header.className = 'ps-2 mt-3';
-                header.innerHTML = `<i class="bi ${data.icon || 'bi-question-circle'}"></i>${data.title || category}`;
-                
-                const nav = document.createElement('nav');
-                nav.className = 'nav nav-pills flex-column';
-                
-                data.questions.forEach(({ short, text }) => {
-                    const button = document.createElement('button');
-                    button.className = 'nav-link faq-button';
-                    Object.assign(button.dataset, { category, question: text });
-                    button.textContent = short;
-                    nav.appendChild(button);
+                    const header = document.createElement('h4');
+                    header.className = 'ps-2 mt-3';
+                    header.innerHTML = `<i class="bi ${data.icon || 'bi-question-circle'}"></i>${data.title || category}`;
+                    
+                    const nav = document.createElement('nav');
+                    nav.className = 'nav nav-pills flex-column';
+                    
+                    data.questions.forEach(({ short, text }) => {
+                        const button = document.createElement('button');
+                        button.className = 'nav-link faq-button';
+                        Object.assign(button.dataset, { category, question: text });
+                        button.textContent = short;
+                        nav.appendChild(button);
+                    });
+
+                    fragment.appendChild(header);
+                    fragment.appendChild(nav);
                 });
 
-                fragment.appendChild(header);
-                fragment.appendChild(nav);
+                return fragment;
+            };
+
+            // Populate both FAQ sections
+            faqSections.forEach((section, index) => {
+                section.innerHTML = '';
+                const faqContent = createFaqContent();
+                section.appendChild(faqContent);
+                section.querySelector('h4:first-of-type')?.classList.remove('mt-3');
             });
-            
-            faqSidebarSection.appendChild(fragment);
-            faqSidebarSection.querySelector('h4:first-of-type')?.classList.remove('mt-3');
         },
     };
 
@@ -484,11 +533,61 @@ const App = (() => {
         },
 
         async logout() {
-            const { error } = await state.supabase.auth.signOut();
-            if (error) {
-                UI.showToast(`Logout failed: ${error.message}`, true);
+            // Check for testing mode
+            const isTestingMode = window.location.search.includes('testing=true');
+            if (isTestingMode) {
+                // In testing mode, just update the UI directly
+                UI.updateAuthUI(null);
+                UI.showToast('Logged out successfully (testing mode)');
+                return;
             }
-            // onAuthStateChange will handle the UI update.
+
+            if (!state.supabase) {
+                UI.showToast('Authentication service not available', true);
+                return;
+            }
+
+            try {
+                const { error } = await state.supabase.auth.signOut();
+                if (error) {
+                    UI.showToast(`Logout failed: ${error.message}`, true);
+                } else {
+                    UI.showToast('Logged out successfully');
+                }
+                // onAuthStateChange will handle the UI update.
+            } catch (error) {
+                console.error('Logout error:', error);
+                UI.showToast('Logout failed due to an unexpected error', true);
+            }
+        },
+
+        async getProfile(userId) {
+            const { data, error } = await state.supabase
+                .from('profiles')
+                .select(`*`)
+                .eq('id', userId)
+                .single();
+
+            if (error && error.code !== 'PGRST116') { // Ignore 'PGRST116' (no rows found)
+                console.error('Error fetching profile:', error);
+                UI.showToast('Could not load your profile.', true);
+                return null;
+            }
+            return data;
+        },
+
+        async updateProfile(userId, updates) {
+            const { error } = await state.supabase
+                .from('profiles')
+                .update(updates)
+                .eq('id', userId);
+            
+            if (error) {
+                console.error('Error updating profile:', error);
+                UI.displayProfileError(`Failed to save: ${error.message}`);
+                return false;
+            }
+            return true;
         },
     };
 
@@ -569,10 +668,85 @@ const App = (() => {
             // Optionally disable all suggested buttons after one is clicked
             document.querySelectorAll('.suggested-question-enhanced').forEach(btn => btn.disabled = true);
         },
+
+        async handleProfileFormSubmit(event) {
+            event.preventDefault();
+            console.log('[1/5] Profile form submission started.');
+            try {
+                UI.clearProfileError();
+
+                console.log('[2/5] Fetching user session...');
+                const sessionResponse = await state.supabase.auth.getSession();
+                console.log('[3/5] Session response received:', sessionResponse);
+
+                const user = sessionResponse?.data?.session?.user;
+                if (!user) {
+                    console.error('User not found for profile update. Session might be invalid.');
+                    return UI.displayProfileError('Your session seems to have expired. Please log out and log in again.');
+                }
+                console.log('[4/5] User identified:', user.id);
+
+                const formData = new FormData(event.target);
+                const updates = {
+                    full_name: formData.get('full_name'),
+                    organization: formData.get('organization'),
+                    specialization: formData.get('specialization'),
+                    preferences: {
+                        theme: formData.get('theme-preference'),
+                    },
+                    updated_at: new Date(),
+                };
+
+                console.log('[5/5] Attempting to save updates:', updates);
+                const success = await Services.updateProfile(user.id, updates);
+
+                if (success) {
+                    state.userProfile = { ...state.userProfile, ...updates };
+                    UI.setTheme(updates.preferences.theme);
+                    UI.showToast('Profile saved successfully!');
+                    state.profileModal?.hide();
+                }
+            } catch (error) {
+                console.error('An unexpected error occurred in handleProfileFormSubmit:', error);
+                UI.displayProfileError('A critical error occurred. Please check the console.');
+            }
+        },
+
+        async handleProfileButtonClick() {
+            UI.clearProfileError();
+            const { data: { session } } = await state.supabase.auth.getSession();
+            const user = session?.user;
+            if (!user) return;
+        
+            if (state.userProfile) {
+                UI.populateProfileForm(state.userProfile);
+            } else {
+                // If profile hasn't been fetched yet, get it now.
+                const profile = await Services.getProfile(user.id);
+                if (profile) {
+                    state.userProfile = profile;
+                    UI.populateProfileForm(profile);
+                } else {
+                    UI.displayProfileError('Could not load your profile data.');
+                }
+            }
+        },
+
+        handleLogout(event) {
+            event.preventDefault();
+            console.log('Logout initiated...');
+            Services.logout();
+        },
     };
 
     /* 7. EVENT BINDING -------------------- */
     function bindEventListeners() {
+        // Prevent duplicate binding
+        if (state.eventListenersBound) {
+            console.log('Event listeners already bound, skipping...');
+            return;
+        }
+
         // Auth forms
         DOMElements.loginForm?.addEventListener('submit', Handlers.handleAuthFormSubmit);
         DOMElements.signupForm?.addEventListener('submit', Handlers.handleAuthFormSubmit);
@@ -586,17 +760,34 @@ const App = (() => {
             }
         });
 
-        // FAQ (Event Delegation)
-        DOMElements.faqSidebarSection?.addEventListener('click', (e) => Handlers.handleFaqClick(e));
+        // Profile
+        DOMElements.profileForm?.addEventListener('submit', (e) => Handlers.handleProfileFormSubmit(e));
+        [DOMElements.profileButton, DOMElements.profileButtonOffcanvas].forEach(btn =>
+            btn?.addEventListener('click', () => Handlers.handleProfileButtonClick())
+        );
+
+        // FAQ (Event Delegation) - Handle both desktop and mobile FAQ sections
+        const faqSections = [
+            document.querySelector('#faq-sidebar-section'),
+            document.querySelector('#faq-offcanvas-section')
+        ].filter(Boolean);
+        
+        faqSections.forEach(section => {
+            section?.addEventListener('click', (e) => Handlers.handleFaqClick(e));
+        });
 
         // Suggested Questions (Event Delegation)
         DOMElements.messagesContainer?.addEventListener('click', (e) => Handlers.handleSuggestedQuestionClick(e));
 
         // Shared controls
-        [DOMElements.logoutButton, DOMElements.logoutButtonOffcanvas].forEach(btn => btn?.addEventListener('click', () => Services.logout()));
+        [DOMElements.logoutButton, DOMElements.logoutButtonOffcanvas].forEach(btn => btn?.addEventListener('click', (e) => Handlers.handleLogout(e)));
         [DOMElements.authButton, DOMElements.authButtonOffcanvas, DOMElements.authButtonMain].forEach(btn => btn?.addEventListener('click', () => {
             state.authModal?.show();
         }));
+
+        // Mark event listeners as bound
+        state.eventListenersBound = true;
+        console.log('Event listeners bound successfully');
     }
 
     /* 8. INITIALIZATION -------------------- */
@@ -614,6 +805,15 @@ const App = (() => {
             const faqData = await Services.getFaqData();
             if (faqData) {
                 UI.renderFaqButtons(faqData);
+            } else {
+                const faqSections = [
+                    document.querySelector('#faq-sidebar-section'),
+                    document.querySelector('#faq-offcanvas-section')
+                ].filter(Boolean);
+                
+                faqSections.forEach(section => {
+                    section.innerHTML = '<div class="text-secondary small text-center py-3">No FAQs available.</div>';
+                });
             }
             bindEventListeners();
             return;
@@ -632,6 +832,11 @@ const App = (() => {
                 state.authModal = new bootstrap.Modal(authModalEl);
             }
 
+            const profileModalEl = document.getElementById('profileModal');
+            if (profileModalEl) {
+                state.profileModal = new bootstrap.Modal(profileModalEl);
+            }
+
             if (DOMElements.sendButton) {
                 state.originalSendButtonText = DOMElements.sendButton.textContent.trim() || 'Send';
             }
@@ -640,6 +845,7 @@ const App = (() => {
             return UI.showToast("Failed to initialize core application services.", true);
         }
 
+        // Bind event listeners once
         bindEventListeners();
 
         // Central Authentication Handler
@@ -649,13 +855,32 @@ const App = (() => {
 
             if (user) {
                 // User is logged in, initialize the authenticated experience
-                const faqData = await Services.getFaqData();
+                const [faqData, profileData] = await Promise.all([
+                    Services.getFaqData(),
+                    Services.getProfile(user.id)
+                ]);
+
+                if (profileData) {
+                   state.userProfile = profileData;
+                   // Apply theme preference on login
+                   UI.setTheme(profileData.preferences?.theme || 'light');
+                }
+
                 if (faqData) {
                     UI.renderFaqButtons(faqData);
                 } else {
-                    DOMElements.faqSidebarSection.innerHTML = '<div class="text-secondary small text-center py-3">No FAQs available.</div>';
+                    const faqSections = [
+                        document.querySelector('#faq-sidebar-section'),
+                        document.querySelector('#faq-offcanvas-section')
+                    ].filter(Boolean);
+                    
+                    faqSections.forEach(section => {
+                        section.innerHTML = '<div class="text-secondary small text-center py-3">No FAQs available.</div>';
+                    });
                 }
-            }
+           } else {
+               state.userProfile = null;
+           }
             // If not logged in, the UI is already correctly set by updateAuthUI
         });
     }
