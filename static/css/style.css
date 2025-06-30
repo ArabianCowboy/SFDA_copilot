@@ -311,7 +311,7 @@ h6 {
   gap: 10px;
 }
 
-.faq-section .nav-link {
+.faq-section .nav-link.faq-button {
   padding: 8px 12px;
   margin-bottom: 5px;
   border: 1px solid var(--border-color-medium);
@@ -329,15 +329,15 @@ h6 {
   will-change: transform, opacity, background-color;
 }
 
-.faq-section .nav-link:hover,
-.faq-section .nav-link:focus {
+.faq-section .nav-link.faq-button:hover,
+.faq-section .nav-link.faq-button:focus {
   background-color: var(--background-light-alt);
   box-shadow: var(--shadow-lg);
   transform: perspective(1000px) rotateX(5deg) rotateY(-5deg) scale(1.05);
   cursor: pointer;
 }
 
-.faq-section .nav-link.active {
+.faq-section .nav-link.faq-button.active {
   border: 1px solid var(--accent-color);
   font-weight: 600;
   color: var(--text-color-dark);

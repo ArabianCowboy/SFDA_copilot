@@ -578,8 +578,17 @@ const App = (() => {
                     UI.showToast(`Logout failed: ${error.message}`, true);
                 } else {
                     UI.showToast('Logged out successfully');
+                    // Explicitly clear local storage and redirect for a clean state
+                    localStorage.removeItem('sb-access-token');
+                    localStorage.removeItem('sb-refresh-token');
+                    localStorage.removeItem('sb-user');
+                    localStorage.removeItem('sb-session');
+                    // Redirect to login page or home if not already there
+                    if (window.location.pathname !== '/') { // Assuming '/' is the unauthenticated view
+                        window.location.href = '/';
+                    }
                 }
-                // onAuthStateChange will handle the UI update.
+                // onAuthStateChange will handle the UI update, but we ensure a full cleanup here.
             } catch (error) {
                 console.error('Logout error:', error);
                 UI.showToast('Logout failed due to an unexpected error', true);
@@ -589,7 +598,7 @@ const App = (() => {
         async getProfile(userId) {
             const { data, error } = await state.supabase
                 .from('profiles')
-                .select(`*`)
+                .select(`id, full_name, organization, specialization, preferences`) // Explicitly select necessary columns
                 .eq('id', userId)
                 .single();
 
@@ -939,7 +948,8 @@ const App = (() => {
 
                 // Load profile data asynchronously with timeout (non-blocking)
                 console.log('[onAuthStateChange] Starting profile load asynchronously...');
-                loadProfileWithTimeout(user.id, 10000)
+                // TODO: Implement UI.showLoadingSpinner() here
+                loadProfileWithTimeout(user.id) // Using default timeout and retries
                     .then(profileData => {
                         if (profileData) {
                             console.log('[onAuthStateChange] Profile data loaded successfully:', profileData);
@@ -948,13 +958,16 @@ const App = (() => {
                             UI.setTheme(profileData.preferences?.theme || 'light');
                             console.log(`[onAuthStateChange] Profile loaded, theme set to: ${profileData.preferences?.theme || 'light'}`);
                         } else {
-                            console.warn('[onAuthStateChange] No profile data found for user.');
+                            console.warn('[onAuthStateChange] No profile data found for user or all retries failed.');
                         }
                     })
                     .catch(error => {
-                        console.warn('[onAuthStateChange] Profile loading failed or timed out:', error);
+                        console.warn('[onAuthStateChange] Profile loading failed or timed out after all retries:', error);
                         console.log('[onAuthStateChange] Continuing with default profile settings...');
                         // Application continues to work without profile data
+                    })
+                    .finally(() => {
+                        // TODO: Implement UI.hideLoadingSpinner() here
                     });
 
             } else {
@@ -974,27 +987,36 @@ const App = (() => {
     }
 
     // Add this new function to handle profile loading with timeout
-    async function loadProfileWithTimeout(userId, timeoutMs = 10000) {
-        console.log(`[ProfileTimeout] Starting profile load for user: ${userId}`);
+    async function loadProfileWithTimeout(userId, timeoutMs = 15000, retries = 3, delay = 1000) { // Increased timeout to 15s, added retry parameters
+        console.log(`[ProfileTimeout] Starting profile load for user: ${userId} with timeout ${timeoutMs}ms`);
         
-        const timeoutPromise = new Promise((_, reject) => {
-            setTimeout(() => {
-                console.error(`[ProfileTimeout] Profile loading timed out after ${timeoutMs}ms`);
-                reject(new Error(`Profile load timeout after ${timeoutMs}ms`));
-            }, timeoutMs);
-        });
-        
-        try {
-            const result = await Promise.race([
-                Services.getProfile(userId),
-                timeoutPromise
-            ]);
-            console.log('[ProfileTimeout] Profile loaded successfully within timeout');
-            return result;
-        } catch (error) {
-            console.error('[ProfileTimeout] Profile loading failed:', error);
-            throw error;
+        for (let i = 0; i < retries; i++) {
+            const timeoutPromise = new Promise((_, reject) => {
+                setTimeout(() => {
+                    console.error(`[ProfileTimeout] Profile loading timed out after ${timeoutMs}ms (Attempt ${i + 1}/${retries})`);
+                    reject(new Error(`Profile load timeout after ${timeoutMs}ms`));
+                }, timeoutMs);
+            });
+            
+            try {
+                const result = await Promise.race([
+                    Services.getProfile(userId),
+                    timeoutPromise
+                ]);
+                console.log(`[ProfileTimeout] Profile loaded successfully within timeout (Attempt ${i + 1}/${retries})`);
+                return result;
+            } catch (error) {
+                console.error(`[ProfileTimeout] Profile loading failed for user ${userId} (Attempt ${i + 1}/${retries}):`, error);
+                if (i < retries - 1) {
+                    console.warn(`[ProfileTimeout] Retrying profile load in ${delay / 1000} seconds...`);
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    delay *= 2; // Exponential backoff
+                } else {
+                    throw error; // Re-throw error if all retries fail
+                }
+            }
         }
+        return null; // Should not be reached if retries are handled or error is thrown
     }
 
     return { init };
