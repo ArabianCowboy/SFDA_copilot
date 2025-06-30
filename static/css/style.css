@@ -97,6 +97,16 @@
   --black-20: rgba(0 0 0 / 0.20);
   --black-25: rgba(0 0 0 / 0.25);
   --black-40: rgba(0 0 0 / 0.40);
+  /* Glassmorphism Enhancement Variables */
+  --glass-bg-light: rgba(255, 255, 255, 0.25);
+  --glass-bg-dark: rgba(15, 23, 30, 0.4);
+  --glass-border-light: rgba(255, 255, 255, 0.18);
+  --glass-border-dark: rgba(255, 255, 255, 0.125);
+  --glass-backdrop: blur(12px) saturate(150%);
+  --shadow-glass-base: 0 8px 32px rgba(31, 38, 135, 0.37);
+  --shadow-glass-hover: 0 16px 64px rgba(31, 38, 135, 0.45);
+  --shadow-brand-accent: 0 4px 24px rgba(137, 168, 178, 0.3);
+  --shadow-brand-glow: 0 0 20px rgba(137, 168, 178, 0.15);
 }
 
 /* ---------------------------------------------------------
@@ -137,6 +147,15 @@
 
   /* Icons */
   --input-select-arrow-icon: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23ffffff' stroke-linecap='round' stroke-width='2' d='m2 5 6 6 6-6'/%3e%3csvg%3e");
+  /* Glassmorphism Overrides */
+  --glass-bg-light: rgba(255, 255, 255, 0.08);
+  --glass-bg-dark: rgba(15, 23, 30, 0.6);
+  --glass-border-light: rgba(255, 255, 255, 0.05);
+  --glass-border-dark: rgba(255, 255, 255, 0.08);
+  --shadow-glass-base: 0 8px 32px rgba(0, 0, 0, 0.4);
+  --shadow-glass-hover: 0 16px 64px rgba(0, 0, 0, 0.55);
+  --shadow-brand-accent: 0 4px 24px rgba(43, 122, 120, 0.3);
+  --shadow-brand-glow: 0 0 20px rgba(43, 122, 120, 0.15);
 }
 
 /* ---------------------------------------------------------
@@ -849,34 +868,227 @@ h6 {
 
 /* Why Use Our Platform? Section */
 .why-use-platform-section .feature-card {
-  border: 1px solid var(--border-color-light);
-  background-color: var(--background-light);
-  /* Transitions handled by Anime.js */
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--glass-border-light);
+  border-radius: var(--radius-md);
+  background-color: var(--glass-bg-light);
+  box-shadow: var(--shadow-glass-base);
+  backdrop-filter: var(--glass-backdrop);
+  -webkit-backdrop-filter: var(--glass-backdrop);
+  transform: translateZ(0); /* Hardware acceleration */
+  will-change: transform, box-shadow, background-color, border-color;
+  transition: transform var(--duration-m) ease-out,
+              box-shadow var(--duration-m) ease-out,
+              background-color var(--duration-m) ease-out,
+              border-color var(--duration-m) ease-out;
 }
 
-.animate-card {
+.why-use-platform-section .feature-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  border-radius: var(--radius-md);
+  background: radial-gradient(circle at top left, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0) 70%);
   opacity: 0;
-  transform: translateY(20px);
+  transition: opacity var(--duration-m) ease-out;
+  pointer-events: none;
+}
+
+.why-use-platform-section .feature-card:hover {
+  transform: scale(1.05) rotateZ(1deg);
+  box-shadow: var(--shadow-glass-hover), var(--shadow-brand-accent);
+  border-color: var(--primary-color);
+  background-color: var(--glass-bg-light); /* Ensure consistent glass effect on hover */
+}
+
+.why-use-platform-section .feature-card:hover::before {
+  opacity: 1;
+}
+
+.why-use-platform-section .feature-card:active {
+  transform: scale(1.02);
+  box-shadow: var(--shadow-glass-base);
 }
 
 .why-use-platform-section .feature-icon-wrapper {
-  width: 60px;
-  height: 60px;
-  border: 1px solid var(--border-color-medium);
-  background-color: var(--background-light-alt);
+  position: relative;
+  z-index: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 70px;
+  height: 70px;
+  margin-bottom: 1rem;
+  border: 1px solid var(--glass-border-light);
+  border-radius: 50%;
+  background-color: var(--glass-bg-light);
+  box-shadow: var(--shadow-glass-base);
+  backdrop-filter: var(--glass-backdrop);
+  -webkit-backdrop-filter: var(--glass-backdrop);
+  transform: translateZ(0); /* Hardware acceleration */
+  will-change: transform, box-shadow, background-color, border-color;
+  transition: transform var(--duration-m) ease-out,
+              box-shadow var(--duration-m) ease-out,
+              background-color var(--duration-m) ease-out,
+              border-color var(--duration-m) ease-out;
+}
+
+.why-use-platform-section .feature-card:hover .feature-icon-wrapper {
+  transform: scale(1.1) rotateZ(-2deg);
+  box-shadow: var(--shadow-glass-hover), var(--shadow-brand-glow);
+  border-color: var(--accent-color);
+  background-color: var(--glass-bg-light); /* Ensure consistent glass effect on hover */
 }
 
 .why-use-platform-section .feature-icon {
-  font-size: 2.2rem;
+  font-size: 2.5rem;
   color: var(--primary-color);
+  transition: color var(--duration-m) ease-out;
+}
+
+.why-use-platform-section .feature-card:hover .feature-icon {
+  color: var(--accent-color);
 }
 
 .why-use-platform-section h3 {
   color: var(--text-color-dark);
+  transition: color var(--duration-m) ease-out;
+}
+
+.why-use-platform-section .feature-card:hover h3 {
+  color: var(--primary-color);
 }
 
 .why-use-platform-section p {
   color: var(--text-color-dark-muted);
+  transition: color var(--duration-m) ease-out;
+}
+
+.why-use-platform-section .feature-card:hover p {
+  color: var(--text-color-dark);
+}
+
+/* Dark theme specific adjustments for feature cards */
+[data-bs-theme="dark"] .why-use-platform-section .feature-card {
+  border: 1px solid var(--glass-border-dark);
+  background-color: var(--glass-bg-dark);
+  box-shadow: var(--shadow-glass-base);
+}
+
+[data-bs-theme="dark"] .why-use-platform-section .feature-card:hover {
+  border-color: var(--primary-color);
+  background-color: var(--glass-bg-dark);
+}
+
+[data-bs-theme="dark"] .why-use-platform-section .feature-icon-wrapper {
+  border: 1px solid var(--glass-border-dark);
+  background-color: var(--glass-bg-dark);
+}
+
+[data-bs-theme="dark"] .why-use-platform-section .feature-card:hover .feature-icon-wrapper {
+  border-color: var(--accent-color);
+  background-color: var(--glass-bg-dark);
+}
+
+/* Responsive Adaptations */
+@media (max-width: 768px) { /* Mobile */
+  .why-use-platform-section .feature-card,
+  .why-use-platform-section .feature-icon-wrapper {
+    backdrop-filter: blur(6px) saturate(120%);
+    -webkit-backdrop-filter: blur(6px) saturate(120%);
+    box-shadow: 0 4px 16px rgba(31, 38, 135, 0.2);
+  }
+
+  .why-use-platform-section .feature-card:hover {
+    transform: scale(1.02);
+    box-shadow: 0 8px 32px rgba(31, 38, 135, 0.3);
+  }
+
+  .why-use-platform-section .feature-card:hover .feature-icon-wrapper {
+    transform: scale(1.05);
+  }
+}
+
+@media (min-width: 769px) and (max-width: 1024px) { /* Tablet */
+  .why-use-platform-section .feature-card,
+  .why-use-platform-section .feature-icon-wrapper {
+    backdrop-filter: blur(9px) saturate(135%);
+    -webkit-backdrop-filter: blur(9px) saturate(135%);
+    box-shadow: 0 6px 24px rgba(31, 38, 135, 0.3);
+  }
+
+  .why-use-platform-section .feature-card:hover {
+    transform: scale(1.03) rotateZ(0.5deg);
+    box-shadow: 0 12px 48px rgba(31, 38, 135, 0.4);
+  }
+
+  .why-use-platform-section .feature-card:hover .feature-icon-wrapper {
+    transform: scale(1.08) rotateZ(-1deg);
+  }
+}
+
+/* Accessibility Enhancements */
+@media (prefers-contrast: high) {
+  .why-use-platform-section .feature-card {
+    border: 2px solid var(--primary-color);
+    background-color: var(--background-light);
+    box-shadow: 0 0 0 3px var(--primary-color);
+  }
+
+  [data-bs-theme="dark"] .why-use-platform-section .feature-card {
+    border: 2px solid var(--primary-color);
+    background-color: var(--background-dark-accent);
+    box-shadow: 0 0 0 3px var(--primary-color);
+  }
+
+  .why-use-platform-section .feature-card:hover {
+    box-shadow: 0 0 0 4px var(--accent-color);
+  }
+
+  .why-use-platform-section .feature-icon-wrapper {
+    border: 2px solid var(--primary-color);
+    background-color: var(--background-light-alt);
+    box-shadow: 0 0 0 2px var(--primary-color);
+  }
+
+  [data-bs-theme="dark"] .why-use-platform-section .feature-icon-wrapper {
+    border: 2px solid var(--primary-color);
+    background-color: var(--background-dark-accent-strong);
+    box-shadow: 0 0 0 2px var(--primary-color);
+  }
+
+  .why-use-platform-section .feature-card:hover .feature-icon-wrapper {
+    box-shadow: 0 0 0 3px var(--accent-color);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .why-use-platform-section .feature-card,
+  .why-use-platform-section .feature-card::before,
+  .why-use-platform-section .feature-icon-wrapper,
+  .why-use-platform-section .feature-icon,
+  .why-use-platform-section h3,
+  .why-use-platform-section p {
+    transition: none !important;
+    animation: none !important;
+    transform: none !important;
+    will-change: auto !important;
+  }
+
+  .why-use-platform-section .feature-card:hover,
+  .why-use-platform-section .feature-card:active {
+    transform: none;
+    box-shadow: var(--shadow-glass-base);
+  }
+
+  .why-use-platform-section .feature-card:hover .feature-icon-wrapper {
+    transform: none;
+    box-shadow: var(--shadow-glass-base);
+  }
 }
 
 /* ---------------------------------------------------------
@@ -930,105 +1142,159 @@ h6 {
 }
 
 /* ---------------------------------------------------------
-   14 ▸ Landing Page Toggle
+   14 ▸ Base Theme Switch Component
    --------------------------------------------------------- */
-.theme-switch-landing {
+.theme-switch-base {
   position: relative;
   display: inline-block;
-  width: 3.5em;
-  height: 1.5em;
 }
 
-.theme-switch-checkbox {
+.theme-switch-base .theme-switch-checkbox {
   display: none;
 }
 
-.theme-switch-label {
+.theme-switch-base .theme-switch-label {
   position: absolute;
   top: 0;
   left: 0;
   width: 100%;
   height: 100%;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-md); /* Common radius */
   background: linear-gradient(90deg, var(--primary-color) 0%, var(--accent-color) 100%);
   transition: background var(--duration-m) ease;
   cursor: pointer;
+  display: flex; /* For icon alignment */
+  align-items: center;
+  justify-content: space-between; /* For icon spacing */
+  padding: 2px; /* For icon spacing */
 }
 
-[data-bs-theme="dark"] .theme-switch-label {
+[data-bs-theme="dark"] .theme-switch-base .theme-switch-label {
   background: linear-gradient(90deg, var(--accent-color-hover) 0%, var(--primary-color) 100%);
 }
 
-.theme-switch-label .sun-icon,
-.theme-switch-label .moon-icon {
+.theme-switch-base .sun-icon,
+.theme-switch-base .moon-icon {
   position: absolute;
   top: 50%;
-  font-size: 0.8em;
-  color: var(--text-color-dark);
   transform: translateY(-50%);
+  font-size: 0.8em; /* Common font size, can be overridden */
+  color: var(--text-color-dark); /* Common color */
   transition: opacity var(--duration-m) ease;
 }
 
-.theme-switch-label .sun-icon {
-  left: 0.4em;
-  opacity: 1;
+.theme-switch-base .sun-icon {
+  left: 0.05em; /* Safe zone - outside ball path */
+  opacity: 0; /* Default hidden in light mode */
 }
 
-[data-bs-theme="dark"] .theme-switch-label .sun-icon {
-  opacity: 0;
+[data-bs-theme="dark"] .theme-switch-base .sun-icon {
+  opacity: 1; /* Visible in dark mode */
 }
 
-.theme-switch-label .moon-icon {
-  right: 0.4em;
-  opacity: 0;
+.theme-switch-base .moon-icon {
+  right: 0.5em; /* Safe zone - outside ball path */
+  opacity: 1; /* Default visible in light mode */
 }
 
-[data-bs-theme="dark"] .theme-switch-label .moon-icon {
-  opacity: 1;
+[data-bs-theme="dark"] .theme-switch-base .moon-icon {
+  opacity: 0; /* Hidden in dark mode */
 }
 
-.theme-switch-ball {
+.theme-switch-base .theme-switch-ball {
   position: absolute;
-  top: 0.2em;
-  left: 0.2em;
-  width: 1.1em;
-  height: 1.1em;
+  top: 50%; /* Vertically center the ball */
+  left: 0.2em; /* Common left position */
+  z-index: 2; /* Above icons */
   border-radius: 50%;
   background-color: var(--background-light);
   box-shadow: 0 0 5px rgba(0, 0, 0, 0.3);
-  transform: translateX(0);
+  transform: translateY(-50%); /* Adjust for vertical centering */
   transition: transform var(--duration-m) ease;
 }
 
-[data-bs-theme="dark"] .theme-switch-ball {
-  transform: translateX(2.1em);
+.theme-switch-base .theme-switch-checkbox:checked + .theme-switch-label {
+  background-color: var(--primary-color); /* Example, might be overridden */
 }
 
-.theme-switch-label:focus-within {
+.theme-switch-base .theme-switch-label:focus-within {
   outline: 2px solid var(--focus-shadow-color);
   outline-offset: 2px;
 }
 
-/* Responsive design */
+/* ---------------------------------------------------------
+   15 ▸ Theme Switch Modifiers
+   --------------------------------------------------------- */
+/* Landing Page Specifics */
+.theme-switch--landing {
+  width: 3.5em;
+  height: 1.5em;
+}
+
+.theme-switch--landing .theme-switch-ball {
+  width: 1.1em; /* Explicit ball size for landing */
+  height: 1.1em; /* Explicit ball size for landing */
+}
+
+.theme-switch--landing .moon-icon {
+  right: 0.2em; /* Landing-specific positioning */
+}
+
+[data-bs-theme="dark"] .theme-switch--landing .theme-switch-ball {
+  transform: translate(2.0em, -50%); /* Adjust X and maintain Y centering */
+}
+
+/* Sidebar Specifics */
+.theme-switch--sidebar {
+  width: 50px;
+  height: 28px;
+  margin-left: 1rem; /* Specific margin */
+}
+
+.theme-switch--sidebar .sun-icon {
+  left: 2px; /* Sidebar safe zone */
+  font-size: 12px; /* Sidebar-specific icon size */
+}
+
+.theme-switch--sidebar .moon-icon {
+  right: 2px; /* Sidebar safe zone */
+  font-size: 12px; /* Sidebar-specific icon size */
+}
+
+.theme-switch--sidebar .theme-switch-ball {
+  width: 22px;
+  height: 22px;
+  top: 3px;
+  left: 3px;
+  transform: translateY(0); /* Override vertical centering for sidebar */
+}
+
+[data-bs-theme="dark"] .theme-switch--sidebar .theme-switch-ball {
+  transform: translate(25px, 0); /* Sidebar-specific positioning without Y centering */
+}
+
+/* Responsive adjustments for landing page toggle */
 @media (max-width: 768px) {
-  .theme-switch-landing {
+  .theme-switch--landing {
     width: 3em;
     height: 1.3em;
   }
 
-  .theme-switch-ball {
-    width: 0.9em;
-    height: 0.9em;
-    top: 0.2em;
-    left: 0.2em;
+  .theme-switch--landing .theme-switch-ball {
+    width: 0.9em; /* Responsive ball size */
+    height: 0.9em; /* Responsive ball size */
   }
 
-  [data-bs-theme="dark"] .theme-switch-ball {
-    transform: translateX(1.7em);
+  .theme-switch--landing .moon-icon {
+    right: 0.15em; /* Responsive positioning */
   }
 
-  .theme-switch-label .sun-icon,
-  .theme-switch-label .moon-icon {
+  [data-bs-theme="dark"] .theme-switch--landing .theme-switch-ball {
+    transform: translate(1.7em, -50%); /* Adjust X and maintain Y centering */
+  }
+
+  .theme-switch--landing .sun-icon,
+  .theme-switch--landing .moon-icon {
     font-size: 0.7em;
   }
 }
@@ -1208,70 +1474,4 @@ h6 {
   .suggested-question-enhanced:hover {
     transform: translateY(-2px) scale(1.01);
   }
-}
-
-/* ---------------------------------------------------------
-   17 ▸ Authenticated View Theme Switcher
-   --------------------------------------------------------- */
-.sidebar .theme-switch {
-  position: relative;
-  display: inline-block;
-  width: 50px;
-  height: 28px;
-  margin-left: 1rem;
-}
-
-.sidebar .theme-switch-checkbox {
-  width: 0;
-  height: 0;
-  opacity: 0;
-}
-
-.sidebar .theme-switch-label {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 2px;
-  border-radius: 34px;
-  background-color: var(--border-color-medium);
-  transition: .4s;
-  cursor: pointer;
-}
-
-.sidebar .sun-icon,
-.sidebar .moon-icon {
-  color: var(--background-light);
-  transition: .4s;
-}
-
-.sidebar .sun-icon {
-  margin-left: 4px;
-}
-
-.sidebar .moon-icon {
-  margin-right: 4px;
-}
-
-.sidebar .theme-switch-ball {
-  position: absolute;
-  bottom: 3px;
-  left: 3px;
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  background-color: var(--background-light);
-  transition: .4s;
-}
-
-.sidebar .theme-switch-checkbox:checked + .theme-switch-label {
-  background-color: var(--primary-color);
-}
-
-.sidebar .theme-switch-checkbox:checked + .theme-switch-label .theme-switch-ball {
-  transform: translateX(22px);
 }
