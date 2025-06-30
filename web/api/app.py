@@ -169,7 +169,7 @@ def auth_required(view_func):
             return jsonify({"error": "Invalid or missing test token"}), 401
 
         token = _get_token_from_request()
-        is_page_request = request.method == "GET" and request.endpoint in {"chat_page", "index"}
+        is_page_request = request.method == "GET" and request.endpoint == "index"
 
         if not token:
             return _handle_unauthorized(is_page_request)

@@ -6,10 +6,12 @@ server:
   debug: false
   host: 0.0.0.0
   port: 5000
+  chat_history_length: 10  # Number of message pairs to keep in chat history
   rate_limit:  # requests per time period
     per_day: 200
     per_hour: 50
     per_minute: 10
+    chat_api: "15 per minute"  # Specific rate limit for /api/chat endpoint
 
 # Paths configuration
 paths:

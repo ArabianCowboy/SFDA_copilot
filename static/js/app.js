@@ -31,7 +31,6 @@ const App = (() => {
         authModal: null,
         profileModal: null,
         userProfile: null,
-        eventListenersBound: false,
     };
 
     /* 2. UTILITY & HELPER FUNCTIONS -------------------- */
@@ -367,20 +366,28 @@ const App = (() => {
         },
 
         renderFaqButtons(faqData) {
+            console.log('[UI.renderFaqButtons] Received FAQ data:', faqData);
             // Get both FAQ sections (desktop and mobile offcanvas)
             const faqSections = [
                 document.querySelector('#faq-sidebar-section'),
                 document.querySelector('#faq-offcanvas-section')
             ].filter(Boolean); // Remove any null elements
             
-            if (faqSections.length === 0) return;
+            if (faqSections.length === 0) {
+                console.warn('[UI.renderFaqButtons] No FAQ sidebar or offcanvas sections found.');
+                return;
+            }
 
             // Create FAQ content once and clone it for each section
             const createFaqContent = () => {
                 const fragment = document.createDocumentFragment();
 
                 Object.entries(faqData).forEach(([category, data]) => {
-                    if (!data.questions?.length) return;
+                    console.log(`[UI.renderFaqButtons] Processing category: ${category}, Data:`, data);
+                    if (!data || !data.questions || !Array.isArray(data.questions) || data.questions.length === 0) {
+                        console.warn(`[UI.renderFaqButtons] Skipping category '${category}' due to missing or empty questions array.`);
+                        return;
+                    }
 
                     const header = document.createElement('h4');
                     header.className = 'ps-2 mt-3';
@@ -390,6 +397,10 @@ const App = (() => {
                     nav.className = 'nav nav-pills flex-column';
                     
                     data.questions.forEach(({ short, text }) => {
+                        if (!short || !text) {
+                            console.warn(`[UI.renderFaqButtons] Skipping question in category '${category}' due to missing 'short' or 'text' property.`);
+                            return;
+                        }
                         const button = document.createElement('button');
                         button.className = 'nav-link faq-button';
                         Object.assign(button.dataset, { category, question: text });
@@ -406,10 +417,16 @@ const App = (() => {
 
             // Populate both FAQ sections
             faqSections.forEach((section, index) => {
-                section.innerHTML = '';
+                section.innerHTML = ''; // Clear existing content
                 const faqContent = createFaqContent();
-                section.appendChild(faqContent);
-                section.querySelector('h4:first-of-type')?.classList.remove('mt-3');
+                if (faqContent.children.length > 0) {
+                    section.appendChild(faqContent);
+                    section.querySelector('h4:first-of-type')?.classList.remove('mt-3');
+                    console.log(`[UI.renderFaqButtons] FAQ content appended to section ${index}.`);
+                } else {
+                    section.innerHTML = '<div class="text-secondary small text-center py-3">No FAQs available.</div>';
+                    console.warn(`[UI.renderFaqButtons] No FAQ content generated for section ${index}, displaying fallback.`);
+                }
             });
         },
     };
@@ -472,11 +489,19 @@ const App = (() => {
     const Services = {
         async getFaqData() {
             try {
+                console.log('[Services.getFaqData] Attempting to fetch FAQs...');
                 const response = await fetch('/api/frequent-questions');
-                if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
-                return await response.json();
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error(`[Services.getFaqData] HTTP error! Status: ${response.status}, Response: ${errorText}`);
+                    throw new Error(`HTTP error! Status: ${response.status}`);
+                }
+                const data = await response.json();
+                console.log('[Services.getFaqData] FAQs fetched successfully:', data);
+                return data;
             } catch (error) {
-                console.error('Failed to fetch FAQs:', error);
+                console.error('[Services.getFaqData] Failed to fetch FAQs:', error);
+                UI.showToast('Failed to load FAQs. Please try again later.', true);
                 return null;
             }
         },
@@ -577,13 +602,15 @@ const App = (() => {
         },
 
         async updateProfile(userId, updates) {
+            // Add the user ID to the updates object for UPSERT operation
+            const profileData = { id: userId, ...updates };
+            
             const { error } = await state.supabase
                 .from('profiles')
-                .update(updates)
-                .eq('id', userId);
+                .upsert(profileData, { onConflict: 'id' });
             
             if (error) {
-                console.error('Error updating profile:', error);
+                console.error('Error saving profile:', error);
                 UI.displayProfileError(`Failed to save: ${error.message}`);
                 return false;
             }
@@ -719,15 +746,25 @@ const App = (() => {
             if (!user) return;
         
             if (state.userProfile) {
+                console.log('[handleProfileButtonClick] Using cached profile data');
                 UI.populateProfileForm(state.userProfile);
             } else {
                 // If profile hasn't been fetched yet, get it now.
+                console.log('[handleProfileButtonClick] Fetching profile data for user:', user.id);
                 const profile = await Services.getProfile(user.id);
                 if (profile) {
+                    console.log('[handleProfileButtonClick] Profile found, populating form');
                     state.userProfile = profile;
                     UI.populateProfileForm(profile);
                 } else {
-                    UI.displayProfileError('Could not load your profile data.');
+                    // Show empty form for new profile creation
+                    console.log('[handleProfileButtonClick] No profile found, showing empty form for creation');
+                    if (DOMElements.profileForm) {
+                        DOMElements.profileForm.reset();
+                        // Set default theme preference
+                        const defaultThemeRadio = DOMElements.profileForm.querySelector('input[name="theme-preference"][value="light"]');
+                        if (defaultThemeRadio) defaultThemeRadio.checked = true;
+                    }
                 }
             }
         },
@@ -741,11 +778,10 @@ const App = (() => {
 
     /* 7. EVENT BINDING -------------------- */
     function bindEventListeners() {
-        // Prevent duplicate binding
-        if (state.eventListenersBound) {
-            console.log('Event listeners already bound, skipping...');
-            return;
-        }
+        // Ensure event listeners are always bound or re-bound on initialization.
+        // This is crucial for SPAs where parts of the DOM might be re-rendered
+        // or for ensuring functionality after a page refresh.
+        console.log('[bindEventListeners] Binding all event listeners.');
 
         // Auth forms
         DOMElements.loginForm?.addEventListener('submit', Handlers.handleAuthFormSubmit);
@@ -785,16 +821,18 @@ const App = (() => {
             state.authModal?.show();
         }));
 
-        // Mark event listeners as bound
-        state.eventListenersBound = true;
-        console.log('Event listeners bound successfully');
+        console.log('[bindEventListeners] All event listeners bound successfully.');
     }
 
     /* 8. INITIALIZATION -------------------- */
     async function init() {
+        console.log('[App.init] Application initialization started.');
         UI.cacheDomElements();
+        console.log('[App.init] DOM elements cached.');
         UI.initTheme();
+        console.log('[App.init] Theme initialized.');
         Animations.initCardAnimations(); // Initialize card animations
+        console.log('[App.init] Card animations initialized.');
 
         // Check for testing mode
         const isTestingMode = window.location.search.includes('testing=true');
@@ -820,25 +858,33 @@ const App = (() => {
         }
 
         if (!CONFIG.SUPABASE_URL || !CONFIG.SUPABASE_ANON_KEY) {
-            return UI.showToast("Authentication services are not configured.", true);
+            console.error('[App.init] Supabase URL or Anon Key is missing. Authentication services will not be available.');
+            return UI.showToast("Authentication services are not configured. Please check your environment variables.", true);
         }
 
         try {
             state.supabase = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
 
-            // Initialize the Bootstrap modal instance once and cache it.
+            // Initialize the Bootstrap modal instances once and cache them.
             const authModalEl = document.getElementById('authModal');
             if (authModalEl) {
                 state.authModal = new bootstrap.Modal(authModalEl);
+                console.log('[App.init] Auth modal initialized.');
+            } else {
+                console.warn('[App.init] Auth modal element not found.');
             }
 
             const profileModalEl = document.getElementById('profileModal');
             if (profileModalEl) {
                 state.profileModal = new bootstrap.Modal(profileModalEl);
+                console.log('[App.init] Profile modal initialized.');
+            } else {
+                console.warn('[App.init] Profile modal element not found.');
             }
 
             if (DOMElements.sendButton) {
                 state.originalSendButtonText = DOMElements.sendButton.textContent.trim() || 'Send';
+                console.log('[App.init] Original send button text cached.');
             }
         } catch (error) {
             console.error("Initialization error:", error);
@@ -847,42 +893,108 @@ const App = (() => {
 
         // Bind event listeners once
         bindEventListeners();
+        console.log('[App.init] Event listeners binding initiated.');
 
-        // Central Authentication Handler
+        // Central Authentication Handler - NON-BLOCKING ARCHITECTURE
         state.supabase.auth.onAuthStateChange(async (_event, session) => {
+            console.log(`[onAuthStateChange] Event: ${_event}, Session:`, session);
             const user = session?.user;
             UI.updateAuthUI(user);
+            console.log(`[onAuthStateChange] User status updated. User: ${user ? user.email : 'None'}`);
 
             if (user) {
-                // User is logged in, initialize the authenticated experience
-                const [faqData, profileData] = await Promise.all([
-                    Services.getFaqData(),
-                    Services.getProfile(user.id)
-                ]);
-
-                if (profileData) {
-                   state.userProfile = profileData;
-                   // Apply theme preference on login
-                   UI.setTheme(profileData.preferences?.theme || 'light');
-                }
-
-                if (faqData) {
-                    UI.renderFaqButtons(faqData);
-                } else {
+                console.log('[onAuthStateChange] User is logged in. Loading FAQ data immediately...');
+                
+                try {
+                    // CRITICAL: Load FAQ data immediately and render (non-blocking)
+                    console.log('[onAuthStateChange] Fetching FAQ data independently...');
+                    const faqData = await Services.getFaqData();
+                    
+                    if (faqData) {
+                        console.log('[onAuthStateChange] FAQ data loaded successfully, rendering buttons...');
+                        UI.renderFaqButtons(faqData);
+                        console.log('[onAuthStateChange] FAQ buttons rendered successfully.');
+                    } else {
+                        console.warn('[onAuthStateChange] No FAQ data received, displaying fallback message.');
+                        const faqSections = [
+                            document.querySelector('#faq-sidebar-section'),
+                            document.querySelector('#faq-offcanvas-section')
+                        ].filter(Boolean);
+                        
+                        faqSections.forEach(section => {
+                            section.innerHTML = '<div class="text-secondary small text-center py-3">No FAQs available.</div>';
+                        });
+                    }
+                } catch (error) {
+                    console.error('[onAuthStateChange] Error loading FAQ data:', error);
+                    UI.showToast('Failed to load FAQs. Please try again later.', true);
                     const faqSections = [
                         document.querySelector('#faq-sidebar-section'),
                         document.querySelector('#faq-offcanvas-section')
                     ].filter(Boolean);
-                    
                     faqSections.forEach(section => {
-                        section.innerHTML = '<div class="text-secondary small text-center py-3">No FAQs available.</div>';
+                        section.innerHTML = '<div class="text-secondary small text-center py-3">Error loading FAQs.</div>';
                     });
                 }
-           } else {
-               state.userProfile = null;
-           }
-            // If not logged in, the UI is already correctly set by updateAuthUI
+
+                // Load profile data asynchronously with timeout (non-blocking)
+                console.log('[onAuthStateChange] Starting profile load asynchronously...');
+                loadProfileWithTimeout(user.id, 10000)
+                    .then(profileData => {
+                        if (profileData) {
+                            console.log('[onAuthStateChange] Profile data loaded successfully:', profileData);
+                            state.userProfile = profileData;
+                            // Apply theme preference
+                            UI.setTheme(profileData.preferences?.theme || 'light');
+                            console.log(`[onAuthStateChange] Profile loaded, theme set to: ${profileData.preferences?.theme || 'light'}`);
+                        } else {
+                            console.warn('[onAuthStateChange] No profile data found for user.');
+                        }
+                    })
+                    .catch(error => {
+                        console.warn('[onAuthStateChange] Profile loading failed or timed out:', error);
+                        console.log('[onAuthStateChange] Continuing with default profile settings...');
+                        // Application continues to work without profile data
+                    });
+
+            } else {
+                state.userProfile = null;
+                console.log('[onAuthStateChange] User logged out or no session found. Resetting user profile.');
+                // Clear FAQ buttons when logged out
+                const faqSections = [
+                    document.querySelector('#faq-sidebar-section'),
+                    document.querySelector('#faq-offcanvas-section')
+                ].filter(Boolean);
+                faqSections.forEach(section => {
+                    section.innerHTML = ''; // Clear existing FAQ buttons
+                });
+            }
         });
+        console.log('[App.init] Supabase auth state change listener registered.');
+    }
+
+    // Add this new function to handle profile loading with timeout
+    async function loadProfileWithTimeout(userId, timeoutMs = 10000) {
+        console.log(`[ProfileTimeout] Starting profile load for user: ${userId}`);
+        
+        const timeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => {
+                console.error(`[ProfileTimeout] Profile loading timed out after ${timeoutMs}ms`);
+                reject(new Error(`Profile load timeout after ${timeoutMs}ms`));
+            }, timeoutMs);
+        });
+        
+        try {
+            const result = await Promise.race([
+                Services.getProfile(userId),
+                timeoutPromise
+            ]);
+            console.log('[ProfileTimeout] Profile loaded successfully within timeout');
+            return result;
+        } catch (error) {
+            console.error('[ProfileTimeout] Profile loading failed:', error);
+            throw error;
+        }
     }
 
     return { init };
