@@ -482,6 +482,22 @@ const App = (() => {
                     });
                 });
             });
+        },
+
+        initHeroParallax() {
+            const heroVisual = document.querySelector('.hero-visual');
+            if (!heroVisual) return;
+
+            const heroImage = heroVisual.querySelector('img');
+            if (!heroImage) return;
+
+            const parallaxStrength = 0.05; // Adjust for desired effect strength
+
+            window.addEventListener('scroll', () => {
+                const scrollPosition = window.pageYOffset;
+                const offset = scrollPosition * parallaxStrength;
+                heroImage.style.transform = `translateY(${offset}px)`;
+            });
         }
     };
 
@@ -842,6 +858,8 @@ const App = (() => {
         console.log('[App.init] Theme initialized.');
         Animations.initCardAnimations(); // Initialize card animations
         console.log('[App.init] Card animations initialized.');
+        Animations.initHeroParallax(); // Initialize hero parallax effect
+        console.log('[App.init] Hero parallax initialized.');
 
         // Check for testing mode
         const isTestingMode = window.location.search.includes('testing=true');

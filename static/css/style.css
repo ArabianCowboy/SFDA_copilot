@@ -784,6 +784,50 @@ h6 {
   box-shadow: var(--shadow-landing-hero);
   backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
+  position: relative; /* Needed for absolute positioning of overlay */
+  overflow: hidden; /* Ensures overlay doesn't spill out */
+}
+
+.hero-visual {
+  position: relative;
+  width: 100%;
+  max-width: 800px; /* Adjust as needed */
+  margin: 0 auto 1.5rem; /* Center and add bottom margin */
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  box-shadow: var(--shadow-lg);
+}
+
+.hero-visual img {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 400px; /* Maintain max height */
+  object-fit: cover; /* Ensure image covers the area */
+  border-radius: var(--radius-md);
+  transition: transform var(--duration-m) ease-out;
+}
+
+.hero-visual::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(180deg, rgba(0,0,0,0.2) 0%, rgba(0,0,0,0.4) 100%); /* Darker gradient overlay */
+  border-radius: var(--radius-md);
+  z-index: 1;
+  opacity: 1;
+  transition: opacity var(--duration-m) ease;
+}
+
+.hero-visual:hover img {
+  transform: scale(1.05); /* Subtle zoom on hover */
+}
+
+.hero-visual:hover::before {
+  opacity: 0.8; /* Slightly more opaque on hover */
 }
 
 .gateway-content {
@@ -832,8 +876,17 @@ h6 {
 }
 
 .landing-hero h1 {
-  margin: 0;
+  margin: 0 0 0.5rem; /* Add some bottom margin */
   line-height: 1.2;
+  font-size: 3.2rem; /* Larger font size for impact */
+  text-shadow: 1px 1px 2px var(--black-10); /* Subtle text shadow for readability */
+}
+
+.landing-hero p.lead {
+  font-size: 1.3rem; /* Slightly larger lead text */
+  margin-bottom: 2rem; /* More space below subtitle */
+  color: var(--text-color-dark-muted); /* Ensure good contrast */
+  text-shadow: 0.5px 0.5px 1px var(--white-10); /* Subtle text shadow */
 }
 
 .gateway-image {
@@ -862,8 +915,13 @@ h6 {
 .unified-button:hover {
   border-color: var(--accent-color-hover);
   background-color: var(--accent-color-hover);
-  box-shadow: var(--shadow-primary-btn-hover);
-  transform: translateY(-2px);
+  box-shadow: var(--shadow-primary-btn-hover), 0 0 15px var(--primary-color); /* Add a glow effect */
+  transform: translateY(-3px) scale(1.02); /* More pronounced lift and slight scale */
+}
+
+.unified-button:active {
+  transform: translateY(-1px) scale(0.98); /* Press down effect */
+  box-shadow: var(--shadow-sm);
 }
 
 /* Why Use Our Platform? Section */
@@ -973,6 +1031,28 @@ h6 {
 }
 
 /* Dark theme specific adjustments for feature cards */
+[data-bs-theme="dark"] .landing-hero h1,
+[data-bs-theme="dark"] .landing-hero p.lead {
+  color: var(--text-color-light); /* Ensure text is visible in dark mode */
+  text-shadow: 1px 1px 2px var(--black-40); /* Darker shadow for dark mode */
+}
+
+[data-bs-theme="dark"] .hero-visual::before {
+  background: linear-gradient(180deg, rgba(0,0,0,0.4) 0%, rgba(0,0,0,0.6) 100%); /* Darker overlay for dark mode */
+}
+
+[data-bs-theme="dark"] .unified-button {
+  color: var(--text-color-light);
+  border-color: var(--primary-color);
+  background-color: var(--primary-color);
+}
+
+[data-bs-theme="dark"] .unified-button:hover {
+  border-color: var(--accent-color-hover);
+  background-color: var(--accent-color-hover);
+  box-shadow: var(--shadow-primary-btn-hover), 0 0 15px var(--primary-color);
+}
+
 [data-bs-theme="dark"] .why-use-platform-section .feature-card {
   border: 1px solid var(--glass-border-dark);
   background-color: var(--glass-bg-dark);
@@ -996,6 +1076,23 @@ h6 {
 
 /* Responsive Adaptations */
 @media (max-width: 768px) { /* Mobile */
+  .hero-visual {
+    max-width: 100%; /* Full width on mobile */
+  }
+
+  .landing-hero h1 {
+    font-size: 2.5rem; /* Smaller font size for mobile */
+  }
+
+  .landing-hero p.lead {
+    font-size: 1.1rem; /* Smaller lead text for mobile */
+  }
+
+  .unified-button {
+    padding: 0.8rem 1.5rem; /* Smaller padding for mobile button */
+    font-size: 1rem;
+  }
+
   .why-use-platform-section .feature-card,
   .why-use-platform-section .feature-icon-wrapper {
     backdrop-filter: blur(6px) saturate(120%);
@@ -1014,6 +1111,14 @@ h6 {
 }
 
 @media (min-width: 769px) and (max-width: 1024px) { /* Tablet */
+  .landing-hero h1 {
+    font-size: 2.8rem; /* Adjust font size for tablet */
+  }
+
+  .landing-hero p.lead {
+    font-size: 1.2rem; /* Adjust lead text for tablet */
+  }
+
   .why-use-platform-section .feature-card,
   .why-use-platform-section .feature-icon-wrapper {
     backdrop-filter: blur(9px) saturate(135%);
