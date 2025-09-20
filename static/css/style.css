@@ -1,23 +1,27 @@
 /* ===================================================================
-   SFDA Copilot – Unified, WCAG‑AA‑compliant Stylesheet
-   Refactored & Combined for optimal maintainability (June 2025)
+   SFDA Copilot – Unified, WCAG-AA Compliant Stylesheet
+   Optimized for Maintainability and Performance (February 2025)
    =================================================================== */
 
-/* ---------------------------------------------------------
-   1 ▸ Custom Properties – LIGHT THEME
-   --------------------------------------------------------- */
+/* Custom Properties – Light Theme */
 :root {
-  /* Brand */
+  /* Brand Colors */
   --primary-color: #89a8b2;
+  --primary-color-rgb: 137 168 178;
   --accent-color: #b3c8cf;
+  --accent-color-rgb: 179 200 207;
   --accent-color-hover: #7a939f;
+  --accent-color-hover-rgb: 122 147 159;
 
-  /* Backgrounds */
-  --gradient-background: linear-gradient(135deg, #f1f0e8 0%, #e5e1da 100%);
-  --background-light: #f1f0e8;
-  --background-light-alt: #e5e1da;
-  --background-dark-accent: rgba(44 62 80 / 0.8);
-  --background-dark-accent-strong: rgba(44 62 80 / 0.95);
+  /* Base Colors */
+  --color-success: #27ae60;
+  --color-success-rgb: 39 174 96;
+  --color-success-hover: #229954;
+  --color-error: #e74c3c;
+  --color-error-rgb: 231 76 60;
+  --color-warning: #f39c12;
+  --color-warning-rgb: 243 156 18;
+  --color-warning-bg: rgba(241 196 15 / 0.2);
 
   /* Typography */
   --text-color-dark: #34495e;
@@ -29,26 +33,42 @@
   --font-headings: 'Roboto', sans-serif;
   --font-mono: monospace;
 
-  /* Borders & Radii */
-  --border-color-light: #dcdfe4;
-  --border-color-medium: #bdc3c7;
-  --border-color-dark: #7f8c8d;
-  --border-color-modal: rgba(189 195 199 / 0.3);
+  /* Layout */
   --radius-xs: 4px;
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-msg: 18px;
 
-  /* Feedback & Notifications */
-  --color-success: #27ae60;
-  --color-success-hover: #229954;
-  --color-error: #e74c3c;
-  --color-warning: #f39c12;
-  --color-warning-bg: rgba(241 196 15 / 0.2);
-  --toast-bg: var(--text-color-dark);
-  --toast-text: var(--white-95);
+  /* Borders */
+  --border-color-light: #dcdfe4;
+  --border-color-medium: #bdc3c7;
+  --border-color-dark: #7f8c8d;
+  --border-color-modal: rgba(189 195 199 / 0.3);
 
-  /* Shadows & Focus */
+  /* Backgrounds */
+  --background-light: #f1f0e8;
+  --background-light-alt: #e5e1da;
+  --background-dark-accent: rgba(44 62 80 / 0.8);
+  --background-dark-accent-strong: rgba(44 62 80 / 0.95);
+  --gradient-background: linear-gradient(135deg, #f1f0e8 0%, #e5e1da 100%);
+
+  /* Toast */
+  --toast-bg: var(--text-color-dark);
+  --toast-text: var(--white-90);
+
+  /* Focus */
+  --focus-shadow-color: rgba(44 62 80 / 0.25);
+
+  /* Transitions */
+  --duration-s: .2s;
+  --duration-m: .3s;
+  --duration-l: .6s;
+  --btn-transition: background var(--duration-s) ease,
+                    border-color var(--duration-s) ease,
+                    box-shadow var(--duration-s) ease,
+                    color var(--duration-s) ease;
+
+  /* Shadows */
   --shadow-sm: 0 2px 5px var(--black-10);
   --shadow-md: 0 4px 12px var(--black-08);
   --shadow-lg: 0 6px 15px var(--black-15);
@@ -59,16 +79,6 @@
   --shadow-landing-hero: 0 8px 32px rgba(31 38 135 / 0.10);
   --shadow-gateway-content: 0 10px 25px var(--black-08);
   --shadow-primary-btn-hover: 0 4px 12px rgba(0 121 107 / 0.2);
-  --focus-shadow-color: rgba(44 62 80 / 0.25);
-
-  /* Transitions & Animations */
-  --duration-s: .2s;
-  --duration-m: .3s;
-  --duration-l: .6s;
-  --btn-transition: background var(--duration-s) ease,
-                    border-color var(--duration-s) ease,
-                    box-shadow var(--duration-s) ease,
-                    color var(--duration-s) ease;
 
   /* Icons */
   --navbar-toggler-icon: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3e%3cpath stroke='rgba%28255,255,255,.8%29' stroke-linecap='round' stroke-width='2' d='M4 7h22M4 15h22M4 23h22'/%3e%3c/svg%3e");
@@ -76,86 +86,84 @@
   --input-select-arrow-icon: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%2334495e' stroke-linecap='round' stroke-width='2' d='m2 5 6 6 6-6'/%3e%3csvg%3e");
 
   /* Transparency Helpers */
+  --white-05: rgba(255 255 255 / 0.05);
   --white-10: rgba(255 255 255 / 0.10);
   --white-15: rgba(255 255 255 / 0.15);
   --white-20: rgba(255 255 255 / 0.20);
   --white-25: rgba(255 255 255 / 0.25);
   --white-30: rgba(255 255 255 / 0.30);
   --white-40: rgba(255 255 255 / 0.40);
+  --white-50: rgba(255 255 255 / 0.50);
   --white-60: rgba(255 255 255 / 0.60);
   --white-70: rgba(255 255 255 / 0.70);
   --white-80: rgba(255 255 255 / 0.80);
-  --white-85: rgba(255 255 255 / 0.85);
   --white-90: rgba(255 255 255 / 0.90);
-  --white-95: rgba(255 255 255 / 0.95);
+
   --black-05: rgba(0 0 0 / 0.05);
   --black-06: rgba(0 0 0 / 0.06);
-  --black-07: rgba(0 0 0 / 0.07);
   --black-08: rgba(0 0 0 / 0.08);
   --black-10: rgba(0 0 0 / 0.10);
   --black-15: rgba(0 0 0 / 0.15);
   --black-20: rgba(0 0 0 / 0.20);
   --black-25: rgba(0 0 0 / 0.25);
+  --black-30: rgba(0 0 0 / 0.30);
   --black-40: rgba(0 0 0 / 0.40);
-  /* Glassmorphism Enhancement Variables */
-  --glass-bg-light: rgba(255, 255, 255, 0.25);
-  --glass-bg-dark: rgba(15, 23, 30, 0.4);
-  --glass-border-light: rgba(255, 255, 255, 0.18);
-  --glass-border-dark: rgba(255, 255, 255, 0.125);
-  --glass-backdrop: blur(12px) saturate(150%);
-  --shadow-glass-base: 0 8px 32px rgba(31, 38, 135, 0.37);
-  --shadow-glass-hover: 0 16px 64px rgba(31, 38, 135, 0.45);
-  --shadow-brand-accent: 0 4px 24px rgba(137, 168, 178, 0.3);
-  --shadow-brand-glow: 0 0 20px rgba(137, 168, 178, 0.15);
+
+/* Glassmorphism */
+--glass-bg-light: rgba(255 255 255 / 0.25);
+--glass-bg-dark: rgba(15 23 30 / 0.4);
+--glass-border-light: rgba(255 255 255 / 0.18);
+--glass-border-dark: rgba(255 255 255 / 0.125);
+--backdrop-blur: blur(12px) saturate(150%);
+--shadow-glass-base: 0 8px 32px rgba(31 38 135 / 0.37);
+--shadow-glass-hover: 0 16px 64px rgba(31 38 135 / 0.45);
+--shadow-brand-accent: 0 4px 24px rgba(137 168 178 / 0.3);
+--shadow-brand-glow: 0 0 20px rgba(137 168 178 / 0.15);
 }
 
-/* ---------------------------------------------------------
-   2 ▸ Custom Properties – DARK THEME
-   --------------------------------------------------------- */
+/* Dark Theme Variables */
 [data-bs-theme="dark"] {
-  /* Brand */
+  /* Brand Colors */
   --primary-color: #2b7a78;
+  --primary-color-rgb: 43 122 120;
   --accent-color: #419392;
+  --accent-color-rgb: 65 147 146;
   --accent-color-hover: #1f5e5d;
+  --accent-color-hover-rgb: 31 94 93;
 
-  /* Backgrounds */
-  --gradient-background: linear-gradient(135deg, #20303a 0%, #2d414f 100%);
+  /* Layout */
   --background-light: #20303a;
   --background-light-alt: #2d414f;
-  --background-dark-accent: rgba(15 23 30 / 0.80);
-  --background-dark-accent-strong: rgba(15 23 30 / 0.95);
-
-  /* Typography */
-  --text-color-light: #f2f7f9;
-  --text-color-light-secondary: #afc3cd;
-  --text-color-light-muted: #8fa1ad;
-  --text-color-dark: #f2f7f9;
-  --text-color-dark-muted: #afc3cd;
-
-  /* Borders & Radii */
   --border-color-light: #364652;
   --border-color-medium: #4d6473;
   --border-color-dark: #8fa1ad;
-  --border-color-modal: rgba(79 96 110 / 0.30);
+  --gradient-background: linear-gradient(135deg, #20303a 0%, #2d414f 100%);
 
-  /* Feedback & Notifications */
+  /* Typography */
+  --text-color-dark: #f2f7f9;
+  --text-color-dark-muted: #afc3cd;
+  --text-color-light: #f2f7f9;
+  --text-color-light-secondary: #afc3cd;
+  --text-color-light-muted: #8fa1ad;
+
+  /* UI Elements */
   --toast-bg: #4a5568;
   --toast-text: var(--text-color-light);
-
-  /* Shadows & Focus */
   --focus-shadow-color: rgba(43 122 120 / 0.25);
+  --border-color-modal: rgba(79 96 110 / 0.30);
+
+  /* Glassmorphism */
+  --glass-bg-light: rgba(255 255 255 / 0.08);
+  --glass-bg-dark: rgba(15 23 30 / 0.6);
+  --glass-border-light: rgba(255 255 255 / 0.05);
+  --glass-border-dark: rgba(255 255 255 / 0.08);
+  --shadow-glass-base: 0 8px 32px rgba(0 0 0 / 0.4);
+  --shadow-glass-hover: 0 16px 64px rgba(0 0 0 / 0.55);
+  --shadow-brand-accent: 0 4px 24px rgba(43 122 120 / 0.3);
+  --shadow-brand-glow: 0 0 20px rgba(43 122 120 / 0.15);
 
   /* Icons */
   --input-select-arrow-icon: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23ffffff' stroke-linecap='round' stroke-width='2' d='m2 5 6 6 6-6'/%3e%3csvg%3e");
-  /* Glassmorphism Overrides */
-  --glass-bg-light: rgba(255, 255, 255, 0.08);
-  --glass-bg-dark: rgba(15, 23, 30, 0.6);
-  --glass-border-light: rgba(255, 255, 255, 0.05);
-  --glass-border-dark: rgba(255, 255, 255, 0.08);
-  --shadow-glass-base: 0 8px 32px rgba(0, 0, 0, 0.4);
-  --shadow-glass-hover: 0 16px 64px rgba(0, 0, 0, 0.55);
-  --shadow-brand-accent: 0 4px 24px rgba(43, 122, 120, 0.3);
-  --shadow-brand-glow: 0 0 20px rgba(43, 122, 120, 0.15);
 }
 
 /* ---------------------------------------------------------
@@ -470,6 +478,74 @@ h6 {
   color: var(--text-color-dark);
   background: linear-gradient(135deg, var(--background-light) 0%, var(--background-light-alt) 100%);
   box-shadow: 0 8px 24px var(--black-25);
+}
+
+/* Dark Theme Component Overrides */
+[data-bs-theme="dark"] {
+  /* Base elements */
+  body {
+    color: var(--text-color-light);
+  }
+
+  /* Layout */
+  .landing-page {
+    background: var(--gradient-background);
+  }
+
+  .landing-hero,
+  .gateway-content {
+    border-color: var(--border-color-dark);
+    color: var(--text-color-light);
+  }
+
+  .sidebar,
+  .offcanvas.offcanvas-start,
+  .sidebar-header {
+    color: var(--text-color-light);
+  }
+
+  /* Chat components */
+  .chatbot-message .message-bubble,
+  .user-message .message-bubble {
+    color: var(--text-color-light);
+  }
+
+  .chatbot-message .message-bubble {
+    border-color: var(--border-color-dark);
+  }
+
+  /* FAQ components */
+  .faq-section .nav-link.faq-button {
+    color: var(--text-color-light);
+  }
+
+  .faq-section h4 {
+    color: var(--text-color-light);
+  }
+
+  /* Input areas */
+  .input-area {
+    border-color: var(--border-color-medium);
+    box-shadow: var(--shadow-chat-input);
+  }
+
+  #query-input {
+    border-color: var(--border-color-medium);
+    color: var(--text-color-light);
+  }
+
+  .input-area .category-selector label {
+    color: var(--text-color-light);
+  }
+
+  .input-area .category-selector .form-select,
+  .timestamp {
+    color: var(--text-color-light-muted);
+  }
+
+  .user-message .timestamp {
+    color: var(--white-70);
+  }
 }
 
 .message-code {
@@ -1180,12 +1256,11 @@ h6 {
   .why-use-platform-section p {
     transition: none !important;
     animation: none !important;
-    transform: none !important;
     will-change: auto !important;
   }
 
-  .why-use-platform-section .feature-card:hover,
-  .why-use-platform-section .feature-card:active {
+  /* Keep hover transforms disabled */
+  .why-use-platform-section .feature-card:hover {
     transform: none;
     box-shadow: var(--shadow-glass-base);
   }
@@ -1193,6 +1268,13 @@ h6 {
   .why-use-platform-section .feature-card:hover .feature-icon-wrapper {
     transform: none;
     box-shadow: var(--shadow-glass-base);
+  }
+
+  /* Allow click feedback even in reduced motion mode */
+  .why-use-platform-section .feature-card:active {
+    transform: scale(0.98) !important;
+    box-shadow: var(--shadow-glass-base);
+    transition: transform 0.1s ease !important;
   }
 }
 
@@ -1246,161 +1328,79 @@ h6 {
   orientation: block;
 }
 
-/* ---------------------------------------------------------
-   14 ▸ Base Theme Switch Component
-   --------------------------------------------------------- */
-.theme-switch-base {
-  position: relative;
-  display: inline-block;
-}
-
-.theme-switch-base .theme-switch-checkbox {
-  display: none;
-}
-
-.theme-switch-base .theme-switch-label {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  border-radius: var(--radius-md); /* Common radius */
-  background: linear-gradient(90deg, var(--primary-color) 0%, var(--accent-color) 100%);
-  transition: background var(--duration-m) ease;
+/* -----------------------------------------------------------------
+   Theme Toggle & Utilities
+   ----------------------------------------------------------------- */
+.theme-toggle-btn,
+#simple-theme-toggle,
+#sidebar-theme-toggle,
+#offcanvas-theme-toggle {
   cursor: pointer;
-  display: flex; /* For icon alignment */
+  border: 2px solid transparent;
+  outline: none;
+  transition: all 0.3s ease;
+  background: rgba(255, 255, 255, 0.9) !important;
+  border-radius: 6px;
+  display: flex;
   align-items: center;
-  justify-content: space-between; /* For icon spacing */
-  padding: 2px; /* For icon spacing */
+  justify-content: center;
+  min-width: 32px;
+  min-height: 32px;
 }
 
-[data-bs-theme="dark"] .theme-switch-base .theme-switch-label {
-  background: linear-gradient(90deg, var(--accent-color-hover) 0%, var(--primary-color) 100%);
+.theme-toggle-btn:hover,
+#simple-theme-toggle:hover,
+#sidebar-theme-toggle:hover,
+#offcanvas-theme-toggle:hover {
+  background: rgba(255, 255, 255, 0.95) !important;
+  transform: scale(1.05);
 }
 
-.theme-switch-base .sun-icon,
-.theme-switch-base .moon-icon {
-  position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
-  font-size: 0.8em; /* Common font size, can be overridden */
-  color: var(--text-color-dark); /* Common color */
-  transition: opacity var(--duration-m) ease;
+.theme-toggle-btn .bi,
+#simple-theme-toggle .bi,
+#sidebar-theme-toggle .bi,
+#offcanvas-theme-toggle .bi {
+  font-size: 16px;
+  color: #2c3e50;
 }
 
-.theme-switch-base .sun-icon {
-  left: 0.05em; /* Safe zone - outside ball path */
-  opacity: 0; /* Default hidden in light mode */
+[data-bs-theme="dark"] .theme-toggle-btn,
+[data-bs-theme="dark"] #simple-theme-toggle,
+[data-bs-theme="dark"] #sidebar-theme-toggle,
+[data-bs-theme="dark"] #offcanvas-theme-toggle {
+  background: rgba(31, 41, 55, 0.8) !important;
+  border-color: rgba(255, 255, 255, 0.2);
 }
 
-[data-bs-theme="dark"] .theme-switch-base .sun-icon {
-  opacity: 1; /* Visible in dark mode */
+[data-bs-theme="dark"] .theme-toggle-btn:hover,
+[data-bs-theme="dark"] #simple-theme-toggle:hover,
+[data-bs-theme="dark"] #sidebar-theme-toggle:hover,
+[data-bs-theme="dark"] #offcanvas-theme-toggle:hover {
+  background: rgba(31, 41, 55, 0.9) !important;
 }
 
-.theme-switch-base .moon-icon {
-  right: 0.5em; /* Safe zone - outside ball path */
-  opacity: 1; /* Default visible in light mode */
+[data-bs-theme="dark"] .theme-toggle-btn .bi,
+[data-bs-theme="dark"] #simple-theme-toggle .bi,
+[data-bs-theme="dark"] #sidebar-theme-toggle .bi,
+[data-bs-theme="dark"] #offcanvas-theme-toggle .bi {
+  color: #f39c12;
 }
 
-[data-bs-theme="dark"] .theme-switch-base .moon-icon {
-  opacity: 0; /* Hidden in dark mode */
-}
-
-.theme-switch-base .theme-switch-ball {
-  position: absolute;
-  top: 50%; /* Vertically center the ball */
-  left: 0.2em; /* Common left position */
-  z-index: 2; /* Above icons */
-  border-radius: 50%;
-  background-color: var(--background-light);
-  box-shadow: 0 0 5px rgba(0, 0, 0, 0.3);
-  transform: translateY(-50%); /* Adjust for vertical centering */
-  transition: transform var(--duration-m) ease;
-}
-
-.theme-switch-base .theme-switch-checkbox:checked + .theme-switch-label {
-  background-color: var(--primary-color); /* Example, might be overridden */
-}
-
-.theme-switch-base .theme-switch-label:focus-within {
-  outline: 2px solid var(--focus-shadow-color);
-  outline-offset: 2px;
-}
-
-/* ---------------------------------------------------------
-   15 ▸ Theme Switch Modifiers
-   --------------------------------------------------------- */
-/* Landing Page Specifics */
-.theme-switch--landing {
-  width: 3.5em;
-  height: 1.5em;
-}
-
-.theme-switch--landing .theme-switch-ball {
-  width: 1.1em; /* Explicit ball size for landing */
-  height: 1.1em; /* Explicit ball size for landing */
-}
-
-.theme-switch--landing .moon-icon {
-  right: 0.2em; /* Landing-specific positioning */
-}
-
-[data-bs-theme="dark"] .theme-switch--landing .theme-switch-ball {
-  transform: translate(2.0em, -50%); /* Adjust X and maintain Y centering */
-}
-
-/* Sidebar Specifics */
-.theme-switch--sidebar {
-  width: 50px;
-  height: 28px;
-  margin-left: 1rem; /* Specific margin */
-}
-
-.theme-switch--sidebar .sun-icon {
-  left: 2px; /* Sidebar safe zone */
-  font-size: 12px; /* Sidebar-specific icon size */
-}
-
-.theme-switch--sidebar .moon-icon {
-  right: 2px; /* Sidebar safe zone */
-  font-size: 12px; /* Sidebar-specific icon size */
-}
-
-.theme-switch--sidebar .theme-switch-ball {
-  width: 22px;
-  height: 22px;
-  top: 3px;
-  left: 3px;
-  transform: translateY(0); /* Override vertical centering for sidebar */
-}
-
-[data-bs-theme="dark"] .theme-switch--sidebar .theme-switch-ball {
-  transform: translate(25px, 0); /* Sidebar-specific positioning without Y centering */
-}
-
-/* Responsive adjustments for landing page toggle */
+/* Responsive adjustments for theme toggles */
 @media (max-width: 768px) {
-  .theme-switch--landing {
-    width: 3em;
-    height: 1.3em;
+  .theme-toggle-btn,
+  #simple-theme-toggle,
+  #sidebar-theme-toggle,
+  #offcanvas-theme-toggle {
+    min-width: 28px;
+    min-height: 28px;
   }
 
-  .theme-switch--landing .theme-switch-ball {
-    width: 0.9em; /* Responsive ball size */
-    height: 0.9em; /* Responsive ball size */
-  }
-
-  .theme-switch--landing .moon-icon {
-    right: 0.15em; /* Responsive positioning */
-  }
-
-  [data-bs-theme="dark"] .theme-switch--landing .theme-switch-ball {
-    transform: translate(1.7em, -50%); /* Adjust X and maintain Y centering */
-  }
-
-  .theme-switch--landing .sun-icon,
-  .theme-switch--landing .moon-icon {
-    font-size: 0.7em;
+  .theme-toggle-btn .bi,
+  #simple-theme-toggle .bi,
+  #sidebar-theme-toggle .bi,
+  #offcanvas-theme-toggle .bi {
+    font-size: 14px;
   }
 }
 
@@ -1569,6 +1569,7 @@ h6 {
 }
 
 /* Responsive design for mobile devices */
+
 @media (max-width: 768px) {
   .suggested-question-enhanced {
     padding: 10px 16px;
@@ -1579,4 +1580,73 @@ h6 {
   .suggested-question-enhanced:hover {
     transform: translateY(-2px) scale(1.01);
   }
+}
+
+/* ============================================================
+   Markdown table styling for chat messages
+   Ensures visible borders, spacing and mobile responsiveness
+   ============================================================ */
+.message-content table,
+.message-content thead,
+.message-content tbody,
+.message-content tr,
+.message-content th,
+.message-content td {
+  border-collapse: collapse;
+  border-spacing: 0;
+}
+
+.message-content table {
+  width: 100%;
+  margin: 0.5rem 0;
+  table-layout: auto;
+  overflow: visible;
+  border-collapse: collapse;
+}
+
+/* Visible cell borders and padding */
+.message-content th,
+.message-content td {
+  border: 1px solid var(--border-color-medium);
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  vertical-align: top;
+  background: transparent;
+  font-size: 0.95rem;
+}
+
+/* Header styling for table head */
+.message-content thead th {
+  background: var(--background-light-alt);
+  font-weight: 600;
+}
+
+/* Make long tables scroll horizontally on small screens */
+.message-content .table-responsive,
+.table-responsive {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Optional helper class applied by JS post-processing */
+.message-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+/* Code and pre styling inside messages */
+.message-content pre,
+.message-content code {
+  font-family: var(--font-mono);
+  font-size: 0.92rem;
+}
+
+/* Dark theme adjustments */
+[data-bs-theme="dark"] .message-content th,
+[data-bs-theme="dark"] .message-content td {
+  border: 1px solid var(--border-color-dark);
+}
+
+[data-bs-theme="dark"] .message-content thead th {
+  background: rgba(255,255,255,0.03);
 }

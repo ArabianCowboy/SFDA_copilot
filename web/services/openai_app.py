@@ -210,23 +210,22 @@ class OpenAIHandler:
         
         context_parts = []
         
-        for i, result in enumerate(pruned_results):
+        for result in pruned_results:
             # Extract text and metadata
             text = result.get("text", "")
             document = result.get("document", "Unknown document")
-            category = result.get("category", "Unknown category")
             page = result.get("page", None) # Get page number
             
-            # Format the context part with page number if available
-            source_info = f"From {document} (Category: {category}"
+            # Format the context part to be explicit for the LLM, matching the desired citation format.
+            # This avoids the model getting confused by numbered lists (e.g., [1], [2]) and inventing "Document 1".
+            source_info = f"Source: {document}"
             if page is not None:
                 source_info += f", Page: {page}"
-            source_info += ")"
             
-            context_part = f"[{i+1}] {source_info}:\n{text}\n"
+            context_part = f"[{source_info}]\n{text}"
             context_parts.append(context_part)
         
-        return "\n".join(context_parts)
+        return "\n\n".join(context_parts)
     
     def _create_system_message(self, category):
         """
