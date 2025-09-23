@@ -44,7 +44,7 @@ supabase:
 
 # Data Processing configuration
 data_processing:
-  chunk_size: 10000
+  chunk_size: 5000
   chunk_overlap: 800
   embedding_batch_size: 100 # Default batch size for embedding generation
 

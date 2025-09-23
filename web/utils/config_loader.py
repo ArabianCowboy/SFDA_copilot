@@ -128,6 +128,26 @@ class ConfigLoader:
         self.config["supabase"]["url"] = os.getenv("SUPABASE_URL", self.config["supabase"].get("url"))
         self.config["supabase"]["key"] = os.getenv("SUPABASE_ANON_KEY", self.config["supabase"].get("key"))
 
+        # Embedding configuration section - standardized for all embedding providers
+        self.config.setdefault("embedding", {})
+        self.config["embedding"]["dimensions"] = {
+            "openai": 1536,
+            "local": 768,
+            "voyage": 1024,
+            "cohere": 768
+        }
+        
+        # Standardize embedding type key across the application
+        self.config.setdefault("search_engine", {})
+        self.config["search_engine"]["embedding_type"] = os.getenv(
+            "EMBEDDING_TYPE",
+            self.config["search_engine"].get("embedding_type", "local")
+        )
+        
+        # Add validation schema configuration
+        self.config.setdefault("validation", {})
+        self.config["validation"]["strict_mode"] = os.getenv("STRICT_CONFIG", "false").lower() == "true"
+
     def get(self, section: str, key: str, default: Any = None) -> Any:
         """Get a configuration value from a specific section."""
         return self.config.get(section, {}).get(key, default)

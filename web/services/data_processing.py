@@ -82,14 +82,27 @@ class DataProcessor:
             "data_processing", "embedding_batch_size", 100
         )
 
-        # Embedding backend selection
-        embedding_type = config.get("search_engine", "embedding_type", "local")
-        if embedding_type == "openai":
-            self.embedding_client = OpenAIClientManager()
-            self.embedding_dimension = 1_536  # openai text‑embedding‑ada‑002
-        else:
-            self.embedding_client = LocalEmbeddingClient()
-            self.embedding_dimension = self.embedding_client.embedding_dimension
+        # ENHANCED: Use factory pattern while preserving existing logic
+        try:
+            from ..utils.embedding_helpers import get_embedding_client, get_embedding_dimension
+            
+            self.embedding_client = get_embedding_client(
+                config.get("search_engine", "embedding_type", "local")
+            )
+            self.embedding_dimension = get_embedding_dimension(
+                config.get("search_engine", "embedding_type", "local")
+            )
+            
+        except Exception as e:
+            # FALLBACK: Maintain existing behavior for backward compatibility
+            LOGGER.warning(f"Enhanced embedding client initialization failed: {str(e)}. Falling back to legacy logic.")
+            embedding_type = config.get("search_engine", "embedding_type", "local")
+            if embedding_type == "openai":
+                self.embedding_client = OpenAIClientManager()
+                self.embedding_dimension = 1_536  # openai text‑embedding‑ada‑002
+            else:
+                self.embedding_client = LocalEmbeddingClient()
+                self.embedding_dimension = self.embedding_client.embedding_dimension
 
         # Guarantee output directory exists
         self.PROCESSED_DATA_DIR.mkdir(parents=True, exist_ok=True)

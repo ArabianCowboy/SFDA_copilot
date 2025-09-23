@@ -383,7 +383,11 @@ h6 {
   border-radius: var(--radius-sm);
   font-family: var(--font-primary);
   color: var(--text-color-light);
-  background: var(--white-15) var(--select-arrow-icon) no-repeat right .75rem center / 16px 12px;
+  background-color: var(--white-15);
+  background-image: var(--select-arrow-icon);
+  background-repeat: no-repeat;
+  background-position: right .75rem center;
+  background-size: 16px 12px;
   appearance: none;
   transition: var(--btn-transition);
 }
@@ -1008,8 +1012,8 @@ h6 {
   border-radius: var(--radius-md);
   background-color: var(--glass-bg-light);
   box-shadow: var(--shadow-glass-base);
-  backdrop-filter: var(--glass-backdrop);
-  -webkit-backdrop-filter: var(--glass-backdrop);
+  backdrop-filter: var(--backdrop-blur);
+  -webkit-backdrop-filter: var(--backdrop-blur);
   transform: translateZ(0); /* Hardware acceleration */
   will-change: transform, box-shadow, background-color, border-color;
   transition: transform var(--duration-m) ease-out,
@@ -1061,8 +1065,8 @@ h6 {
   border-radius: 50%;
   background-color: var(--glass-bg-light);
   box-shadow: var(--shadow-glass-base);
-  backdrop-filter: var(--glass-backdrop);
-  -webkit-backdrop-filter: var(--glass-backdrop);
+  backdrop-filter: var(--backdrop-blur);
+  -webkit-backdrop-filter: var(--backdrop-blur);
   transform: translateZ(0); /* Hardware acceleration */
   will-change: transform, box-shadow, background-color, border-color;
   transition: transform var(--duration-m) ease-out,
@@ -1171,8 +1175,8 @@ h6 {
 
   .why-use-platform-section .feature-card,
   .why-use-platform-section .feature-icon-wrapper {
-    backdrop-filter: blur(6px) saturate(120%);
-    -webkit-backdrop-filter: blur(6px) saturate(120%);
+    backdrop-filter: var(--backdrop-blur); /* Using custom property */
+    -webkit-backdrop-filter: var(--backdrop-blur); /* Using custom property */
     box-shadow: 0 4px 16px rgba(31, 38, 135, 0.2);
   }
 
@@ -1197,8 +1201,8 @@ h6 {
 
   .why-use-platform-section .feature-card,
   .why-use-platform-section .feature-icon-wrapper {
-    backdrop-filter: blur(9px) saturate(135%);
-    -webkit-backdrop-filter: blur(9px) saturate(135%);
+    backdrop-filter: var(--backdrop-blur); /* Using custom property */
+    -webkit-backdrop-filter: var(--backdrop-blur); /* Using custom property */
     box-shadow: 0 6px 24px rgba(31, 38, 135, 0.3);
   }
 
@@ -1421,6 +1425,9 @@ h6 {
   visibility: hidden;
   transform: translateY(20px);
   transition: opacity var(--duration-m) ease, transform var(--duration-m) ease, visibility 0s var(--duration-m);
+  /* Accessibility: Announce toast messages to screen readers */
+  aria-live: polite;
+  role: status;
 }
 
 .toast-notification:not(.hidden) {
@@ -1601,7 +1608,6 @@ h6 {
   margin: 0.5rem 0;
   table-layout: auto;
   overflow: visible;
-  border-collapse: collapse;
 }
 
 /* Visible cell borders and padding */
@@ -1631,7 +1637,6 @@ h6 {
 /* Optional helper class applied by JS post-processing */
 .message-table {
   width: 100%;
-  border-collapse: collapse;
 }
 
 /* Code and pre styling inside messages */

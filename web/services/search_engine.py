@@ -3,9 +3,9 @@ import numpy as np
 import pandas as pd
 import faiss
 import pickle
-import logging # Import logging
-from dataclasses import dataclass, field # Import dataclasses
-from typing import List, Dict, Optional, Any, Tuple # Import typing
+import logging
+from dataclasses import dataclass, field
+from typing import List, Dict, Optional, Any, Tuple
 from sklearn.metrics.pairwise import cosine_similarity
 # MinMaxScaler is available but not currently used for normalization in this implementation
 # from sklearn.preprocessing import MinMaxScaler 
@@ -69,12 +69,28 @@ class ImprovedSearchEngine:
         logger.debug(f"TF-IDF matrix path: {self.tfidf_matrix_path}")
         
         # --- Initialize Embedding Client ---
-        embedding_type: str = config.get("search_engine", "embedding_type", "local")
-        logger.info(f"Using embedding type: {embedding_type}")
-        if embedding_type == "openai":
-            self.embedding_client = OpenAIClientManager() # Assumes this class has get_embedding
-        else: # Default to local
-            self.embedding_client = LocalEmbeddingClient() # Assumes this class has get_embedding
+        # ENHANCED: Use factory pattern while preserving existing logic
+        try:
+            from ..utils.embedding_helpers import get_embedding_client, get_embedding_dimension
+            
+            self.embedding_client = get_embedding_client(
+                config.get("search_engine", "embedding_type", "local")
+            )
+            self.embedding_dimension = get_embedding_dimension(
+                config.get("search_engine", "embedding_type", "local")
+            )
+            
+            logger.info(f"Using enhanced embedding client: {type(self.embedding_client).__name__}")
+            
+        except Exception as e:
+            # FALLBACK: Maintain existing behavior for backward compatibility
+            logger.warning(f"Enhanced embedding client initialization failed: {str(e)}. Falling back to legacy logic.")
+            embedding_type: str = config.get("search_engine", "embedding_type", "local")
+            logger.info(f"Using embedding type: {embedding_type}")
+            if embedding_type == "openai":
+                self.embedding_client = OpenAIClientManager() # Assumes this class has get_embedding
+            else: # Default to local
+                self.embedding_client = LocalEmbeddingClient() # Assumes this class has get_embedding
 
         # --- Category Mapping for Robust Matching ---
         # This map helps translate simplified frontend categories to their expected full names

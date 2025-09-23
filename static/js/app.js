@@ -87,9 +87,6 @@ const CONFIG = {
     PROFILE_BTN: '#profile-button',
     PROFILE_BTN_OFFCANVAS: '#profile-button-offcanvas',
     // Shared
-    THEME_TOGGLE: '#theme-toggle',
-    THEME_TOGGLE_OFFCANVAS: '#theme-toggle-offcanvas',
-    LANDING_THEME_TOGGLE: '#landing-theme-toggle',
     TOAST: '#toast',
     // FAQ Sections
     FAQ_SIDEBAR: '#faq-sidebar-section',
@@ -465,7 +462,7 @@ const UI = {
       const originalText = AppState.get('originalSendButtonText');
       sendBtn.innerHTML = isSending
         ? `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Sending...`
-        : `<i class="bi bi-send"></i> ${originalText}`;
+        : `<i class="bi bi-send"></i> ${originalText || 'Send'}`; // Defensive check for originalText
     }
   },
 
@@ -821,9 +818,12 @@ const Handlers = {
       return ErrorHandler.showAuthError('Please provide both email and password.');
     }
 
-    if (form.id === DOMCache.get(CONFIG.SELECTORS.LOGIN_FORM)?.id) {
+    const loginFormId = DOMCache.get(CONFIG.SELECTORS.LOGIN_FORM)?.id;
+    const signupFormId = DOMCache.get(CONFIG.SELECTORS.SIGNUP_FORM)?.id;
+
+    if (form.id === loginFormId) {
       Services.login(email, password);
-    } else if (form.id === DOMCache.get(CONFIG.SELECTORS.SIGNUP_FORM)?.id) {
+    } else if (form.id === signupFormId) {
       Services.signup(email, password);
     }
   },
@@ -1072,12 +1072,12 @@ async function init() {
     Services.init();
 
     // Initialize Bootstrap Modals
-    const authModalEl = document.getElementById(CONFIG.SELECTORS.AUTH_MODAL.slice(1));
+    const authModalEl = DOMCache.get(CONFIG.SELECTORS.AUTH_MODAL);
     if (authModalEl && window.bootstrap && bootstrap.Modal) {
       AppState.set('authModal', new bootstrap.Modal(authModalEl));
     }
 
-    const profileModalEl = document.getElementById(CONFIG.SELECTORS.PROFILE_MODAL.slice(1));
+    const profileModalEl = DOMCache.get(CONFIG.SELECTORS.PROFILE_MODAL);
     if (profileModalEl && window.bootstrap && bootstrap.Modal) {
       AppState.set('profileModal', new bootstrap.Modal(profileModalEl));
     }
@@ -1158,70 +1158,49 @@ function initThemeSystem() {
   }
   const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
   const defaultTheme = storedTheme || (systemPrefersDark ? 'dark' : 'light');
-
-  // Apply the theme using Bootstrap's native data-bs-theme
+  
+  // Apply the theme using Bootstrap's native theme system
   applyTheme(defaultTheme);
-
-  // Create and add theme toggle buttons
-  createThemeToggle();
+  
+  // Initialize button icons and bind events - buttons already exist in HTML
+  initThemeToggles();
 
   console.log(`[Theme] Initialized with ${defaultTheme} theme`);
 }
 
-function createThemeToggle() {
-  // Create base toggle button with standardized ID pattern
-  const createToggleButton = (id, extraClasses = '') => {
-    const button = document.createElement('button');
-    button.id = id;
-    button.className = `btn btn-outline-secondary btn-sm ms-2 theme-toggle-btn ${extraClasses}`;
-    button.setAttribute('aria-label', 'Toggle theme');
-    button.setAttribute('title', 'Toggle theme between light and dark');
-    return button;
-  };
-
-  // Add to header utility area (landing page)
-  const landingUtility = document.querySelector('.landing-header-utility');
-  if (landingUtility && !landingUtility.querySelector('#simple-theme-toggle')) {
-    const toggleButton = createToggleButton('simple-theme-toggle');
-    landingUtility.appendChild(toggleButton);
-  }
-
-  // Add to sidebar header
-  const sidebarHeader = document.querySelector('.sidebar-header h3');
-  if (sidebarHeader && !sidebarHeader.querySelector('#sidebar-theme-toggle')) {
-    const toggleButton = createToggleButton('sidebar-theme-toggle');
-    sidebarHeader.appendChild(toggleButton);
-  }
-
-  // Add to offcanvas sidebar header
-  const offcanvasHeader = document.querySelector('.offcanvas-title');
-  if (offcanvasHeader && !offcanvasHeader.querySelector('#offcanvas-theme-toggle')) {
-    const toggleButton = createToggleButton('offcanvas-theme-toggle');
-    offcanvasHeader.appendChild(toggleButton);
-  }
-
-  // Initialize button icons and bind events
-  updateThemeToggleIcons();
-  bindThemeToggleEvents();
-}
 
 function updateThemeToggleIcons() {
   const currentTheme = getCurrentTheme();
   const iconClass = currentTheme === 'dark' ? 'bi-sun-fill' : 'bi-moon-fill';
   const newTitle = currentTheme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme';
-
+  
+  // Add existence check
   document.querySelectorAll('.theme-toggle-btn').forEach(btn => {
-    // Clear existing content and add icon
-    btn.innerHTML = `<i class="bi ${iconClass}"></i>`;
-    btn.setAttribute('title', newTitle);
-    btn.setAttribute('aria-label', newTitle);
+    if (btn) { // Ensure button exists
+      btn.innerHTML = `<i class="bi ${iconClass}"></i>`;
+      btn.setAttribute('title', newTitle);
+      btn.setAttribute('aria-label', newTitle);
+    }
   });
+}
+
+function initThemeToggles() {
+  updateThemeToggleIcons();
+  bindThemeToggleEvents();
 }
 
 function bindThemeToggleEvents() {
   // Use event delegation for better performance
   document.addEventListener('click', (e) => {
     if (e.target.closest('.theme-toggle-btn')) {
+      e.preventDefault();
+      toggleTheme();
+    }
+  });
+
+  // Add keyboard navigation support
+  document.addEventListener('keydown', (e) => {
+    if (e.target.closest('.theme-toggle-btn') && (e.key === 'Enter' || e.key === ' ')) {
       e.preventDefault();
       toggleTheme();
     }
@@ -1259,6 +1238,19 @@ function toggleTheme() {
       btn.style.transform = 'scale(1)';
     }, 150);
   });
+
+  // Announce theme change to screen readers
+  const announcement = document.createElement('div');
+  announcement.setAttribute('role', 'status');
+  announcement.setAttribute('aria-live', 'polite');
+  announcement.className = 'sr-only';
+  announcement.textContent = `Theme changed to ${newTheme} mode`;
+  document.body.appendChild(announcement);
+  
+  // Remove announcement after it's been read
+  setTimeout(() => {
+    announcement.remove();
+  }, 1000);
 }
 
 function getCurrentTheme() {
