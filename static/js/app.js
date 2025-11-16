@@ -592,7 +592,15 @@ const Services = {
     // Initialize Supabase client outside of class context
     if (!window.supabaseClient) {
       try {
-        window.supabaseClient = createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
+        window.supabaseClient = createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY, {
+          auth: {
+            persistSession: true,
+            autoRefreshToken: true,
+            detectSessionInUrl: true,
+            storage: window.localStorage,
+            storageKey: 'sfda-supabase-auth'
+          }
+        });
       } catch (error) {
         Utils.logError(error, 'Failed to initialize Supabase client');
         return false;
@@ -703,19 +711,31 @@ const Services = {
     }
 
     try {
+      // Try to get current session first
+      const { data: { session } } = await this.supabase.auth.getSession();
+      
+      if (!session) {
+        // No active session - just clear local state
+        console.log('[Auth] No active session to sign out from - clearing local data');
+        this.clearLocalAuthData();
+        UI.updateAuthUI(null);
+        ErrorHandler.showToast('Logged out successfully');
+        
+        // Redirect to home page if not already there
+        if (window.location.pathname !== '/') {
+          window.location.replace('/');
+        }
+        return;
+      }
+
+      // Active session exists - sign out properly
       const { error } = await this.supabase.auth.signOut();
       if (error) throw error;
 
       ErrorHandler.showToast('Logged out successfully');
-
+      
       // Clear local storage items related to Supabase session
-      ['sb-access-token', 'sb-refresh-token', 'sb-user', 'sb-session'].forEach(k => {
-        try {
-          localStorage.removeItem(k);
-        } catch (error) {
-          Utils.logError(error, `localStorage removeItem for ${k} in logout`);
-        }
-      });
+      this.clearLocalAuthData();
 
       // Redirect to home page if not already there
       if (window.location.pathname !== '/') {
@@ -723,8 +743,37 @@ const Services = {
       }
     } catch (error) {
       ErrorHandler.log(error, 'logout');
-      ErrorHandler.showToast(`Logout failed: ${error.message}`, true);
+      // Even if signOut fails, clear local state
+      this.clearLocalAuthData();
+      UI.updateAuthUI(null);
+      ErrorHandler.showToast('Logged out (session cleared)', false);
+      
+      // Redirect to home page if not already there
+      if (window.location.pathname !== '/') {
+        window.location.replace('/');
+      }
     }
+  },
+
+  clearLocalAuthData() {
+    // Clear Supabase session data from localStorage
+    const keysToRemove = [
+      'sb-access-token', 
+      'sb-refresh-token', 
+      'sb-user', 
+      'sb-session',
+      'sfda-supabase-auth'
+    ];
+    
+    keysToRemove.forEach(key => {
+      try {
+        localStorage.removeItem(key);
+      } catch (error) {
+        Utils.logError(error, `localStorage removeItem for ${key} in clearLocalAuthData`);
+      }
+    });
+    
+    console.log('[Auth] Local authentication data cleared');
   },
 
   async getProfile(userId) {
