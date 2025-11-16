@@ -561,6 +561,89 @@ h6 {
   background-color: var(--black-05);
 }
 
+/* Knowledge Cutoff Notice Styling */
+.knowledge-cutoff-notice {
+  padding: 12px 16px;
+  margin: 15px 0;
+  border-left: 4px solid var(--primary-color);
+  border-radius: var(--radius-xs);
+  font-size: .88rem;
+  line-height: 1.6;
+  color: var(--text-color-dark-muted);
+  background-color: rgba(var(--primary-color-rgb) / 0.08);
+  box-shadow: 0 2px 6px var(--black-05);
+  transition: background-color var(--duration-s) ease, box-shadow var(--duration-s) ease;
+}
+
+.knowledge-cutoff-notice:hover {
+  background-color: rgba(var(--primary-color-rgb) / 0.12);
+  box-shadow: 0 3px 10px var(--black-08);
+}
+
+.knowledge-cutoff-notice i {
+  color: var(--primary-color);
+  font-size: .95rem;
+  vertical-align: middle;
+}
+
+.knowledge-cutoff-notice em {
+  font-style: normal;
+  font-weight: 500;
+}
+
+/* Dark theme adjustments for knowledge cutoff notice */
+[data-bs-theme="dark"] .knowledge-cutoff-notice {
+  border-left-color: var(--accent-color);
+  color: var(--text-color-light-secondary);
+  background-color: rgba(var(--accent-color-rgb) / 0.12);
+}
+
+[data-bs-theme="dark"] .knowledge-cutoff-notice:hover {
+  background-color: rgba(var(--accent-color-rgb) / 0.18);
+}
+
+[data-bs-theme="dark"] .knowledge-cutoff-notice i {
+  color: var(--accent-color);
+}
+
+/* Landing Page Knowledge Badge Styling */
+.landing-knowledge-badge {
+  padding: 6px 12px;
+  border-radius: var(--radius-xs);
+  font-size: .8rem;
+  font-weight: 500;
+  color: var(--primary-color);
+  background-color: rgba(var(--primary-color-rgb) / 0.1);
+  border: 1px solid rgba(var(--primary-color-rgb) / 0.2);
+  transition: all var(--duration-s) ease;
+}
+
+.landing-knowledge-badge i {
+  color: var(--primary-color);
+  font-size: .85rem;
+}
+
+.landing-knowledge-badge:hover {
+  background-color: rgba(var(--primary-color-rgb) / 0.15);
+  border-color: rgba(var(--primary-color-rgb) / 0.3);
+}
+
+/* Dark theme adjustments for landing knowledge badge */
+[data-bs-theme="dark"] .landing-knowledge-badge {
+  color: var(--accent-color);
+  background-color: rgba(var(--accent-color-rgb) / 0.15);
+  border-color: rgba(var(--accent-color-rgb) / 0.25);
+}
+
+[data-bs-theme="dark"] .landing-knowledge-badge i {
+  color: var(--accent-color);
+}
+
+[data-bs-theme="dark"] .landing-knowledge-badge:hover {
+  background-color: rgba(var(--accent-color-rgb) / 0.2);
+  border-color: rgba(var(--accent-color-rgb) / 0.35);
+}
+
 .avatar img {
   width: 30px;
   height: 30px;
