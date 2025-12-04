@@ -1,4 +1,23 @@
 {
+  "name": "sfda-copilot",
+  "version": "2.0.0",
+  "description": "AI-powered regulatory guidance system for pharmaceutical regulations in Saudi Arabia. Provides intelligent answers about SFDA regulations, comprehensive FAQ system, and secure user authentication with modern web technologies.",
+  "keywords": [
+    "sfda",
+    "pharmaceutical",
+    "regulatory",
+    "pharmacovigilance",
+    "saudi-arabia",
+    "ai",
+    "flask",
+    "supabase"
+  ],
+  "author": "Mohamed Fouda",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ArabianCowboy/SFDA_copilot.git"
+  },
   "dependencies": {
     "date-fns": "^4.1.0",
     "marked": "^12.0.0",
