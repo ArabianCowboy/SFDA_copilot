@@ -1,37 +1,20 @@
 /**
  * SFDA Copilot — Unified Single-Page Application Script
- * 
- * This is a comprehensive single-page application for the SFDA (Saudi Food and Drug Authority)
- * Copilot system, providing AI-powered regulatory guidance for pharmaceutical regulations.
- * 
- * Features:
- * - Authentication via Supabase
- * - Real-time chat with AI assistant  
- * - FAQ system with categorized questions
- * - Suggested questions for enhanced user experience
- * - Profile management with theme preferences
- * - Responsive design with dark/light theme support
- * - Comprehensive error handling and logging
- * 
+ *
+ * AI-powered regulatory guidance for pharmaceutical regulations.
+ *
  * @author SFDA Copilot Team
- * @version 2.0.0
+ * @version 2.2.0 (Merged Refactoring)
  * @since 2024
  */
 
-// SFDA Copilot — Unified Single-Page Application Script (Synthesized)
-import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.7/+esm'
-import { marked } from 'https://cdn.jsdelivr.net/npm/marked@12.0.0/+esm'
-import DOMPurify from 'https://cdn.jsdelivr.net/npm/dompurify@3.0.8/+esm'
+import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.7/+esm';
+import { marked } from 'https://cdn.jsdelivr.net/npm/marked@12.0.0/+esm';
+import DOMPurify from 'https://cdn.jsdelivr.net/npm/dompurify@3.0.8/+esm';
 
+/* ——————————————— CONFIGURATION ——————————————— */
 
-
-/* ——————————————— CONFIGURATION & STATE ——————————————— */
-/**
- * Global configuration object containing timing constants, CSS classes, and DOM selectors.
- * This centralizes all configuration values for easy maintenance and consistency.
- */
 const CONFIG = {
-  // Timing constants
   TOAST_DURATION: 3000,
   DEBOUNCE_DELAY: 300,
   ANIMATION_DELAY: 100,
@@ -39,7 +22,6 @@ const CONFIG = {
   RETRY_MAX_ATTEMPTS: 3,
   RETRY_DELAY_INITIAL: 1000,
 
-  // CSS Classes
   CLASSES: {
     HIDDEN: 'hidden',
     D_NONE: 'd-none',
@@ -49,23 +31,27 @@ const CONFIG = {
     ANIMATE_CARD: 'animate-card',
     ANIMATED: 'animated',
     ACTIVE: 'active',
-    LOADING: 'loading',
     ERROR: 'error',
     SUCCESS: 'success',
     SKELETON: 'skeleton',
-    TYPING: 'typing-indicator',
-    // Suggested Questions Classes
+    TYPING_INDICATOR_ID: 'typing-indicator',
+    THEME_TOGGLE: 'theme-toggle-btn',
     SUGGESTED_CONTAINER: 'suggested-questions-container',
     SUGGESTED_BUTTON: 'suggested-question-enhanced',
     SUGGESTED_ICON: 'suggested-question-icon',
+    FAQ_BUTTON: 'faq-button',
+    MESSAGE_LIST: 'message-list',
+    MESSAGE_CODE_BLOCK: 'message-code-block',
+    MESSAGE_INLINE_CODE: 'message-inline-code',
   },
 
-  // Selectors for DOM queries
   SELECTORS: {
-    // Views
     UNAUTH_VIEW: '#unauthenticated-view',
     AUTH_VIEW: '#authenticated-view',
-    // Auth
+    FAQ_SIDEBAR: '#faq-sidebar-section',
+    FAQ_OFFCANVAS: '#faq-offcanvas-section',
+    MESSAGES: '#messages',
+    TOAST: '#toast',
     LOGIN_FORM: '#login-form',
     SIGNUP_FORM: '#signup-form',
     LOGOUT_BTN: '#logout-button',
@@ -76,34 +62,26 @@ const CONFIG = {
     USER_STATUS: '#user-status',
     USER_STATUS_OFFCANVAS: '#user-status-offcanvas',
     AUTH_ERROR: '#auth-error',
-    // Chat
-    MESSAGES: '#messages',
+    AUTH_MODAL: '#authModal',
     QUERY_INPUT: '#query-input',
     SEND_BTN: '#send-button',
     CATEGORY_SELECT: '#query-category',
-    // Modals
-    AUTH_MODAL: '#authModal',
     PROFILE_MODAL: '#profileModal',
     PROFILE_FORM: '#profile-form',
     PROFILE_ERROR: '#profile-error',
     PROFILE_BTN: '#profile-button',
     PROFILE_BTN_OFFCANVAS: '#profile-button-offcanvas',
-    // Shared
-    TOAST: '#toast',
-    // FAQ Sections
-    FAQ_SIDEBAR: '#faq-sidebar-section',
-    FAQ_OFFCANVAS: '#faq-offcanvas-section',
   },
 };
 
-// Efficient DOM caching system
+/* ——————————————— DOM CACHE ——————————————— */
+
 const DOMCache = {
   elements: new Map(),
 
   get(selector) {
     if (!this.elements.has(selector)) {
-      const element = document.querySelector(selector);
-      this.elements.set(selector, element);
+      this.elements.set(selector, document.querySelector(selector));
     }
     return this.elements.get(selector);
   },
@@ -114,20 +92,19 @@ const DOMCache = {
 
   createElement(tagName, ...classes) {
     const el = document.createElement(tagName);
-    if (classes.length > 0) {
-      el.classList.add(...classes);
-    }
+    if (classes.length) el.classList.add(...classes);
     return el;
   },
 
-  setAttributes(element, attributes) {
-    Object.entries(attributes).forEach(([key, value]) => {
+  setAttributes(element, attributes = {}) {
+    for (const [key, value] of Object.entries(attributes)) {
       element.setAttribute(key, value);
-    });
+    }
   },
 };
 
-// Centralized error handling system
+/* ——————————————— ERROR HANDLER ——————————————— */
+
 const ErrorHandler = {
   formatAuthError(error) {
     const message = error?.message?.toLowerCase() || '';
@@ -140,7 +117,7 @@ const ErrorHandler = {
     for (const key in errorMap) {
       if (message.includes(key)) return errorMap[key];
     }
-    return error.message || 'An unknown authentication error occurred.';
+    return error?.message || 'An unknown authentication error occurred.';
   },
 
   showToast(message, isError = false, duration = CONFIG.TOAST_DURATION) {
@@ -184,19 +161,24 @@ const ErrorHandler = {
       profileError.textContent = '';
     }
 
-    // Clear form validation errors
-    const forms = [CONFIG.SELECTORS.LOGIN_FORM, CONFIG.SELECTORS.SIGNUP_FORM].map(sel => DOMCache.get(sel)).filter(Boolean);
-    forms.forEach(form => {
-      form.querySelectorAll(`.${CONFIG.CLASSES.INVALID}`).forEach(input => input.classList.remove(CONFIG.CLASSES.INVALID));
-    });
+    [CONFIG.SELECTORS.LOGIN_FORM, CONFIG.SELECTORS.SIGNUP_FORM]
+      .map(sel => DOMCache.get(sel))
+      .filter(Boolean)
+      .forEach(form => {
+        form.querySelectorAll(`.${CONFIG.CLASSES.INVALID}`).forEach(input => {
+          input.classList.remove(CONFIG.CLASSES.INVALID);
+        });
+        form.classList.remove('was-validated');
+      });
   },
 
   log(error, context = '') {
-    console.error(`[SFDA Copilot ${context}]`, error);
+    console.error(`[SFDA Copilot${context ? ` ${context}` : ''}]`, error);
   },
 };
 
-// Centralized state management
+/* ——————————————— APP STATE ——————————————— */
+
 const AppState = {
   state: {
     supabase: null,
@@ -207,21 +189,7 @@ const AppState = {
     authModal: null,
     profileModal: null,
     userProfile: null,
-    viewTransitionEnabled: document.startViewTransition ? true : false,
-  },
-
-  reset() {
-    this.state = {
-      supabase: null,
-      abortController: null,
-      debounceTimer: null,
-      isRequestInProgress: false,
-      originalSendButtonText: 'Send',
-      authModal: null,
-      profileModal: null,
-      userProfile: null,
-      viewTransitionEnabled: document.startViewTransition ? true : false,
-    };
+    viewTransitionEnabled: !!document.startViewTransition,
   },
 
   get(key) {
@@ -232,14 +200,8 @@ const AppState = {
     this.state[key] = value;
   },
 
-  update(updates) {
-    Object.assign(this.state, updates);
-  },
-
   resetAbortController() {
-    if (this.state.abortController) {
-      this.state.abortController.abort();
-    }
+    this.state.abortController?.abort();
     this.state.abortController = new AbortController();
     return this.state.abortController;
   },
@@ -250,19 +212,21 @@ const AppState = {
 
   setRequestInProgress(inProgress) {
     this.state.isRequestInProgress = inProgress;
-    if (!inProgress) {
-      this.state.abortController = null;
-    }
+    if (!inProgress) this.state.abortController = null;
   },
 };
 
-/* ——————————————— UTILITY MODULE ——————————————— */
+/* ——————————————— UTILITIES ——————————————— */
+
 const Utils = {
+  logError(error, context = '') {
+    ErrorHandler.log(error, context);
+  },
+
   createMessageContent(text, isBot) {
     const contentDiv = DOMCache.createElement('div', 'message-content');
     if (isBot) {
-      const sanitizedHtml = DOMPurify.sanitize(marked.parse(text), { USE_PROFILES: { html: true } });
-      contentDiv.innerHTML = sanitizedHtml;
+      contentDiv.innerHTML = DOMPurify.sanitize(marked.parse(text), { USE_PROFILES: { html: true } });
     } else {
       contentDiv.textContent = text;
     }
@@ -276,7 +240,7 @@ const Utils = {
 
     if (isBot) {
       const avatarDiv = DOMCache.createElement('div', 'avatar', 'mb-2');
-      avatarDiv.innerHTML = `<img src="/static/images/bot.jpg" alt="Bot Avatar" class="rounded-circle" loading="lazy">`;
+      avatarDiv.innerHTML = '<img src="/static/images/bot.jpg" alt="Bot Avatar" class="rounded-circle" loading="lazy">';
       messageBubble.appendChild(avatarDiv);
     }
 
@@ -288,9 +252,8 @@ const Utils = {
 
     messageWrapper.appendChild(messageBubble);
 
-    // Add container for suggested questions for bot messages
     if (isBot) {
-      const suggestionsContainer = DOMCache.createElement('div', 'suggested-questions-container', 'mt-2');
+      const suggestionsContainer = DOMCache.createElement('div', CONFIG.CLASSES.SUGGESTED_CONTAINER, 'mt-2');
       messageWrapper.appendChild(suggestionsContainer);
     }
 
@@ -298,15 +261,13 @@ const Utils = {
   },
 
   renderSuggestedQuestions(container, questions) {
-    if (!container || !Array.isArray(questions) || questions.length === 0) return;
+    if (!container || !Array.isArray(questions) || !questions.length) return;
 
-    // Add extra spacing from left sidebar
-    container.style.marginLeft = '20px';
-    container.style.paddingLeft = '10px';
+    Object.assign(container.style, { marginLeft: '20px', paddingLeft: '10px' });
 
     questions.forEach((question, index) => {
-      const button = DOMCache.createElement('button', 'suggested-question-enhanced');
-      const icon = DOMCache.createElement('i', 'fas', 'fa-lightbulb', 'suggested-question-icon');
+      const button = DOMCache.createElement('button', CONFIG.CLASSES.SUGGESTED_BUTTON);
+      const icon = DOMCache.createElement('i', 'fas', 'fa-lightbulb', CONFIG.CLASSES.SUGGESTED_ICON);
 
       icon.setAttribute('aria-hidden', 'true');
       button.appendChild(icon);
@@ -316,58 +277,144 @@ const Utils = {
         role: 'button',
         'aria-label': `Ask: ${question}`,
         tabindex: '0',
-        'data-question-text': question, // Store pure text for click handler
+        'data-question-text': question,
       });
 
-      // Add additional spacing per button
-      button.style.marginBottom = '8px';
-      button.style.marginRight = '8px';
-      button.style.animationDelay = `${index * CONFIG.ANIMATION_DELAY / 1000}s`;
+      Object.assign(button.style, {
+        marginBottom: '8px',
+        marginRight: '8px',
+        animationDelay: `${(index * CONFIG.ANIMATION_DELAY) / 1000}s`,
+      });
+
       container.appendChild(button);
     });
   },
+};
 
-  applyToElements(elements, updater) {
-    elements?.filter(Boolean).forEach(updater);
+/* ——————————————— THEME MANAGER ——————————————— */
+
+const ThemeManager = {
+  init() {
+    let storedTheme;
+    try {
+      storedTheme = localStorage.getItem('theme');
+    } catch (error) {
+      Utils.logError(error, 'ThemeManager.init');
+      storedTheme = null;
+    }
+
+    const systemPrefersDark = window.matchMedia?.('(prefers-color-scheme: dark)').matches;
+    const defaultTheme = storedTheme || (systemPrefersDark ? CONFIG.CLASSES.DARK : CONFIG.CLASSES.LIGHT);
+
+    this.apply(defaultTheme);
+    this.initToggles();
   },
 
-  logError(error, context = '') {
-    ErrorHandler.log(error, context);
+  getCurrent() {
+    return document.documentElement.getAttribute('data-bs-theme') || CONFIG.CLASSES.LIGHT;
+  },
+
+  apply(theme) {
+    document.documentElement.setAttribute('data-bs-theme', theme);
+
+    try {
+      localStorage.setItem('theme', theme);
+    } catch (error) {
+      Utils.logError(error, 'ThemeManager.apply');
+    }
+
+    this.updateToggleIcons();
+  },
+
+  toggle() {
+    const currentTheme = this.getCurrent();
+    const newTheme = currentTheme === CONFIG.CLASSES.DARK ? CONFIG.CLASSES.LIGHT : CONFIG.CLASSES.DARK;
+
+    this.apply(newTheme);
+    this.animateToggleButtons();
+    this.announceChange(newTheme);
+  },
+
+  updateToggleIcons() {
+    const currentTheme = this.getCurrent();
+    const isDark = currentTheme === CONFIG.CLASSES.DARK;
+    const iconClass = isDark ? 'bi-sun-fill' : 'bi-moon-fill';
+    const newTitle = isDark ? 'Switch to light theme' : 'Switch to dark theme';
+
+    DOMCache.getAll(`.${CONFIG.CLASSES.THEME_TOGGLE}`).forEach(btn => {
+      btn.innerHTML = `<i class="bi ${iconClass}"></i>`;
+      DOMCache.setAttributes(btn, {
+        title: newTitle,
+        'aria-label': newTitle,
+        'aria-pressed': String(isDark),
+      });
+    });
+  },
+
+  initToggles() {
+    this.updateToggleIcons();
+    this.bindToggleEvents();
+  },
+
+  bindToggleEvents() {
+    document.addEventListener('click', (e) => {
+      if (e.target.closest(`.${CONFIG.CLASSES.THEME_TOGGLE}`)) {
+        e.preventDefault();
+        this.toggle();
+      }
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.target.closest(`.${CONFIG.CLASSES.THEME_TOGGLE}`) && (e.key === 'Enter' || e.key === ' ')) {
+        e.preventDefault();
+        this.toggle();
+      }
+    });
+  },
+
+  animateToggleButtons() {
+    DOMCache.getAll(`.${CONFIG.CLASSES.THEME_TOGGLE}`).forEach(btn => {
+      btn.style.transform = 'scale(1.2)';
+      setTimeout(() => { btn.style.transform = 'scale(1)'; }, 150);
+    });
+  },
+
+  announceChange(newTheme) {
+    const announcement = DOMCache.createElement('div', 'sr-only');
+    DOMCache.setAttributes(announcement, { role: 'status', 'aria-live': 'polite' });
+    announcement.textContent = `Theme changed to ${newTheme} mode`;
+    document.body.appendChild(announcement);
+    setTimeout(() => announcement.remove(), 1000);
   },
 };
 
 /* ——————————————— UI MODULE ——————————————— */
+
 const UI = {
   scrollMessagesToBottom() {
     const container = DOMCache.get(CONFIG.SELECTORS.MESSAGES);
-    if (container) {
-      container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
-    }
+    container?.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
   },
 
   addMessage(text, sender, suggestedQuestions = []) {
     const messageEl = Utils.createMessageElement(text, sender);
     const container = DOMCache.get(CONFIG.SELECTORS.MESSAGES);
-
     if (!container) return;
 
     const render = () => {
       container.appendChild(messageEl);
 
       if (sender === 'bot') {
-        // Apply specific styling for Markdown-rendered elements
-        messageEl.querySelectorAll('ul, ol').forEach(el => el.classList.add('message-list'));
-        messageEl.querySelectorAll('pre code').forEach(el => el.parentElement?.classList.add('message-code-block'));
-        messageEl.querySelectorAll(':not(pre) > code').forEach(el => el.classList.add('message-inline-code'));
+        messageEl.querySelectorAll('ul, ol').forEach(el => el.classList.add(CONFIG.CLASSES.MESSAGE_LIST));
+        messageEl.querySelectorAll('pre code').forEach(el => el.parentElement?.classList.add(CONFIG.CLASSES.MESSAGE_CODE_BLOCK));
+        messageEl.querySelectorAll(':not(pre) > code').forEach(el => el.classList.add(CONFIG.CLASSES.MESSAGE_INLINE_CODE));
 
-        // Render suggested questions
-        const suggestionsContainer = messageEl.querySelector('.suggested-questions-container');
+        const suggestionsContainer = messageEl.querySelector(`.${CONFIG.CLASSES.SUGGESTED_CONTAINER}`);
         Utils.renderSuggestedQuestions(suggestionsContainer, suggestedQuestions);
       }
       this.scrollMessagesToBottom();
     };
 
-    // Use View Transitions API if available
     AppState.get('viewTransitionEnabled') ? document.startViewTransition(render) : render();
   },
 
@@ -375,24 +422,20 @@ const UI = {
     const container = DOMCache.get(CONFIG.SELECTORS.MESSAGES);
     if (!container) return;
 
-    const indicatorId = 'typing-indicator';
-    let existingIndicator = document.getElementById(indicatorId);
+    const indicatorId = CONFIG.CLASSES.TYPING_INDICATOR_ID;
+    const existingIndicator = document.getElementById(indicatorId);
 
     if (show && !existingIndicator) {
-      const fragment = document.createDocumentFragment();
       const wrapper = DOMCache.createElement('div', 'skeleton-message-container');
-      DOMCache.setAttributes(wrapper, { id: indicatorId });
+      wrapper.id = indicatorId;
 
-      const avatar = DOMCache.createElement('div', 'skeleton', 'skeleton-avatar');
+      const avatar = DOMCache.createElement('div', CONFIG.CLASSES.SKELETON, 'skeleton-avatar');
       const content = DOMCache.createElement('div', 'skeleton-content');
-      const line1 = DOMCache.createElement('div', 'skeleton', 'skeleton-line', 'medium');
-      const line2 = DOMCache.createElement('div', 'skeleton', 'skeleton-line');
+      content.appendChild(DOMCache.createElement('div', CONFIG.CLASSES.SKELETON, 'skeleton-line', 'medium'));
+      content.appendChild(DOMCache.createElement('div', CONFIG.CLASSES.SKELETON, 'skeleton-line'));
 
-      content.appendChild(line1);
-      content.appendChild(line2);
       wrapper.appendChild(avatar);
       wrapper.appendChild(content);
-
       container.appendChild(wrapper);
       this.scrollMessagesToBottom();
     } else if (!show && existingIndicator) {
@@ -404,78 +447,21 @@ const UI = {
     const isLoggedIn = !!user;
     const statusText = isLoggedIn ? `Logged in as: ${user.email}` : 'Not logged in';
 
-    console.log('[UIDebug] updateAuthUI called. isLoggedIn:', isLoggedIn, 'User:', user?.email);
-
-    // Update user status displays
-    DOMCache.getAll([CONFIG.SELECTORS.USER_STATUS, CONFIG.SELECTORS.USER_STATUS_OFFCANVAS].join(', ')).forEach(el => {
+    DOMCache.getAll(`${CONFIG.SELECTORS.USER_STATUS}, ${CONFIG.SELECTORS.USER_STATUS_OFFCANVAS}`).forEach(el => {
       if (el) el.textContent = statusText;
     });
 
-    // Show/hide authenticated/unauthenticated views explicitly
-    // DIRECT QUERY to ensure we aren't hitting a stale cache or missing element
-    const unauthView = document.querySelector(CONFIG.SELECTORS.UNAUTH_VIEW);
-    const authView = document.querySelector(CONFIG.SELECTORS.AUTH_VIEW);
+    DOMCache.get(CONFIG.SELECTORS.UNAUTH_VIEW)?.classList.toggle(CONFIG.CLASSES.D_NONE, isLoggedIn);
+    DOMCache.get(CONFIG.SELECTORS.AUTH_VIEW)?.classList.toggle(CONFIG.CLASSES.D_NONE, !isLoggedIn);
 
-    console.log('[UIDebug] View Elements Check:', {
-      unauthViewFound: !!unauthView,
-      authViewFound: !!authView,
-      unauthSelector: CONFIG.SELECTORS.UNAUTH_VIEW,
-      authSelector: CONFIG.SELECTORS.AUTH_VIEW
-    });
+    const authButtonSelectors = [CONFIG.SELECTORS.AUTH_BTN, CONFIG.SELECTORS.AUTH_BTN_OFFCANVAS, CONFIG.SELECTORS.AUTH_BTN_MAIN];
+    const userButtonSelectors = [CONFIG.SELECTORS.LOGOUT_BTN, CONFIG.SELECTORS.LOGOUT_BTN_OFFCANVAS, CONFIG.SELECTORS.PROFILE_BTN, CONFIG.SELECTORS.PROFILE_BTN_OFFCANVAS];
 
-    if (unauthView) {
-      if (isLoggedIn) {
-        unauthView.classList.add(CONFIG.CLASSES.D_NONE);
-        console.log('[UIDebug] Hiding unauthenticated view (added d-none)');
-      } else {
-        unauthView.classList.remove(CONFIG.CLASSES.D_NONE);
-        console.log('[UIDebug] Showing unauthenticated view (removed d-none)');
-      }
-    } else {
-      console.error('[UIResult] CRITICAL: Unauthenticated view element NOT found in DOM!');
-    }
-
-    if (authView) {
-      if (isLoggedIn) {
-        authView.classList.remove(CONFIG.CLASSES.D_NONE);
-        console.log('[UIDebug] Showing authenticated view (removed d-none)');
-      } else {
-        authView.classList.add(CONFIG.CLASSES.D_NONE);
-        console.log('[UIDebug] Hiding authenticated view (added d-none)');
-      }
-    } else {
-      console.error('[UIResult] CRITICAL: Authenticated view element NOT found in DOM!');
-    }
-
-    // Show/hide auth buttons (login/signup)
-    DOMCache.getAll([
-      CONFIG.SELECTORS.AUTH_BTN,
-      CONFIG.SELECTORS.AUTH_BTN_OFFCANVAS,
-      CONFIG.SELECTORS.AUTH_BTN_MAIN
-    ].join(', ')).forEach(btn => {
-      if (btn) {
-        if (isLoggedIn) {
-          btn.classList.add(CONFIG.CLASSES.D_NONE);
-        } else {
-          btn.classList.remove(CONFIG.CLASSES.D_NONE);
-        }
-      }
-    });
-
-    // Show/hide logout and profile buttons
-    DOMCache.getAll([
-      CONFIG.SELECTORS.LOGOUT_BTN,
-      CONFIG.SELECTORS.LOGOUT_BTN_OFFCANVAS,
-      CONFIG.SELECTORS.PROFILE_BTN,
-      CONFIG.SELECTORS.PROFILE_BTN_OFFCANVAS
-    ].join(', ')).forEach(btn => {
-      if (btn) {
-        if (isLoggedIn) {
-          btn.classList.remove(CONFIG.CLASSES.D_NONE);
-        } else {
-          btn.classList.add(CONFIG.CLASSES.D_NONE);
-        }
-      }
+    const allButtonSelectors = [...authButtonSelectors, ...userButtonSelectors].join(', ');
+    DOMCache.getAll(allButtonSelectors).forEach(btn => {
+      if (!btn) return;
+      const isAuthButton = authButtonSelectors.some(sel => btn.matches(sel));
+      btn.classList.toggle(CONFIG.CLASSES.D_NONE, isAuthButton ? isLoggedIn : !isLoggedIn);
     });
   },
 
@@ -483,16 +469,19 @@ const UI = {
     const form = DOMCache.get(CONFIG.SELECTORS.PROFILE_FORM);
     if (!profile || !form) return;
 
-    const { full_name = '', organization = '', specialization = '', preferences: { theme = CONFIG.CLASSES.LIGHT } = {} } = profile;
+    const { full_name = '', organization = '', specialization = '' } = profile;
+
+    // Use .value assignment (not setAttribute) for proper form population
     const fullNameInput = form.querySelector('#profile-full-name');
     const orgInput = form.querySelector('#profile-organization');
     const specInput = form.querySelector('#profile-specialization');
+
     if (fullNameInput) fullNameInput.value = full_name;
     if (orgInput) orgInput.value = organization;
     if (specInput) specInput.value = specialization;
 
-    // Sync with CURRENT active theme, not just stored profile preference
-    const currentTheme = getCurrentTheme();
+    // Sync theme radio with current active theme
+    const currentTheme = ThemeManager.getCurrent();
     const themeRadio = form.querySelector(`input[name="theme-preference"][value="${currentTheme}"]`);
     if (themeRadio) themeRadio.checked = true;
   },
@@ -500,56 +489,51 @@ const UI = {
   setSendingState(isSending) {
     AppState.setRequestInProgress(isSending);
 
-    // Select all relevant elements
     const elementsToToggle = [
       DOMCache.get(CONFIG.SELECTORS.QUERY_INPUT),
       DOMCache.get(CONFIG.SELECTORS.SEND_BTN),
-      ...DOMCache.getAll('.faq-button'),
-      ...DOMCache.getAll('.suggested-question-enhanced')
+      ...DOMCache.getAll(`.${CONFIG.CLASSES.FAQ_BUTTON}`),
+      ...DOMCache.getAll(`.${CONFIG.CLASSES.SUGGESTED_BUTTON}`),
     ].filter(Boolean);
 
-    elementsToToggle.forEach(el => (el.disabled = isSending));
+    elementsToToggle.forEach(el => { el.disabled = isSending; });
 
     const sendBtn = DOMCache.get(CONFIG.SELECTORS.SEND_BTN);
     if (sendBtn) {
-      const originalText = AppState.get('originalSendButtonText');
+      const originalText = AppState.get('originalSendButtonText') || 'Send';
       sendBtn.innerHTML = isSending
-        ? `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Sending...`
-        : `<i class="bi bi-send"></i> ${originalText || 'Send'}`; // Defensive check for originalText
+        ? '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Sending...'
+        : `<i class="bi bi-send"></i> ${originalText}`;
     }
   },
 
   Faq: {
     renderButtons(faqData) {
-      const faqSections = [
-        DOMCache.get(CONFIG.SELECTORS.FAQ_SIDEBAR),
-        DOMCache.get(CONFIG.SELECTORS.FAQ_OFFCANVAS)
-      ].filter(Boolean);
-
-      if (faqSections.length === 0) return;
+      const faqSections = [DOMCache.get(CONFIG.SELECTORS.FAQ_SIDEBAR), DOMCache.get(CONFIG.SELECTORS.FAQ_OFFCANVAS)].filter(Boolean);
+      if (!faqSections.length) return;
 
       const createFaqContent = () => {
         const fragment = document.createDocumentFragment();
 
-        Object.entries(faqData || {}).forEach(([category, data]) => {
-          if (!data?.questions?.length) return;
+        for (const [category, data] of Object.entries(faqData || {})) {
+          if (!data?.questions?.length) continue;
 
           const header = DOMCache.createElement('h4', 'ps-2', 'mt-3');
           header.innerHTML = `<i class="bi ${data.icon || 'bi-question-circle'}"></i>${data.title || category}`;
 
           const nav = DOMCache.createElement('nav', 'nav', 'nav-pills', 'flex-column');
 
-          data.questions.forEach(({ short, text }) => {
-            if (!short || !text) return;
-            const button = DOMCache.createElement('button', 'nav-link', 'faq-button');
+          for (const { short, text } of data.questions) {
+            if (!short || !text) continue;
+            const button = DOMCache.createElement('button', 'nav-link', CONFIG.CLASSES.FAQ_BUTTON);
             DOMCache.setAttributes(button, { 'data-category': category, 'data-question': text });
             button.textContent = short;
             nav.appendChild(button);
-          });
+          }
 
           fragment.appendChild(header);
           fragment.appendChild(nav);
-        });
+        }
 
         return fragment;
       };
@@ -557,7 +541,7 @@ const UI = {
       faqSections.forEach((section, index) => {
         section.innerHTML = '';
         const content = createFaqContent();
-        if (content.children.length > 0) {
+        if (content.childElementCount > 0) {
           section.appendChild(index === 0 ? content : content.cloneNode(true));
           section.querySelector('h4:first-of-type')?.classList.remove('mt-3');
         } else {
@@ -567,18 +551,18 @@ const UI = {
     },
 
     clearButtons() {
-      DOMCache.getAll([
-        CONFIG.SELECTORS.FAQ_SIDEBAR,
-        CONFIG.SELECTORS.FAQ_OFFCANVAS
-      ].join(', ')).forEach(section => (section.innerHTML = ''));
+      DOMCache.getAll(`${CONFIG.SELECTORS.FAQ_SIDEBAR}, ${CONFIG.SELECTORS.FAQ_OFFCANVAS}`).forEach(section => {
+        section.innerHTML = '';
+      });
     },
   },
 };
 
-/* ——————————————— ANIMATION MODULE ——————————————— */
+/* ——————————————— ANIMATIONS ——————————————— */
+
 const Animations = {
   initCardAnimations() {
-    const cards = document.querySelectorAll(`.${CONFIG.CLASSES.ANIMATE_CARD}`);
+    const cards = DOMCache.getAll(`.${CONFIG.CLASSES.ANIMATE_CARD}`);
     if (typeof anime !== 'function') {
       console.warn('[Animations] anime.js not found. Card animations skipped.');
       return;
@@ -590,7 +574,7 @@ const Animations = {
     };
 
     const observer = new IntersectionObserver(
-      (entries, observer) => {
+      (entries, obs) => {
         entries.forEach((entry) => {
           if (entry.isIntersecting && !entry.target.classList.contains(CONFIG.CLASSES.ANIMATED)) {
             const delay = parseInt(entry.target.dataset.delay || '0', 10);
@@ -602,7 +586,7 @@ const Animations = {
               delay,
               complete: () => {
                 entry.target.classList.add(CONFIG.CLASSES.ANIMATED);
-                observer.unobserve(entry.target);
+                obs.unobserve(entry.target);
               },
             });
           }
@@ -627,81 +611,74 @@ const Animations = {
     if (!heroImage) return;
 
     const parallaxStrength = 0.05;
-    window.addEventListener(
-      'scroll',
-      () => {
-        heroImage.style.transform = `translateY(${window.pageYOffset * parallaxStrength}px)`;
-      },
-      { passive: true }
-    );
+    window.addEventListener('scroll', () => {
+      heroImage.style.transform = `translateY(${window.pageYOffset * parallaxStrength}px)`;
+    }, { passive: true });
   },
 };
 
-/* ——————————————— API & AUTH SERVICES ——————————————— */
+/* ——————————————— SERVICES ——————————————— */
+
 const Services = {
   supabase: null,
 
   init() {
-    // Initialize Supabase client outside of class context
-    if (!window.supabaseClient) {
-      try {
-        // Validate configuration
-        if (!window.SUPABASE_URL || !window.SUPABASE_ANON_KEY) {
-          console.error('[Auth] Missing Supabase configuration:', {
-            hasUrl: !!window.SUPABASE_URL,
-            hasKey: !!window.SUPABASE_ANON_KEY
-          });
-          ErrorHandler.showToast('Supabase configuration is missing. Please check your environment variables.', true);
-          return false;
-        }
+    if (this.supabase) return true;
 
-        // Validate URL format
-        if (!window.SUPABASE_URL.startsWith('http://') && !window.SUPABASE_URL.startsWith('https://')) {
-          console.error('[Auth] Invalid Supabase URL format:', window.SUPABASE_URL);
-          ErrorHandler.showToast('Invalid Supabase URL format.', true);
-          return false;
-        }
+    const { SUPABASE_URL, SUPABASE_ANON_KEY, APP_DEBUG } = window;
 
-        console.log('[Auth] Initializing Supabase client with URL:', window.SUPABASE_URL);
-        window.supabaseClient = createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY, {
-          auth: {
-            persistSession: true,
-            autoRefreshToken: true,
-            detectSessionInUrl: true,
-            storage: window.localStorage,
-            storageKey: 'sfda-supabase-auth',
-            flowType: 'pkce',
-            debug: true // Enable internal Supabase debug logs
-          }
-        });
-        console.log('[Auth] Supabase client initialized successfully');
-      } catch (error) {
-        console.error('[Auth] Failed to initialize Supabase client:', error);
-        Utils.logError(error, 'Failed to initialize Supabase client');
-        ErrorHandler.showToast('Failed to initialize authentication service. Please check your configuration.', true);
-        return false;
-      }
+    if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+      Utils.logError('Supabase configuration missing.', 'Services.init');
+      ErrorHandler.showToast('Supabase configuration is missing.', true);
+      return false;
     }
-    this.supabase = window.supabaseClient;
-    return true;
+
+    if (!SUPABASE_URL.startsWith('http://') && !SUPABASE_URL.startsWith('https://')) {
+      Utils.logError('Invalid Supabase URL format.', 'Services.init');
+      ErrorHandler.showToast('Invalid Supabase URL format.', true);
+      return false;
+    }
+
+    try {
+      const isDebugMode = APP_DEBUG === true ||
+        window.location.hostname === 'localhost' ||
+        window.location.hostname === '127.0.0.1';
+
+      this.supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+        auth: {
+          persistSession: true,
+          autoRefreshToken: true,
+          detectSessionInUrl: true,
+          storage: window.localStorage,
+          storageKey: 'sfda-supabase-auth',
+          flowType: 'pkce',
+          debug: isDebugMode,
+        },
+      });
+
+      if (isDebugMode) {
+        window.supabaseClient = this.supabase;
+      }
+
+      AppState.set('supabase', this.supabase);
+      return true;
+    } catch (error) {
+      Utils.logError(error, 'Services.init');
+      ErrorHandler.showToast('Failed to initialize authentication service.', true);
+      return false;
+    }
   },
 
   async getFaqData() {
     try {
       const response = await fetch('/api/frequent-questions');
       if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`HTTP error! Status: ${response.status}. Details: ${errorText}`);
+        throw new Error(`HTTP error! Status: ${response.status}`);
       }
-      const data = await response.json();
-      if (!data) {
-        Utils.logError('No data received from FAQ endpoint', 'getFaqData');
-        return null;
-      }
-      return data;
+      return await response.json();
     } catch (error) {
       Utils.logError(error, 'getFaqData');
-      ErrorHandler.showToast('Failed to load FAQs. Please try again later.', true);
+      ErrorHandler.showToast('Failed to load FAQs.', true);
       return null;
     }
   },
@@ -709,12 +686,12 @@ const Services = {
   async sendChatRequest(query, category, token) {
     const abortController = AppState.resetAbortController();
 
+    const headers = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
     const response = await fetch('/api/chat', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
-      },
+      headers,
       signal: abortController.signal,
       body: JSON.stringify({ query, category }),
     });
@@ -727,16 +704,15 @@ const Services = {
   },
 
   async getSessionToken() {
-    if (window.location.search.includes('testing=true')) {
-      return 'fake_token'; // Bypass for testing
-    }
+    if (window.location.search.includes('testing=true')) return 'fake_token';
     if (!this.supabase) {
-      ErrorHandler.log('Supabase client not initialized.', 'getSessionToken');
+      Utils.logError('Supabase client not initialized.', 'getSessionToken');
       return null;
     }
+
     const { data, error } = await this.supabase.auth.getSession();
     if (error) {
-      ErrorHandler.log(error, 'getSessionToken');
+      Utils.logError(error, 'getSessionToken');
       return null;
     }
     return data.session?.access_token ?? null;
@@ -744,68 +720,47 @@ const Services = {
 
   async login(email, password) {
     try {
-      if (!this.supabase) {
-        throw new Error('Supabase client not initialized. Please refresh the page.');
-      }
+      if (!this.supabase) throw new Error('Supabase client not initialized.');
 
-      console.log('[Auth] Attempting login for:', email);
       const { data, error } = await this.supabase.auth.signInWithPassword({ email, password });
+      if (error) throw error;
 
-      if (error) {
-        console.error('[Auth] Login error:', error);
-        throw error;
-      }
-
-      // Get user from response data
-      const user = data?.user || null;
-      console.log('[Auth] Login successful:', user?.email);
-
-      // Immediately update UI to show authenticated view
-      if (user) {
-        UI.updateAuthUI(user);
-        console.log('[Auth] UI updated to authenticated view');
-      }
-
-      // Close modal and reset form
-      const authModal = AppState.get('authModal');
-      const loginForm = DOMCache.get(CONFIG.SELECTORS.LOGIN_FORM);
-
-      if (authModal) authModal.hide();
-      if (loginForm) loginForm.reset();
-
-      ErrorHandler.showToast('Login successful!');
-
-      // Load FAQ data immediately after login
-      if (user) {
-        try {
-          const faqData = await this.getFaqData();
-          if (faqData) {
-            UI.Faq.renderButtons(faqData);
-          }
-        } catch (err) {
-          console.warn('[Auth] Failed to load FAQ data after login:', err);
-        }
-      }
+      AppState.get('authModal')?.hide();
+      DOMCache.get(CONFIG.SELECTORS.LOGIN_FORM)?.reset();
+      ErrorHandler.showToast(data?.user?.email ? `Logged in as ${data.user.email}` : 'Login successful!');
     } catch (error) {
-      console.error('[Auth] Login exception:', error);
-      const authError = ErrorHandler.formatAuthError(error);
-      ErrorHandler.showAuthError(authError);
+      Utils.logError(error, 'Services.login');
+      ErrorHandler.showAuthError(ErrorHandler.formatAuthError(error));
     }
   },
 
   async signup(email, password) {
     try {
+      if (!this.supabase) throw new Error('Supabase client not initialized.');
+
       const { error } = await this.supabase.auth.signUp({ email, password });
       if (error) throw error;
 
-      const signupForm = DOMCache.get(CONFIG.SELECTORS.SIGNUP_FORM);
-      if (signupForm) signupForm.reset();
-
+      DOMCache.get(CONFIG.SELECTORS.SIGNUP_FORM)?.reset();
       ErrorHandler.showToast('Signup initiated! Please check your email to confirm.');
     } catch (error) {
-      const authError = ErrorHandler.formatAuthError(error);
-      ErrorHandler.showAuthError(authError);
+      Utils.logError(error, 'Services.signup');
+      ErrorHandler.showAuthError(ErrorHandler.formatAuthError(error));
     }
+  },
+
+  redirectToHomeIfNeeded() {
+    if (window.location.pathname !== '/') window.location.replace('/');
+  },
+
+  clearLocalAuthData() {
+    ['sb-access-token', 'sb-refresh-token', 'sb-user', 'sb-session', 'sfda-supabase-auth'].forEach(key => {
+      try {
+        localStorage.removeItem(key);
+      } catch (error) {
+        Utils.logError(error, `clearLocalAuthData: ${key}`);
+      }
+    });
   },
 
   async logout() {
@@ -814,91 +769,52 @@ const Services = {
       ErrorHandler.showToast('Logged out successfully (testing mode)');
       return;
     }
+
     if (!this.supabase) {
       ErrorHandler.showToast('Authentication service not available', true);
       return;
     }
 
     try {
-      // Try to get current session first
       const { data: { session } } = await this.supabase.auth.getSession();
 
       if (!session) {
-        // No active session - just clear local state
-        console.log('[Auth] No active session to sign out from - clearing local data');
         this.clearLocalAuthData();
         UI.updateAuthUI(null);
         ErrorHandler.showToast('Logged out successfully');
-
-        // Redirect to home page if not already there
-        if (window.location.pathname !== '/') {
-          window.location.replace('/');
-        }
+        this.redirectToHomeIfNeeded();
         return;
       }
 
-      // Active session exists - sign out properly
       const { error } = await this.supabase.auth.signOut();
       if (error) throw error;
 
       ErrorHandler.showToast('Logged out successfully');
-
-      // Clear local storage items related to Supabase session
       this.clearLocalAuthData();
-
-      // Redirect to home page if not already there
-      if (window.location.pathname !== '/') {
-        window.location.replace('/');
-      }
+      this.redirectToHomeIfNeeded();
     } catch (error) {
-      ErrorHandler.log(error, 'logout');
-      // Even if signOut fails, clear local state
+      Utils.logError(error, 'logout');
       this.clearLocalAuthData();
       UI.updateAuthUI(null);
       ErrorHandler.showToast('Logged out (session cleared)', false);
-
-      // Redirect to home page if not already there
-      if (window.location.pathname !== '/') {
-        window.location.replace('/');
-      }
+      this.redirectToHomeIfNeeded();
     }
-  },
-
-  clearLocalAuthData() {
-    // Clear Supabase session data from localStorage
-    const keysToRemove = [
-      'sb-access-token',
-      'sb-refresh-token',
-      'sb-user',
-      'sb-session',
-      'sfda-supabase-auth'
-    ];
-
-    keysToRemove.forEach(key => {
-      try {
-        localStorage.removeItem(key);
-      } catch (error) {
-        Utils.logError(error, `localStorage removeItem for ${key} in clearLocalAuthData`);
-      }
-    });
-
-    console.log('[Auth] Local authentication data cleared');
   },
 
   async getProfile(userId) {
     try {
+      if (!this.supabase) throw new Error('Supabase client not initialized.');
+
       const { data, error } = await this.supabase
         .from('profiles')
         .select('id, full_name, organization, specialization, preferences')
         .eq('id', userId)
         .single();
 
-      if (error && error.code !== 'PGRST116') {
-        throw error;
-      }
+      if (error && error.code !== 'PGRST116') throw error;
       return data;
     } catch (error) {
-      ErrorHandler.log(error, 'getProfile');
+      Utils.logError(error, 'getProfile');
       ErrorHandler.showToast('Could not load your profile.', true);
       return null;
     }
@@ -906,13 +822,13 @@ const Services = {
 
   async updateProfile(userId, updates) {
     try {
-      const profileData = { id: userId, ...updates };
-      const { error } = await this.supabase.from('profiles').upsert(profileData, { onConflict: 'id' });
+      if (!this.supabase) throw new Error('Supabase client not initialized.');
 
+      const { error } = await this.supabase.from('profiles').upsert({ id: userId, ...updates }, { onConflict: 'id' });
       if (error) throw error;
       return true;
     } catch (error) {
-      ErrorHandler.log(error, 'updateProfile');
+      Utils.logError(error, 'updateProfile');
       ErrorHandler.showProfileError(`Failed to save: ${error.message}`);
       return false;
     }
@@ -920,134 +836,110 @@ const Services = {
 };
 
 /* ——————————————— EVENT HANDLERS ——————————————— */
+
 const Handlers = {
   bindEvents() {
-    console.log('[HandlersDebug] Binding events...');
+    // Auth forms
+    DOMCache.get(CONFIG.SELECTORS.LOGIN_FORM)?.addEventListener('submit', (e) => this.handleAuthFormSubmit(e, 'login'));
+    DOMCache.get(CONFIG.SELECTORS.SIGNUP_FORM)?.addEventListener('submit', (e) => this.handleAuthFormSubmit(e, 'signup'));
 
-    // Login Handling (Button Click + Enter Key) - Bypass Form Submit Reloads
-    const loginBtn = document.getElementById('login-btn-submit');
-    if (loginBtn) {
-      loginBtn.addEventListener('click', (e) => this.handleAuthFormSubmit(e, 'login'));
-    }
-
-    const loginInputs = document.querySelectorAll('#login-form input');
-    loginInputs.forEach(input => {
-      input.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-          e.preventDefault(); // Stop default form submit if any
-          this.handleAuthFormSubmit(e, 'login');
-        }
-      });
+    // Login button click handler (HTML has type="button", not type="submit")
+    document.getElementById('login-btn-submit')?.addEventListener('click', (e) => {
+      e.preventDefault();
+      const loginForm = DOMCache.get(CONFIG.SELECTORS.LOGIN_FORM);
+      if (loginForm) {
+        // Create and dispatch a submit event to reuse existing logic
+        loginForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      }
     });
 
-    // Signup Handling (Standard Form Submit)
-    const signupForm = DOMCache.get(CONFIG.SELECTORS.SIGNUP_FORM);
-    if (signupForm) {
-      signupForm.addEventListener('submit', (e) => this.handleAuthFormSubmit(e, 'signup'));
-    }
-
-    // Chat Interactions
-    const sendBtn = DOMCache.get(CONFIG.SELECTORS.SEND_BTN);
-    const queryInput = DOMCache.get(CONFIG.SELECTORS.QUERY_INPUT);
-
-    if (sendBtn) sendBtn.addEventListener('click', () => this.processQuery());
-    if (queryInput) {
-      queryInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-          e.preventDefault();
-          this.processQuery();
-        }
-      });
-      queryInput.addEventListener('input', this.debouncedProcessQuery.bind(this));
-    }
-
-    // Logout Buttons
-    DOMCache.getAll([CONFIG.SELECTORS.LOGOUT_BTN, CONFIG.SELECTORS.LOGOUT_BTN_OFFCANVAS].join(', ')).forEach(btn => {
-      btn?.addEventListener('click', this.handleLogout.bind(this));
+    // Chat interactions
+    DOMCache.get(CONFIG.SELECTORS.SEND_BTN)?.addEventListener('click', () => this.processQuery());
+    DOMCache.get(CONFIG.SELECTORS.QUERY_INPUT)?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        this.processQuery();
+      }
     });
 
-    // Auth Modal Trigger Buttons
-    DOMCache.getAll([CONFIG.SELECTORS.AUTH_BTN, CONFIG.SELECTORS.AUTH_BTN_OFFCANVAS, CONFIG.SELECTORS.AUTH_BTN_MAIN].join(', ')).forEach(btn => {
-      btn?.addEventListener('click', () => {
-        const modal = AppState.get('authModal');
-        if (modal) modal.show();
-      });
+    // Logout buttons
+    DOMCache.getAll(`${CONFIG.SELECTORS.LOGOUT_BTN}, ${CONFIG.SELECTORS.LOGOUT_BTN_OFFCANVAS}`).forEach(btn => {
+      btn?.addEventListener('click', (e) => this.handleLogout(e));
     });
 
-    // Profile Form
-    const profileForm = DOMCache.get(CONFIG.SELECTORS.PROFILE_FORM);
-    if (profileForm) {
-      profileForm.addEventListener('submit', this.handleProfileFormSubmit.bind(this));
-    }
-    // FAQ Interactions (delegated on FAQ sections)
-    DOMCache.getAll([CONFIG.SELECTORS.FAQ_SIDEBAR, CONFIG.SELECTORS.FAQ_OFFCANVAS].join(', ')).forEach(section => {
-      section?.addEventListener('click', this.handleFaqClick.bind(this));
+    // Auth modal triggers
+    DOMCache.getAll(`${CONFIG.SELECTORS.AUTH_BTN}, ${CONFIG.SELECTORS.AUTH_BTN_OFFCANVAS}, ${CONFIG.SELECTORS.AUTH_BTN_MAIN}`).forEach(btn => {
+      btn?.addEventListener('click', () => AppState.get('authModal')?.show());
     });
 
-    // Suggested questions (delegated on messages container)
-    const messagesContainer = DOMCache.get(CONFIG.SELECTORS.MESSAGES);
-    if (messagesContainer) messagesContainer.addEventListener('click', this.handleSuggestedQuestionClick.bind(this));
+    // Profile form and buttons
+    DOMCache.get(CONFIG.SELECTORS.PROFILE_FORM)?.addEventListener('submit', (e) => this.handleProfileFormSubmit(e));
+    DOMCache.getAll(`${CONFIG.SELECTORS.PROFILE_BTN}, ${CONFIG.SELECTORS.PROFILE_BTN_OFFCANVAS}`).forEach(btn => {
+      btn?.addEventListener('click', () => this.handleProfileButtonClick());
+    });
+
+    // FAQ interactions (delegated)
+    DOMCache.getAll(`${CONFIG.SELECTORS.FAQ_SIDEBAR}, ${CONFIG.SELECTORS.FAQ_OFFCANVAS}`).forEach(section => {
+      section?.addEventListener('click', (e) => this.handleFaqClick(e));
+    });
+
+    // Suggested questions (delegated)
+    DOMCache.get(CONFIG.SELECTORS.MESSAGES)?.addEventListener('click', (e) => this.handleSuggestedQuestionClick(e));
   },
 
   async handleAuthFormSubmit(event, source) {
-    if (event) {
-      event.preventDefault();
-      event.stopPropagation();
-    }
-    console.log(`[HandlersDebug] Auth logic triggered. Source: ${source}`);
-
+    event.preventDefault();
+    event.stopPropagation();
     ErrorHandler.clearErrors();
 
+    const form = event.target;
+    if (!form.checkValidity()) {
+      form.classList.add('was-validated');
+      return;
+    }
+
+    const email = form.querySelector(`#${source}-email`)?.value?.trim();
+    const password = form.querySelector(`#${source}-password`)?.value;
+
+    if (!email || !password) {
+      ErrorHandler.showAuthError('Please fill in both email and password.');
+      return;
+    }
+
     if (source === 'login') {
-      const emailInput = document.getElementById('login-email');
-      const passwordInput = document.getElementById('login-password');
-      const email = emailInput?.value?.trim();
-      const password = passwordInput?.value;
-
-      if (!email || !password) {
-        // Basic validation feedback (or rely on bootstrap classes if form was submitted?)
-        // Since we bypassed form submit, we must show error manually if empty
-        const form = document.getElementById('login-form');
-        if (form) form.classList.add('was-validated');
-        if (!email || !password) return; // Let CSS show error
-      }
-
       await Services.login(email, password);
-
-    } else if (source === 'signup') {
-      // Standard form submission
-      const form = event.target;
-      if (!form.checkValidity()) {
-        form.classList.add('was-validated');
-        return;
-      }
-      const email = form.querySelector('#signup-email').value.trim();
-      const password = form.querySelector('#signup-password').value;
+    } else {
       await Services.signup(email, password);
     }
   },
 
-  async _processChatRequest(queryText, category = '') {
-    // Add User Message
+  async processChatRequestInternal(queryText, category = '') {
     UI.addMessage(queryText, 'user');
     UI.setSendingState(true);
     UI.toggleTypingIndicator(true);
 
     try {
       const token = await Services.getSessionToken();
+
+      // Auth check (from junior's code - good addition)
+      if (!token && !window.location.search.includes('testing=true')) {
+        AppState.get('authModal')?.show();
+        ErrorHandler.showToast('Please log in to chat with the AI.', true);
+        throw new Error('Authentication required for chat.');
+      }
+
       const data = await Services.sendChatRequest(queryText, category, token);
 
       UI.toggleTypingIndicator(false);
 
-      if (data && data.response) {
+      if (data?.response) {
         UI.addMessage(data.response, 'bot', data.suggested_questions || []);
       } else {
-        throw new Error('Invalid response format');
+        throw new Error('Invalid response format from AI service.');
       }
-
     } catch (error) {
       UI.toggleTypingIndicator(false);
-      console.error('[Handlers] Chat request failed:', error);
+      Utils.logError(error, 'processChatRequestInternal');
       UI.addMessage('Sorry, I encountered an error while processing your request. Please try again.', 'bot');
       ErrorHandler.showToast('Failed to send message.', true);
     } finally {
@@ -1056,61 +948,47 @@ const Handlers = {
   },
 
   async handleFaqClick(event) {
-    const button = event.target.closest('.faq-button');
+    const button = event.target.closest(`.${CONFIG.CLASSES.FAQ_BUTTON}`);
     if (!button || AppState.isRequestInProgress()) return;
 
-    // Deactivate currently active FAQ button
-    DOMCache.getAll('.faq-button.active').forEach(btn => btn.classList.remove(CONFIG.CLASSES.ACTIVE));
+    DOMCache.getAll(`.${CONFIG.CLASSES.FAQ_BUTTON}.active`).forEach(btn => btn.classList.remove(CONFIG.CLASSES.ACTIVE));
     button.classList.add(CONFIG.CLASSES.ACTIVE);
 
-    const questionText = button.dataset.question;
-    const category = button.dataset.category;
-
-    // Use the unified chat request processor
-    await this._processChatRequest(questionText, category);
+    await this.processChatRequestInternal(button.dataset.question, button.dataset.category);
   },
 
   async processQuery() {
     const queryInput = DOMCache.get(CONFIG.SELECTORS.QUERY_INPUT);
     const categorySelect = DOMCache.get(CONFIG.SELECTORS.CATEGORY_SELECT);
-
     if (!queryInput || !categorySelect) return;
+
+    // Cancel in-progress request (from junior's code - good UX)
     if (AppState.isRequestInProgress()) {
       AppState.resetAbortController();
+      ErrorHandler.showToast('Chat request cancelled.', false);
+      UI.toggleTypingIndicator(false);
+      UI.setSendingState(false);
       return;
     }
 
     const query = queryInput.value.trim();
     if (!query) return;
 
-    queryInput.value = ''; // Clear input field
-    const category = categorySelect.value;
-
-    // Use the unified chat request processor
-    await this._processChatRequest(query, category);
-  },
-
-  debouncedProcessQuery() {
-    clearTimeout(AppState.get('debounceTimer'));
-    const timer = setTimeout(() => this.processQuery(), CONFIG.DEBOUNCE_DELAY);
-    AppState.set('debounceTimer', timer);
+    queryInput.value = '';
+    await this.processChatRequestInternal(query, categorySelect.value);
   },
 
   async handleSuggestedQuestionClick(event) {
-    const button = event.target.closest('.suggested-question-enhanced');
+    const button = event.target.closest(`.${CONFIG.CLASSES.SUGGESTED_BUTTON}`);
     if (!button || AppState.isRequestInProgress()) return;
 
     const questionText = button.dataset.questionText;
     if (!questionText) return;
 
-    // Disable all suggested buttons after one is clicked to prevent multiple submissions
-    DOMCache.getAll('.suggested-question-enhanced').forEach(btn => (btn.disabled = true));
+    DOMCache.getAll(`.${CONFIG.CLASSES.SUGGESTED_BUTTON}`).forEach(btn => { btn.disabled = true; });
 
     const categorySelect = DOMCache.get(CONFIG.SELECTORS.CATEGORY_SELECT);
-    const category = categorySelect ? categorySelect.value : '';
-
-    // Use the unified chat request processor
-    await this._processChatRequest(questionText, category);
+    await this.processChatRequestInternal(questionText, categorySelect?.value || '');
   },
 
   async handleProfileFormSubmit(event) {
@@ -1118,8 +996,8 @@ const Handlers = {
     ErrorHandler.clearErrors();
 
     try {
-      const { data: { session } = {} } = await Services.supabase.auth.getSession();
-      const user = session?.user;
+      const sessionData = await Services.supabase?.auth.getSession();
+      const user = sessionData?.data?.session?.user;
 
       if (!user) {
         return ErrorHandler.showProfileError('Your session seems to have expired. Please log out and log in again.');
@@ -1130,9 +1008,7 @@ const Handlers = {
         full_name: formData.get('full_name'),
         organization: formData.get('organization'),
         specialization: formData.get('specialization'),
-        preferences: {
-          theme: formData.get('theme-preference'),
-        },
+        preferences: { theme: formData.get('theme-preference') },
         updated_at: new Date(),
       };
 
@@ -1140,334 +1016,177 @@ const Handlers = {
 
       if (success) {
         AppState.set('userProfile', { ...AppState.get('userProfile'), ...updates });
-
-        // Apply the new theme preference immediately
-        const newTheme = updates.preferences?.theme || 'light';
-        applyTheme(newTheme);
-
+        ThemeManager.apply(updates.preferences?.theme || CONFIG.CLASSES.LIGHT);
         ErrorHandler.showToast('Profile saved successfully!');
-
-        const profileModal = AppState.get('profileModal');
-        if (profileModal) profileModal.hide();
+        AppState.get('profileModal')?.hide();
       }
     } catch (error) {
-      ErrorHandler.log(error, 'handleProfileFormSubmit');
-      ErrorHandler.showProfileError('A critical error occurred. Please check the console.');
+      Utils.logError(error, 'handleProfileFormSubmit');
+      ErrorHandler.showProfileError('A critical error occurred.');
     }
   },
 
   async handleProfileButtonClick() {
     ErrorHandler.clearErrors();
 
-    const { data: { session } = {} } = await Services.supabase.auth.getSession();
-    const user = session?.user;
-    if (!user) return;
+    const sessionData = await Services.supabase?.auth.getSession();
+    const user = sessionData?.data?.session?.user;
+
+    if (!user) {
+      ErrorHandler.showToast('Please log in to manage your profile.', true);
+      AppState.get('authModal')?.show();
+      return;
+    }
 
     const cachedProfile = AppState.get('userProfile');
     if (cachedProfile) {
       UI.populateProfileForm(cachedProfile);
-      return;
-    }
-
-    const profile = await Services.getProfile(user.id);
-    if (profile) {
-      AppState.set('userProfile', profile);
-      UI.populateProfileForm(profile);
     } else {
-      const form = DOMCache.get(CONFIG.SELECTORS.PROFILE_FORM);
-      if (form) {
-        form.reset();
-        const defaultThemeRadio = form.querySelector('input[name="theme-preference"][value="light"]');
-        if (defaultThemeRadio) defaultThemeRadio.checked = true;
+      const profile = await Services.getProfile(user.id);
+      if (profile) {
+        AppState.set('userProfile', profile);
+        UI.populateProfileForm(profile);
+      } else {
+        const form = DOMCache.get(CONFIG.SELECTORS.PROFILE_FORM);
+        if (form) {
+          form.reset();
+          const defaultThemeRadio = form.querySelector(`input[name="theme-preference"][value="${ThemeManager.getCurrent()}"]`);
+          if (defaultThemeRadio) defaultThemeRadio.checked = true;
+        }
       }
     }
+
+    AppState.get('profileModal')?.show();
   },
 
   async handleLogout(event) {
     event.preventDefault();
     await Services.logout();
   },
-
-
 };
 
-/* ——————————————— INITIALIZATION ——————————————— */
-async function loadProfileWithTimeout(userId, timeoutMs = CONFIG.API_TIMEOUT, retries = CONFIG.RETRY_MAX_ATTEMPTS) {
-  let delay = CONFIG.RETRY_DELAY_INITIAL;
-  for (let attempt = 1; attempt <= retries; attempt++) {
-    try {
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Profile load timeout')), timeoutMs);
-      });
+/* ——————————————— APP MODULE ——————————————— */
 
-      const result = await Promise.race([Services.getProfile(userId), timeoutPromise]);
-      return result;
-    } catch (error) {
-      ErrorHandler.log(`Profile load attempt ${attempt}/${retries} failed:`, error);
-      if (attempt < retries) {
-        await new Promise(resolve => setTimeout(resolve, delay));
-        delay *= 2;
-      } else {
-        throw error;
+const App = {
+  async loadProfileWithTimeout(userId, timeoutMs = CONFIG.API_TIMEOUT, retries = CONFIG.RETRY_MAX_ATTEMPTS) {
+    let delay = CONFIG.RETRY_DELAY_INITIAL;
+
+    for (let attempt = 1; attempt <= retries; attempt++) {
+      try {
+        const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => reject(new Error('Profile load timeout')), timeoutMs);
+        });
+
+        return await Promise.race([Services.getProfile(userId), timeoutPromise]);
+      } catch (error) {
+        Utils.logError(error, `loadProfileWithTimeout attempt ${attempt}/${retries}`);
+        if (attempt < retries) {
+          await new Promise(resolve => setTimeout(resolve, delay));
+          delay *= 2;
+        } else {
+          throw error;
+        }
       }
     }
-  }
-  return null;
-}
+    return null;
+  },
 
-async function handleTestingModeInit() {
-  console.log('[App] Testing mode enabled - bypassing authentication.');
-  UI.updateAuthUI({ email: 'test@example.com' });
-  const faqData = await Services.getFaqData();
-  if (faqData) {
-    UI.Faq.renderButtons(faqData);
-  } else {
-    UI.Faq.clearButtons();
-    ErrorHandler.showToast('Failed to load FAQs in testing mode.', true);
-  }
-  Handlers.bindEvents();
-}
+  async handleTestingModeInit() {
+    console.log('[App] Testing mode enabled - bypassing authentication.');
+    UI.updateAuthUI({ email: 'test@example.com' });
 
-async function init() {
-  console.log('[App] Initializing SFDA Copilot application...');
+    const faqData = await Services.getFaqData();
+    if (faqData) {
+      UI.Faq.renderButtons(faqData);
+    } else {
+      UI.Faq.clearButtons();
+      ErrorHandler.showToast('Failed to load FAQs in testing mode.', true);
+    }
+  },
 
-  // 0. Bind all event listeners FIRST to ensure UI is interactive regardless of init status
+  async init() {
+    console.log('[App] Initializing SFDA Copilot...');
 
-  Handlers.bindEvents();
+    Handlers.bindEvents();
+    ThemeManager.init();
 
-
-  // 1. Initialize simple theme system
-  initThemeSystem();
-
-  // 2. Check for Supabase configuration
-  if (!window.SUPABASE_URL || !window.SUPABASE_ANON_KEY) {
-    console.error('[App] Supabase configuration missing:', {
-      SUPABASE_URL: window.SUPABASE_URL ? 'present' : 'missing',
-      SUPABASE_ANON_KEY: window.SUPABASE_ANON_KEY ? 'present' : 'missing'
-    });
-    ErrorHandler.log('Supabase configuration missing.', 'init');
-    return ErrorHandler.showToast('Authentication services are not configured. Please check your environment variables.', true);
-  }
-
-  console.log('[App] Supabase configuration found:', {
-    url: window.SUPABASE_URL,
-    keyLength: window.SUPABASE_ANON_KEY?.length || 0
-  });
-
-  // 3. Initialize Supabase client and modals
-  try {
-    Services.init();
-
-    // Initialize Bootstrap Modals
-    const authModalEl = DOMCache.get(CONFIG.SELECTORS.AUTH_MODAL);
-    if (authModalEl && window.bootstrap && bootstrap.Modal) {
-      AppState.set('authModal', new bootstrap.Modal(authModalEl));
+    if (!window.SUPABASE_URL || !window.SUPABASE_ANON_KEY) {
+      Utils.logError('Supabase configuration missing.', 'App.init');
+      return ErrorHandler.showToast('Authentication services are not configured.', true);
     }
 
-    const profileModalEl = DOMCache.get(CONFIG.SELECTORS.PROFILE_MODAL);
-    if (profileModalEl && window.bootstrap && bootstrap.Modal) {
-      AppState.set('profileModal', new bootstrap.Modal(profileModalEl));
-    }
-
-    // Cache original send button text
-    const sendBtn = DOMCache.get(CONFIG.SELECTORS.SEND_BTN);
-    if (sendBtn) {
-      AppState.set('originalSendButtonText', sendBtn.textContent?.trim() || 'Send');
-    }
-  } catch (error) {
-    ErrorHandler.log(error, 'init_supabase');
-    return ErrorHandler.showToast('Failed to initialize core application services.', true);
-  }
-
-  // 4. Initialize animations
-  Animations.initCardAnimations();
-  Animations.initHeroParallax();
-
-  // 5. Handle testing mode early
-  if (window.location.search.includes('testing=true')) {
-    await handleTestingModeInit();
-    return;
-  }
-
-  // 6. Check initial session and set up authentication state change listener
-
-  // 7. Check initial session and set up authentication state change listener
-  if (!Services.supabase) {
-    console.error('[App] Supabase client not initialized. Cannot set up auth state listener.');
-    UI.updateAuthUI(null);
-  } else {
     try {
-      // Check if user is already logged in on page load
+      if (!Services.init()) return;
+
+      const authModalEl = DOMCache.get(CONFIG.SELECTORS.AUTH_MODAL);
+      if (authModalEl && window.bootstrap?.Modal) {
+        AppState.set('authModal', new bootstrap.Modal(authModalEl));
+      }
+
+      const profileModalEl = DOMCache.get(CONFIG.SELECTORS.PROFILE_MODAL);
+      if (profileModalEl && window.bootstrap?.Modal) {
+        AppState.set('profileModal', new bootstrap.Modal(profileModalEl));
+      }
+
+      const sendBtn = DOMCache.get(CONFIG.SELECTORS.SEND_BTN);
+      if (sendBtn) {
+        AppState.set('originalSendButtonText', sendBtn.textContent?.trim() || 'Send');
+      }
+    } catch (error) {
+      Utils.logError(error, 'App.init services');
+      return ErrorHandler.showToast('Failed to initialize core application services.', true);
+    }
+
+    Animations.initCardAnimations();
+    Animations.initHeroParallax();
+
+    if (window.location.search.includes('testing=true')) {
+      return this.handleTestingModeInit();
+    }
+
+    if (!Services.supabase) {
+      UI.updateAuthUI(null);
+      return;
+    }
+
+    try {
       const { data: { session: initialSession }, error: sessionError } = await Services.supabase.auth.getSession();
 
       if (sessionError) {
-        console.warn('[App] Error getting initial session:', sessionError);
+        Utils.logError(sessionError, 'App.init.initialSessionCheck');
         UI.updateAuthUI(null);
       } else if (initialSession?.user) {
-        console.log('[App] Existing session found:', initialSession.user.email);
         UI.updateAuthUI(initialSession.user);
       } else {
-        console.log('[App] No existing session found');
         UI.updateAuthUI(null);
       }
     } catch (error) {
-      console.warn('[App] Error checking initial session:', error);
+      Utils.logError(error, 'App.init.checkInitialSession');
       UI.updateAuthUI(null);
     }
 
-    // Set up authentication state change listener
     Services.supabase.auth.onAuthStateChange(async (_event, session) => {
-      const user = session?.user || null;
-      console.log('[Auth] Auth state changed:', user ? `User: ${user.email}` : 'Logged out');
+      const user = session?.user ?? null;
       UI.updateAuthUI(user);
 
       if (user) {
-        console.log(`[Auth] User logged in: ${user.email}`);
-
-        // Load FAQ data immediately upon login
         const faqData = await Services.getFaqData();
-        if (faqData) {
-          UI.Faq.renderButtons(faqData);
-        } else {
-          UI.Faq.clearButtons();
-          ErrorHandler.showToast('Failed to load FAQs.', true);
-        }
+        faqData ? UI.Faq.renderButtons(faqData) : UI.Faq.clearButtons();
 
-        // Load profile data asynchronously with timeout and retries
-        loadProfileWithTimeout(user.id)
-          .then((profileData) => {
-            if (profileData) {
-              AppState.set('userProfile', profileData);
-              // Theme will be automatically handled by the new system
-            } else {
-              console.warn('[App] User profile not found or timed out after retries, using default theme.');
-            }
+        this.loadProfileWithTimeout(user.id)
+          .then(profileData => {
+            if (profileData) AppState.set('userProfile', profileData);
           })
-          .catch((err) => {
-            ErrorHandler.log(err, 'loadProfileWithTimeout');
-            console.warn('[App] Profile loading failed or timed out, continuing with defaults.');
-          });
+          .catch(err => Utils.logError(err, 'loadProfileWithTimeout'));
       } else {
-        console.log('[Auth] User logged out.');
         AppState.set('userProfile', null);
         UI.Faq.clearButtons();
       }
     });
-  }
 
-  console.log('[App] SFDA Copilot application initialized successfully.');
-}
+    console.log('[App] SFDA Copilot initialized successfully.');
+  },
+};
 
-/* ——————————————— THEME SYSTEM ——————————————— */
-function initThemeSystem() {
-  // Get stored theme or use system preference
-  let storedTheme;
-  try {
-    storedTheme = localStorage.getItem('theme');
-  } catch (error) {
-    Utils.logError(error, 'localStorage getItem in initThemeSystem');
-    storedTheme = null;
-  }
-  const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-  const defaultTheme = storedTheme || (systemPrefersDark ? 'dark' : 'light');
-
-  // Apply the theme using Bootstrap's native theme system
-  applyTheme(defaultTheme);
-
-  // Initialize button icons and bind events - buttons already exist in HTML
-  initThemeToggles();
-
-  console.log(`[Theme] Initialized with ${defaultTheme} theme`);
-}
-
-
-function updateThemeToggleIcons() {
-  const currentTheme = getCurrentTheme();
-  const iconClass = currentTheme === 'dark' ? 'bi-sun-fill' : 'bi-moon-fill';
-  const newTitle = currentTheme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme';
-
-  // Add existence check
-  document.querySelectorAll('.theme-toggle-btn').forEach(btn => {
-    if (btn) { // Ensure button exists
-      btn.innerHTML = `<i class="bi ${iconClass}"></i>`;
-      btn.setAttribute('title', newTitle);
-      btn.setAttribute('aria-label', newTitle);
-    }
-  });
-}
-
-function initThemeToggles() {
-  updateThemeToggleIcons();
-  bindThemeToggleEvents();
-}
-
-function bindThemeToggleEvents() {
-  // Use event delegation for better performance
-  document.addEventListener('click', (e) => {
-    if (e.target.closest('.theme-toggle-btn')) {
-      e.preventDefault();
-      toggleTheme();
-    }
-  });
-
-  // Add keyboard navigation support
-  document.addEventListener('keydown', (e) => {
-    if (e.target.closest('.theme-toggle-btn') && (e.key === 'Enter' || e.key === ' ')) {
-      e.preventDefault();
-      toggleTheme();
-    }
-  });
-}
-
-function applyTheme(theme) {
-  // Use Bootstrap's native theme system
-  document.documentElement.setAttribute('data-bs-theme', theme);
-
-  // Persist theme preference
-  try {
-    localStorage.setItem('theme', theme);
-  } catch (error) {
-    Utils.logError(error, 'localStorage setItem in applyTheme');
-  }
-
-  // Update toggle button icons
-  updateThemeToggleIcons();
-
-  console.log(`[Theme] Applied ${theme} theme to document`);
-}
-
-function toggleTheme() {
-  const currentTheme = getCurrentTheme();
-  const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
-
-  console.log(`[Theme] Switching from ${currentTheme} to ${newTheme}`);
-  applyTheme(newTheme);
-
-  // Add visual feedback animation
-  document.querySelectorAll('.theme-toggle-btn').forEach(btn => {
-    btn.style.transform = 'scale(1.2)';
-    setTimeout(() => {
-      btn.style.transform = 'scale(1)';
-    }, 150);
-  });
-
-  // Announce theme change to screen readers
-  const announcement = document.createElement('div');
-  announcement.setAttribute('role', 'status');
-  announcement.setAttribute('aria-live', 'polite');
-  announcement.className = 'sr-only';
-  announcement.textContent = `Theme changed to ${newTheme} mode`;
-  document.body.appendChild(announcement);
-
-  // Remove announcement after it's been read
-  setTimeout(() => {
-    announcement.remove();
-  }, 1000);
-}
-
-function getCurrentTheme() {
-  return document.documentElement.getAttribute('data-bs-theme') || 'light';
-}
-
-// Application entry point
-document.addEventListener('DOMContentLoaded', init);
+// Entry point
+document.addEventListener('DOMContentLoaded', () => App.init());
