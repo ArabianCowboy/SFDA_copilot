@@ -237,16 +237,30 @@ def _init_extensions(app: Flask, testing: bool) -> Limiter:
         logging.info("CORS initialized for specific origins: %s", origins)
 
     # Talisman (Security Headers)
+    # Build connect-src list for Supabase
+    connect_src = ["'self'", "https://*.supabase.co", "https://cdn.lordicon.com", "https://cdn.jsdelivr.net"]
+    
+    # Add WebSocket support for Supabase Realtime
+    if project_ref := os.getenv("SUPABASE_PROJECT_REF"):
+        connect_src.append(f"wss://{project_ref}.supabase.co")
+    connect_src.append("wss://*.supabase.co")  # Allow all Supabase WebSocket connections
+    
     csp = {
         "default-src": ["'self'"],
         "script-src": ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net", "https://cdn.lordicon.com", "https://cdnjs.cloudflare.com"],
         "style-src": ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net", "https://cdnjs.cloudflare.com"],
-        "img-src": ["'self'", "data:"],
-        "font-src": ["'self'", "https://cdn.jsdelivr.net"],
-        "connect-src": ["'self'", "https://*.supabase.co", "https://cdn.lordicon.com"],
+        "img-src": ["'self'", "data:", "https:"],
+        "font-src": ["'self'", "https://cdn.jsdelivr.net", "https://cdnjs.cloudflare.com", "data:", "https://r2cdn.perplexity.ai"],
+        "connect-src": connect_src,
     }
-    if project_ref := os.getenv("SUPABASE_PROJECT_REF"):
-        csp["connect-src"].append(f"wss://{project_ref}.supabase.co")
+    
+    # In debug mode, be more permissive for development (allows browser extensions)
+    if is_debug_mode:
+        # Allow fonts from any HTTPS source (for browser extensions like Perplexity)
+        csp["font-src"] = ["'self'", "https:", "data:"]
+        # Allow connections to any HTTPS/WSS (for development and browser extensions)
+        csp["connect-src"] = ["'self'", "https:", "wss:"]
+        logging.info("CSP configured in permissive debug mode for development")
     Talisman(
         app,
         force_https=not (is_debug_mode or testing), # Disable HTTPS in debug or testing
@@ -307,10 +321,21 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
 
     @app.route("/")
     def index():
+        supabase_url = os.getenv("SUPABASE_URL")
+        supabase_anon_key = os.getenv("SUPABASE_ANON_KEY")
+        
+        # Validate Supabase configuration
+        if not supabase_url or not supabase_anon_key:
+            logging.warning(
+                "Supabase configuration missing: URL=%s, Key=%s",
+                "present" if supabase_url else "missing",
+                "present" if supabase_anon_key else "missing"
+            )
+        
         return render_template(
             "index.html",
-            SUPABASE_URL=os.getenv("SUPABASE_URL"),
-            SUPABASE_ANON_KEY=os.getenv("SUPABASE_ANON_KEY"),
+            SUPABASE_URL=supabase_url or "",
+            SUPABASE_ANON_KEY=supabase_anon_key or "",
             is_authenticated=bool(session.get("user_email")),
             user_email=session.get("user_email"),
         )

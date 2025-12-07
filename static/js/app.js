@@ -19,9 +19,11 @@
  */
 
 // SFDA Copilot — Unified Single-Page Application Script (Synthesized)
-import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm'
+import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.7/+esm'
 import { marked } from 'https://cdn.jsdelivr.net/npm/marked@12.0.0/+esm'
 import DOMPurify from 'https://cdn.jsdelivr.net/npm/dompurify@3.0.8/+esm'
+
+
 
 /* ——————————————— CONFIGURATION & STATE ——————————————— */
 /**
@@ -402,28 +404,79 @@ const UI = {
     const isLoggedIn = !!user;
     const statusText = isLoggedIn ? `Logged in as: ${user.email}` : 'Not logged in';
 
+    console.log('[UIDebug] updateAuthUI called. isLoggedIn:', isLoggedIn, 'User:', user?.email);
+
     // Update user status displays
     DOMCache.getAll([CONFIG.SELECTORS.USER_STATUS, CONFIG.SELECTORS.USER_STATUS_OFFCANVAS].join(', ')).forEach(el => {
-      el.textContent = statusText;
+      if (el) el.textContent = statusText;
     });
 
-    // Toggle visibility of authenticated/unauthenticated views
-    DOMCache.get(CONFIG.SELECTORS.UNAUTH_VIEW)?.classList.toggle(CONFIG.CLASSES.D_NONE, isLoggedIn);
-    DOMCache.get(CONFIG.SELECTORS.AUTH_VIEW)?.classList.toggle(CONFIG.CLASSES.D_NONE, !isLoggedIn);
+    // Show/hide authenticated/unauthenticated views explicitly
+    // DIRECT QUERY to ensure we aren't hitting a stale cache or missing element
+    const unauthView = document.querySelector(CONFIG.SELECTORS.UNAUTH_VIEW);
+    const authView = document.querySelector(CONFIG.SELECTORS.AUTH_VIEW);
 
-    // Toggle visibility of auth, logout, and profile buttons
+    console.log('[UIDebug] View Elements Check:', {
+      unauthViewFound: !!unauthView,
+      authViewFound: !!authView,
+      unauthSelector: CONFIG.SELECTORS.UNAUTH_VIEW,
+      authSelector: CONFIG.SELECTORS.AUTH_VIEW
+    });
+
+    if (unauthView) {
+      if (isLoggedIn) {
+        unauthView.classList.add(CONFIG.CLASSES.D_NONE);
+        console.log('[UIDebug] Hiding unauthenticated view (added d-none)');
+      } else {
+        unauthView.classList.remove(CONFIG.CLASSES.D_NONE);
+        console.log('[UIDebug] Showing unauthenticated view (removed d-none)');
+      }
+    } else {
+      console.error('[UIResult] CRITICAL: Unauthenticated view element NOT found in DOM!');
+    }
+
+    if (authView) {
+      if (isLoggedIn) {
+        authView.classList.remove(CONFIG.CLASSES.D_NONE);
+        console.log('[UIDebug] Showing authenticated view (removed d-none)');
+      } else {
+        authView.classList.add(CONFIG.CLASSES.D_NONE);
+        console.log('[UIDebug] Hiding authenticated view (added d-none)');
+      }
+    } else {
+      console.error('[UIResult] CRITICAL: Authenticated view element NOT found in DOM!');
+    }
+
+    // Show/hide auth buttons (login/signup)
     DOMCache.getAll([
       CONFIG.SELECTORS.AUTH_BTN,
       CONFIG.SELECTORS.AUTH_BTN_OFFCANVAS,
       CONFIG.SELECTORS.AUTH_BTN_MAIN
-    ].join(', ')).forEach(btn => btn?.classList.toggle(CONFIG.CLASSES.D_NONE, isLoggedIn));
+    ].join(', ')).forEach(btn => {
+      if (btn) {
+        if (isLoggedIn) {
+          btn.classList.add(CONFIG.CLASSES.D_NONE);
+        } else {
+          btn.classList.remove(CONFIG.CLASSES.D_NONE);
+        }
+      }
+    });
 
+    // Show/hide logout and profile buttons
     DOMCache.getAll([
       CONFIG.SELECTORS.LOGOUT_BTN,
       CONFIG.SELECTORS.LOGOUT_BTN_OFFCANVAS,
       CONFIG.SELECTORS.PROFILE_BTN,
       CONFIG.SELECTORS.PROFILE_BTN_OFFCANVAS
-    ].join(', ')).forEach(btn => btn?.classList.toggle(CONFIG.CLASSES.D_NONE, !isLoggedIn));
+    ].join(', ')).forEach(btn => {
+      if (btn) {
+        if (isLoggedIn) {
+          btn.classList.remove(CONFIG.CLASSES.D_NONE);
+        } else {
+          btn.classList.add(CONFIG.CLASSES.D_NONE);
+        }
+      }
+    });
   },
 
   populateProfileForm(profile) {
@@ -592,17 +645,40 @@ const Services = {
     // Initialize Supabase client outside of class context
     if (!window.supabaseClient) {
       try {
+        // Validate configuration
+        if (!window.SUPABASE_URL || !window.SUPABASE_ANON_KEY) {
+          console.error('[Auth] Missing Supabase configuration:', {
+            hasUrl: !!window.SUPABASE_URL,
+            hasKey: !!window.SUPABASE_ANON_KEY
+          });
+          ErrorHandler.showToast('Supabase configuration is missing. Please check your environment variables.', true);
+          return false;
+        }
+
+        // Validate URL format
+        if (!window.SUPABASE_URL.startsWith('http://') && !window.SUPABASE_URL.startsWith('https://')) {
+          console.error('[Auth] Invalid Supabase URL format:', window.SUPABASE_URL);
+          ErrorHandler.showToast('Invalid Supabase URL format.', true);
+          return false;
+        }
+
+        console.log('[Auth] Initializing Supabase client with URL:', window.SUPABASE_URL);
         window.supabaseClient = createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY, {
           auth: {
             persistSession: true,
             autoRefreshToken: true,
             detectSessionInUrl: true,
             storage: window.localStorage,
-            storageKey: 'sfda-supabase-auth'
+            storageKey: 'sfda-supabase-auth',
+            flowType: 'pkce',
+            debug: true // Enable internal Supabase debug logs
           }
         });
+        console.log('[Auth] Supabase client initialized successfully');
       } catch (error) {
+        console.error('[Auth] Failed to initialize Supabase client:', error);
         Utils.logError(error, 'Failed to initialize Supabase client');
+        ErrorHandler.showToast('Failed to initialize authentication service. Please check your configuration.', true);
         return false;
       }
     }
@@ -668,9 +744,29 @@ const Services = {
 
   async login(email, password) {
     try {
-      const { error } = await this.supabase.auth.signInWithPassword({ email, password });
-      if (error) throw error;
+      if (!this.supabase) {
+        throw new Error('Supabase client not initialized. Please refresh the page.');
+      }
 
+      console.log('[Auth] Attempting login for:', email);
+      const { data, error } = await this.supabase.auth.signInWithPassword({ email, password });
+
+      if (error) {
+        console.error('[Auth] Login error:', error);
+        throw error;
+      }
+
+      // Get user from response data
+      const user = data?.user || null;
+      console.log('[Auth] Login successful:', user?.email);
+
+      // Immediately update UI to show authenticated view
+      if (user) {
+        UI.updateAuthUI(user);
+        console.log('[Auth] UI updated to authenticated view');
+      }
+
+      // Close modal and reset form
       const authModal = AppState.get('authModal');
       const loginForm = DOMCache.get(CONFIG.SELECTORS.LOGIN_FORM);
 
@@ -678,7 +774,20 @@ const Services = {
       if (loginForm) loginForm.reset();
 
       ErrorHandler.showToast('Login successful!');
+
+      // Load FAQ data immediately after login
+      if (user) {
+        try {
+          const faqData = await this.getFaqData();
+          if (faqData) {
+            UI.Faq.renderButtons(faqData);
+          }
+        } catch (err) {
+          console.warn('[Auth] Failed to load FAQ data after login:', err);
+        }
+      }
     } catch (error) {
+      console.error('[Auth] Login exception:', error);
       const authError = ErrorHandler.formatAuthError(error);
       ErrorHandler.showAuthError(authError);
     }
@@ -713,14 +822,14 @@ const Services = {
     try {
       // Try to get current session first
       const { data: { session } } = await this.supabase.auth.getSession();
-      
+
       if (!session) {
         // No active session - just clear local state
         console.log('[Auth] No active session to sign out from - clearing local data');
         this.clearLocalAuthData();
         UI.updateAuthUI(null);
         ErrorHandler.showToast('Logged out successfully');
-        
+
         // Redirect to home page if not already there
         if (window.location.pathname !== '/') {
           window.location.replace('/');
@@ -733,7 +842,7 @@ const Services = {
       if (error) throw error;
 
       ErrorHandler.showToast('Logged out successfully');
-      
+
       // Clear local storage items related to Supabase session
       this.clearLocalAuthData();
 
@@ -747,7 +856,7 @@ const Services = {
       this.clearLocalAuthData();
       UI.updateAuthUI(null);
       ErrorHandler.showToast('Logged out (session cleared)', false);
-      
+
       // Redirect to home page if not already there
       if (window.location.pathname !== '/') {
         window.location.replace('/');
@@ -758,13 +867,13 @@ const Services = {
   clearLocalAuthData() {
     // Clear Supabase session data from localStorage
     const keysToRemove = [
-      'sb-access-token', 
-      'sb-refresh-token', 
-      'sb-user', 
+      'sb-access-token',
+      'sb-refresh-token',
+      'sb-user',
       'sb-session',
       'sfda-supabase-auth'
     ];
-    
+
     keysToRemove.forEach(key => {
       try {
         localStorage.removeItem(key);
@@ -772,7 +881,7 @@ const Services = {
         Utils.logError(error, `localStorage removeItem for ${key} in clearLocalAuthData`);
       }
     });
-    
+
     console.log('[Auth] Local authentication data cleared');
   },
 
@@ -812,68 +921,137 @@ const Services = {
 
 /* ——————————————— EVENT HANDLERS ——————————————— */
 const Handlers = {
-  /**
-   * Private helper function to encapsulate common chat request logic.
-   * It sets sending state, adds user message, calls API, and handles response/errors.
-   * This greatly improves maintainability and reduces duplication.
-   * @private
-   * @param {string} queryText - The text of the user's query.
-   * @param {string} [category=''] - The category for the query, if applicable.
-   */
+  bindEvents() {
+    console.log('[HandlersDebug] Binding events...');
+
+    // Login Handling (Button Click + Enter Key) - Bypass Form Submit Reloads
+    const loginBtn = document.getElementById('login-btn-submit');
+    if (loginBtn) {
+      loginBtn.addEventListener('click', (e) => this.handleAuthFormSubmit(e, 'login'));
+    }
+
+    const loginInputs = document.querySelectorAll('#login-form input');
+    loginInputs.forEach(input => {
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault(); // Stop default form submit if any
+          this.handleAuthFormSubmit(e, 'login');
+        }
+      });
+    });
+
+    // Signup Handling (Standard Form Submit)
+    const signupForm = DOMCache.get(CONFIG.SELECTORS.SIGNUP_FORM);
+    if (signupForm) {
+      signupForm.addEventListener('submit', (e) => this.handleAuthFormSubmit(e, 'signup'));
+    }
+
+    // Chat Interactions
+    const sendBtn = DOMCache.get(CONFIG.SELECTORS.SEND_BTN);
+    const queryInput = DOMCache.get(CONFIG.SELECTORS.QUERY_INPUT);
+
+    if (sendBtn) sendBtn.addEventListener('click', () => this.processQuery());
+    if (queryInput) {
+      queryInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          this.processQuery();
+        }
+      });
+      queryInput.addEventListener('input', this.debouncedProcessQuery.bind(this));
+    }
+
+    // Logout Buttons
+    DOMCache.getAll([CONFIG.SELECTORS.LOGOUT_BTN, CONFIG.SELECTORS.LOGOUT_BTN_OFFCANVAS].join(', ')).forEach(btn => {
+      btn?.addEventListener('click', this.handleLogout.bind(this));
+    });
+
+    // Auth Modal Trigger Buttons
+    DOMCache.getAll([CONFIG.SELECTORS.AUTH_BTN, CONFIG.SELECTORS.AUTH_BTN_OFFCANVAS, CONFIG.SELECTORS.AUTH_BTN_MAIN].join(', ')).forEach(btn => {
+      btn?.addEventListener('click', () => {
+        const modal = AppState.get('authModal');
+        if (modal) modal.show();
+      });
+    });
+
+    // Profile Form
+    const profileForm = DOMCache.get(CONFIG.SELECTORS.PROFILE_FORM);
+    if (profileForm) {
+      profileForm.addEventListener('submit', this.handleProfileFormSubmit.bind(this));
+    }
+    // FAQ Interactions (delegated on FAQ sections)
+    DOMCache.getAll([CONFIG.SELECTORS.FAQ_SIDEBAR, CONFIG.SELECTORS.FAQ_OFFCANVAS].join(', ')).forEach(section => {
+      section?.addEventListener('click', this.handleFaqClick.bind(this));
+    });
+
+    // Suggested questions (delegated on messages container)
+    const messagesContainer = DOMCache.get(CONFIG.SELECTORS.MESSAGES);
+    if (messagesContainer) messagesContainer.addEventListener('click', this.handleSuggestedQuestionClick.bind(this));
+  },
+
+  async handleAuthFormSubmit(event, source) {
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+    console.log(`[HandlersDebug] Auth logic triggered. Source: ${source}`);
+
+    ErrorHandler.clearErrors();
+
+    if (source === 'login') {
+      const emailInput = document.getElementById('login-email');
+      const passwordInput = document.getElementById('login-password');
+      const email = emailInput?.value?.trim();
+      const password = passwordInput?.value;
+
+      if (!email || !password) {
+        // Basic validation feedback (or rely on bootstrap classes if form was submitted?)
+        // Since we bypassed form submit, we must show error manually if empty
+        const form = document.getElementById('login-form');
+        if (form) form.classList.add('was-validated');
+        if (!email || !password) return; // Let CSS show error
+      }
+
+      await Services.login(email, password);
+
+    } else if (source === 'signup') {
+      // Standard form submission
+      const form = event.target;
+      if (!form.checkValidity()) {
+        form.classList.add('was-validated');
+        return;
+      }
+      const email = form.querySelector('#signup-email').value.trim();
+      const password = form.querySelector('#signup-password').value;
+      await Services.signup(email, password);
+    }
+  },
+
   async _processChatRequest(queryText, category = '') {
-    // Set UI to sending state immediately
-    UI.setSendingState(true);
+    // Add User Message
     UI.addMessage(queryText, 'user');
+    UI.setSendingState(true);
     UI.toggleTypingIndicator(true);
 
     try {
       const token = await Services.getSessionToken();
-      if (!token) {
-        // If session expired, show toast and trigger logout, then return
-        ErrorHandler.showToast('Your session has expired. Please log in again.', true);
-        await Services.logout();
-        return;
-      }
-      // Services.sendChatRequest internally handles `AppState.resetAbortController()`
       const data = await Services.sendChatRequest(queryText, category, token);
-      UI.addMessage(
-        data.response || data.error || 'An error occurred',
-        'bot',
-        data.suggested_questions // Pass suggested questions to UI
-      );
-    } catch (error) {
-      // Only show error if it's not an AbortError (user-initiated cancellation)
-      if (error.name !== 'AbortError') {
-        UI.addMessage(`Sorry, there was an error processing your request: ${error.message}`, 'bot');
-      } else {
-        console.log('[Chat] Request aborted by user action.'); // Log cancellation for debugging
-      }
-    } finally {
-      // Always reset UI state regardless of success or failure
+
       UI.toggleTypingIndicator(false);
+
+      if (data && data.response) {
+        UI.addMessage(data.response, 'bot', data.suggested_questions || []);
+      } else {
+        throw new Error('Invalid response format');
+      }
+
+    } catch (error) {
+      UI.toggleTypingIndicator(false);
+      console.error('[Handlers] Chat request failed:', error);
+      UI.addMessage('Sorry, I encountered an error while processing your request. Please try again.', 'bot');
+      ErrorHandler.showToast('Failed to send message.', true);
+    } finally {
       UI.setSendingState(false);
-    }
-  },
-
-  handleAuthFormSubmit(event) {
-    event.preventDefault();
-    ErrorHandler.clearErrors();
-
-    const form = event.target;
-    const email = form.querySelector('input[type="email"]').value.trim();
-    const password = form.querySelector('input[type="password"]').value;
-
-    if (!email || !password) {
-      return ErrorHandler.showAuthError('Please provide both email and password.');
-    }
-
-    const loginFormId = DOMCache.get(CONFIG.SELECTORS.LOGIN_FORM)?.id;
-    const signupFormId = DOMCache.get(CONFIG.SELECTORS.SIGNUP_FORM)?.id;
-
-    if (form.id === loginFormId) {
-      Services.login(email, password);
-    } else if (form.id === signupFormId) {
-      Services.signup(email, password);
     }
   },
 
@@ -1010,61 +1188,7 @@ const Handlers = {
     await Services.logout();
   },
 
-  bindEvents() {
-    // Auth Forms
-    const loginForm = DOMCache.get(CONFIG.SELECTORS.LOGIN_FORM);
-    const signupForm = DOMCache.get(CONFIG.SELECTORS.SIGNUP_FORM);
 
-    if (loginForm) loginForm.addEventListener('submit', this.handleAuthFormSubmit);
-    if (signupForm) signupForm.addEventListener('submit', this.handleAuthFormSubmit);
-
-    // Chat Interactions
-    const sendBtn = DOMCache.get(CONFIG.SELECTORS.SEND_BTN);
-    const queryInput = DOMCache.get(CONFIG.SELECTORS.QUERY_INPUT);
-
-    if (sendBtn) sendBtn.addEventListener('click', () => this.processQuery());
-    if (queryInput) {
-      queryInput.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-          e.preventDefault();
-          this.debouncedProcessQuery();
-        }
-      });
-    }
-
-    // Profile Interactions
-    const profileForm = DOMCache.get(CONFIG.SELECTORS.PROFILE_FORM);
-    if (profileForm) profileForm.addEventListener('submit', this.handleProfileFormSubmit);
-
-    DOMCache.getAll([CONFIG.SELECTORS.PROFILE_BTN, CONFIG.SELECTORS.PROFILE_BTN_OFFCANVAS].join(', ')).forEach(btn => {
-      btn?.addEventListener('click', this.handleProfileButtonClick.bind(this));
-    });
-
-    // FAQ Interactions (delegated on FAQ sections)
-    DOMCache.getAll([CONFIG.SELECTORS.FAQ_SIDEBAR, CONFIG.SELECTORS.FAQ_OFFCANVAS].join(', ')).forEach(section => {
-      section?.addEventListener('click', this.handleFaqClick.bind(this));
-    });
-
-    // Suggested questions (delegated on messages container)
-    const messagesContainer = DOMCache.get(CONFIG.SELECTORS.MESSAGES);
-    if (messagesContainer) messagesContainer.addEventListener('click', this.handleSuggestedQuestionClick.bind(this));
-
-    // Logout Buttons
-    DOMCache.getAll([CONFIG.SELECTORS.LOGOUT_BTN, CONFIG.SELECTORS.LOGOUT_BTN_OFFCANVAS].join(', ')).forEach(btn => {
-      btn?.addEventListener('click', this.handleLogout.bind(this));
-    });
-
-    // Auth Modal Trigger Buttons
-    DOMCache.getAll([CONFIG.SELECTORS.AUTH_BTN, CONFIG.SELECTORS.AUTH_BTN_OFFCANVAS, CONFIG.SELECTORS.AUTH_BTN_MAIN].join(', ')).forEach(btn => {
-      if (btn) {
-        btn.addEventListener('click', () => {
-          const modal = AppState.get('authModal');
-          if (modal) modal.show();
-        });
-      }
-    });
-
-  },
 };
 
 /* ——————————————— INITIALIZATION ——————————————— */
@@ -1107,14 +1231,28 @@ async function handleTestingModeInit() {
 async function init() {
   console.log('[App] Initializing SFDA Copilot application...');
 
+  // 0. Bind all event listeners FIRST to ensure UI is interactive regardless of init status
+
+  Handlers.bindEvents();
+
+
   // 1. Initialize simple theme system
   initThemeSystem();
 
   // 2. Check for Supabase configuration
   if (!window.SUPABASE_URL || !window.SUPABASE_ANON_KEY) {
+    console.error('[App] Supabase configuration missing:', {
+      SUPABASE_URL: window.SUPABASE_URL ? 'present' : 'missing',
+      SUPABASE_ANON_KEY: window.SUPABASE_ANON_KEY ? 'present' : 'missing'
+    });
     ErrorHandler.log('Supabase configuration missing.', 'init');
     return ErrorHandler.showToast('Authentication services are not configured. Please check your environment variables.', true);
   }
+
+  console.log('[App] Supabase configuration found:', {
+    url: window.SUPABASE_URL,
+    keyLength: window.SUPABASE_ANON_KEY?.length || 0
+  });
 
   // 3. Initialize Supabase client and modals
   try {
@@ -1151,46 +1289,71 @@ async function init() {
     return;
   }
 
-  // 6. Bind all event listeners
-  Handlers.bindEvents();
+  // 6. Check initial session and set up authentication state change listener
 
-  // 7. Set up authentication state change listener
-  Services.supabase.auth.onAuthStateChange(async (_event, session) => {
-    const user = session?.user || null;
-    UI.updateAuthUI(user);
+  // 7. Check initial session and set up authentication state change listener
+  if (!Services.supabase) {
+    console.error('[App] Supabase client not initialized. Cannot set up auth state listener.');
+    UI.updateAuthUI(null);
+  } else {
+    try {
+      // Check if user is already logged in on page load
+      const { data: { session: initialSession }, error: sessionError } = await Services.supabase.auth.getSession();
 
-    if (user) {
-      console.log(`[Auth] User logged in: ${user.email}`);
-
-      // Load FAQ data immediately upon login
-      const faqData = await Services.getFaqData();
-      if (faqData) {
-        UI.Faq.renderButtons(faqData);
+      if (sessionError) {
+        console.warn('[App] Error getting initial session:', sessionError);
+        UI.updateAuthUI(null);
+      } else if (initialSession?.user) {
+        console.log('[App] Existing session found:', initialSession.user.email);
+        UI.updateAuthUI(initialSession.user);
       } else {
-        UI.Faq.clearButtons();
-        ErrorHandler.showToast('Failed to load FAQs.', true);
+        console.log('[App] No existing session found');
+        UI.updateAuthUI(null);
       }
-
-      // Load profile data asynchronously with timeout and retries
-      loadProfileWithTimeout(user.id)
-        .then((profileData) => {
-          if (profileData) {
-            AppState.set('userProfile', profileData);
-            // Theme will be automatically handled by the new system
-          } else {
-            console.warn('[App] User profile not found or timed out after retries, using default theme.');
-          }
-        })
-        .catch((err) => {
-          ErrorHandler.log(err, 'loadProfileWithTimeout');
-          console.warn('[App] Profile loading failed or timed out, continuing with defaults.');
-        });
-    } else {
-      console.log('[Auth] User logged out.');
-      AppState.set('userProfile', null);
-      UI.Faq.clearButtons();
+    } catch (error) {
+      console.warn('[App] Error checking initial session:', error);
+      UI.updateAuthUI(null);
     }
-  });
+
+    // Set up authentication state change listener
+    Services.supabase.auth.onAuthStateChange(async (_event, session) => {
+      const user = session?.user || null;
+      console.log('[Auth] Auth state changed:', user ? `User: ${user.email}` : 'Logged out');
+      UI.updateAuthUI(user);
+
+      if (user) {
+        console.log(`[Auth] User logged in: ${user.email}`);
+
+        // Load FAQ data immediately upon login
+        const faqData = await Services.getFaqData();
+        if (faqData) {
+          UI.Faq.renderButtons(faqData);
+        } else {
+          UI.Faq.clearButtons();
+          ErrorHandler.showToast('Failed to load FAQs.', true);
+        }
+
+        // Load profile data asynchronously with timeout and retries
+        loadProfileWithTimeout(user.id)
+          .then((profileData) => {
+            if (profileData) {
+              AppState.set('userProfile', profileData);
+              // Theme will be automatically handled by the new system
+            } else {
+              console.warn('[App] User profile not found or timed out after retries, using default theme.');
+            }
+          })
+          .catch((err) => {
+            ErrorHandler.log(err, 'loadProfileWithTimeout');
+            console.warn('[App] Profile loading failed or timed out, continuing with defaults.');
+          });
+      } else {
+        console.log('[Auth] User logged out.');
+        AppState.set('userProfile', null);
+        UI.Faq.clearButtons();
+      }
+    });
+  }
 
   console.log('[App] SFDA Copilot application initialized successfully.');
 }
@@ -1207,10 +1370,10 @@ function initThemeSystem() {
   }
   const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
   const defaultTheme = storedTheme || (systemPrefersDark ? 'dark' : 'light');
-  
+
   // Apply the theme using Bootstrap's native theme system
   applyTheme(defaultTheme);
-  
+
   // Initialize button icons and bind events - buttons already exist in HTML
   initThemeToggles();
 
@@ -1222,7 +1385,7 @@ function updateThemeToggleIcons() {
   const currentTheme = getCurrentTheme();
   const iconClass = currentTheme === 'dark' ? 'bi-sun-fill' : 'bi-moon-fill';
   const newTitle = currentTheme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme';
-  
+
   // Add existence check
   document.querySelectorAll('.theme-toggle-btn').forEach(btn => {
     if (btn) { // Ensure button exists
@@ -1259,7 +1422,7 @@ function bindThemeToggleEvents() {
 function applyTheme(theme) {
   // Use Bootstrap's native theme system
   document.documentElement.setAttribute('data-bs-theme', theme);
-  
+
   // Persist theme preference
   try {
     localStorage.setItem('theme', theme);
@@ -1295,7 +1458,7 @@ function toggleTheme() {
   announcement.className = 'sr-only';
   announcement.textContent = `Theme changed to ${newTheme} mode`;
   document.body.appendChild(announcement);
-  
+
   // Remove announcement after it's been read
   setTimeout(() => {
     announcement.remove();
