@@ -213,8 +213,8 @@ def _truncate_chat_history(chat_history: List[Dict[str, str]], max_pairs: int, m
 # ──────────────────────────────────────────────────────────
 def _configure_app(app: Flask, testing: bool) -> None:
     """Apply basic configuration and secret key to the Flask app."""
-    app.secret_key = os.getenv("FLASK_SECRET_KEY") or os.urandom(24)
-    if not os.getenv("FLASK_SECRET_KEY") and not testing:
+    app.secret_key = config.flask_secret_key or os.urandom(24)
+    if not config.flask_secret_key and not testing:
         logging.warning("Using a temporary secret key. Set FLASK_SECRET_KEY in .env for production.")
 
     app.config.update(
@@ -228,7 +228,7 @@ def _configure_app(app: Flask, testing: bool) -> None:
 def _init_extensions(app: Flask, testing: bool) -> Limiter:
     """Initialize all Flask extensions."""
     # Check if running behind a reverse proxy (e.g., Nginx with SSL termination)
-    is_behind_proxy = os.getenv("BEHIND_PROXY", "false").lower() == "true"
+    is_behind_proxy = config.is_behind_proxy()
     
     # Apply ProxyFix middleware when behind a reverse proxy
     # This trusts X-Forwarded-* headers from Nginx
@@ -243,7 +243,7 @@ def _init_extensions(app: Flask, testing: bool) -> Limiter:
         logging.info("ProxyFix middleware enabled for reverse proxy deployment.")
     
     # CORS
-    is_debug_mode = config.get("server", "debug", True) or testing
+    is_debug_mode = config.is_debug() or testing
     if is_debug_mode:
         CORS(app, supports_credentials=True)
         logging.info("CORS initialized in debug mode (all origins allowed).")
@@ -257,7 +257,7 @@ def _init_extensions(app: Flask, testing: bool) -> Limiter:
     connect_src = ["'self'", "https://*.supabase.co", "https://cdn.lordicon.com", "https://cdn.jsdelivr.net"]
     
     # Add WebSocket support for Supabase Realtime
-    if project_ref := os.getenv("SUPABASE_PROJECT_REF"):
+    if project_ref := config.get_secret("SUPABASE_PROJECT_REF"):
         connect_src.append(f"wss://{project_ref}.supabase.co")
     connect_src.append("wss://*.supabase.co")  # Allow all Supabase WebSocket connections
     
@@ -427,7 +427,7 @@ if __name__ == "__main__":
     is_testing_mode = os.getenv("FLASK_TESTING", "false").lower() == "true"
     flask_app = create_app(testing=is_testing_mode)
 
-    is_debug_mode = config.get("server", "debug", True) and not is_testing_mode
+    is_debug_mode = config.is_debug() and not is_testing_mode
     server_host = config.get("server", "host", "0.0.0.0")
     server_port = int(config.get("server", "port", 5000))
 
