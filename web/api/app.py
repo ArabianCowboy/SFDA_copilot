@@ -14,6 +14,7 @@ from functools import wraps
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union, Tuple, cast, Sequence, Callable # Added Callable
 from logging.handlers import RotatingFileHandler # New import for logging
+from werkzeug.middleware.proxy_fix import ProxyFix  # For reverse proxy support
 
 import yaml
 from dotenv import load_dotenv
@@ -226,6 +227,21 @@ def _configure_app(app: Flask, testing: bool) -> None:
 
 def _init_extensions(app: Flask, testing: bool) -> Limiter:
     """Initialize all Flask extensions."""
+    # Check if running behind a reverse proxy (e.g., Nginx with SSL termination)
+    is_behind_proxy = os.getenv("BEHIND_PROXY", "false").lower() == "true"
+    
+    # Apply ProxyFix middleware when behind a reverse proxy
+    # This trusts X-Forwarded-* headers from Nginx
+    if is_behind_proxy:
+        app.wsgi_app = ProxyFix(
+            app.wsgi_app,
+            x_for=1,       # Trust X-Forwarded-For (1 proxy hop)
+            x_proto=1,     # Trust X-Forwarded-Proto
+            x_host=1,      # Trust X-Forwarded-Host
+            x_prefix=1     # Trust X-Forwarded-Prefix
+        )
+        logging.info("ProxyFix middleware enabled for reverse proxy deployment.")
+    
     # CORS
     is_debug_mode = config.get("server", "debug", True) or testing
     if is_debug_mode:
@@ -261,12 +277,22 @@ def _init_extensions(app: Flask, testing: bool) -> Limiter:
         # Allow connections to any HTTPS/WSS (for development and browser extensions)
         csp["connect-src"] = ["'self'", "https:", "wss:"]
         logging.info("CSP configured in permissive debug mode for development")
+    
+    # Disable force_https when:
+    # 1. Debug mode (local development)
+    # 2. Testing mode
+    # 3. Behind a reverse proxy (Nginx handles SSL termination)
+    should_force_https = not (is_debug_mode or testing or is_behind_proxy)
+    
     Talisman(
         app,
-        force_https=not (is_debug_mode or testing), # Disable HTTPS in debug or testing
+        force_https=should_force_https,
         content_security_policy=csp
     )
-    logging.info("Talisman initialized. force_https=%s", not testing)
+    logging.info(
+        "Talisman initialized. force_https=%s (debug=%s, testing=%s, behind_proxy=%s)",
+        should_force_https, is_debug_mode, testing, is_behind_proxy
+    )
 
     # Rate Limiter
     rate_limit_config = config.get("server", "rate_limit", {})
