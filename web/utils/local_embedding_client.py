@@ -1,7 +1,7 @@
 import os
 import numpy as np
 from sentence_transformers import SentenceTransformer
-from ..utils.config_loader import config
+from ..utils.config_loader import config as config_loader_module
 
 
 class LocalEmbeddingClient:
@@ -10,11 +10,13 @@ class LocalEmbeddingClient:
     Uses the 'all-mpnet-base-v2' model by default.
     """
     
-    def __init__(self):
+    def __init__(self, config=None):
         """Initialize the local embedding client."""
-        self.model_name = config.get("search_engine", "local_embedding_model", "all-mpnet-base-v2")
+        # Config argument added for factory pattern compatibility
+        # We continue to use the global config as the primary source
+        self.model_name = config_loader_module.get("search_engine", "local_embedding_model", "all-mpnet-base-v2")
         self.embedding_dimension = 768  # Fixed for all-mpnet-base-v2
-        self.batch_size = config.get("data_processing", "embedding_batch_size", 100)
+        self.batch_size = config_loader_module.get("data_processing", "embedding_batch_size", 100)
         
         try:
             self.model = SentenceTransformer(self.model_name)

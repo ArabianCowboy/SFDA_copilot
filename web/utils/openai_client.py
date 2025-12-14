@@ -1,7 +1,7 @@
 import os
 import numpy as np
 from openai import OpenAI
-from ..utils.config_loader import config
+from ..utils.config_loader import config as config_loader_module
 
 
 class OpenAIClientManager:
@@ -10,14 +10,17 @@ class OpenAIClientManager:
     Handles client initialization, configuration, and provides common methods.
     """
     
-    def __init__(self):
+    def __init__(self, config=None):
         """Initialize the OpenAI client with configuration."""
         self.api_key = os.getenv("OPENAI_API_KEY")
         if not self.api_key:
             raise ValueError("OPENAI_API_KEY environment variable not set.")
         
-        self.embedding_model = config.get("search_engine", "embedding_model", "text-embedding-ada-002")
-        self.embedding_dimension = config.get("search_engine", "embedding_dimension", 1536)
+        # Use provided config or fall back to global config
+        # config arg takes precedence if we ever want to inject it
+        # The config argument is not currently used, but kept for future factory pattern integration.
+        self.embedding_model = config_loader_module.get("search_engine", "embedding_model", "text-embedding-ada-002")
+        self.embedding_dimension = config_loader_module.get("search_engine", "embedding_dimension", 1536)
         self.client = OpenAI()
     
     def get_embeddings(self, texts, batch_size=100):
