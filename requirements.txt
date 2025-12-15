@@ -21,6 +21,7 @@ openai
 
 # Text Processing
 langchain
+langchain-text-splitters
 PyYAML
 
 # Utilities

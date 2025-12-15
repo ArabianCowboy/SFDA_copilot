@@ -31,7 +31,7 @@ import numpy as np
 import pandas as pd
 import pickle
 import PyPDF2
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 from sklearn.feature_extraction.text import TfidfVectorizer
 from tqdm import tqdm
 
