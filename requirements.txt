@@ -33,3 +33,4 @@ itsdangerous
 click
 sentence_transformers
 supabase
+tiktoken

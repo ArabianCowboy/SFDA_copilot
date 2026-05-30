@@ -82,8 +82,7 @@
 
   /* Icons */
   --navbar-toggler-icon: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3e%3cpath stroke='rgba%28255,255,255,.8%29' stroke-linecap='round' stroke-width='2' d='M4 7h22M4 15h22M4 23h22'/%3e%3c/svg%3e");
-  --select-arrow-icon: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23ffffff' stroke-linecap='round' stroke-width='2' d='m2 5 6 6 6-6'/%3e%3csvg%3e");
-  --input-select-arrow-icon: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%2334495e' stroke-linecap='round' stroke-width='2' d='m2 5 6 6 6-6'/%3e%3csvg%3e");
+  --input-select-arrow-icon: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%2334495e' stroke-linecap='round' stroke-width='2' d='m2 5 6 6 6-6'/%3e%3c/svg%3e");
 
   /* Transparency Helpers */
   --white-05: rgba(255 255 255 / 0.05);
@@ -98,6 +97,7 @@
   --white-70: rgba(255 255 255 / 0.70);
   --white-80: rgba(255 255 255 / 0.80);
   --white-90: rgba(255 255 255 / 0.90);
+  --white-95: rgba(255 255 255 / 0.95);
 
   --black-05: rgba(0 0 0 / 0.05);
   --black-06: rgba(0 0 0 / 0.06);
@@ -163,7 +163,7 @@
   --shadow-brand-glow: 0 0 20px rgba(43 122 120 / 0.15);
 
   /* Icons */
-  --input-select-arrow-icon: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23ffffff' stroke-linecap='round' stroke-width='2' d='m2 5 6 6 6-6'/%3e%3csvg%3e");
+  --input-select-arrow-icon: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23ffffff' stroke-linecap='round' stroke-width='2' d='m2 5 6 6 6-6'/%3e%3c/svg%3e");
 }
 
 /* ---------------------------------------------------------
@@ -328,13 +328,9 @@ h6 {
   color: var(--text-color-dark);
   text-align: left;
   background-color: var(--background-light);
-  opacity: 0;
+  opacity: 1;
   transform-style: preserve-3d;
-  animation: faqItemFadeIn linear forwards;
-  animation-timeline: faq-scroll-timeline;
-  animation-range: entry 20% cover 50%;
   transition: var(--btn-transition), transform var(--duration-s) ease;
-  will-change: transform, opacity, background-color;
 }
 
 .faq-section .nav-link.faq-button:hover,
@@ -368,47 +364,8 @@ h6 {
 }
 
 /* ---------------------------------------------------------
-   7 ▸ Styled Selects
+   7 ▸ Category Selector
    --------------------------------------------------------- */
-.styled-select-label {
-  display: block;
-  margin-bottom: 8px;
-  font-weight: 500;
-  color: var(--text-color-light-secondary);
-}
-
-.styled-select {
-  padding: 10px 15px;
-  border: 1px solid var(--white-25);
-  border-radius: var(--radius-sm);
-  font-family: var(--font-primary);
-  color: var(--text-color-light);
-  background-color: var(--white-15);
-  background-image: var(--select-arrow-icon);
-  background-repeat: no-repeat;
-  background-position: right .75rem center;
-  background-size: 16px 12px;
-  appearance: none;
-  transition: var(--btn-transition);
-}
-
-.styled-select:hover {
-  border-color: var(--white-40);
-  background-color: var(--white-25);
-}
-
-.styled-select:focus {
-  outline: none;
-  border-color: var(--text-color-light);
-  background-color: var(--white-25);
-  box-shadow: 0 0 0 .2rem var(--white-30);
-}
-
-.styled-select option {
-  color: var(--text-color-dark);
-  background-color: var(--background-light);
-}
-
 .sidebar .category-selector {
   padding-top: 20px;
   margin-bottom: 25px;
@@ -552,13 +509,37 @@ h6 {
   }
 }
 
-.message-code {
+.message-code-block {
   margin: 5px 0;
   padding: 10px;
   overflow-x: auto;
   border-radius: var(--radius-xs);
   font-family: var(--font-mono);
   background-color: var(--black-05);
+}
+
+.message-inline-code {
+  padding: 1px 5px;
+  border-radius: var(--radius-xs);
+  font-family: var(--font-mono);
+  font-size: .9em;
+  background-color: var(--black-05);
+}
+
+/* message-medium: standard message width constraint */
+.message-medium {
+  max-width: 85%;
+}
+
+/* animated-message: initial welcome message, already visible */
+.animated-message {
+  opacity: 1;
+}
+
+/* message-list: lists inside chat messages */
+.message-list {
+  padding-left: 1.25rem;
+  margin: 0.5rem 0;
 }
 
 /* Knowledge Cutoff Notice Styling */
@@ -711,10 +692,10 @@ h6 {
   color: var(--text-color-dark);
   background-color: var(--primary-color);
   transition: var(--btn-transition), transform var(--duration-s) ease;
-  will-change: transform, box-shadow;
 }
 
 #send-button:hover:not(:disabled) {
+  will-change: transform, box-shadow;
   background-color: var(--accent-color);
   box-shadow: var(--shadow-lg);
   transform: translateY(-2px) scale(1.03);
@@ -1098,7 +1079,6 @@ h6 {
   backdrop-filter: var(--backdrop-blur);
   -webkit-backdrop-filter: var(--backdrop-blur);
   transform: translateZ(0); /* Hardware acceleration */
-  will-change: transform, box-shadow, background-color, border-color;
   transition: transform var(--duration-m) ease-out,
               box-shadow var(--duration-m) ease-out,
               background-color var(--duration-m) ease-out,
@@ -1120,6 +1100,7 @@ h6 {
 }
 
 .why-use-platform-section .feature-card:hover {
+  will-change: transform, box-shadow, background-color, border-color;
   transform: scale(1.05) rotateZ(1deg);
   box-shadow: var(--shadow-glass-hover), var(--shadow-brand-accent);
   border-color: var(--primary-color);
@@ -1151,7 +1132,6 @@ h6 {
   backdrop-filter: var(--backdrop-blur);
   -webkit-backdrop-filter: var(--backdrop-blur);
   transform: translateZ(0); /* Hardware acceleration */
-  will-change: transform, box-shadow, background-color, border-color;
   transition: transform var(--duration-m) ease-out,
               box-shadow var(--duration-m) ease-out,
               background-color var(--duration-m) ease-out,
@@ -1159,6 +1139,7 @@ h6 {
 }
 
 .why-use-platform-section .feature-card:hover .feature-icon-wrapper {
+  will-change: transform, box-shadow, background-color, border-color;
   transform: scale(1.1) rotateZ(-2deg);
   box-shadow: var(--shadow-glass-hover), var(--shadow-brand-glow);
   border-color: var(--accent-color);
@@ -1410,10 +1391,7 @@ h6 {
   }
 }
 
-@scroll-timeline faq-scroll-timeline {
-  source: auto;
-  orientation: block;
-}
+
 
 /* -----------------------------------------------------------------
    Theme Toggle & Utilities
@@ -1508,9 +1486,6 @@ h6 {
   visibility: hidden;
   transform: translateY(20px);
   transition: opacity var(--duration-m) ease, transform var(--duration-m) ease, visibility 0s var(--duration-m);
-  /* Accessibility: Announce toast messages to screen readers */
-  aria-live: polite;
-  role: status;
 }
 
 .toast-notification:not(.hidden) {
@@ -1557,11 +1532,11 @@ h6 {
   background: linear-gradient(135deg, var(--primary-color) 0%, var(--accent-color) 100%);
   box-shadow: var(--shadow-md);
   transition: var(--btn-transition), transform var(--duration-s) ease;
-  will-change: transform, box-shadow;
   cursor: pointer;
 }
 
 .suggested-question-enhanced:hover {
+  will-change: transform, box-shadow;
   border-color: var(--accent-color-hover);
   color: var(--text-color-dark);
   background: linear-gradient(135deg, var(--accent-color) 0%, var(--accent-color-hover) 100%);

@@ -160,16 +160,16 @@ def get_embedding_dimension(embedding_type: Optional[str] = None) -> int:
     """
     try:
         # Try to get configuration from the config loader
-        from .config_loader import ConfigLoader
-        
-        config_loader = ConfigLoader()
-        config = config_loader.config
+        from .config_loader import config
         
         # Get dimensions from centralized configuration
-        dimensions = config.get("embedding", {}).get("dimensions", {})
-        embedding_type = embedding_type or config.get("search_engine", {}).get("embedding_type", "local")
-        
-        return dimensions.get(embedding_type, 768)  # Default to local dimension
+        embedding_type = embedding_type or config.get("search_engine", "embedding_type", "local")
+        if embedding_type == "openai":
+            return 1536
+        elif embedding_type == "local":
+            return 768
+        else:
+            return 768
         
     except Exception as e:
         logger.warning(f"Failed to get embedding dimension from config: {str(e)}")

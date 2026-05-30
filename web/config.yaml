@@ -30,17 +30,18 @@ search_engine:
   embedding_dimension: 768  # 768 for local, 1536 for OpenAI
   
   # Search parameters
-  k: 4  # Number of results to return
-  semantic_weight: 0.7  # Weight for semantic search (0-1)
-  lexical_weight: 0.3   # Weight for lexical search (0-1)
-  semantic_multiplier: 3  # Candidate multiplier for semantic search
-  lexical_multiplier: 3   # Candidate multiplier for lexical search
+  k: 8  # Number of results to return
+  semantic_weight: 0.5  # Weight for semantic search (0-1)
+  lexical_weight: 0.5   # Weight for lexical search (0-1)
+  semantic_multiplier: 10  # Candidate multiplier for semantic search
+  lexical_multiplier: 10   # Candidate multiplier for lexical search
 
 # --- OpenAI Configuration ---
 openai:
   model: gpt-4o-mini
   temperature: 0.1
   max_tokens: 16384  # Max supported by gpt-4o-mini
+  max_context_results: 8
 
 # --- Data Processing ---
 data_processing:

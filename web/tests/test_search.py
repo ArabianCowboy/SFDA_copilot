@@ -79,8 +79,8 @@ def test_search_engine():
     test_queries = [
         ("What are the requirements for drug registration?", "regulatory"),
         ("How to report adverse events?", "pharmacovigilance"),
-        ("What are the requirements for veterinary medicines?", "Veterinary_Medicines"),
-        ("What are the guidelines for biological products?", "Biological_Products_and_Quality_Control"),
+        ("What are the requirements for veterinary medicines?", "veterinary"),
+        ("What are the guidelines for biological products?", "biological"),
         ("What is the role of QPPV?", "all")
     ]
     

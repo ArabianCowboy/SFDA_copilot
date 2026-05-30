@@ -44,7 +44,7 @@ class LocalEmbeddingClient:
                 texts,
                 batch_size=batch_size,
                 convert_to_numpy=True,
-                normalize_embeddings=True
+                normalize_embeddings=True,
             )
             return embeddings.astype(np.float32)
         except Exception as e:

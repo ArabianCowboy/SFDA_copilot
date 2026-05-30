@@ -13,10 +13,24 @@
         crossorigin="anonymous">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 
+    <!-- Preload LCP hero image -->
+    <link rel="preload" as="image" href="{{ url_for('static', filename='images/hero-image.webp') }}">
+
+    <!-- Apply stored theme before first paint to prevent FOUC -->
     <script>
-        // This script passes configuration from the Flask backend to the frontend JavaScript.
-        window.SUPABASE_URL = JSON.parse('{{ SUPABASE_URL | tojson | safe }}');
-        window.SUPABASE_ANON_KEY = JSON.parse('{{ SUPABASE_ANON_KEY | tojson | safe }}');
+        (function() {
+            try {
+                var t = localStorage.getItem('theme');
+                if (!t) t = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+                document.documentElement.setAttribute('data-bs-theme', t);
+            } catch(e) {}
+        })();
+    </script>
+
+    <script>
+        // Pass configuration from Flask backend to frontend JavaScript.
+        window.SUPABASE_URL = {{ SUPABASE_URL | tojson }};
+        window.SUPABASE_ANON_KEY = {{ SUPABASE_ANON_KEY | tojson }};
     </script>
 </head>
 
@@ -205,8 +219,8 @@
                     </p>
                     <!-- Placeholder for hero image or video -->
                     <div class="hero-visual mb-4">
-                        <img src="{{ url_for('static', filename='images/hero-image.jpg') }}"
-                            alt="AI Regulatory Guidance" loading="lazy">
+                        <img src="{{ url_for('static', filename='images/hero-image.webp') }}"
+                            alt="AI Regulatory Guidance" fetchpriority="high">
                     </div>
                     <button id="auth-button-main" class="unified-button btn-lg" type="button" data-bs-toggle="modal"
                         data-bs-target="#authModal">
@@ -429,6 +443,23 @@
         crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/animejs@3.2.1/lib/anime.min.js" crossorigin="anonymous"></script>
     <script type="module" src="{{ url_for('static', filename='js/app.js') }}?v=fix9"></script>
+
+    <!-- CDN ESM load-error fallback: shows a toast if jsdelivr is blocked by proxy -->
+    <script>
+        setTimeout(function() {
+            if (!window.APP_INITIALIZED && !window.location.search.includes('testing=true')) {
+                var toast = document.getElementById('toast');
+                if (toast) {
+                    toast.textContent = 'Error: Failed to load application resources from CDN. Please check your internet connection or proxy settings.';
+                    toast.className = 'toast-notification error';
+                    toast.classList.remove('hidden');
+                    toast.style.visibility = 'visible';
+                    toast.style.opacity = '1';
+                    toast.style.transform = 'translateY(0)';
+                }
+            }
+        }, 4000);
+    </script>
 
 </body>
 

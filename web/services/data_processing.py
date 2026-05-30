@@ -21,6 +21,12 @@ import sys
 from pathlib import Path
 from typing import Dict, List
 
+# Must be set before PyTorch/sentence-transformers loads to prevent
+# segfault during interpreter shutdown on macOS arm64 (Python 3.14+).
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+os.environ.setdefault("MKL_NUM_THREADS", "1")
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+
 # Ensure project root is on `sys.path` (kept from original script)
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT))
@@ -181,10 +187,10 @@ class DataProcessor:
 
     @staticmethod
     def _clean_text(text: str) -> str:
-        """Normalise whitespace & remove non‑printables."""
+        """Normalise whitespace & remove control characters, preserving Unicode letters (including Arabic)."""
         text = re.sub(r"\n+", "\n", text)
         text = re.sub(r"\s+", " ", text)
-        text = re.sub(r"[^\x20-\x7E\n]", "", text)
+        text = re.sub(r"[\x00-\x1f\x7f-\x9f]", "", text)
         return text.strip()
 
     @staticmethod

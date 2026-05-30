@@ -5,9 +5,16 @@ Final optimized version combining robust patterns, modern syntax, and maximum re
 
 from __future__ import annotations
 
+import os
+
+# Must be set before PyTorch/sentence-transformers loads to prevent
+# segfault during interpreter shutdown on macOS arm64 (Python 3.14+).
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+os.environ.setdefault("MKL_NUM_THREADS", "1")
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+
 import json
 import logging
-import os
 import re
 import sys
 from functools import wraps
@@ -93,48 +100,9 @@ MAX_SESSION_CHAT_HISTORY_CHARS = 3_500
 DEFAULT_MAX_CHAT_MESSAGES_COUNT = 5
 ALLOWED_CHAT_CATEGORIES = {"all", "regulatory", "pharmacovigilance", "veterinary", "biological"}
 
-PHARMA_TERMS_EXPANSION: Dict[str, List[str]] = {
-    "side effects": ["adverse events", "adverse reactions", "safety concerns", "undesirable effects"],
-    "dosage": ["dose", "administration", "regimen", "dosing schedule", "posology"],
-    "safety": ["toxicity", "contraindications", "warnings", "precautions", "safety profile"],
-    "monitoring": ["surveillance", "observation", "follow-up", "patient monitoring", "safety monitoring"],
-    "reporting": ["notification", "documentation", "submission", "adverse event reporting", "case reporting"],
-    "signal": ["alert", "indication", "warning signal", "safety signal", "potential risk"],
-    "risk": ["hazard", "danger", "exposure", "potential harm", "risk factor"],
-    "risk management": ["risk mitigation", "risk assessment", "risk control", "risk evaluation", "RMP", "risk management plan"],
-    "audit": ["compliance review", "internal audit", "regulatory audit", "process audit", "inspection readiness"],
-    "inspection": ["site visit", "regulatory inspection", "compliance check", "audit review", "facility inspection"],
-    "compliance": ["adherence", "conformity", "obedience", "compliance monitoring", "regulatory compliance"],
-    "pv": ["pharmacovigilance", "drug safety", "medicine surveillance", "post-marketing safety"],
-    "lack of efficacy": ["ineffectiveness", "insufficient response", "suboptimal efficacy", "treatment failure"],
-    "quality": ["good manufacturing practices", "GMP", "quality control", "QC", "quality assurance", "QA", "product quality"],
-    "adverse event": ["adverse reaction", "side effect", "negative reaction", "AE", "ADR", "undesired effect"],
-    "clinical trial": ["clinical study", "clinical research", "clinical investigation", "interventional study", "trial protocol"],
-    "drug interaction": ["medication interaction", "pharmaceutical interaction", "medicine interaction", "DDI"],
-    "registration": ["marketing authorization", "MA", "drug approval", "product license", "registration process"],
-    "labeling": ["SPC", "summary of product characteristics", "PIL", "patient information leaflet", "product label", "package insert"],
-    "variation": ["post-approval change", "variation application", "label update", "manufacturing change"],
-    "gmp": ["good manufacturing practices", "manufacturing standards", "quality systems", "facility compliance"],
-    "gvp": ["good pharmacovigilance practices", "pv system", "pharmacovigilance guidelines", "drug safety standards"],
-}
-
 # ──────────────────────────────────────────────────────────
 # Helper Functions
 # ──────────────────────────────────────────────────────────
-def preprocess_query(query: str) -> str:
-    """Expand the query with pharmaceutical synonyms based on exact word boundaries."""
-    expanded_terms = set()
-    query_lower = query.lower()
-    for term, related_terms in PHARMA_TERMS_EXPANSION.items():
-        if re.search(rf"\b{re.escape(term)}\b", query_lower):
-            expanded_terms.update(related_terms)
-
-    if not expanded_terms:
-        return query
-
-    processed_query = f"{query} {' '.join(expanded_terms)}"
-    logging.info("Query expanded: %s -> %s", query, processed_query)
-    return processed_query
 
 
 def _get_token_from_request() -> Optional[str]:
@@ -389,8 +357,7 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
                 logging.error("Search engine unavailable for chat request.")
                 return jsonify(error="Search service is currently unavailable."), 503
 
-            processed_query = preprocess_query(query)
-            search_results: List[SearchResult] = search_engine.search(processed_query, category)
+            search_results: List[SearchResult] = search_engine.search(query, category)
             llm_context = [{"text": r.text, "document": r.document, "category": r.category, "page": r.page} for r in search_results]
 
             openai_handler: OpenAIHandler = current_app.config["openai_handler"]

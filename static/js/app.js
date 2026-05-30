@@ -274,9 +274,7 @@ const Utils = {
       button.appendChild(document.createTextNode(question));
 
       DOMCache.setAttributes(button, {
-        role: 'button',
         'aria-label': `Ask: ${question}`,
-        tabindex: '0',
         'data-question-text': question,
       });
 
@@ -610,9 +608,17 @@ const Animations = {
     const heroImage = document.querySelector('.hero-visual img');
     if (!heroImage) return;
 
+    // Respect prefers-reduced-motion
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
     const parallaxStrength = 0.05;
+    let rafId = null;
     window.addEventListener('scroll', () => {
-      heroImage.style.transform = `translateY(${window.pageYOffset * parallaxStrength}px)`;
+      if (rafId) return;
+      rafId = requestAnimationFrame(() => {
+        heroImage.style.transform = `translateY(${window.pageYOffset * parallaxStrength}px)`;
+        rafId = null;
+      });
     }, { passive: true });
   },
 };
@@ -625,7 +631,7 @@ const Services = {
   init() {
     if (this.supabase) return true;
 
-    const { SUPABASE_URL, SUPABASE_ANON_KEY, APP_DEBUG } = window;
+    const { SUPABASE_URL, SUPABASE_ANON_KEY } = window;
 
     if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
       Utils.logError('Supabase configuration missing.', 'Services.init');
@@ -640,7 +646,7 @@ const Services = {
     }
 
     try {
-      const isDebugMode = APP_DEBUG === true ||
+      const isDebugMode =
         window.location.hostname === 'localhost' ||
         window.location.hostname === '127.0.0.1';
 
@@ -1105,6 +1111,7 @@ const App = {
   },
 
   async init() {
+    window.APP_INITIALIZED = true; // ES module loaded — CDN imports succeeded
     console.log('[App] Initializing SFDA Copilot...');
 
     Handlers.bindEvents();

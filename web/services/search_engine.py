@@ -1,4 +1,5 @@
 import os
+import re
 import numpy as np
 import pandas as pd
 import faiss
@@ -16,6 +17,45 @@ from ..utils.local_embedding_client import LocalEmbeddingClient
 
 # Configure logger for this module
 logger = logging.getLogger(__name__)
+
+PHARMA_TERMS_EXPANSION: Dict[str, List[str]] = {
+    "side effects": ["adverse events", "adverse reactions", "safety concerns", "undesirable effects"],
+    "dosage": ["dose", "administration", "regimen", "dosing schedule", "posology"],
+    "safety": ["toxicity", "contraindications", "warnings", "precautions", "safety profile"],
+    "monitoring": ["surveillance", "observation", "follow-up", "patient monitoring", "safety monitoring"],
+    "reporting": ["notification", "documentation", "submission", "adverse event reporting", "case reporting"],
+    "signal": ["alert", "indication", "warning signal", "safety signal", "potential risk"],
+    "risk": ["hazard", "danger", "exposure", "potential harm", "risk factor"],
+    "risk management": ["risk mitigation", "risk assessment", "risk control", "risk evaluation", "RMP", "risk management plan"],
+    "audit": ["compliance review", "internal audit", "regulatory audit", "process audit", "inspection readiness"],
+    "inspection": ["site visit", "regulatory inspection", "compliance check", "audit review", "facility inspection"],
+    "compliance": ["adherence", "conformity", "obedience", "compliance monitoring", "regulatory compliance"],
+    "pv": ["pharmacovigilance", "drug safety", "medicine surveillance", "post-marketing safety"],
+    "lack of efficacy": ["ineffectiveness", "insufficient response", "suboptimal efficacy", "treatment failure"],
+    "quality": ["good manufacturing practices", "GMP", "quality control", "QC", "quality assurance", "QA", "product quality"],
+    "adverse event": ["adverse reaction", "side effect", "negative reaction", "AE", "ADR", "undesired effect"],
+    "clinical trial": ["clinical study", "clinical research", "clinical investigation", "interventional study", "trial protocol"],
+    "drug interaction": ["medication interaction", "pharmaceutical interaction", "medicine interaction", "DDI"],
+    "registration": ["marketing authorization", "MA", "drug approval", "product license", "registration process"],
+    "labeling": ["SPC", "summary of product characteristics", "PIL", "patient information leaflet", "product label", "package insert"],
+    "variation": ["post-approval change", "variation application", "label update", "manufacturing change"],
+    "gmp": ["good manufacturing practices", "manufacturing standards", "quality systems", "facility compliance"],
+    "gvp": ["good pharmacovigilance practices", "pv system", "pharmacovigilance guidelines", "drug safety standards"],
+}
+
+def preprocess_query(query: str) -> str:
+    """Expand the query with pharmaceutical synonyms based on exact word boundaries."""
+    expanded_terms = set()
+    query_lower = query.lower()
+    for term, related_terms in PHARMA_TERMS_EXPANSION.items():
+        if re.search(rf"\b{re.escape(term)}\b", query_lower):
+            expanded_terms.update(related_terms)
+
+    if not expanded_terms:
+        return query
+
+    return f"{query} {' '.join(expanded_terms)}"
+
 
 @dataclass(frozen=True) # Make immutable for safety
 class SearchResult:
@@ -67,6 +107,18 @@ class ImprovedSearchEngine:
         logger.debug(f"DataFrame path: {self.dataframe_path}")
         logger.debug(f"TF-IDF vectorizer path: {self.tfidf_path}")
         logger.debug(f"TF-IDF matrix path: {self.tfidf_matrix_path}")
+
+        # Initialize translation client if API key is present
+        api_key = os.getenv("OPENAI_API_KEY")
+        if api_key:
+            try:
+                from openai import OpenAI
+                self.translation_client = OpenAI(api_key=api_key)
+            except Exception as e:
+                logger.warning(f"Failed to initialize translation client: {str(e)}")
+                self.translation_client = None
+        else:
+            self.translation_client = None
         
         # --- Initialize Embedding Client ---
         # ENHANCED: Use factory pattern while preserving existing logic
@@ -88,9 +140,11 @@ class ImprovedSearchEngine:
             embedding_type: str = config.get("search_engine", "embedding_type", "local")
             logger.info(f"Using embedding type: {embedding_type}")
             if embedding_type == "openai":
-                self.embedding_client = OpenAIClientManager() # Assumes this class has get_embedding
+                self.embedding_client = OpenAIClientManager()
+                self.embedding_dimension = self.embedding_client.embedding_dimension
             else: # Default to local
-                self.embedding_client = LocalEmbeddingClient() # Assumes this class has get_embedding
+                self.embedding_client = LocalEmbeddingClient()
+                self.embedding_dimension = self.embedding_client.embedding_dimension
 
         # --- Category Mapping for Robust Matching ---
         # This map helps translate simplified frontend categories to their expected full names
@@ -296,6 +350,39 @@ class ImprovedSearchEngine:
             logger.exception(f"Error getting embedding for text: '{text[:100]}...' - {str(e)}")
             return None # Return None to indicate failure
 
+    def _translate_query(self, query: str) -> str:
+        """Translate Arabic query to English to ensure maximum lexical & semantic compatibility with the English corpus."""
+        if not hasattr(self, "translation_client") or not self.translation_client:
+            return query
+        
+        # Check if the query contains Arabic characters
+        if not re.search(r"[\u0600-\u06FF]", query):
+            return query
+            
+        try:
+            response = self.translation_client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "You are a professional regulatory translator. Translate the user's SFDA-related query from Arabic to English. "
+                            "Ensure you use correct English regulatory terminology (e.g., 'guidance', 'marketing authorization', 'SPC', 'PIL', 'packaging', etc.). "
+                            "Return only the direct English translation without any explanation, markdown, or extra text."
+                        )
+                    },
+                    {"role": "user", "content": query}
+                ],
+                max_tokens=100,
+                temperature=0.0
+            )
+            translated_query = response.choices[0].message.content.strip()
+            logger.info(f"Translated query: '{query}' -> '{translated_query}'")
+            return translated_query
+        except Exception as e:
+            logger.error(f"Error translating query in search engine: {str(e)}")
+            return query
+
     def search(self, query: str, category: str = "all", k: Optional[int] = None) -> List[SearchResult]:
         """
         Performs a hybrid search combining semantic and lexical results, filtered by category.
@@ -324,15 +411,22 @@ class ImprovedSearchEngine:
             final_k = max(1, final_k) 
 
             # Get multipliers from config for fetching *initial* candidates
-            # Fetching more candidates than final_k improves the chance that the true top results 
-            # are captured by either semantic or lexical search before combination.
             semantic_multiplier: int = config.get("search_engine", "semantic_multiplier", 3) 
             lexical_multiplier: int = config.get("search_engine", "lexical_multiplier", 3) 
             semantic_k_candidates: int = max(final_k, 1) * semantic_multiplier
             lexical_k_candidates: int = max(final_k, 1) * lexical_multiplier
 
-            # --- Get Query Embedding ---
-            query_embedding = self.get_embedding(query)
+            # --- Translate Arabic Queries to English for Retrieval ---
+            # Since the corpus is mostly in English, translating the query to English
+            # ensures maximum semantic and lexical overlap during search.
+            retrieval_query = self._translate_query(query)
+
+            # --- Preprocess Query for Lexical Search ONLY ---
+            lexical_query = preprocess_query(retrieval_query)
+            logger.debug(f"Lexical query after expansion: '{lexical_query[:100]}...'")
+
+            # --- Get Query Embedding using clean retrieval query ---
+            query_embedding = self.get_embedding(retrieval_query)
             if query_embedding is None:
                  logger.error("Failed to get query embedding. Aborting search.")
                  return []
@@ -345,11 +439,18 @@ class ImprovedSearchEngine:
             
             # --- Perform Lexical Search ---
             logger.debug(f"Fetching {lexical_k_candidates} lexical candidates...")
-            lexical_results_raw: List[Dict] = self._lexical_search(query, category, k=lexical_k_candidates)
+            lexical_results_raw: List[Dict] = self._lexical_search(lexical_query, category, k=lexical_k_candidates)
             
             # --- Combine and Rank Results ---
             logger.debug("Combining and ranking results...")
-            combined_results: List[SearchResult] = self._combine_results(semantic_results_raw, lexical_results_raw, final_k=final_k)
+            combined_results: List[SearchResult] = self._combine_results(
+                semantic_results_raw, 
+                lexical_results_raw, 
+                query_embedding=query_embedding,
+                lexical_query=lexical_query,
+                query_text=retrieval_query,
+                final_k=final_k
+            )
             
             logger.info(f"Hybrid search completed. Returning {len(combined_results)} results.")
             return combined_results
@@ -404,8 +505,8 @@ class ImprovedSearchEngine:
                     query_cat_norm = self._normalize_category_for_comparison(category)
                     chunk_cat_norm = self._normalize_category_for_comparison(chunk_category_raw)
                     logger.debug(f"Semantic search: Query category (raw)='{category}', (norm)='{query_cat_norm}', Chunk category (raw)='{chunk_category_raw}', (norm)='{chunk_cat_norm}'")
-                    # Check if the normalized query category is a substring of the normalized chunk category
-                    is_match = query_cat_norm in chunk_cat_norm
+                    # Check if the normalized query category is a substring of the normalized chunk category (or vice-versa)
+                    is_match = (query_cat_norm in chunk_cat_norm) or (chunk_cat_norm in query_cat_norm)
                     logger.debug(f"Semantic search: Category match result: {is_match}")
                     if not is_match:
                         continue # Skip this result if category doesn't match
@@ -468,8 +569,11 @@ class ImprovedSearchEngine:
                 logger.debug(f"Lexical search: Query category (raw)='{category}', (norm)='{query_cat_norm}'")
                 logger.debug(f"Lexical search: Sample normalized chunk categories: {normalized_df_categories.unique()[:5]}")
                 
-                # Check if the normalized query category is contained within the normalized chunk categories
-                category_mask: pd.Series = normalized_df_categories.str.contains(query_cat_norm, na=False)
+                # Check if the normalized query category is contained within the normalized chunk categories, or vice versa
+                category_mask: pd.Series = (
+                    normalized_df_categories.str.contains(query_cat_norm, na=False) |
+                    normalized_df_categories.apply(lambda x: x in query_cat_norm)
+                )
                 logger.debug(f"Lexical search: Category mask generated. Number of matches: {category_mask.sum()}")
                 
                 # Get the original indices from the DataFrame where the category matches
@@ -528,110 +632,113 @@ class ImprovedSearchEngine:
         logger.debug(f"Lexical search found {len(results_raw)} potential candidates matching category '{category}'.")
         return results_raw
 
-
-    def _combine_results(self, semantic_results: List[Dict], lexical_results: List[Dict], final_k: int) -> List[SearchResult]:
+    def _combine_results(
+        self, 
+        semantic_results: List[Dict], 
+        lexical_results: List[Dict], 
+        query_embedding: np.ndarray,
+        lexical_query: str,
+        query_text: str,
+        final_k: int
+    ) -> List[SearchResult]:
         """
         Combines results from semantic and lexical searches using a weighted score.
-
-        Handles potential duplicate chunks found by both methods, keeping the one with the 
-        higher contribution to the combined score (implicitly handled by taking max score per type).
-        Ranks the combined results and returns the top `final_k`.
-
-        Args:
-            semantic_results (List[Dict]): Raw results from `_semantic_search`. 
-                                           Expected keys: 'index', 'score', 'chunk_id'.
-            lexical_results (List[Dict]): Raw results from `_lexical_search`.
-                                          Expected keys: 'index', 'score', 'chunk_id'.
-            final_k (int): The maximum number of final ranked results to return.
-
-        Returns:
-            List[SearchResult]: A list of `SearchResult` objects, sorted by the combined 
-                                hybrid score in descending order, limited to `final_k` items.
+        Calculates exact scores for the union of all candidates to ensure highly relevant 
+        results from either search method are correctly scored and ranked.
         """
-        # Use chunk_id as the key to combine scores for the same chunk
-        combined_scores: Dict[str, Dict[str, Any]] = {} 
-        # Format: {chunk_id: {'semantic': score, 'lexical': score, 'index': original_df_index}}
-
-        # --- Process Semantic Results ---
-        # Semantic score is assumed to be similarity (0-1), derived from 1/(1+dist)
+        # Get the union of indices from both searches
+        union_indices = set()
         for res in semantic_results:
-            chunk_id = res.get('chunk_id')
-            # Ensure chunk_id exists for reliable combining
-            if not chunk_id: 
-                 logger.warning(f"Missing chunk_id for semantic result index {res.get('index')}. Skipping.")
-                 continue
-            # Initialize entry if chunk_id is new
-            if chunk_id not in combined_scores:
-                combined_scores[chunk_id] = {'semantic': 0.0, 'lexical': 0.0, 'index': res['index']}
-            # Update semantic score, keeping the highest if chunk appears multiple times
-            combined_scores[chunk_id]['semantic'] = max(combined_scores[chunk_id]['semantic'], res['score']) 
-
-        # --- Process Lexical Results ---
-        # Lexical score is TF-IDF cosine similarity, assumed to be in range [0, 1]
+            union_indices.add(res['index'])
         for res in lexical_results:
-            chunk_id = res.get('chunk_id')
-            if not chunk_id: 
-                 logger.warning(f"Missing chunk_id for lexical result index {res.get('index')}. Skipping.")
-                 continue
-            # Initialize entry if chunk_id is new (and wasn't found by semantic search)
-            if chunk_id not in combined_scores:
-                combined_scores[chunk_id] = {'semantic': 0.0, 'lexical': 0.0, 'index': res['index']}
-            # Update lexical score, keeping the highest if chunk appears multiple times
-            combined_scores[chunk_id]['lexical'] = max(combined_scores[chunk_id]['lexical'], res['score']) 
+            union_indices.add(res['index'])
 
-        # --- Calculate Hybrid Score and Create Final SearchResult Objects ---
         final_results: List[SearchResult] = []
         if self.df is None:
              logger.error("DataFrame is not loaded, cannot create final SearchResult objects.")
-             return final_results # Should not happen if initialized correctly
+             return final_results
 
-        for chunk_id, scores in combined_scores.items():
+        # Prepare representations for exact score calculation
+        q_emb = query_embedding.flatten()
+        query_tfidf_vec = self.tfidf_vectorizer.transform([lexical_query])
+
+        # Heuristic: check if query is about product registration and not establishment licensing
+        query_lower = query_text.lower()
+        is_registration_query = any(w in query_lower for w in ["registration", "register", "submission", "dossier", "marketing authorization"])
+        asks_about_establishment = any(w in query_lower for w in ["license", "licensing", "warehouse", "manufacturer", "establishment", "scientific office"])
+
+        # Vectorized calculation of exact lexical cosine similarities for all candidate indices
+        union_indices_list = list(union_indices)
+        if union_indices_list:
+            candidate_tfidf = self.tfidf_matrix[union_indices_list]
+            lexical_similarities = cosine_similarity(query_tfidf_vec, candidate_tfidf).flatten()
+            lexical_scores = {idx: float(sim) for idx, sim in zip(union_indices_list, lexical_similarities)}
+        else:
+            lexical_scores = {}
+
+        for idx in union_indices:
             try:
-                # --- Calculate Weighted Hybrid Score ---
-                # Assumes semantic_score and lexical_score are both normalized (e.g., 0-1 range).
-                # The weights determine the contribution of each search type.
-                hybrid_score: float = (self.semantic_weight * scores['semantic']) + \
-                                      (self.lexical_weight * scores['lexical'])
+                # 1. Exact Semantic Cosine Similarity from unit vectors
+                chunk_vector = np.zeros(self.embedding_dimension, dtype=np.float32)
+                self.faiss_index.reconstruct(idx, chunk_vector)
+                diff = q_emb - chunk_vector
+                distance = np.dot(diff, diff)
+                semantic_score = float(max(0.0, min(1.0, 1.0 - (distance / 2.0))))
                 
-                # --- Retrieve Full Chunk Data ---
-                original_df_index: int = scores['index']
-                # Validate index before accessing DataFrame
-                if original_df_index < 0 or original_df_index >= len(self.df):
-                     logger.warning(f"Invalid DataFrame index {original_df_index} found during combining for chunk_id {chunk_id}. Skipping.")
-                     continue
+                # 2. Exact Lexical Cosine Similarity
+                lexical_score = lexical_scores.get(idx, 0.0)
+                
+                # Calculate hybrid score
+                hybrid_score = (self.semantic_weight * semantic_score) + (self.lexical_weight * lexical_score)
                 
                 # Get the row data from the DataFrame
-                chunk_data: pd.Series = self.df.iloc[original_df_index]
+                if idx < 0 or idx >= len(self.df):
+                     logger.warning(f"Invalid DataFrame index {idx} found during combining. Skipping.")
+                     continue
                 
-                # --- Create SearchResult Object ---
+                chunk_data = self.df.iloc[idx]
+                doc_name = chunk_data.get('document', '')
+                
+                # Apply metadata-based routing / penalty
+                boosted_score = hybrid_score
+                penalty_reason = None
+                
+                if is_registration_query and not asks_about_establishment:
+                    # Penalize establishment licensing documents if query is about registration/submission
+                    is_license_doc = any(w in doc_name.lower() for w in ["license", "licensing"])
+                    is_establishment_doc = any(w in doc_name.lower() for w in ["warehouse", "manufacturer", "clinical_trials_centers", "scientific_office"])
+                    
+                    if is_license_doc or is_establishment_doc:
+                        boosted_score = hybrid_score * 0.80
+                        penalty_reason = "establishment_license_penalty"
+
+                # Create SearchResult Object
                 final_results.append(SearchResult(
-                    text=chunk_data.get('text', ''), # Ensure text is retrieved
-                    score=hybrid_score,             # The final combined score
-                    document=chunk_data.get('document', 'Unknown'),
+                    text=chunk_data.get('text', ''),
+                    score=boosted_score,
+                    document=doc_name,
                     category=chunk_data.get('category', 'Unknown'),
-                    # Safely get page number, handle potential float/NaN from CSV read
                     page=(
                         int(chunk_data['page'])
                         if pd.notna(chunk_data.get('page')) and str(chunk_data.get('page')).strip().isdigit()
                         else None
                     ),
-                    chunk_id=chunk_id,
-                    metadata={ # Store individual scores and original index for potential analysis/debugging
-                        'semantic_score': scores['semantic'],
-                        'lexical_score': scores['lexical'],
-                        'original_index': original_df_index
+                    chunk_id=chunk_data.get('chunk_id'),
+                    metadata={
+                        'semantic_score': semantic_score,
+                        'lexical_score': lexical_score,
+                        'original_index': idx,
+                        'raw_hybrid_score': hybrid_score,
+                        'penalty_reason': penalty_reason
                     }
                 ))
             except Exception as e:
-                 # Catch errors during processing of a single combined result
-                 logger.exception(f"Error processing combined result for chunk_id {chunk_id} (index {scores.get('index')}): {str(e)}")
+                 logger.exception(f"Error processing combined result for index {idx}: {str(e)}")
 
-
-        # --- Sort Results by Hybrid Score (Descending) ---
-        # Higher score indicates better relevance
+        # Sort Results by score (Descending)
         final_results.sort(key=lambda x: x.score, reverse=True)
         
-        # --- Return Top 'final_k' Results ---
+        # Return Top 'final_k' Results
         logger.debug(f"Returning {min(len(final_results), final_k)} combined results after sorting.")
         return final_results[:final_k]
 
