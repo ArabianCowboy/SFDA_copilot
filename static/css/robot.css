@@ -1,0 +1,82 @@
+/* ===================================================================
+   SFDA Copilot — "Sunny" mascot states & reactions
+   State classes (robot-idle / -thinking / -talking / -happy / -error)
+   are toggled by robot.js; internal parts animate via these rules.
+   =================================================================== */
+
+.robot-avatar-wrapper {
+  display: inline-flex; align-items: center; justify-content: center;
+  position: relative;
+  transition: transform var(--duration-m) var(--ease-out);
+}
+.robot-avatar-wrapper:hover { transform: scale(1.1) rotate(-3deg); }
+.sunny-svg { display: block; overflow: visible; }
+
+/* Default state of toggled parts */
+.robot-mouth-talk { opacity: 0; }
+.antenna-glow { opacity: 0; }
+
+/* ——————————————— IDLE: gentle breathing + blink ——————————————— */
+.robot-idle .robot-head { animation: sunnyBreathe 4s ease-in-out infinite; transform-origin: center 88px; }
+.robot-idle .robot-blink-left,
+.robot-idle .robot-blink-right { animation: sunnyBlink 4.5s ease-in-out infinite; }
+
+/* ——————————————— THINKING ——————————————— */
+.robot-thinking .robot-head { animation: sunnyThink 1.6s ease-in-out infinite; transform-origin: center 96px; }
+.robot-thinking .antenna-glow { animation: sunnyAntennaPulse 1s ease-in-out infinite; }
+.robot-thinking .antenna-ball { animation: sunnyBallPulse .5s ease-in-out infinite; }
+.robot-thinking .chest-light { animation: sunnyBallPulse .5s ease-in-out infinite; }
+.robot-thinking .robot-arm-left { animation: sunnyArmL .5s ease-in-out infinite; transform-origin: 56px 146px; }
+.robot-thinking .robot-arm-right { animation: sunnyArmR .5s ease-in-out infinite .25s; transform-origin: 142px 146px; }
+
+/* ——————————————— TALKING ——————————————— */
+.robot-talking .robot-head { animation: sunnyNod .5s ease-in-out infinite; transform-origin: center 96px; }
+.robot-talking .robot-mouth-idle { animation: sunnyMouthHide .4s steps(1) infinite; }
+.robot-talking .robot-mouth-talk { animation: sunnyMouthShow .4s steps(1) infinite; }
+.robot-talking .robot-cheek-left,
+.robot-talking .robot-cheek-right { animation: sunnyBlush 1s ease-in-out infinite; }
+
+/* ——————————————— HAPPY ——————————————— */
+.robot-happy { animation: sunnyHop .6s var(--ease-out) 2; }
+.robot-happy .robot-head { animation: sunnyWobble .5s ease-in-out 2; transform-origin: center 96px; }
+.robot-happy .antenna-glow { animation: sunnyAntennaHappy 1.2s ease-in-out infinite; }
+.robot-happy .eye-glow { opacity: .35; }
+
+/* ——————————————— ERROR ——————————————— */
+.robot-error .robot-head { animation: sunnyShake .4s ease-in-out 2; transform-origin: center 96px; }
+.robot-error .eye-pupil-left,
+.robot-error .eye-pupil-right { fill: #fb7185; }
+
+/* Entrance applied in companion hand-off */
+.robot-entrance { animation: robotCompanionEntrance 1.2s var(--ease-out) both; }
+
+/* ——————————————— Reaction sparks ——————————————— */
+.robot-reaction-particles { position: absolute; top: 50%; left: 50%; width: 0; height: 0; pointer-events: none; z-index: 5; }
+.robot-reaction-particle {
+  position: absolute; top: 0; left: 0;
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--gradient-sun);
+  box-shadow: 0 0 8px rgba(251 191 36 / 0.7);
+  animation: sunnySpark .9s var(--ease-out) forwards;
+}
+
+/* ═══════════════ KEYFRAMES ═══════════════ */
+@keyframes sunnyBreathe { 0%,100% { transform: scale(1); } 50% { transform: scale(1.025); } }
+@keyframes sunnyBlink { 0%,92%,100% { opacity: 0; } 95% { opacity: 1; } }
+@keyframes sunnyThink { 0%,100% { transform: rotate(-5deg) translateY(0); } 50% { transform: rotate(5deg) translateY(-3px); } }
+@keyframes sunnyNod { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-3px) scale(1.02); } }
+@keyframes sunnyWobble { 0%,100% { transform: rotate(0); } 25% { transform: rotate(-8deg); } 75% { transform: rotate(8deg); } }
+@keyframes sunnyShake { 0%,100% { transform: translateX(0) rotate(0); } 25% { transform: translateX(-5px) rotate(-4deg); } 75% { transform: translateX(5px) rotate(4deg); } }
+@keyframes sunnyHop { 0%,100% { transform: translateY(0); } 40% { transform: translateY(-14px) scale(1.04); } }
+@keyframes sunnyAntennaPulse { 0%,100% { opacity: .2; } 50% { opacity: .9; } }
+@keyframes sunnyAntennaHappy { 0%,100% { opacity: .4; transform: scale(1); } 50% { opacity: 1; transform: scale(1.4); } }
+@keyframes sunnyBallPulse { 0%,100% { opacity: .6; } 50% { opacity: 1; } }
+@keyframes sunnyMouthHide { 0%,49% { opacity: 1; } 50%,100% { opacity: 0; } }
+@keyframes sunnyMouthShow { 0%,49% { opacity: 0; } 50%,100% { opacity: 1; } }
+@keyframes sunnyBlush { 0%,100% { opacity: .18; } 50% { opacity: .5; } }
+@keyframes sunnyArmL { 0%,100% { transform: rotate(0); } 50% { transform: rotate(-16deg); } }
+@keyframes sunnyArmR { 0%,100% { transform: rotate(0); } 50% { transform: rotate(16deg); } }
+@keyframes sunnySpark {
+  0% { transform: translate(0,0) scale(1); opacity: 1; }
+  100% { transform: translate(var(--px), var(--py)) scale(0); opacity: 0; }
+}

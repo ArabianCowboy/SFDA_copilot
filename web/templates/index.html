@@ -6,17 +6,32 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description"
         content="SFDA Copilot - AI-powered regulatory guidance for pharmaceutical regulations in Saudi Arabia">
+    <meta name="theme-color" content="#2563eb">
     <title>SFDA Copilot</title>
+
+    <!-- Fonts: Inter + Plus Jakarta Sans + JetBrains Mono -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap"
+        rel="stylesheet">
+
+    <!-- Bootstrap 5.3 -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"
         integrity="sha384-9ndCyUaIbzAi2FUVXJi0CjmCapSmO7SnpJef0486qhLnuZ2cdeRhO02iuK6FUUVM" crossorigin="anonymous">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css"
         crossorigin="anonymous">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+
+    <!-- Stylesheets (Clinical Blue — layered) -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}?v=blue1">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}?v=blue1">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components.css') }}?v=blue1">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/robot.css') }}?v=blue1">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/effects.css') }}?v=blue1">
 
     <!-- Preload LCP hero image -->
     <link rel="preload" as="image" href="{{ url_for('static', filename='images/hero-image.webp') }}">
 
-    <!-- Apply stored theme before first paint to prevent FOUC -->
+    <!-- Prevent FOUC -->
     <script>
         (function() {
             try {
@@ -28,7 +43,6 @@
     </script>
 
     <script>
-        // Pass configuration from Flask backend to frontend JavaScript.
         window.SUPABASE_URL = {{ SUPABASE_URL | tojson }};
         window.SUPABASE_ANON_KEY = {{ SUPABASE_ANON_KEY | tojson }};
     </script>
@@ -36,13 +50,17 @@
 
 <body class="d-flex flex-column min-vh-100">
 
-    <!-- ‑‑ AUTH MODAL ‑‑ -->
+    <!-- ═══════════════════════════════════════════
+         AUTH MODAL — Login / Signup
+         ═══════════════════════════════════════════ -->
     <div class="modal fade" id="authModal" tabindex="-1" aria-labelledby="authModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content">
                 <!-- Header -->
                 <div class="modal-header text-white">
-                    <h2 class="modal-title h5" id="authModalLabel">Login / Signup</h2>
+                    <h2 class="modal-title h5" id="authModalLabel">
+                        <i class="bi bi-shield-shaded me-2"></i>Welcome to SFDA Copilot
+                    </h2>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"
                         aria-label="Close"></button>
                 </div>
@@ -120,14 +138,14 @@
                                         <i class="bi bi-lock me-2"></i>Password
                                     </label>
                                     <div id="password-requirements" class="form-text mt-1">
-                                        Min. 8 chars, 1 uppercase, 1 lowercase, 1 number.
+                                        Min. 8 chars, 1 uppercase, 1 lowercase, 1 number.
                                     </div>
                                     <div class="invalid-feedback">
                                         Password must meet the requirements.
                                     </div>
                                 </div>
 
-                                <button type="submit" class="btn btn-success w-100 btn-lg py-2 fw-bold">
+                                <button type="submit" class="btn btn-primary w-100 btn-lg py-2 fw-bold">
                                     <span class="spinner-border spinner-border-sm d-none me-2" role="status"
                                         aria-hidden="true"></span>
                                     Signup
@@ -143,12 +161,16 @@
         </div>
     </div>
 
-    <!-- ‑‑ PROFILE MODAL ‑‑ -->
+    <!-- ═══════════════════════════════════════════
+         PROFILE MODAL
+         ═══════════════════════════════════════════ -->
     <div class="modal fade" id="profileModal" tabindex="-1" aria-labelledby="profileModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content">
                 <div class="modal-header text-white">
-                    <h2 class="modal-title h5" id="profileModalLabel">Edit Your Profile</h2>
+                    <h2 class="modal-title h5" id="profileModalLabel">
+                        <i class="bi bi-person-circle me-2"></i>Edit Your Profile
+                    </h2>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"
                         aria-label="Close"></button>
                 </div>
@@ -195,50 +217,82 @@
         </div>
     </div>
 
-    <!-- Unauthenticated View -->
+    <!-- ═══════════════════════════════════════════
+         UNAUTHENTICATED VIEW — Landing Page
+         ═══════════════════════════════════════════ -->
     <main id="unauthenticated-view" class="container-fluid flex-grow-1">
+        <!-- Utility Links -->
         <div class="landing-header-utility">
             <a href="https://aifoudahub.com" target="_blank" aria-label="AI Fouda Hub Website"
                 class="utility-icon-link"><i class="bi bi-globe"></i></a>
             <a href="https://www.linkedin.com/in/mohfouda/" target="_blank" aria-label="Mohamed Fouda's LinkedIn"
                 class="utility-icon-link"><i class="bi bi-linkedin"></i></a>
-            <!-- Theme toggle button for landing page -->
-            <button id="landing-theme-toggle" class="theme-toggle-btn btn btn-outline-secondary btn-sm ms-2"
-                aria-label="Toggle theme between light and dark" title="Toggle theme between light and dark">
+            <button id="landing-theme-toggle" class="theme-toggle-btn btn btn-sm ms-2"
+                aria-label="Toggle theme between light and dark" title="Toggle theme">
                 <i class="bi bi-moon-fill"></i>
             </button>
         </div>
+
         <div class="row h-100 align-items-center justify-content-center">
             <div class="col-md-8 text-center">
+                <!-- Hero Section -->
                 <div class="landing-hero">
+                    <!-- Particle canvas inserted here by JS -->
+                    <div id="landing-particles"></div>
+
+                    <!-- 3D Rotating Rings -->
+                    <div class="hero-3d-rings">
+                        <div class="hero-3d-ring hero-3d-ring-1"></div>
+                        <div class="hero-3d-ring hero-3d-ring-2"></div>
+                        <div class="hero-3d-ring hero-3d-ring-3"></div>
+                    </div>
+
+                    <!-- Floating Orbs -->
+                    <div class="hero-floating-orb hero-floating-orb-1"></div>
+                    <div class="hero-floating-orb hero-floating-orb-2"></div>
+                    <div class="hero-floating-orb hero-floating-orb-3"></div>
+
+                    <!-- Lens Flare -->
+                    <div class="hero-lens-flare"></div>
+
+                    <!-- Landing Robot Companion (Sunny — mounted by robot.js) -->
+                    <div class="landing-robot" id="landing-robot">
+                        <div class="landing-robot-glow"></div>
+                        <div class="landing-robot-body" id="landing-robot-body"></div>
+                        <div class="landing-robot-status" id="landing-robot-status">Hello! 👋</div>
+                    </div>
+
                     <div class="hero-title-wrapper">
-                        <h1 class="display-3 fw-bold">SFDA Copilot: Streamline Regulatory Compliance</h1>
+                        <h1 class="display-3 fw-bold">SFDA Copilot</h1>
                     </div>
                     <p class="lead mb-4">
-                        Your AI‑powered assistant for pharmaceutical regulations in Saudi Arabia
+                        Streamline regulatory compliance with your AI‑powered assistant for pharmaceutical regulations in Saudi Arabia
                     </p>
-                    <!-- Placeholder for hero image or video -->
+
+                    <!-- Hero Image -->
                     <div class="hero-visual mb-4">
                         <img src="{{ url_for('static', filename='images/hero-image.webp') }}"
                             alt="AI Regulatory Guidance" fetchpriority="high">
                     </div>
+
+                    <!-- CTA Button -->
                     <button id="auth-button-main" class="unified-button btn-lg" type="button" data-bs-toggle="modal"
                         data-bs-target="#authModal">
-                        <i class="bi bi-box-arrow-in-right me-2"></i>Login / Signup
+                        <i class="bi bi-box-arrow-in-right me-2"></i>Get Started
                     </button>
                 </div>
-                <!-- Why Use Our Platform? Section -->
+
+                <!-- Feature Cards Section -->
                 <div class="why-use-platform-section mt-5">
                     <h2 class="h3 mb-5 text-center fw-bold">Why Use Our Platform?</h2>
-                    <div class="row justify-content-center">
-                        <div class="col-md-6 col-lg-5 mb-4">
-                            <div class="feature-card p-4 rounded-3 shadow-sm animate-card" data-delay="100">
-                                <div
-                                    class="feature-icon-wrapper rounded-circle bg-light d-flex align-items-center justify-content-center mb-3">
+                    <div class="row justify-content-center g-4">
+                        <div class="col-md-6 col-lg-5">
+                            <div class="feature-card animate-card" data-delay="100">
+                                <div class="feature-icon-wrapper">
                                     <i class="bi bi-collection feature-icon"></i>
                                 </div>
                                 <h3 class="h5 fw-bold">Extensive Guideline Coverage</h3>
-                                <p class="text-muted">Access regulatory insights backed by over 99 SFDA guidelines,
+                                <p>Access regulatory insights backed by over 99 SFDA guidelines,
                                     ensuring you have the most comprehensive and up-to-date information at your
                                     fingertips.</p>
                                 <small class="landing-knowledge-badge d-inline-flex align-items-center mt-2">
@@ -247,48 +301,44 @@
                                 </small>
                             </div>
                         </div>
-                        <div class="col-md-6 col-lg-5 mb-4">
-                            <div class="feature-card p-4 rounded-3 shadow-sm animate-card" data-delay="200">
-                                <div
-                                    class="feature-icon-wrapper rounded-circle bg-light d-flex align-items-center justify-content-center mb-3">
+                        <div class="col-md-6 col-lg-5">
+                            <div class="feature-card animate-card" data-delay="200">
+                                <div class="feature-icon-wrapper">
                                     <i class="bi bi-shield-fill-check feature-icon"></i>
                                 </div>
                                 <h3 class="h5 fw-bold">Authoritative Guidance</h3>
-                                <p class="text-muted">Gain confidence with every answer, backed by precise page and
+                                <p>Gain confidence with every answer, backed by precise page and
                                     paragraph citations from official SFDA guidelines, ensuring unparalleled accuracy
                                     and traceability.</p>
                             </div>
                         </div>
-                        <div class="col-md-6 col-lg-5 mb-4">
-                            <div class="feature-card p-4 rounded-3 shadow-sm animate-card" data-delay="300">
-                                <div
-                                    class="feature-icon-wrapper rounded-circle bg-light d-flex align-items-center justify-content-center mb-3">
+                        <div class="col-md-6 col-lg-5">
+                            <div class="feature-card animate-card" data-delay="300">
+                                <div class="feature-icon-wrapper">
                                     <i class="bi bi-book feature-icon"></i>
                                 </div>
                                 <h3 class="h5 fw-bold">Streamlined Regulatory Access</h3>
-                                <p class="text-muted">Navigate complex drug registration procedures and requirements
+                                <p>Navigate complex drug registration procedures and requirements
                                     effortlessly with comprehensive, easy-to-access guidelines.</p>
                             </div>
                         </div>
-                        <div class="col-md-6 col-lg-5 mb-4">
-                            <div class="feature-card p-4 rounded-3 shadow-sm animate-card" data-delay="400">
-                                <div
-                                    class="feature-icon-wrapper rounded-circle bg-light d-flex align-items-center justify-content-center mb-3">
+                        <div class="col-md-6 col-lg-5">
+                            <div class="feature-card animate-card" data-delay="400">
+                                <div class="feature-icon-wrapper">
                                     <i class="bi bi-check-circle feature-icon"></i>
                                 </div>
                                 <h3 class="h5 fw-bold">Unwavering Accuracy</h3>
-                                <p class="text-muted">Rely on consistently updated and verified information, providing
+                                <p>Rely on consistently updated and verified information, providing
                                     the most current insights into Saudi Arabian pharmaceutical regulations.</p>
                             </div>
                         </div>
-                        <div class="col-md-6 col-lg-5 mb-4">
-                            <div class="feature-card p-4 rounded-3 shadow-sm animate-card" data-delay="500">
-                                <div
-                                    class="feature-icon-wrapper rounded-circle bg-light d-flex align-items-center justify-content-center mb-3">
+                        <div class="col-md-6 col-lg-5">
+                            <div class="feature-card animate-card" data-delay="500">
+                                <div class="feature-icon-wrapper">
                                     <i class="bi bi-cpu feature-icon"></i>
                                 </div>
-                                <h3 class="h5 fw-bold">Intelligent Search Capabilities</h3>
-                                <p class="text-muted">Leverage cutting-edge AI to swiftly comprehend intricate
+                                <h3 class="h5 fw-bold">Intelligent Search</h3>
+                                <p>Leverage cutting-edge AI to swiftly comprehend intricate
                                     regulatory queries and deliver highly precise, actionable answers.</p>
                             </div>
                         </div>
@@ -298,9 +348,12 @@
         </div>
     </main>
 
-    <!-- Authenticated View -->
+    <!-- ═══════════════════════════════════════════
+         AUTHENTICATED VIEW — Chat App
+         ═══════════════════════════════════════════ -->
     <main id="authenticated-view" class="container-fluid flex-grow-1 d-none">
-        <nav class="navbar navbar-dark bg-dark d-lg-none sticky-top">
+        <!-- Mobile Navbar -->
+        <nav class="navbar navbar-dark d-lg-none sticky-top">
             <div class="container-fluid">
                 <button class="navbar-toggler" type="button" data-bs-toggle="offcanvas"
                     data-bs-target="#sidebarOffcanvas" aria-controls="sidebarOffcanvas" aria-label="Toggle navigation">
@@ -309,15 +362,15 @@
                 <span class="navbar-brand mb-0 h1">SFDA Copilot</span>
             </div>
         </nav>
+
         <div class="row h-100">
+            <!-- Desktop Sidebar -->
             <aside class="col-lg-3 col-md-4 sidebar d-none d-lg-block h-100" id="sidebarContentRegular">
                 <header class="sidebar-header">
                     <h3 class="d-flex align-items-center justify-content-between">
                         <span><i class="bi bi-shield-shaded me-2"></i>SFDA Copilot</span>
-                        <!-- Theme toggle button for sidebar -->
-                        <button id="sidebar-theme-toggle" class="theme-toggle-btn btn btn-outline-secondary btn-sm ms-2"
-                            aria-label="Toggle theme between light and dark"
-                            title="Toggle theme between light and dark">
+                        <button id="sidebar-theme-toggle" class="theme-toggle-btn btn btn-sm ms-2"
+                            aria-label="Toggle theme" title="Toggle theme">
                             <i class="bi bi-moon-fill"></i>
                         </button>
                     </h3>
@@ -333,38 +386,35 @@
                             Profile</button>
                     </div>
                 </header>
-                <div class="faq-section" id="faq-sidebar-section">
-                    <!-- FAQ categories will be dynamically loaded here by JavaScript -->
-                </div>
+                <div class="faq-section" id="faq-sidebar-section"></div>
             </aside>
-            <div class="offcanvas offcanvas-start text-white d-lg-none" tabindex="-1" id="sidebarOffcanvas"
+
+            <!-- Mobile Offcanvas Sidebar -->
+            <div class="offcanvas offcanvas-start d-lg-none" tabindex="-1" id="sidebarOffcanvas"
                 aria-labelledby="sidebarOffcanvasLabel">
                 <header class="offcanvas-header">
                     <h5 class="offcanvas-title d-flex align-items-center justify-content-between w-100"
                         id="sidebarOffcanvasLabel">
-                        <span>Menu</span>
-                        <!-- Theme toggle button for offcanvas -->
+                        <span><i class="bi bi-shield-shaded me-2"></i>Menu</span>
                         <button id="offcanvas-theme-toggle"
-                            class="theme-toggle-btn btn btn-outline-secondary btn-sm ms-2"
-                            aria-label="Toggle theme between light and dark"
-                            title="Toggle theme between light and dark">
+                            class="theme-toggle-btn btn btn-sm"
+                            aria-label="Toggle theme" title="Toggle theme">
                             <i class="bi bi-moon-fill"></i>
                         </button>
                     </h5>
-                    <button type="button" class="btn-close btn-close-white text-reset" data-bs-dismiss="offcanvas"
+                    <button type="button" class="btn-close text-reset" data-bs-dismiss="offcanvas"
                         aria-label="Close"></button>
                 </header>
                 <div class="offcanvas-body sidebar">
                     <div class="sidebar-header">
                         <h3 class="d-flex align-items-center justify-content-between">
                             <span><i class="bi bi-shield-shaded me-2"></i>SFDA Copilot</span>
-                            <!-- Theme toggle button will be added here by JavaScript -->
                         </h3>
                         <p class="text-muted small mb-3">Your AI Regulatory Assistant</p>
                         <div class="auth-status-container mt-2">
                             <span id="user-status-offcanvas" class="small">Checking status...</span>
-                            <button id="auth-button-offcanvas" class="btn btn-sm btn-primary ms-2" type="button">Login /
-                                Signup</button>
+                            <button id="auth-button-offcanvas" class="btn btn-sm btn-primary ms-2" type="button">Login
+                                / Signup</button>
                             <button id="logout-button-offcanvas" class="btn btn-sm btn-outline-warning ms-2 d-none"
                                 type="button">Logout</button>
                             <button id="profile-button-offcanvas" class="btn btn-sm btn-outline-info ms-2 d-none"
@@ -372,49 +422,80 @@
                                     class="bi bi-person-circle"></i> Profile</button>
                         </div>
                     </div>
-                    <div class="faq-section" id="faq-offcanvas-section">
-                        <!-- FAQ categories will be dynamically loaded here by JavaScript -->
-                    </div>
+                    <div class="faq-section" id="faq-offcanvas-section"></div>
                 </div>
             </div>
+
+            <!-- Chat Area -->
             <section class="col-12 col-lg-9 chat-area h-100 d-flex flex-column">
+                <!-- Chat ambient background effects -->
+                <div class="chat-ambient-rings">
+                    <div class="chat-ring chat-ring-1"></div>
+                    <div class="chat-ring chat-ring-2"></div>
+                </div>
+                <div class="chat-ambient-orb chat-orb-1"></div>
+                <div class="chat-ambient-orb chat-orb-2"></div>
+                <div class="chat-ambient-orb chat-orb-3"></div>
+
+                <!-- Large Robot Companion (Sunny — mounted by robot.js) -->
+                <div class="robot-companion" id="robot-companion">
+                    <div class="robot-companion-glow"></div>
+                    <div class="robot-companion-platform"></div>
+                    <div class="robot-companion-body" id="robot-companion-body"></div>
+                    <div class="robot-companion-status" id="robot-status-text">Ready to help</div>
+                </div>
+
                 <div class="chat-container">
                     <div id="messages" class="messages" aria-live="polite">
+                        <!-- Welcome Message -->
                         <div class="message chatbot-message animated-message mb-3 message-medium">
                             <div class="message-bubble">
                                 <div class="avatar mb-2">
-                                    <img src="{{ url_for('static', filename='images/bot.jpg') }}" alt="bot avatar"
-                                        class="rounded-circle" loading="lazy" width="40" height="40">
+                                    <div class="robot-avatar-wrapper robot-idle" id="welcome-robot-avatar"></div>
                                 </div>
                                 <div class="message-content">
-                                    <p>Welcome to SFDA Copilot! Your AI assistant for pharmaceutical regulations in
+                                    <p>Welcome to <strong>SFDA Copilot</strong>! Your AI assistant for pharmaceutical regulations in
                                         Saudi Arabia. You can:</p>
                                     <ul class="message-list">
-                                        <li><i class="bi bi-question-circle me-2 text-primary"></i>Ask me specific
+                                        <li><i class="bi bi-question-circle me-2 text-primary"></i>Ask specific
                                             questions about regulatory requirements</li>
                                         <li><i class="bi bi-filter-circle me-2 text-success"></i>Select a category to
                                             focus your search</li>
                                         <li><i class="bi bi-hand-index-thumb me-2 text-info"></i>Click on FAQ buttons
                                             for common questions</li>
                                     </ul>
-                                    <p class="knowledge-cutoff-notice"><i class="bi bi-info-circle me-2"></i><em>SFDA
+                                    <div class="knowledge-cutoff-notice"><i class="bi bi-info-circle me-2"></i><em>SFDA
                                             Copilot provides regulatory guidance based on official SFDA guidelines
                                             current through March 2025. For the most recent regulatory updates and
-                                            post-March 2025 changes, please consult the official SFDA website.</em></p>
+                                            post-March 2025 changes, please consult the official SFDA website.</em></div>
                                     <p>How can I assist you today?</p>
                                 </div>
                                 <div class="timestamp">{{ now }}</div>
                             </div>
-                            <div class="suggested-questions-container mt-2">
-                                <!-- Suggested questions will be dynamically loaded here -->
-                            </div>
+                            <div class="suggested-questions-container mt-2"></div>
                         </div>
                     </div>
                 </div>
+
+                <!-- Input Area -->
                 <footer class="input-area">
                     <div class="category-selector mb-2">
-                        <label for="query-category" class="form-label">Search in:</label>
-                        <select id="query-category" class="form-select" aria-label="Search category">
+                        <label class="form-label">Search in:</label>
+                        <div class="custom-dropdown" id="category-dropdown">
+                            <button class="custom-dropdown-trigger" id="query-category" type="button" aria-haspopup="listbox" aria-expanded="false" data-value="all">
+                                <span class="dropdown-icon">🌐</span>
+                                <span class="dropdown-text">All Categories</span>
+                                <i class="bi bi-chevron-down dropdown-arrow"></i>
+                            </button>
+                            <ul class="custom-dropdown-menu" role="listbox">
+                                <li class="custom-dropdown-item active" data-value="all" data-icon="🌐" role="option"><span class="dropdown-icon">🌐</span>All Categories</li>
+                                <li class="custom-dropdown-item" data-value="regulatory" data-icon="📋" role="option"><span class="dropdown-icon">📋</span>Regulatory</li>
+                                <li class="custom-dropdown-item" data-value="pharmacovigilance" data-icon="💊" role="option"><span class="dropdown-icon">💊</span>Pharmacovigilance</li>
+                                <li class="custom-dropdown-item" data-value="veterinary" data-icon="🐾" role="option"><span class="dropdown-icon">🐾</span>Veterinary Medicines</li>
+                                <li class="custom-dropdown-item" data-value="biological" data-icon="🧬" role="option"><span class="dropdown-icon">🧬</span>Biological Products</li>
+                            </ul>
+                        </div>
+                        <select id="query-category-hidden" class="d-none" aria-label="Search category">
                             <option value="all" selected>All Categories</option>
                             <option value="regulatory">Regulatory</option>
                             <option value="pharmacovigilance">Pharmacovigilance</option>
@@ -426,7 +507,7 @@
                         <input type="text" id="query-input" class="form-control"
                             placeholder="Ask about SFDA regulations..." aria-label="Chat message input"
                             aria-describedby="inputHelp" maxlength="500">
-                        <button class="btn btn-primary" type="button" id="send-button" aria-label="Send message">
+                        <button class="btn" type="button" id="send-button" aria-label="Send message">
                             <i class="bi bi-send"></i> Send
                         </button>
                     </div>
@@ -438,13 +519,12 @@
     <!-- Toast -->
     <div id="toast" class="toast-notification hidden" role="alert" aria-live="assertive"></div>
 
-
+    <!-- Scripts -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"
         crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/animejs@3.2.1/lib/anime.min.js" crossorigin="anonymous"></script>
-    <script type="module" src="{{ url_for('static', filename='js/app.js') }}?v=fix9"></script>
+    <script type="module" src="{{ url_for('static', filename='js/app.js') }}?v=blue1"></script>
 
-    <!-- CDN ESM load-error fallback: shows a toast if jsdelivr is blocked by proxy -->
+    <!-- CDN fallback -->
     <script>
         setTimeout(function() {
             if (!window.APP_INITIALIZED && !window.location.search.includes('testing=true')) {
@@ -458,9 +538,8 @@
                     toast.style.transform = 'translateY(0)';
                 }
             }
-        }, 4000);
+        }, 5000);
     </script>
-
 </body>
 
 </html>

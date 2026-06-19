@@ -1,0 +1,169 @@
+/* ===================================================================
+   SFDA Copilot — Design Tokens  ("Clinical Blue" theme)
+   Royal/sky-blue brand on cool neutral surfaces, with a muted
+   slate-blue secondary. Light + dark, semi-professional.
+   =================================================================== */
+
+:root {
+  /* Brand — royal blue (darker for AA contrast on light surfaces) */
+  --primary-color: #2563eb;
+  --primary-color-rgb: 37 99 235;
+  --accent-color: #3b82f6;
+  --accent-color-rgb: 59 130 246;
+  --accent-color-hover: #1d4ed8;      /* filled-button hover bg (white text on it) */
+  --accent-link: #1d4ed8;             /* text/link accent on light surfaces (AA) */
+
+  /* Secondary — muted slate-blue (depth only, never a second hue) */
+  --accent-warm: #64748b;
+  --accent-warm-rgb: 100 116 139;
+  --accent-amber: #94a3b8;
+  --accent-orange: #475569;
+  --accent-coral: #64748b;
+  --accent-coral-rgb: 100 116 139;
+
+  /* Signature gradients — single-hue blue, no rainbow */
+  --gradient-brand: linear-gradient(120deg, #2563eb 0%, #3b82f6 100%);
+  --gradient-brand-flow: linear-gradient(120deg, #1d4ed8 0%, #3b82f6 55%, #60a5fa 100%);
+  --gradient-sun: radial-gradient(circle at 50% 40%, #eff6ff 0%, #93c5fd 45%, #3b82f6 100%);
+
+  /* Status */
+  --color-success: #059669;
+  --color-error: #dc2626;
+  --color-warning: #d97706;
+
+  /* Text */
+  --text-color-dark: #1f2937;
+  --text-color-dark-muted: #6b7280;
+  --text-color-light: #111827;
+  --text-color-light-secondary: #4b5563;
+  --text-color-light-muted: #9ca3af;
+
+  /* Surfaces — cool neutral off-white (not warm cream) */
+  --background-light: #f4f6fb;
+  --background-light-alt: #e8edf5;
+  --surface: #ffffff;
+  --gradient-background: linear-gradient(160deg, #f4f6fb 0%, #eef2f8 50%, #e8eef6 100%);
+  --gradient-hero: radial-gradient(1200px 600px at 70% 10%, rgba(37 99 235 / 0.10) 0%, transparent 55%),
+                   radial-gradient(900px 500px at 15% 80%, rgba(100 116 139 / 0.10) 0%, transparent 55%),
+                   linear-gradient(160deg, #f4f6fb 0%, #eef2f8 50%, #e8eef6 100%);
+
+  /* Borders — cool slate-gray */
+  --border-color-light: #dbe2ec;
+  --border-color-medium: #c3cdda;
+  --border-color-dark: #9aa8bd;
+  --border-color-modal: rgba(37 99 235 / 0.18);
+
+  /* Typography */
+  --font-primary: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-headings: 'Plus Jakarta Sans', 'Inter', sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+
+  /* Radii */
+  --radius-xs: 4px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+  --radius-msg: 18px;
+
+  /* Motion */
+  --duration-s: .2s;
+  --duration-m: .35s;
+  --duration-l: .6s;
+  --duration-xl: .8s;
+  --ease-out: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  --ease-soft: cubic-bezier(0.4, 0, 0.2, 1);
+  --btn-transition: background var(--duration-s) ease, border-color var(--duration-s) ease,
+                    box-shadow var(--duration-s) ease, color var(--duration-s) ease, transform var(--duration-s) ease;
+
+  /* Shadows — neutral slate tint (not warm brown) */
+  --shadow-sm: 0 1px 3px rgba(30 41 59 / 0.06), 0 1px 2px rgba(30 41 59 / 0.04);
+  --shadow-md: 0 4px 6px -1px rgba(30 41 59 / 0.08), 0 2px 4px -2px rgba(30 41 59 / 0.05);
+  --shadow-lg: 0 10px 20px -5px rgba(30 41 59 / 0.10), 0 4px 8px -4px rgba(30 41 59 / 0.06);
+  --shadow-xl: 0 24px 40px -12px rgba(30 41 59 / 0.14);
+  --shadow-2xl: 0 30px 60px -15px rgba(30 41 59 / 0.20);
+  --shadow-warm-glow: 0 0 22px rgba(59 130 246 / 0.18);
+  --shadow-brand-glow: 0 0 20px rgba(37 99 235 / 0.16);
+  --shadow-brand-accent: 0 6px 22px rgba(37 99 235 / 0.22);
+
+  /* Glass */
+  --glass-bg: rgba(255 255 255 / 0.72);
+  --glass-bg-subtle: rgba(255 255 255 / 0.5);
+  --glass-border: rgba(255 255 255 / 0.55);
+  --glass-border-subtle: rgba(59 130 246 / 0.12);
+  --backdrop-blur: blur(16px) saturate(180%);
+  --shadow-glass: 0 8px 32px rgba(30 41 59 / 0.08), inset 0 1px 0 rgba(255 255 255 / 0.6);
+  --shadow-glass-hover: 0 18px 50px rgba(30 41 59 / 0.14), inset 0 1px 0 rgba(255 255 255 / 0.7);
+
+  /* Misc */
+  --toast-bg: #1f2937;
+  --toast-text: #f9fafb;
+  --focus-shadow-color: rgba(59 130 246 / 0.30);
+
+  /* White / black ramps (kept for component reuse) */
+  --white-05: rgba(255 255 255 / 0.05); --white-10: rgba(255 255 255 / 0.10);
+  --white-15: rgba(255 255 255 / 0.15); --white-20: rgba(255 255 255 / 0.20);
+  --white-40: rgba(255 255 255 / 0.40); --white-60: rgba(255 255 255 / 0.60);
+  --white-80: rgba(255 255 255 / 0.80); --white-90: rgba(255 255 255 / 0.90);
+  --black-05: rgba(0 0 0 / 0.04); --black-10: rgba(0 0 0 / 0.10);
+  --black-20: rgba(0 0 0 / 0.20); --black-30: rgba(0 0 0 / 0.30);
+
+  --navbar-toggler-icon: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3e%3cpath stroke='rgba%28255,255,255,.85%29' stroke-linecap='round' stroke-width='2' d='M4 7h22M4 15h22M4 23h22'/%3e%3c/svg%3e");
+}
+
+[data-bs-theme="dark"] {
+  --primary-color: #3b82f6;
+  --primary-color-rgb: 59 130 246;
+  --accent-color: #60a5fa;
+  --accent-color-rgb: 96 165 250;
+  --accent-color-hover: #2563eb;      /* filled-button hover bg (white text = 5.2:1) */
+  --accent-link: #93c5fd;             /* text/link accent on dark surfaces (AA) */
+
+  /* Secondary — muted slate-blue */
+  --accent-warm: #94a3b8;
+  --accent-warm-rgb: 148 163 184;
+  --accent-amber: #cbd5e1;
+  --accent-orange: #64748b;
+  --accent-coral: #94a3b8;
+  --accent-coral-rgb: 148 163 184;
+
+  --text-color-dark: #f1f5f9;
+  --text-color-dark-muted: #94a3b8;
+  --text-color-light: #f8fafc;
+  --text-color-light-secondary: #cbd5e1;
+  --text-color-light-muted: #64748b;
+
+  --background-light: #0b1120;
+  --background-light-alt: #111a2e;
+  --surface: #0f172a;
+  --gradient-background: linear-gradient(160deg, #0b1120 0%, #0f172a 50%, #0b1120 100%);
+  --gradient-hero: radial-gradient(1200px 600px at 72% 8%, rgba(96 165 250 / 0.16) 0%, transparent 55%),
+                   radial-gradient(900px 520px at 12% 82%, rgba(100 116 139 / 0.16) 0%, transparent 55%),
+                   linear-gradient(160deg, #0b1120 0%, #0f172a 55%, #0b1120 100%);
+
+  --border-color-light: #1e293b;
+  --border-color-medium: #293548;
+  --border-color-dark: #3b4a63;
+  --border-color-modal: rgba(96 165 250 / 0.18);
+
+  --glass-bg: rgba(15 23 42 / 0.62);
+  --glass-bg-subtle: rgba(15 23 42 / 0.42);
+  --glass-border: rgba(148 163 184 / 0.16);
+  --glass-border-subtle: rgba(96 165 250 / 0.14);
+  --shadow-glass: 0 8px 32px rgba(0 0 0 / 0.4), inset 0 1px 0 rgba(255 255 255 / 0.06);
+  --shadow-glass-hover: 0 18px 50px rgba(0 0 0 / 0.5), inset 0 1px 0 rgba(255 255 255 / 0.09);
+
+  --shadow-sm: 0 1px 3px rgba(0 0 0 / 0.3);
+  --shadow-md: 0 4px 8px rgba(0 0 0 / 0.35);
+  --shadow-lg: 0 12px 24px rgba(0 0 0 / 0.4);
+  --shadow-xl: 0 24px 44px rgba(0 0 0 / 0.5);
+  --shadow-2xl: 0 30px 60px rgba(0 0 0 / 0.55);
+  --shadow-warm-glow: 0 0 22px rgba(96 165 250 / 0.20);
+  --shadow-brand-glow: 0 0 20px rgba(59 130 246 / 0.18);
+  --shadow-brand-accent: 0 6px 22px rgba(59 130 246 / 0.26);
+
+  --surface-card: rgba(15 23 42 / 0.7);
+  --toast-bg: #1e293b;
+  --toast-text: #f1f5f9;
+  --focus-shadow-color: rgba(96 165 250 / 0.30);
+}

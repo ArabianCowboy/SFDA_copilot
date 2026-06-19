@@ -1,0 +1,173 @@
+/* ===================================================================
+   SFDA Copilot — Base: reset, typography, app shell, scrollbars
+   =================================================================== */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { height: 100%; }
+body {
+  height: 100vh;
+  margin: 0;
+  padding: 0;
+  font-family: var(--font-primary);
+  color: var(--text-color-dark);
+  background-color: var(--background-light);
+  background-image: var(--gradient-background);
+  background-attachment: fixed;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-headings);
+  font-weight: 700;
+  letter-spacing: -0.015em;
+}
+
+a { color: var(--primary-color); text-decoration: none; }
+a:hover { color: var(--accent-link); }
+
+.container-fluid, .row { height: 100%; margin: 0; padding: 0; }
+
+/* Landing scrolls within the viewport; chat is a fixed-height shell so the
+   input bar stays pinned and the messages list scrolls on its own. */
+#unauthenticated-view { overflow-y: auto; }
+#authenticated-view { display: flex; flex-direction: column; height: 100%; }
+#authenticated-view > .row { flex: 1; min-height: 0; }
+
+/* Brand wordmark gradient */
+.text-gradient,
+.hero-title-wrapper h1 {
+  background: var(--gradient-brand-flow);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+
+/* Scrollbars */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(var(--accent-color), var(--accent-warm));
+  border-radius: 10px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--accent-warm); background-clip: padding-box; }
+
+/* Accessibility helpers */
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+}
+:focus-visible { outline: 2px solid var(--accent-color); outline-offset: 2px; }
+
+.hidden { display: none !important; }
+
+/* ——————————————— Mobile navbar ——————————————— */
+.navbar.d-lg-none {
+  color: #fff;
+  background: var(--gradient-brand);
+  box-shadow: var(--shadow-md);
+}
+.navbar.d-lg-none .navbar-brand {
+  font-family: var(--font-headings);
+  font-weight: 800;
+  font-size: 1.1rem;
+  color: #fff;
+}
+.navbar.d-lg-none .navbar-toggler { border-color: var(--white-20); }
+.navbar.d-lg-none .navbar-toggler-icon { background-image: var(--navbar-toggler-icon); }
+
+/* ——————————————— Sidebar ——————————————— */
+.sidebar, .offcanvas.offcanvas-start {
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  padding: 22px;
+  overflow-y: auto;
+  color: var(--text-color-dark);
+  background: var(--gradient-background);
+  border-right: 1px solid var(--border-color-light);
+}
+.offcanvas.offcanvas-start { border-right: none; }
+.offcanvas.offcanvas-start .offcanvas-header {
+  border-bottom: 1px solid var(--border-color-light);
+  background: var(--background-light);
+}
+.offcanvas.offcanvas-start .offcanvas-body.sidebar { padding: 20px; }
+
+.sidebar-header {
+  padding-bottom: 16px;
+  margin-bottom: 22px;
+  border-bottom: 1px solid var(--border-color-light);
+  animation: sidebarReveal var(--duration-l) var(--ease-soft) forwards;
+}
+.sidebar-header h3 {
+  margin-bottom: 8px;
+  font-family: var(--font-headings);
+  font-size: 1.3rem;
+  font-weight: 800;
+  color: var(--text-color-dark);
+}
+.sidebar-header h3 i { font-size: 1.1rem; color: var(--accent-warm); }
+.sidebar-header .text-muted {
+  font-size: .85rem; font-weight: 500; color: var(--text-color-dark-muted);
+}
+.auth-status-container {
+  padding: 10px 14px;
+  margin-top: 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color-light);
+  background: var(--glass-bg-subtle);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+.auth-status-container .small { color: var(--text-color-light-secondary); font-size: .82rem; }
+
+/* ——————————————— Chat shell ——————————————— */
+.chat-area {
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+  background:
+    radial-gradient(900px 500px at 80% -10%, rgba(59 130 246 / 0.10) 0%, transparent 55%),
+    radial-gradient(800px 500px at 0% 110%, rgba(100 116 139 / 0.10) 0%, transparent 55%),
+    var(--background-light);
+}
+.chat-container {
+  position: relative;
+  z-index: 2;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.messages {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  flex: 1;
+  min-height: 0;
+  padding: 24px clamp(12px, 4vw, 48px);
+  overflow-y: auto;
+  scroll-behavior: smooth;
+}
+/* Reserve a lane on the right wide enough to fully clear the floating
+   companion (≈134px footprint) so message bubbles never collide with it. */
+@media (min-width: 1200px) {
+  .messages { padding-right: 168px; }
+}
+
+/* Reduced motion: calm everything down */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
