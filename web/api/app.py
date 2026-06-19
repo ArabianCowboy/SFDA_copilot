@@ -187,6 +187,7 @@ def _configure_app(app: Flask, testing: bool) -> None:
 
     app.config.update(
         TESTING=testing,
+        RATELIMIT_ENABLED=not testing,
         MAX_CHAT_HISTORY_MESSAGE_PAIRS=config.get("server", "chat_history_length", DEFAULT_MAX_CHAT_MESSAGES_COUNT),
     )
     if testing:
@@ -284,13 +285,15 @@ def _initialize_services(app: Flask, testing: bool) -> None:
         return
 
     app.config["openai_handler"] = OpenAIHandler()
-    app.config["search_engine"] = ImprovedSearchEngine()
-    if not app.config["search_engine"].is_initialized():
-        try:
-            app.config["search_engine"].initialize()
+    try:
+        search_engine = ImprovedSearchEngine()
+        app.config["search_engine"] = search_engine
+        if not search_engine.is_initialized():
+            search_engine.initialize()
             logging.info("Search engine initialized successfully.")
-        except Exception as e:
-            logging.error("Search engine initialization failed: %s", e, exc_info=True)
+    except Exception as e:
+        app.config["search_engine"] = None
+        logging.error("Search engine initialization failed: %s", e, exc_info=True)
 
 
 def _load_faq_data() -> Dict[str, Any]:
@@ -382,6 +385,9 @@ def create_app(testing: bool = False) -> Flask:
     app = Flask(__name__, template_folder="../templates", static_folder="../../static")
     _configure_app(app, testing)
     limiter = _init_extensions(app, testing)
+    # Flask-Limiter's disabled test wrapper keeps only a weak reference.
+    # Retain the extension for the lifetime of the application factory result.
+    app.config["_LIMITER_INSTANCE"] = limiter
     _initialize_services(app, testing)
     _register_routes(app, limiter)
     return app

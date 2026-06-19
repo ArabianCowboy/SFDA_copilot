@@ -1,16 +1,16 @@
 /**
  * SFDA Copilot — UI module
- * Message rendering, typing indicator, auth view transitions, FAQ list,
- * profile form population and send-button state.
+ * Message rendering, typing indicator, FAQ list, profile form population and
+ * send-button state.
  */
 
 import { marked } from 'https://cdn.jsdelivr.net/npm/marked@12.0.0/+esm';
 import DOMPurify from 'https://cdn.jsdelivr.net/npm/dompurify@3.0.8/+esm';
 
 import { CONFIG } from './config.js';
-import { DOMCache, AppState } from './dom.js';
+import { DOMCache } from './dom.js';
+import { AppState } from './state.js';
 import { Utils } from './utils.js';
-import { Effects } from './effects.js';
 import { ThemeManager } from './theme.js';
 import { RobotStateManager } from './robot.js';
 
@@ -110,75 +110,6 @@ export const UI = {
     }
   },
 
-  updateAuthUI(user) {
-    const isLoggedIn = !!user;
-    const statusText = isLoggedIn ? `Logged in as: ${user.email}` : 'Not logged in';
-
-    DOMCache.getAll(`${CONFIG.SELECTORS.USER_STATUS}, ${CONFIG.SELECTORS.USER_STATUS_OFFCANVAS}`).forEach(el => {
-      if (el) el.textContent = statusText;
-    });
-
-    const unauthView = DOMCache.get(CONFIG.SELECTORS.UNAUTH_VIEW);
-    const authView = DOMCache.get(CONFIG.SELECTORS.AUTH_VIEW);
-    const companionBody = document.getElementById('robot-companion-body');
-    const companion = document.getElementById('robot-companion');
-
-    if (isLoggedIn) {
-      /* --- Cinematic dual-robot hand-off: landing robot flies up, chat robot enters --- */
-      const landingRobot = document.getElementById('landing-robot');
-      const landingRobotBody = document.getElementById('landing-robot-body');
-      const landingRobotStatus = document.getElementById('landing-robot-status');
-
-      if (landingRobot) {
-        landingRobot.classList.add('robot-exit');
-        if (landingRobotBody) RobotStateManager._spawnReactionAt(landingRobotBody);
-      }
-      if (landingRobotStatus) landingRobotStatus.textContent = 'See you in the chat! 🚀';
-
-      setTimeout(() => {
-        if (companionBody) {
-          companionBody.style.animation = 'none';
-          companionBody.offsetHeight; /* force reflow */
-          companionBody.style.animation = 'robotCompanionEntrance 1.2s cubic-bezier(0.25, 0.46, 0.45, 0.94) both';
-          companionBody.classList.add('robot-entrance');
-        }
-        if (companion) companion.style.opacity = '1';
-        RobotStateManager._spawnReactionParticles();
-      }, 600);
-
-      setTimeout(() => {
-        if (unauthView) {
-          unauthView.classList.add(CONFIG.CLASSES.D_NONE);
-          const particles = AppState.get('particleBackground');
-          if (particles) {
-            particles.destroy();
-            AppState.set('particleBackground', null);
-          }
-        }
-        if (authView) {
-          authView.classList.remove(CONFIG.CLASSES.D_NONE);
-          authView.style.animation = 'viewFadeIn 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards';
-        }
-      }, 300);
-    } else {
-      if (authView) authView.classList.add(CONFIG.CLASSES.D_NONE);
-      if (unauthView) {
-        unauthView.classList.remove(CONFIG.CLASSES.D_NONE);
-        unauthView.style.animation = 'viewFadeIn 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards';
-        setTimeout(() => Effects.initParticles(), 100);
-      }
-    }
-
-    const authButtonSelectors = [CONFIG.SELECTORS.AUTH_BTN, CONFIG.SELECTORS.AUTH_BTN_OFFCANVAS, CONFIG.SELECTORS.AUTH_BTN_MAIN];
-    const userButtonSelectors = [CONFIG.SELECTORS.LOGOUT_BTN, CONFIG.SELECTORS.LOGOUT_BTN_OFFCANVAS, CONFIG.SELECTORS.PROFILE_BTN, CONFIG.SELECTORS.PROFILE_BTN_OFFCANVAS];
-
-    DOMCache.getAll([...authButtonSelectors, ...userButtonSelectors].join(', ')).forEach(btn => {
-      if (!btn) return;
-      const isAuthButton = authButtonSelectors.some(sel => btn.matches(sel));
-      btn.classList.toggle(CONFIG.CLASSES.D_NONE, isAuthButton ? isLoggedIn : !isLoggedIn);
-    });
-  },
-
   populateProfileForm(profile) {
     const form = DOMCache.get(CONFIG.SELECTORS.PROFILE_FORM);
     if (!profile || !form) return;
@@ -202,7 +133,6 @@ export const UI = {
 
     const elementsToToggle = [
       DOMCache.get(CONFIG.SELECTORS.QUERY_INPUT),
-      DOMCache.get(CONFIG.SELECTORS.SEND_BTN),
       ...DOMCache.getAll(`.${CONFIG.CLASSES.FAQ_BUTTON}`),
       ...DOMCache.getAll(`.${CONFIG.CLASSES.SUGGESTED_BUTTON}`),
     ].filter(Boolean);
@@ -213,8 +143,12 @@ export const UI = {
     if (sendBtn) {
       const originalText = AppState.get('originalSendButtonText') || 'Send';
       sendBtn.innerHTML = isSending
-        ? '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Sending...'
+        ? '<i class="bi bi-stop-circle"></i> Cancel'
         : `<i class="bi bi-send"></i> ${originalText}`;
+      sendBtn.setAttribute(
+        'aria-label',
+        isSending ? 'Cancel message' : 'Send message'
+      );
     }
   },
 

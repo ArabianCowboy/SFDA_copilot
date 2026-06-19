@@ -1,7 +1,7 @@
 import os
 import numpy as np
 from sentence_transformers import SentenceTransformer
-from ..utils.config_loader import config as config_loader_module
+from web.utils.config_loader import config as config_loader_module
 
 
 class LocalEmbeddingClient:

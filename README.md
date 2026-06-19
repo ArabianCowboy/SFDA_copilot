@@ -179,20 +179,46 @@ sfda-copilot/
 └── memory-bank/           # Project documentation and notes
 ```
 
+### Architecture Boundaries
+
+- `SearchEngine` composes the index, query processor, semantic search,
+  TF-IDF lexical search, and result combiner. Those search responsibilities
+  remain separate by design.
+- `web.utils.embedding_helpers` is the only embedding-provider factory.
+  Provider initialization fails clearly rather than switching vector spaces
+  behind an existing FAISS index.
+- Frontend `Services` owns only Supabase and HTTP operations. Event handlers
+  own user-facing recovery, `state.js` owns runtime state, and `auth-view.js`
+  owns authenticated/unauthenticated view transitions.
+
 ## 🧪 Testing
 
-### Running Tests
+### Install Development Test Tools
+
 ```bash
-# Run all tests
-python -m pytest web/tests/
-
-# Run specific test files
-python -m pytest web/tests/test_theme_toggle.py
-python -m pytest web/tests/test_profile_theme_integration.py
-
-# Run with coverage
-python -m pytest --cov=web web/tests/
+python -m pip install -r requirements-dev.txt
+python -m playwright install chromium
 ```
+
+### Running Tests
+
+```bash
+# Fast backend suite
+python -m pytest -m "not browser and not integration"
+
+# Browser suite (pytest starts an ephemeral Flask test server)
+python -m pytest -m browser --browser chromium
+
+# Integration tests requiring generated artifacts or external services
+python -m pytest -m integration
+
+# Backend coverage
+python -m pytest -m "not browser and not integration" --cov=web
+```
+
+Playwright starts an ephemeral Flask test server from `web/tests/conftest.py`.
+GitHub Actions installs Chromium and runs the browser suite as a separate
+merge gate.
 
 ### Test Coverage
 - **Theme Toggle Tests**: Verify theme persistence, accessibility, and functionality

@@ -5,7 +5,8 @@
  */
 
 import { CONFIG, prefersReducedMotion } from './config.js';
-import { DOMCache, AppState } from './dom.js';
+import { DOMCache } from './dom.js';
+import { AppState } from './state.js';
 import { Utils } from './utils.js';
 import { ParticleBackground } from '../particles.js';
 

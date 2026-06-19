@@ -1,19 +1,16 @@
-"""
-Enhanced embedding client helpers with factory pattern and abstract interfaces.
-Inspired by ChromaDB and LangChain best practices while maintaining backward compatibility.
-"""
+"""Authoritative construction helpers for embedding providers."""
 
-from typing import Union, Optional, Dict, Any, List
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
-import numpy as np
 import logging
+from typing import Any, Optional
 
-# Import existing clients
-from .openai_client import OpenAIClientManager
-from .local_embedding_client import LocalEmbeddingClient
+import numpy as np
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+from web.utils.local_embedding_client import LocalEmbeddingClient
+from web.utils.openai_client import OpenAIClientManager
+
 logger = logging.getLogger(__name__)
 
 
@@ -24,7 +21,11 @@ class EmbeddingClient(ABC):
     """
     
     @abstractmethod
-    def get_embeddings(self, texts: List[str], batch_size: Optional[int] = None) -> np.ndarray:
+    def get_embeddings(
+        self,
+        texts: list[str],
+        batch_size: Optional[int] = None,
+    ) -> np.ndarray:
         """
         Get embeddings for a list of texts.
         
@@ -77,7 +78,11 @@ class EmbeddingClientFactory:
     }
     
     @classmethod
-    def create_client(cls, embedding_type: Optional[str] = None, config: Optional[Dict[str, Any]] = None) -> EmbeddingClient:
+    def create_client(
+        cls,
+        embedding_type: Optional[str] = None,
+        config: Optional[dict[str, Any]] = None,
+    ) -> EmbeddingClient:
         """
         Create embedding client with smart defaults and validation.
         
@@ -104,12 +109,18 @@ class EmbeddingClientFactory:
         
         try:
             return client_class(config or {})
-        except Exception as e:
-            logger.error(f"Failed to create {embedding_type} embedding client: {str(e)}")
-            raise
+        except Exception as exc:
+            logger.error(
+                "Failed to create %s embedding client: %s",
+                embedding_type,
+                exc,
+            )
+            raise RuntimeError(
+                f"Could not initialize '{embedding_type}' embedding provider."
+            ) from exc
     
     @classmethod
-    def get_available_providers(cls) -> List[str]:
+    def get_available_providers(cls) -> list[str]:
         """
         Get list of available embedding providers.
         
@@ -132,7 +143,10 @@ class EmbeddingClientFactory:
 
 
 # Helper functions for backward compatibility
-def get_embedding_client(embedding_type: Optional[str] = None, config: Optional[Dict[str, Any]] = None) -> EmbeddingClient:
+def get_embedding_client(
+    embedding_type: Optional[str] = None,
+    config: Optional[dict[str, Any]] = None,
+) -> EmbeddingClient:
     """
     Legacy-compatible function with enhanced features.
     Provides the same interface as existing code while using new architecture.
@@ -147,75 +161,11 @@ def get_embedding_client(embedding_type: Optional[str] = None, config: Optional[
     return EmbeddingClientFactory.create_client(embedding_type, config)
 
 
-def get_embedding_dimension(embedding_type: Optional[str] = None) -> int:
-    """
-    Get embedding dimension with centralized configuration.
-    Falls back to sensible defaults if configuration is not available.
-    
-    Args:
-        embedding_type: Type of embedding provider
-        
-    Returns:
-        int: Embedding dimension for the specified provider
-    """
-    try:
-        # Try to get configuration from the config loader
-        from .config_loader import config
-        
-        # Get dimensions from centralized configuration
-        embedding_type = embedding_type or config.get("search_engine", "embedding_type", "local")
-        if embedding_type == "openai":
-            return 1536
-        elif embedding_type == "local":
-            return 768
-        else:
-            return 768
-        
-    except Exception as e:
-        logger.warning(f"Failed to get embedding dimension from config: {str(e)}")
-        # Fallback to hardcoded values
-        fallback_dimensions = {"openai": 1536, "local": 768, "voyage": 1024, "cohere": 768}
-        embedding_type = embedding_type or "local"
-        return fallback_dimensions.get(embedding_type, 768)
-
-
-def get_available_embedding_providers() -> List[str]:
+def get_available_embedding_providers() -> list[str]:
     """
     Get list of available embedding providers.
-    
+
     Returns:
         List[str]: List of available provider names
     """
     return EmbeddingClientFactory.get_available_providers()
-
-
-# Decorator for safe embedding operations
-def safe_embedding_operation(operation_name: str):
-    """
-    Decorator for safe embedding operations with error handling.
-    Provides consistent error handling and logging across all embedding operations.
-    
-    Args:
-        operation_name: Name of the operation for logging purposes
-        
-    Returns:
-        Decorator function
-    """
-    def decorator(func):
-        def wrapper(*args, **kwargs):
-            try:
-                return func(*args, **kwargs)
-            except Exception as e:
-                context = f"{operation_name} in {func.__name__}"
-                logger.error(f"Error in {context}: {str(e)}")
-                
-                # Return fallback if provided
-                fallback = kwargs.get('fallback')
-                if fallback is not None:
-                    logger.info(f"Using fallback for {context}")
-                    return fallback
-                
-                # Re-raise the exception if no fallback provided
-                raise
-        return wrapper
-    return decorator

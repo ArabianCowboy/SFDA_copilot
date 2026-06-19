@@ -37,10 +37,6 @@ from typing import Any
 
 import numpy as np
 
-from ..utils.config_loader import config, project_root
-from ..utils.local_embedding_client import LocalEmbeddingClient
-from ..utils.openai_client import OpenAIClientManager
-
 from web.services.search_exceptions import (
     DataLoadError,
     EmbeddingError,
@@ -51,6 +47,8 @@ from web.services.query_processor import QueryProcessor
 from web.services.semantic_searcher import SemanticSearcher
 from web.services.lexical_searcher import LexicalSearcher
 from web.services.result_combiner import ResultCombiner, SearchResult
+from web.utils.config_loader import config, project_root
+from web.utils.embedding_helpers import get_embedding_client
 
 logger = logging.getLogger(__name__)
 
@@ -379,34 +377,28 @@ class SearchEngine:
             return None
 
     def _build_embedding_client(self) -> Any:
-        """Create the embedding client using the enhanced factory or fallback.
+        """Create the configured embedding client through the shared factory.
 
         Returns:
             An object satisfying :class:`QueryProcessor.EmbeddingClientProtocol`.
 
         Raises:
-            SearchEngineError: If both the enhanced factory and fallback fail.
+            SearchEngineError: If the configured provider cannot initialize.
         """
-        # Try the enhanced factory first
         try:
-            from ..utils.embedding_helpers import (
-                get_embedding_client,
-            )
-
             client = get_embedding_client(self._cfg.embedding_type)
             logger.info(
-                "Embedding client (enhanced): %s", type(client).__name__,
+                "Embedding client: %s", type(client).__name__,
             )
             return client
         except Exception as exc:
-            logger.warning(
-                "Enhanced embedding client failed (%s); using fallback.", exc,
-            )
-
-        # Fallback to legacy clients
-        if self._cfg.embedding_type == "openai":
-            return OpenAIClientManager()
-        return LocalEmbeddingClient()
+            # A FAISS index is tied to the embedding model/vector space used
+            # to build it. Silently switching providers can return plausible
+            # but incorrect search results, so initialization must fail loud.
+            raise SearchEngineError(
+                f"Failed to initialize '{self._cfg.embedding_type}' "
+                "embedding provider."
+            ) from exc
 
 
 # ---------------------------------------------------------------------------

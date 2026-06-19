@@ -1,153 +1,191 @@
-import pytest
-from flask import url_for
-from unittest.mock import patch, MagicMock
-import os
+"""Flask test-client coverage for routes, auth, and chat failures."""
 
-@pytest.fixture(autouse=True)
-def mock_env_vars():
-    """Mock environment variables for testing."""
-    with patch.dict(os.environ, {
-        'FLASK_SECRET_KEY': 'test-key',
-        'SUPABASE_URL': 'http://test.supabase.co',
-        'SUPABASE_ANON_KEY': 'test-anon-key',
-        'OPENAI_API_KEY': 'test-openai-key',
-        'FLASK_ENV': 'testing',
-        'TESTING': 'true'
-    }):
-        yield
+from __future__ import annotations
+
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+from web.api.app import _initialize_services, create_app
+
 
 @pytest.fixture
 def app():
-    """Create application for the tests."""
-    from web.api.app import create_app
-    app = create_app(testing=True)
-    return app
+    return create_app(testing=True)
+
 
 @pytest.fixture
 def client(app):
-    """Create a test client."""
     return app.test_client()
 
-@pytest.fixture(autouse=True)
+
+@pytest.fixture
 def mock_supabase():
-    """Mock Supabase client for testing."""
-    with patch('web.utils.supabase_client.get_supabase') as mock:
-        mock_client = MagicMock()
-        
-        # Configure mock user
-        mock_user = MagicMock(
-            id='123',
-            email='test@example.com',
-            created_at='2024-03-27T00:00:00Z'
-        )
-        
-        # Configure mock session
-        mock_session = MagicMock(
-            access_token='fake_token',
-            refresh_token='fake_refresh_token'
-        )
-        
-        # Configure auth methods with better token handling
-        def mock_get_user(token=None):
-            if token == 'fake_token':
-                return MagicMock(
-                    user=mock_user,
-                    data={'user': mock_user},
-                    error=None
-                )
-            return MagicMock(
-                user=None,
-                data={'user': None},
-                error={'message': 'Invalid token'}
-            )
-            
-        mock_client.auth.get_user = mock_get_user
-        
-        # Configure sign up response
-        mock_client.auth.sign_up.return_value = MagicMock(
-            user=mock_user,
-            data={'user': mock_user},
-            error=None
-        )
-        
-        # Configure sign in response
-        mock_client.auth.sign_in_with_password.return_value = MagicMock(
-            user=mock_user,
-            session=mock_session,
-            data={'user': mock_user, 'session': mock_session},
-            error=None
-        )
-        
-        # Configure sign out response
-        mock_client.auth.sign_out.return_value = MagicMock(error=None)
-        
-        # Set the mock client as the return value
-        mock.return_value = mock_client
-        yield mock_client
+    client = MagicMock()
+    user = SimpleNamespace(
+        id="123",
+        email="test@example.com",
+        created_at="2024-03-27T00:00:00Z",
+    )
+    session = SimpleNamespace(
+        access_token="fake_token",
+        refresh_token="fake_refresh_token",
+    )
+    client.auth.sign_up.return_value = SimpleNamespace(
+        user=user,
+        data=SimpleNamespace(user=user),
+        error=None,
+    )
+    client.auth.sign_in_with_password.return_value = SimpleNamespace(
+        user=user,
+        session=session,
+        data=SimpleNamespace(user=user, session=session),
+        error=None,
+    )
+    client.auth.sign_out.return_value = SimpleNamespace(error=None)
 
-def test_landing_page_unauthenticated(client):
-    """Test that landing page shows auth UI when user is not logged in"""
-    response = client.get('/')
+    with patch("web.api.auth.get_supabase", return_value=client):
+        yield client
+
+
+def test_landing_page_contains_both_application_views(client):
+    response = client.get("/")
+
     assert response.status_code == 200
-    assert b'login-form' in response.data
-    assert b'signup-form' in response.data
-    assert b'auth-button-main' in response.data
-    assert b'authenticated-view' not in response.data
+    assert b'id="unauthenticated-view"' in response.data
+    assert b'id="authenticated-view"' in response.data
+    assert b'id="login-form"' in response.data
 
-def test_landing_page_authenticated(client, mock_supabase):
-    """Test that landing page shows gateway when user is logged in"""
-    response = client.get('/', headers={'Authorization': 'Bearer fake_token'})
+
+def test_frequent_questions_endpoint(client):
+    response = client.get("/api/frequent-questions")
+
     assert response.status_code == 200
-    assert b'authenticated-view' in response.data
-    assert b'Enter Chatbot' in response.data
-    assert b'login-form' not in response.data
+    assert "regulatory" in response.get_json()
 
-def test_chat_route_unauthenticated(client):
-    """Test that chat route returns 401 when not authenticated"""
-    response = client.get('/chat')
+
+def test_chat_requires_test_token(client):
+    response = client.post(
+        "/api/chat",
+        json={"query": "registration", "category": "regulatory"},
+    )
+
     assert response.status_code == 401
-    assert b'Authorization header is missing' in response.data
+    assert response.get_json() == {"error": "Invalid or missing test token"}
 
-def test_chat_route_authenticated(client, mock_supabase):
-    """Test that chat route works when authenticated"""
-    response = client.get('/chat', headers={'Authorization': 'Bearer fake_token'})
-    assert response.status_code == 200
-    assert b'chat' in response.data
 
-def test_check_auth_endpoint(client, mock_supabase):
-    """Test the check-auth endpoint"""
-    # Test without auth header
-    response = client.get('/api/check-auth')
-    assert response.status_code == 401
-    assert b'Authorization header is missing' in response.data
-    
-    # Test with invalid token
-    response = client.get('/api/check-auth', headers={'Authorization': 'Bearer invalid_token'})
-    assert response.status_code == 401
-    assert b'Invalid test token' in response.data
-    
-    # Test with valid token
-    response = client.get('/api/check-auth', headers={'Authorization': 'Bearer fake_token'})
+def test_chat_validates_payload(client):
+    headers = {"Authorization": "Bearer fake_token"}
+
+    empty = client.post(
+        "/api/chat",
+        json={"query": "", "category": "all"},
+        headers=headers,
+    )
+    invalid_category = client.post(
+        "/api/chat",
+        json={"query": "question", "category": "unknown"},
+        headers=headers,
+    )
+
+    assert empty.status_code == 400
+    assert empty.get_json()["error"] == "Query cannot be empty"
+    assert invalid_category.status_code == 400
+    assert "Invalid category" in invalid_category.get_json()["error"]
+
+
+def test_chat_success(client, app):
+    search_result = SimpleNamespace(
+        text="Relevant guidance",
+        document="guide.pdf",
+        category="regulatory",
+        page=2,
+    )
+    app.config["search_engine"].search.return_value = [search_result]
+    app.config["openai_handler"].generate_response.return_value = (
+        "Mock answer",
+        ["Follow up?"],
+    )
+
+    response = client.post(
+        "/api/chat",
+        json={"query": "question", "category": "regulatory"},
+        headers={"Authorization": "Bearer fake_token"},
+    )
+
     assert response.status_code == 200
-    assert response.json == {'authenticated': True}
+    assert response.get_json() == {
+        "response": "Mock answer",
+        "suggested_questions": ["Follow up?"],
+    }
+
+
+def test_chat_returns_503_when_search_engine_is_unavailable(client, app):
+    app.config["search_engine"] = None
+
+    response = client.post(
+        "/api/chat",
+        json={"query": "question", "category": "regulatory"},
+        headers={"Authorization": "Bearer fake_token"},
+    )
+
+    assert response.status_code == 503
+    assert response.get_json() == {
+        "error": "Search service is currently unavailable."
+    }
+
+
+def test_search_engine_construction_failure_keeps_app_available():
+    from flask import Flask
+
+    app = Flask(__name__)
+    openai_handler = MagicMock()
+
+    with (
+        patch("web.api.app.OpenAIHandler", return_value=openai_handler),
+        patch(
+            "web.api.app.ImprovedSearchEngine",
+            side_effect=RuntimeError("embedding provider unavailable"),
+        ),
+    ):
+        _initialize_services(app, testing=False)
+
+    assert app.config["openai_handler"] is openai_handler
+    assert app.config["search_engine"] is None
+
+
+def test_search_engine_initialization_failure_keeps_app_available():
+    from flask import Flask
+
+    app = Flask(__name__)
+    search_engine = MagicMock()
+    search_engine.is_initialized.return_value = False
+    search_engine.initialize.side_effect = RuntimeError("index unavailable")
+
+    with (
+        patch("web.api.app.OpenAIHandler", return_value=MagicMock()),
+        patch("web.api.app.ImprovedSearchEngine", return_value=search_engine),
+    ):
+        _initialize_services(app, testing=False)
+
+    search_engine.initialize.assert_called_once_with()
+    assert app.config["search_engine"] is None
+
 
 def test_auth_api_endpoints(client, mock_supabase):
-    """Test that auth API endpoints work correctly"""
-    # Test signup
-    signup_data = {'email': 'test@example.com', 'password': 'Password123!'}
-    response = client.post('/auth/signup', json=signup_data)
-    assert response.status_code == 201
-    assert 'user' in response.json
-    assert response.json['user']['email'] == 'test@example.com'
-    
-    # Test login
-    login_data = {'email': 'test@example.com', 'password': 'Password123!'}
-    response = client.post('/auth/login', json=login_data)
-    assert response.status_code == 200
-    assert 'user' in response.json
-    assert 'session' in response.json
-    assert response.json['user']['email'] == 'test@example.com'
-    
-    # Test logout
-    response = client.post('/auth/logout', headers={'Authorization': 'Bearer fake_token'})
-    assert response.status_code == 200 
+    signup = client.post(
+        "/auth/signup",
+        json={"email": "test@example.com", "password": "Password123!"},
+    )
+    login = client.post(
+        "/auth/login",
+        json={"email": "test@example.com", "password": "Password123!"},
+    )
+    logout = client.post("/auth/logout")
+
+    assert signup.status_code == 201
+    assert signup.get_json()["user"]["email"] == "test@example.com"
+    assert login.status_code == 200
+    assert login.get_json()["session"]["access_token"] == "fake_token"
+    assert logout.status_code == 200

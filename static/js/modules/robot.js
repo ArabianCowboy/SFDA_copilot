@@ -209,6 +209,50 @@ export const RobotStateManager = {
     }
   },
 
+  /** Cancel pending reactions and restore the neutral state immediately. */
+  resetToIdle() {
+    if (this._thinkingTimeout) {
+      clearTimeout(this._thinkingTimeout);
+      this._thinkingTimeout = null;
+    }
+    this.setState('idle');
+  },
+
+  /** Public reaction API for view coordinators and interaction handlers. */
+  celebrate(element = null) {
+    if (element) {
+      this._spawnReactionAt(element);
+      return;
+    }
+    this._spawnReactionParticles();
+  },
+
+  /** Animate the landing robot out and the chat companion into view. */
+  transitionToAuthenticatedView() {
+    const landingRobot = document.getElementById('landing-robot');
+    const landingBody = document.getElementById('landing-robot-body');
+    const landingStatus = document.getElementById('landing-robot-status');
+    const companionBody = document.getElementById('robot-companion-body');
+    const companion = document.getElementById('robot-companion');
+
+    if (landingRobot) {
+      landingRobot.classList.add('robot-exit');
+      this.celebrate(landingBody);
+    }
+    if (landingStatus) landingStatus.textContent = 'See you in the chat! 🚀';
+
+    setTimeout(() => {
+      if (companionBody) {
+        companionBody.style.animation = 'none';
+        companionBody.offsetHeight; /* force reflow */
+        companionBody.style.animation = 'robotCompanionEntrance 1.2s cubic-bezier(0.25, 0.46, 0.45, 0.94) both';
+        companionBody.classList.add('robot-entrance');
+      }
+      if (companion) companion.style.opacity = '1';
+      this.celebrate();
+    }, 600);
+  },
+
   _spawnReactionParticles() {
     this._getAvatars().forEach(avatar => this._spawnReactionAt(avatar));
   },
@@ -338,7 +382,7 @@ export function initLandingRobot() {
         if (status) status.textContent = 'Hello! 👋';
       }, 800);
     }, 150);
-    RobotStateManager._spawnReactionAt(body);
+    RobotStateManager.celebrate(body);
   });
 }
 
@@ -415,7 +459,7 @@ export const RobotCompanion = {
         body.style.transform = 'scale(1.05) translateY(-8px)';
         setTimeout(() => { body.style.transform = ''; }, 500);
       }, 150);
-      RobotStateManager._spawnReactionAt(body);
+      RobotStateManager.celebrate(body);
     });
   },
 

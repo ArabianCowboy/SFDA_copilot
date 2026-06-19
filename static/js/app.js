@@ -8,7 +8,9 @@
  */
 
 import { CONFIG } from './modules/config.js';
-import { DOMCache, AppState, ErrorHandler, logError } from './modules/dom.js';
+import { DOMCache, ErrorHandler, logError } from './modules/dom.js';
+import { AppState } from './modules/state.js';
+import { AuthView } from './modules/auth-view.js';
 import { ThemeManager } from './modules/theme.js';
 import { UI } from './modules/ui.js';
 import { Effects } from './modules/effects.js';
@@ -42,12 +44,12 @@ const App = {
 
   async handleTestingModeInit() {
     console.log('[App] Testing mode enabled - bypassing authentication.');
-    UI.updateAuthUI({ email: 'test@example.com' });
+    AuthView.render({ email: 'test@example.com' });
 
-    const faqData = await Services.getFaqData();
-    if (faqData) {
-      UI.Faq.renderButtons(faqData);
-    } else {
+    try {
+      UI.Faq.renderButtons(await Services.getFaqData());
+    } catch (error) {
+      logError(error, 'handleTestingModeInit.getFaqData');
       UI.Faq.clearButtons();
       ErrorHandler.showToast('Failed to load FAQs in testing mode.', true);
     }
@@ -77,16 +79,22 @@ const App = {
     }
 
     try {
-      if (!Services.init()) return;
+      Services.init();
 
       const authModalEl = DOMCache.get(CONFIG.SELECTORS.AUTH_MODAL);
       if (authModalEl && window.bootstrap?.Modal) {
-        AppState.set('authModal', new bootstrap.Modal(authModalEl));
+        AppState.set(
+          'authModal',
+          window.bootstrap.Modal.getOrCreateInstance(authModalEl)
+        );
       }
 
       const profileModalEl = DOMCache.get(CONFIG.SELECTORS.PROFILE_MODAL);
       if (profileModalEl && window.bootstrap?.Modal) {
-        AppState.set('profileModal', new bootstrap.Modal(profileModalEl));
+        AppState.set(
+          'profileModal',
+          window.bootstrap.Modal.getOrCreateInstance(profileModalEl)
+        );
       }
 
       const sendBtn = DOMCache.get(CONFIG.SELECTORS.SEND_BTN);
@@ -103,7 +111,7 @@ const App = {
     }
 
     if (!Services.supabase) {
-      UI.updateAuthUI(null);
+      AuthView.render(null);
       return;
     }
 
@@ -112,24 +120,29 @@ const App = {
 
       if (sessionError) {
         logError(sessionError, 'App.init.initialSessionCheck');
-        UI.updateAuthUI(null);
+        AuthView.render(null);
       } else if (initialSession?.user) {
-        UI.updateAuthUI(initialSession.user);
+        AuthView.render(initialSession.user);
       } else {
-        UI.updateAuthUI(null);
+        AuthView.render(null);
       }
     } catch (error) {
       logError(error, 'App.init.checkInitialSession');
-      UI.updateAuthUI(null);
+      AuthView.render(null);
     }
 
     Services.supabase.auth.onAuthStateChange(async (_event, session) => {
       const user = session?.user ?? null;
-      UI.updateAuthUI(user);
+      AuthView.render(user);
 
       if (user) {
-        const faqData = await Services.getFaqData();
-        faqData ? UI.Faq.renderButtons(faqData) : UI.Faq.clearButtons();
+        try {
+          UI.Faq.renderButtons(await Services.getFaqData());
+        } catch (error) {
+          logError(error, 'onAuthStateChange.getFaqData');
+          UI.Faq.clearButtons();
+          ErrorHandler.showToast('Failed to load FAQs.', true);
+        }
 
         this.loadProfileWithTimeout(user.id)
           .then(profileData => {

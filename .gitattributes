@@ -1,0 +1,25 @@
+# Normalize line endings: store everything as LF in the repo.
+* text=auto eol=lf
+
+# Explicit text types
+*.py    text eol=lf
+*.js    text eol=lf
+*.css   text eol=lf
+*.html  text eol=lf
+*.yaml  text eol=lf
+*.yml   text eol=lf
+*.json  text eol=lf
+*.md    text eol=lf
+*.txt   text eol=lf
+
+# Binary assets: never touch
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.pdf   binary
+*.pkl   binary
+*.faiss binary
+*.woff  binary
+*.woff2 binary

@@ -4,7 +4,9 @@
  */
 
 import { CONFIG } from './config.js';
-import { DOMCache, AppState, ErrorHandler, logError } from './dom.js';
+import { DOMCache, ErrorHandler, logError } from './dom.js';
+import { AppState } from './state.js';
+import { AuthView } from './auth-view.js';
 import { UI } from './ui.js';
 import { Services } from './services.js';
 import { ThemeManager } from './theme.js';
@@ -67,10 +69,22 @@ export const Handlers = {
       return;
     }
 
-    if (source === 'login') {
-      await Services.login(email, password);
-    } else {
-      await Services.signup(email, password);
+    try {
+      if (source === 'login') {
+        const data = await Services.login(email, password);
+        this.hideModal('authModal', CONFIG.SELECTORS.AUTH_MODAL);
+        form.reset();
+        ErrorHandler.showToast(
+          data?.user?.email ? `Logged in as ${data.user.email}` : 'Login successful!'
+        );
+      } else {
+        await Services.signup(email, password);
+        form.reset();
+        ErrorHandler.showToast('Signup initiated! Please check your email to confirm.');
+      }
+    } catch (error) {
+      logError(error, `handleAuthFormSubmit.${source}`);
+      ErrorHandler.showAuthError(ErrorHandler.formatAuthError(error));
     }
   },
 
@@ -79,18 +93,30 @@ export const Handlers = {
     UI.setSendingState(true);
 
     RobotStateManager.reactToUser();
-    setTimeout(() => {
+    const thinkingTimer = setTimeout(() => {
       RobotStateManager.startThinking();
       UI.toggleTypingIndicator(true);
     }, 800);
 
     try {
-      const token = await Services.getSessionToken();
+      let token;
+      try {
+        token = await Services.getSessionToken();
+      } catch (error) {
+        logError(error, 'processChatRequestInternal.getSessionToken');
+        ErrorHandler.showToast(
+          'Unable to verify your session. Please try again.',
+          true
+        );
+        RobotStateManager.resetToIdle();
+        return;
+      }
 
       if (!token && !window.location.search.includes('testing=true')) {
         AppState.get('authModal')?.show();
         ErrorHandler.showToast('Please log in to chat with the AI.', true);
-        throw new Error('Authentication required for chat.');
+        RobotStateManager.resetToIdle();
+        return;
       }
 
       const data = await Services.sendChatRequest(queryText, category, token);
@@ -107,11 +133,17 @@ export const Handlers = {
       RobotStateManager.returnToIdle(4000);
     } catch (error) {
       UI.toggleTypingIndicator(false);
+      if (error?.name === 'AbortError') {
+        RobotStateManager.resetToIdle();
+        return;
+      }
+
       logError(error, 'processChatRequestInternal');
       UI.addMessage('Sorry, I encountered an error while processing your request. Please try again.', 'bot');
       ErrorHandler.showToast('Failed to send message.', true);
       RobotStateManager.showError();
     } finally {
+      clearTimeout(thinkingTimer);
       UI.setSendingState(false);
     }
   },
@@ -132,7 +164,7 @@ export const Handlers = {
     if (!queryInput || !categorySelect) return;
 
     if (AppState.isRequestInProgress()) {
-      AppState.resetAbortController();
+      Services.cancelChatRequest();
       ErrorHandler.showToast('Chat request cancelled.', false);
       UI.toggleTypingIndicator(false);
       UI.setSendingState(false);
@@ -184,17 +216,14 @@ export const Handlers = {
         updated_at: new Date(),
       };
 
-      const success = await Services.updateProfile(user.id, updates);
-
-      if (success) {
-        AppState.set('userProfile', { ...AppState.get('userProfile'), ...updates });
-        ThemeManager.apply(updates.preferences?.theme || CONFIG.CLASSES.LIGHT);
-        ErrorHandler.showToast('Profile saved successfully!');
-        AppState.get('profileModal')?.hide();
-      }
+      await Services.updateProfile(user.id, updates);
+      AppState.set('userProfile', { ...AppState.get('userProfile'), ...updates });
+      ThemeManager.apply(updates.preferences?.theme || CONFIG.CLASSES.LIGHT);
+      ErrorHandler.showToast('Profile saved successfully!');
+      this.hideModal('profileModal', CONFIG.SELECTORS.PROFILE_MODAL);
     } catch (error) {
       logError(error, 'handleProfileFormSubmit');
-      ErrorHandler.showProfileError('A critical error occurred.');
+      ErrorHandler.showProfileError(`Failed to save: ${error.message}`);
     }
   },
 
@@ -214,17 +243,24 @@ export const Handlers = {
     if (cachedProfile) {
       UI.populateProfileForm(cachedProfile);
     } else {
-      const profile = await Services.getProfile(user.id);
-      if (profile) {
-        AppState.set('userProfile', profile);
-        UI.populateProfileForm(profile);
-      } else {
-        const form = DOMCache.get(CONFIG.SELECTORS.PROFILE_FORM);
-        if (form) {
-          form.reset();
-          const defaultThemeRadio = form.querySelector(`input[name="theme-preference"][value="${ThemeManager.getCurrent()}"]`);
-          if (defaultThemeRadio) defaultThemeRadio.checked = true;
+      try {
+        const profile = await Services.getProfile(user.id);
+        if (profile) {
+          AppState.set('userProfile', profile);
+          UI.populateProfileForm(profile);
+        } else {
+          const form = DOMCache.get(CONFIG.SELECTORS.PROFILE_FORM);
+          if (form) {
+            form.reset();
+            const defaultThemeRadio = form.querySelector(`input[name="theme-preference"][value="${ThemeManager.getCurrent()}"]`);
+            if (defaultThemeRadio) defaultThemeRadio.checked = true;
+          }
         }
+      } catch (error) {
+        logError(error, 'handleProfileButtonClick');
+        ErrorHandler.showToast('Could not load your profile.', true);
+        const form = DOMCache.get(CONFIG.SELECTORS.PROFILE_FORM);
+        form?.reset();
       }
     }
 
@@ -233,6 +269,54 @@ export const Handlers = {
 
   async handleLogout(event) {
     event.preventDefault();
-    await Services.logout();
+    try {
+      const result = await Services.logout();
+      this.clearLocalAuthData();
+      AuthView.render(null);
+      AppState.set('userProfile', null);
+      UI.Faq.clearButtons();
+      ErrorHandler.showToast(
+        result?.testing ? 'Logged out successfully (testing mode)' : 'Logged out successfully'
+      );
+      this.redirectToHomeIfNeeded();
+    } catch (error) {
+      logError(error, 'handleLogout');
+      this.clearLocalAuthData();
+      AuthView.render(null);
+      AppState.set('userProfile', null);
+      UI.Faq.clearButtons();
+      ErrorHandler.showToast('Logged out (session cleared)', false);
+      this.redirectToHomeIfNeeded();
+    }
+  },
+
+  clearLocalAuthData() {
+    ['sb-access-token', 'sb-refresh-token', 'sb-user', 'sb-session', 'sfda-supabase-auth'].forEach(key => {
+      try {
+        localStorage.removeItem(key);
+      } catch (error) {
+        logError(error, `clearLocalAuthData: ${key}`);
+      }
+    });
+  },
+
+  redirectToHomeIfNeeded() {
+    if (window.location.pathname !== '/') window.location.replace('/');
+  },
+
+  hideModal(stateKey, selector) {
+    const modalElement = DOMCache.get(selector);
+    const modal =
+      AppState.get(stateKey) ||
+      (modalElement && window.bootstrap?.Modal?.getOrCreateInstance(modalElement));
+    modal?.hide();
+
+    // Bootstrap ignores hide() while a fade-in transition is still running.
+    // Fast mocked auth can resolve inside that window, so retry once after it.
+    if (modalElement?.classList.contains('fade')) {
+      setTimeout(() => {
+        if (modalElement.classList.contains('show')) modal?.hide();
+      }, 350);
+    }
   },
 };

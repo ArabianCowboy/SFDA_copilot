@@ -4,7 +4,7 @@ import logging
 import os
 from typing import List, cast, Optional, Tuple # Added Tuple
 from openai.types.chat import ChatCompletionMessageParam
-from ..utils.config_loader import config # Import centralized config
+from web.utils.config_loader import config  # Import centralized config
 import tiktoken # Import tiktoken for token counting
 
 # Ensure API key is set, otherwise raise error

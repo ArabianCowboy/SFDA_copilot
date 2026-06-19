@@ -1,8 +1,11 @@
 import os
 import sys
+import pytest
 from dotenv import load_dotenv
-from ..services.data_processing import DataProcessor
-from ..services.search_engine import ImprovedSearchEngine
+from web.services.data_processing import DataProcessor
+from web.services.search_engine import ImprovedSearchEngine
+
+pytestmark = pytest.mark.integration
 
 # Load environment variables
 load_dotenv()
