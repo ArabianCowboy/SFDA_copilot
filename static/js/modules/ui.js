@@ -4,8 +4,8 @@
  * send-button state.
  */
 
-import { marked } from 'https://cdn.jsdelivr.net/npm/marked@12.0.0/+esm';
-import DOMPurify from 'https://cdn.jsdelivr.net/npm/dompurify@3.0.8/+esm';
+import { marked } from 'https://cdn.jsdelivr.net/npm/marked@12.0.2/+esm';
+import DOMPurify from 'https://cdn.jsdelivr.net/npm/dompurify@3.4.12/+esm';
 
 import { CONFIG } from './config.js';
 import { DOMCache } from './dom.js';
