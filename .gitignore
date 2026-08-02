@@ -35,6 +35,7 @@ env/
 *.swp
 *.swo
 *~
+*.bak
 
 # Node.js
 node_modules/
