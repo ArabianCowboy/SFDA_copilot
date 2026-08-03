@@ -14,14 +14,18 @@ class LocalEmbeddingClient:
         """Initialize the local embedding client."""
         # Config argument added for factory pattern compatibility
         # We continue to use the global config as the primary source
-        self.model_name = config_loader_module.get("search_engine", "local_embedding_model", "all-mpnet-base-v2")
-        self.embedding_dimension = 768  # Fixed for all-mpnet-base-v2
+        self.model_name = config_loader_module.get("search_engine", "embedding_model", "all-mpnet-base-v2")
         self.batch_size = config_loader_module.get("data_processing", "embedding_batch_size", 100)
-        
+
         try:
             self.model = SentenceTransformer(self.model_name)
         except Exception as e:
             raise ValueError(f"Failed to load sentence-transformers model {self.model_name}: {str(e)}")
+
+        # Derive the dimension from the loaded model itself so it can never
+        # drift from what the model actually produces, regardless of which
+        # model is configured.
+        self.embedding_dimension = self.model.get_embedding_dimension()
     
     def get_embeddings(self, texts, batch_size=None):
         """
@@ -32,25 +36,20 @@ class LocalEmbeddingClient:
             batch_size (int, optional): Batch size for processing
             
         Returns:
-            numpy.ndarray: Array of embeddings (n_texts, 768)
+            numpy.ndarray: Array of embeddings (n_texts, embedding_dimension)
         """
         if not texts:
             return np.empty((0, self.embedding_dimension), dtype=np.float32)
             
         batch_size = batch_size or self.batch_size
-        
-        try:
-            embeddings = self.model.encode(
-                texts,
-                batch_size=batch_size,
-                convert_to_numpy=True,
-                normalize_embeddings=True,
-            )
-            return embeddings.astype(np.float32)
-        except Exception as e:
-            print(f"Error generating embeddings: {str(e)}")
-            # Return zero vectors on error
-            return np.zeros((len(texts), self.embedding_dimension), dtype=np.float32)
+
+        embeddings = self.model.encode(
+            texts,
+            batch_size=batch_size,
+            convert_to_numpy=True,
+            normalize_embeddings=True,
+        )
+        return embeddings.astype(np.float32)
     
     def get_embedding(self, text):
         """
@@ -60,7 +59,7 @@ class LocalEmbeddingClient:
             text (str): Text to embed
             
         Returns:
-            numpy.ndarray: The embedding vector (1, 768)
+            numpy.ndarray: The embedding vector (1, embedding_dimension)
         """
         if not text:
             return np.zeros((1, self.embedding_dimension), dtype=np.float32)

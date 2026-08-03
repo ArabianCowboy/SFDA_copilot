@@ -285,13 +285,16 @@ class SearchEngine:
             return results
 
         except EmbeddingError as exc:
-            logger.error("Embedding failed: %s", exc)
+            query_preview = query[:200] if len(query) > 200 else query
+            logger.exception("Query embedding/translation failed (query='%s')", query_preview)
             return []
         except SearchEngineError as exc:
-            logger.error("Search engine error: %s", exc)
+            query_preview = query[:200] if len(query) > 200 else query
+            logger.exception("Search engine error (query='%s')", query_preview)
             return []
         except Exception as exc:
-            logger.exception("Unexpected error during search: %s", exc)
+            query_preview = query[:200] if len(query) > 200 else query
+            logger.exception("Unexpected error during search (query='%s')", query_preview)
             return []
 
     def initialize(self) -> bool:
@@ -322,7 +325,7 @@ class SearchEngine:
         try:
             self._index.load()
         except (DataLoadError, SearchEngineError) as exc:
-            logger.error("Failed to initialise search index: %s", exc)
+            logger.exception("Search index initialization failed")
             return False
 
         # Build component searchers from the loaded data

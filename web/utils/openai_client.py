@@ -35,23 +35,17 @@ class OpenAIClientManager:
             list: List of embedding vectors
         """
         embeddings = np.empty((0, self.embedding_dimension), dtype=np.float32)
-        
+
         for i in range(0, len(texts), batch_size):
             batch_texts = texts[i:i+batch_size]
-            
-            try:
-                response = self.client.embeddings.create(
-                    model=self.embedding_model,
-                    input=batch_texts
-                )
-                batch_embeddings = np.array([item.embedding for item in response.data], dtype=np.float32)
-                embeddings = np.vstack([embeddings, batch_embeddings])
-            except Exception as e:
-                print(f"Error getting embeddings for batch: {str(e)}")
-                # Fallback to zero vectors
-                zero_vectors = np.zeros((len(batch_texts), self.embedding_dimension), dtype=np.float32)
-                embeddings = np.vstack([embeddings, zero_vectors])
-        
+
+            response = self.client.embeddings.create(
+                model=self.embedding_model,
+                input=batch_texts
+            )
+            batch_embeddings = np.array([item.embedding for item in response.data], dtype=np.float32)
+            embeddings = np.vstack([embeddings, batch_embeddings])
+
         return embeddings
     
     def get_embedding(self, text):
@@ -64,13 +58,9 @@ class OpenAIClientManager:
         Returns:
             numpy.ndarray: The embedding vector
         """
-        try:
-            response = self.client.embeddings.create(
-                model=self.embedding_model,
-                input=text
-            )
-            embedding = response.data[0].embedding
-            return np.array(embedding, dtype=np.float32).reshape(1, -1)
-        except Exception as e:
-            print(f"Error getting embedding: {str(e)}")
-            return np.zeros((1, self.embedding_dimension), dtype=np.float32)
+        response = self.client.embeddings.create(
+            model=self.embedding_model,
+            input=text
+        )
+        embedding = response.data[0].embedding
+        return np.array(embedding, dtype=np.float32).reshape(1, -1)

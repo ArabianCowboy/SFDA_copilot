@@ -47,3 +47,23 @@ class EmbeddingError(SearchEngineError):
 
 class QueryTranslationError(SearchEngineError):
     """Raised when query translation (e.g., Arabic → English) fails."""
+
+
+class ManifestValidationError(Exception):
+    """Raised when a search index build's manifest.json doesn't match the
+    currently-configured embedding client (wrong model name and/or vector
+    dimension).
+
+    Deliberately **not** a subclass of :class:`SearchEngineError`.
+    ``SearchEngine._ensure_initialized`` catches ``(DataLoadError,
+    SearchEngineError)`` broadly and degrades to "search unavailable"
+    (returns ``False``) rather than raising, on the theory that missing
+    processed-data files is a recoverable/expected first-run condition.
+    A manifest mismatch is different in kind: it means the on-disk index
+    was built for a different embedding model/vector space than the one
+    the app is currently configured to query with, so loading it would
+    silently return plausible-looking but meaningless search results.
+    That must crash application startup rather than degrade quietly — see
+    ``web/api/app.py::_initialize_services``, which re-raises this specific
+    exception instead of swallowing it like other startup errors.
+    """

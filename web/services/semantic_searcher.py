@@ -57,20 +57,35 @@ class SemanticSearcher:
             A list of candidate dictionaries sorted by descending score.
         """
         results: list[dict[str, Any]] = []
+        is_filtered = category.lower() != "all"
+
+        # When a category filter is active, restricting FAISS to the small
+        # windowed *k* first and filtering afterwards silently kills recall:
+        # the true best matches for the category may not even be inside that
+        # global top-k window, so they'd never get a chance to surface. The
+        # index is a flat/exact IndexFlatL2 over a small corpus (a few
+        # thousand vectors), so a full scan is cheap — search the *entire*
+        # index, filter by category, then keep only the top-k of what
+        # remains. Without a category filter there's no recall problem, so
+        # we keep the cheaper windowed search.
+        # NOTE: if the corpus grows dramatically (hundreds of thousands of
+        # vectors), a full scan per filtered query will stop being cheap and
+        # this approach should be revisited (e.g. per-category sub-indices).
+        search_k = self._index.ntotal if is_filtered else k
 
         try:
-            distances, indices = self._index.search(query_embedding, k=k)
+            distances, indices = self._index.search(query_embedding, k=search_k)
         except Exception as exc:
             logger.exception("FAISS search failed: %s", exc)
             return results
 
         for position, row_idx in enumerate(indices[0]):
-            # FAISS returns -1 when fewer than *k* results are available.
+            # FAISS returns -1 when fewer than *search_k* results are available.
             if row_idx < 0 or row_idx >= len(self._df):
                 continue
 
             # --- Category filtering ---
-            if category.lower() != "all":
+            if is_filtered:
                 chunk_category: str = self._df.iloc[row_idx].get("category", "")
                 if not self._categories_match(category, chunk_category):
                     continue
@@ -87,6 +102,13 @@ class SemanticSearcher:
                     "chunk_id": chunk.get("chunk_id"),
                 }
             )
+
+        # FAISS always returns neighbours sorted by ascending distance (i.e.
+        # descending similarity), so when we searched the full index above,
+        # `results` is already in descending-score order — truncating to the
+        # originally-requested *k* is equivalent to taking the top-k by score.
+        if is_filtered:
+            results = results[:k]
 
         logger.debug(
             "Semantic search returned %d candidates (category=%s).",

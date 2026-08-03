@@ -90,6 +90,7 @@ for module, default_level in [
 from web.api.auth import auth_bp
 from web.services.openai_app import OpenAIHandler
 from web.services.search_engine import ImprovedSearchEngine, SearchResult
+from web.services.search_exceptions import ManifestValidationError
 from web.utils.config_loader import config
 from web.utils.supabase_client import get_supabase
 
@@ -289,8 +290,28 @@ def _initialize_services(app: Flask, testing: bool) -> None:
         search_engine = ImprovedSearchEngine()
         app.config["search_engine"] = search_engine
         if not search_engine.is_initialized():
-            search_engine.initialize()
-            logging.info("Search engine initialized successfully.")
+            initialized = search_engine.initialize()
+            if initialized:
+                logging.info("Search engine initialized successfully.")
+            else:
+                logging.error(
+                    "Search engine failed to initialize — chat requests will "
+                    "return 503 until this is fixed. See the error logged "
+                    "above from SearchEngine for the underlying cause."
+                )
+    except ManifestValidationError as exc:
+        # The active search index's build manifest does not match the
+        # embedding model/dimension the app is currently configured to use
+        # (see SearchIndex._validate_manifest). Loading it anyway would
+        # silently serve search results computed in the wrong vector space —
+        # a stale or mismatched index must never degrade quietly, so this is
+        # deliberately re-raised to crash application startup instead of
+        # being caught by the broad `except Exception` below.
+        logging.critical(
+            "FATAL: search index manifest validation failed — refusing to "
+            "start with a mismatched index. %s", exc,
+        )
+        raise
     except Exception as e:
         app.config["search_engine"] = None
         logging.error("Search engine initialization failed: %s", e, exc_info=True)

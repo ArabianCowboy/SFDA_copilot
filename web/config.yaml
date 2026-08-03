@@ -26,8 +26,8 @@ server:
 # --- Search Engine Configuration ---
 search_engine:
   embedding_type: local  # 'openai' or 'local'
-  embedding_model: all-mpnet-base-v2  # Model for local embeddings
-  embedding_dimension: 768  # 768 for local, 1536 for OpenAI
+  embedding_model: all-mpnet-base-v2  # Model name for both local (SentenceTransformer) and OpenAI embeddings
+  embedding_dimension: 768  # Used by the OpenAI client only; the local client derives its dimension from the loaded model
   
   # Search parameters
   k: 8  # Number of results to return

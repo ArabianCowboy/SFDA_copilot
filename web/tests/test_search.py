@@ -1,7 +1,10 @@
 import os
 import sys
+from pathlib import Path
+
 import pytest
 from dotenv import load_dotenv
+from web.services import build_registry
 from web.services.data_processing import DataProcessor
 from web.services.search_engine import ImprovedSearchEngine
 
@@ -53,17 +56,24 @@ def test_search_engine():
     """Test the search engine functionality."""
     print("\nTesting search engine...")
     
-    # Check if processed data exists
-    processed_data_dir = "web/processed_data"
+    # Check if processed data exists. Since data_processing.py now writes
+    # into a versioned build directory (web/processed_data/builds/<id>/) and
+    # activates it via active_build.txt rather than writing the four
+    # artifacts directly into processed_data_dir, resolve whichever layout
+    # is actually in effect before checking for the files.
+    processed_data_dir = Path("web/processed_data")
+    active_build_dir = build_registry.resolve_active_build_dir(processed_data_dir)
+    data_root = active_build_dir if active_build_dir is not None else processed_data_dir
+
     required_files = [
-        os.path.join(processed_data_dir, "faiss_index.bin"),
-        os.path.join(processed_data_dir, "chunks_data.csv"),
-        os.path.join(processed_data_dir, "tfidf_vectorizer.pkl"),
-        os.path.join(processed_data_dir, "tfidf_matrix.pkl")
+        data_root / build_registry.FAISS_INDEX_NAME,
+        data_root / build_registry.CHUNKS_CSV_NAME,
+        data_root / build_registry.TFIDF_VECTORIZER_NAME,
+        data_root / build_registry.TFIDF_MATRIX_NAME,
     ]
-    
+
     for file_path in required_files:
-        if not os.path.exists(file_path):
+        if not file_path.exists():
             print(f"Error: Required file {file_path} not found.")
             print("Please run data processing first.")
             return False
