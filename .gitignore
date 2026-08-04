@@ -65,6 +65,12 @@ logs/
 *.pkl
 *.bin
 
+# Generated search-index builds — regenerated locally on every environment
+# by `python web/services/data_processing.py`; never checked into git
+# (avoids committing a manifest.json/active_build.txt that points at
+# build artifacts a fresh clone won't have).
+web/processed_data/
+
 # macOS
 .DS_Store
 
