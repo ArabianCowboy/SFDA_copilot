@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
-  <!-- Royal Blue (#2563eb) Shield Base -->
-  <path fill="#2563eb" d="M16 2.5 L26 6.5 V15 C26 21.8 21.5 27.8 16 29.5 C10.5 27.8 6 21.8 6 15 V6.5 L16 2.5 Z"/>
-  <!-- Crisp Inner AI 4-Point Spark Cutout -->
-  <path fill="#FFFFFF" d="M16 9.5 C16 12 17.5 14 20.5 14 C17.5 14 16 16 16 18.5 C16 16 14.5 14 11.5 14 C14.5 14 16 12 16 9.5 Z"/>
+  <!-- SFDA Copilot - Option C1: Solid Pharma Capsule Base (#2563eb) -->
+  <rect x="7" y="3.5" width="18" height="25" rx="9" fill="#2563eb"/>
+  <!-- Inner White AI Spark Cutout (#FFFFFF) -->
+  <path fill="#FFFFFF" d="M16 8.5 C16 12 18 16 22 16 C18 16 16 20 16 23.5 C16 20 14 16 10 16 C14 16 16 12 16 8.5 Z"/>
 </svg>
