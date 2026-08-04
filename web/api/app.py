@@ -33,6 +33,7 @@ from flask import (
     redirect,
     render_template,
     request,
+    send_from_directory,
     session,
     url_for,
 )
@@ -357,6 +358,10 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
             is_authenticated=bool(session.get("user_email")),
             user_email=session.get("user_email"),
         )
+
+    @app.route("/favicon.ico")
+    def favicon() -> Response:
+        return send_from_directory(app.static_folder, "favicon.ico", mimetype="image/vnd.microsoft.icon")
 
     @app.route("/api/frequent-questions")
     def get_frequent_questions() -> Response:
