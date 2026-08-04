@@ -31,6 +31,6 @@ Jinja2
 MarkupSafe
 itsdangerous
 click
-sentence_transformers>=5.2.0
+sentence_transformers>=5.5.1
 supabase
 tiktoken
