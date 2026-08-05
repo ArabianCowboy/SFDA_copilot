@@ -326,6 +326,11 @@
         "section": "typography"
       },
       {
+        "name": "The Longer-Script Rule",
+        "body": "A fluid type floor is set by the longer script, not by English. The Arabic wordmark runs about 1.4x the inline length of the English one, so a clamp() minimum that looks comfortable in English will wrap Arabic onto a second line at the same viewport. Measure both before committing a floor; the English rendering will not tell you when it is wrong.",
+        "section": "typography"
+      },
+      {
         "name": "The Tabular Rule",
         "body": "Any number that carries meaning gets font-variant-numeric: tabular-nums — page numbers, relevance scores, timestamps. Digits must not jitter between frames while an answer streams.",
         "section": "typography"

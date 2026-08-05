@@ -22,7 +22,7 @@ colors:
 typography:
   display:
     fontFamily: "IBM Plex Sans, IBM Plex Sans Arabic, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
-    fontSize: "clamp(2.75rem, 6vw, 4rem)"
+    fontSize: "clamp(2.25rem, 6vw, 4rem)"
     fontWeight: 600
     lineHeight: 1.15
     letterSpacing: "-0.022em"
@@ -276,8 +276,10 @@ scores, timestamps, stage labels, and the knowledge-cutoff badge.
 
 ### Hierarchy
 
-- **Display** (600, `clamp(2.75rem, 6vw, 4rem)`, 1.15, -0.022em): the landing
-  wordmark. One per page, at most.
+- **Display** (600, `clamp(2.25rem, 6vw, 4rem)`, 1.15, -0.022em): the landing
+  wordmark. One per page, at most. The floor is set by Arabic, not English: the
+  Arabic wordmark runs ~1.4× the inline length of the English one, so a floor
+  that looks generous in English wraps it to two lines on a phone.
 - **Headline** (600, 2rem, 1.15, -0.01em): section headings on marketing surfaces.
 - **Title** (600, 1.25rem, 1.3, -0.01em): card titles, modal titles, the sidebar
   wordmark. The workhorse heading.
@@ -301,6 +303,12 @@ leading opens up (body 1.65 → 1.85, snug 1.3 → 1.45). Never hardcode
 **The Tabular Rule.** Any number that carries meaning gets
 `font-variant-numeric: tabular-nums` — page numbers, relevance scores, timestamps.
 Digits must not jitter between frames while an answer streams.
+
+**The Longer-Script Rule.** A fluid type floor is set by the *longer* script, not
+by English. The Arabic wordmark runs about 1.4× the inline length of the English
+one, so a `clamp()` minimum that looks comfortable in English will wrap Arabic onto
+a second line at the same viewport. Measure both before committing a floor; the
+English rendering will not tell you when it is wrong.
 
 **The Isolation Rule.** Numeric metadata sitting inside Arabic prose is marked
 `dir="ltr"` with `unicode-bidi: isolate`, so bidi reordering cannot scramble a page

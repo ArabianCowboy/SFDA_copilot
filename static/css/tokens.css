@@ -80,7 +80,11 @@
   --fs-600: 1.5rem;
   --fs-700: 2rem;
   --fs-800: 2.75rem;
-  --fs-900: clamp(2.75rem, 6vw, 4rem);
+  /* Floor is 2.25rem, not 2.75rem: the Arabic wordmark is nearly twice the
+     inline length of the English one, and at 44px it wraps to two lines on a
+     390px screen. 36px keeps it on one line and matches what the old
+     Bootstrap .display-3 actually rendered at that width (~37px). */
+  --fs-900: clamp(2.25rem, 6vw, 4rem);
 
   --lh-tight: 1.15;
   --lh-snug: 1.3;
