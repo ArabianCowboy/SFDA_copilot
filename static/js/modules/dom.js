@@ -4,6 +4,7 @@
  */
 
 import { CONFIG } from './config.js';
+import { I18n } from './i18n.js';
 
 /* ——————————————— DOM CACHE ——————————————— */
 
@@ -39,11 +40,13 @@ export const DOMCache = {
 export const ErrorHandler = {
   formatAuthError(error) {
     const message = error?.message?.toLowerCase() || '';
+    /* Built per call, not once at module load, so the catalogue is already
+       populated and a language switch is reflected. */
     const errorMap = {
-      'invalid login credentials': 'Incorrect email or password.',
-      'email not confirmed': 'Please confirm your email before logging in.',
-      'user already registered': 'This email is already registered. Please log in.',
-      'to be a valid email': 'Please provide a valid email address.',
+      'invalid login credentials': I18n.t('auth.invalidCredentials'),
+      'email not confirmed': I18n.t('auth.emailNotConfirmed'),
+      'user already registered': I18n.t('auth.alreadyRegistered'),
+      'to be a valid email': I18n.t('auth.invalidEmail'),
     };
     for (const key in errorMap) {
       if (message.includes(key)) return errorMap[key];

@@ -4,6 +4,7 @@
 
 import { CONFIG } from './config.js';
 import { DOMCache } from './dom.js';
+import { I18n } from './i18n.js';
 
 export const Utils = {
   renderSuggestedQuestions(container, questions) {
@@ -18,7 +19,7 @@ export const Utils = {
       button.appendChild(document.createTextNode(question));
 
       DOMCache.setAttributes(button, {
-        'aria-label': `Ask: ${question}`,
+        'aria-label': I18n.t('chat.askPrefix', { question }),
         'data-question-text': question,
       });
 

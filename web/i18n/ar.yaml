@@ -1,0 +1,174 @@
+# SFDA Copilot — Arabic (Modern Standard) catalogue
+#
+# Mirrors the key structure of en.yaml. Any key missing here falls back to the
+# English value (see web/utils/i18n.py), so a partial translation degrades to
+# mixed language rather than to a blank interface.
+#
+# Terminology follows SFDA regulatory usage: الهيئة العامة للغذاء والدواء,
+# التيقظ الدوائي (pharmacovigilance), التسجيل (registration).
+
+runtime:
+  chat:
+    send: "إرسال"
+    cancel: "إلغاء"
+    sendAria: "إرسال الرسالة"
+    cancelAria: "إلغاء الرسالة"
+    sendFailed: "تعذّر إرسال الرسالة."
+    cancelled: "تم إلغاء الطلب."
+    loginRequired: "يرجى تسجيل الدخول للمحادثة مع المساعد."
+    sessionUnverified: "تعذّر التحقق من الجلسة. يرجى المحاولة مرة أخرى."
+    genericError: "عذراً، حدث خطأ أثناء معالجة طلبك. يرجى المحاولة مرة أخرى."
+    invalidResponse: "تنسيق استجابة غير صالح من الخدمة."
+    stopped: "أُوقف"
+    incomplete: "الإجابة غير مكتملة — حدث خطأ ما"
+    askPrefix: "اسأل: {question}"
+
+  stage:
+    searching: "جارٍ البحث في الأدلة"
+    retrieved: "تم العثور على {count} مقطعاً"
+    retrievedOne: "تم العثور على مقطع واحد"
+    drafting: "جارٍ صياغة الإجابة"
+    finalizing: "جارٍ الإنهاء"
+
+  robot:
+    idle: "جاهز للمساعدة"
+    thinking: "جارٍ معالجة سؤالك..."
+    talking: "إليك ما وجدته"
+    happy: "سؤال ممتاز!"
+    error: "حدث خطأ ما"
+    searching: "جارٍ البحث في الأدلة..."
+    retrieved: "جارٍ قراءة المقاطع..."
+    draftingStatus: "جارٍ صياغة الإجابة..."
+    finalizingStatus: "جارٍ الإنهاء..."
+    foundPassages: "تم العثور على {count} مقطعاً"
+    foundPassage: "تم العثور على مقطع واحد"
+    farewell: "أراك في المحادثة! 🚀"
+
+  auth:
+    loggedInAs: "تم تسجيل الدخول باسم: {email}"
+    notLoggedIn: "لم يتم تسجيل الدخول"
+    invalidCredentials: "البريد الإلكتروني أو كلمة المرور غير صحيحة."
+    emailNotConfirmed: "يرجى تأكيد بريدك الإلكتروني قبل تسجيل الدخول."
+    alreadyRegistered: "هذا البريد الإلكتروني مسجّل بالفعل. يرجى تسجيل الدخول."
+    invalidEmail: "يرجى إدخال بريد إلكتروني صالح."
+    checkingStatus: "جارٍ التحقق من الحالة..."
+    servicesUnavailable: "خدمات المصادقة غير مهيأة."
+    initFailed: "تعذّر تهيئة خدمات التطبيق الأساسية."
+
+  profile:
+    loadFailed: "تعذّر تحميل ملفك الشخصي."
+    saveFailed: "تعذّر حفظ ملفك الشخصي."
+    saved: "تم حفظ الملف الشخصي."
+
+  faq:
+    loadFailed: "تعذّر تحميل الأسئلة الشائعة."
+    loadFailedTesting: "تعذّر تحميل الأسئلة الشائعة في وضع الاختبار."
+    empty: "لا توجد أسئلة شائعة."
+
+  theme:
+    announced: "تم تغيير المظهر إلى الوضع {mode}"
+    light: "الفاتح"
+    dark: "الداكن"
+
+  cite:
+    marker: "المصدر {n}"
+    sourcesOne: "مصدر واحد"
+    sourcesMany: "{n} مصادر"
+    answerComplete: "اكتملت الإجابة."
+    answerCompleteWithSources: "اكتملت الإجابة. تم الاستشهاد بـ {n} مصادر."
+    relevance: "الصلة {pct} بالمئة"
+
+  lang:
+    switchAria: "تغيير اللغة"
+    toArabic: "التبديل إلى العربية"
+    toEnglish: "Switch to English"
+
+page:
+  meta:
+    title: "مساعد الهيئة العامة للغذاء والدواء"
+    description: "مساعد ذكي للإرشادات التنظيمية الدوائية الصادرة عن الهيئة العامة للغذاء والدواء في المملكة العربية السعودية"
+
+  brand:
+    name: "مساعد الغذاء والدواء"
+    tagline: "مساعدك التنظيمي الذكي"
+
+  landing:
+    greeting: "مرحباً! 👋"
+    lead: "بسّط الامتثال التنظيمي مع مساعدك المدعوم بالذكاء الاصطناعي للأنظمة الدوائية في المملكة العربية السعودية"
+    heroAlt: "إرشادات تنظيمية بالذكاء الاصطناعي"
+    cta: "ابدأ الآن"
+    hubLink: "موقع AI Fouda Hub"
+    linkedinLink: "حساب محمد فودة على LinkedIn"
+
+  features:
+    heading: "لماذا تستخدم منصتنا؟"
+    coverage:
+      title: "تغطية شاملة للأدلة الإرشادية"
+      body: "احصل على رؤى تنظيمية مدعومة بأكثر من 99 دليلاً إرشادياً صادراً عن الهيئة، لتضمن أحدث المعلومات وأشملها في متناول يدك."
+      badge: "الأدلة محدّثة حتى أغسطس 2026"
+    authoritative:
+      title: "إرشادات موثوقة"
+      body: "ثق بكل إجابة، مدعومة باستشهادات دقيقة بأرقام الصفحات والفقرات من الأدلة الرسمية للهيئة، بما يضمن دقة وقابلية تتبّع لا مثيل لهما."
+    streamlined:
+      title: "وصول تنظيمي مبسّط"
+      body: "تنقّل بسهولة بين إجراءات ومتطلبات تسجيل الأدوية المعقّدة عبر أدلة شاملة وسهلة الوصول."
+    accuracy:
+      title: "دقة لا تتزعزع"
+      body: "اعتمد على معلومات محدّثة ومُتحقَّق منها باستمرار، تمنحك أحدث الرؤى حول الأنظمة الدوائية في المملكة العربية السعودية."
+    search:
+      title: "بحث ذكي"
+      body: "استفد من الذكاء الاصطناعي المتقدّم لفهم الاستفسارات التنظيمية المعقّدة بسرعة وتقديم إجابات دقيقة وقابلة للتنفيذ."
+
+  nav:
+    menu: "القائمة"
+    toggleNav: "تبديل التنقل"
+    toggleTheme: "تبديل المظهر"
+    toggleThemeLong: "التبديل بين المظهر الفاتح والداكن"
+    close: "إغلاق"
+    assistantStatus: "حالة المساعد"
+
+  auth:
+    modalTitle: "مرحباً بك في مساعد الغذاء والدواء"
+    login: "تسجيل الدخول"
+    signup: "إنشاء حساب"
+    email: "البريد الإلكتروني"
+    password: "كلمة المرور"
+    passwordHint: "٨ أحرف على الأقل، وحرف كبير، وحرف صغير، ورقم واحد."
+    emailInvalid: "يرجى إدخال بريد إلكتروني صالح."
+    passwordRequired: "كلمة المرور مطلوبة."
+    passwordInvalid: "يجب أن تستوفي كلمة المرور المتطلبات."
+    loginSignup: "دخول / تسجيل"
+    logout: "تسجيل الخروج"
+
+  profile:
+    heading: "تعديل ملفك الشخصي"
+    button: "الملف الشخصي"
+    fullName: "الاسم الكامل"
+    organization: "الجهة"
+    specialization: "التخصص"
+    themePreference: "تفضيل المظهر"
+    light: "فاتح"
+    dark: "داكن"
+    save: "حفظ التغييرات"
+
+  chat:
+    welcomeLead: "مرحباً بك في"
+    welcomeRest: "! مساعدك الذكي للأنظمة الدوائية في المملكة العربية السعودية. يمكنك:"
+    bullet1: "طرح أسئلة محددة حول المتطلبات التنظيمية"
+    bullet2: "اختيار فئة لتركيز البحث"
+    bullet3: "الضغط على أزرار الأسئلة الشائعة"
+    cutoff: "يقدّم المساعد إرشادات تنظيمية استناداً إلى الأدلة الرسمية للهيئة السارية حتى أغسطس 2026. للاطلاع على أحدث التحديثات التنظيمية بعد ذلك التاريخ، يرجى مراجعة الموقع الرسمي للهيئة."
+    prompt: "كيف يمكنني مساعدتك اليوم؟"
+    searchIn: "البحث في:"
+    inputPlaceholder: "اسأل عن أنظمة الهيئة العامة للغذاء والدواء..."
+    inputAria: "حقل إدخال الرسالة"
+    send: "إرسال"
+    sendAria: "إرسال الرسالة"
+
+  categories:
+    aria: "فئة البحث"
+    all: "جميع الفئات"
+    regulatory: "التنظيمية"
+    pharmacovigilance: "التيقظ الدوائي"
+    veterinary: "الأدوية البيطرية"
+    biological: "المنتجات الحيوية"

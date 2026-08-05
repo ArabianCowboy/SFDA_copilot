@@ -1,56 +1,119 @@
 # faq.yaml
-# This file stores the frequent questions for the application.
+# Frequent questions, keyed by language.
+#
+# The client contract is unchanged: /api/frequent-questions returns one
+# language's block, in the same shape as before. _load_faq_data() detects the
+# old flat shape and keeps working, so this file can be rolled back safely.
+#
+# `text` is what gets sent as the query. An Arabic FAQ therefore sends Arabic,
+# which query_processor.translate_query already handles for retrieval.
 
-regulatory:
-  title: "Regulatory FAQs"
-  icon: "bi-journal-text"
-  questions:
-    - text: "What are the requirements for drug registration in Saudi Arabia?"
-      short: "Drug Registration"
-    - text: "How to submit variations for approved drugs?"
-      short: "Variation Submission"
-    - text: "What are the GMP requirements for manufacturing sites?"
-      short: "GMP Requirements"
-    - text: "What is the process for clinical trial approval?"
-      short: "Clinical Trial Approval"
-    - text: "What are the labeling requirements for pharmaceutical products?"
-      short: "Labeling Requirements"
+en:
+  regulatory:
+    title: "Regulatory FAQs"
+    icon: "bi-journal-text"
+    questions:
+      - text: "What are the requirements for drug registration in Saudi Arabia?"
+        short: "Drug Registration"
+      - text: "How to submit variations for approved drugs?"
+        short: "Variation Submission"
+      - text: "What are the GMP requirements for manufacturing sites?"
+        short: "GMP Requirements"
+      - text: "What is the process for clinical trial approval?"
+        short: "Clinical Trial Approval"
+      - text: "What are the labeling requirements for pharmaceutical products?"
+        short: "Labeling Requirements"
 
-pharmacovigilance:
-  title: "Pharmacovigilance FAQs"
-  icon: "bi-shield-check"
-  questions:
-    - text: "Could you provide a detailed outline, preferably in a bullet-point list, of the essential information that should be included in the national pharmacovigilance sub-system file (PSSF)? Please highlight the key components and any relevant regulatory requirements"
-      short: "PV Sub-System file (PSSF)"
-    - text: "What is the role of a QPPV in Saudi Arabia?"
-      short: "QPPV Role"
-    - text: "What should be included in a Periodic Safety Update Report (PSUR) with comprehensive explanation,outlining its key components and regulatory significance? Please structure your response using a clear format (e.g., a table) for ease of reference?"
-      short: "PSUR Requirements"
-    - text: "Could you provide a table outlining the reporting time frames for submitting Individual Case Safety Reports (ICSRs)?"
-      short: "Reporting Timeline"
-    - text: "Could you provide a comprehensive explanation of what a Risk Management Plan (RMP) is in Saudi Arabia, outlining its key components and regulatory significance? Please structure your response using a clear format (e.g., a table) for ease of reference"
-      short: "Risk Management Plan"
-    - text: "Could you please provide a structured table outlining the steps and essential elements required to complete the cover letter for a reported signal? Please include clear guidelines for each component"
-      short: "Signal-Cover Letter Guidance"
+  pharmacovigilance:
+    title: "Pharmacovigilance FAQs"
+    icon: "bi-shield-check"
+    questions:
+      - text: "Could you provide a detailed outline, preferably in a bullet-point list, of the essential information that should be included in the national pharmacovigilance sub-system file (PSSF)? Please highlight the key components and any relevant regulatory requirements"
+        short: "PV Sub-System file (PSSF)"
+      - text: "What is the role of a QPPV in Saudi Arabia?"
+        short: "QPPV Role"
+      - text: "What should be included in a Periodic Safety Update Report (PSUR) with comprehensive explanation,outlining its key components and regulatory significance? Please structure your response using a clear format (e.g., a table) for ease of reference?"
+        short: "PSUR Requirements"
+      - text: "Could you provide a table outlining the reporting time frames for submitting Individual Case Safety Reports (ICSRs)?"
+        short: "Reporting Timeline"
+      - text: "Could you provide a comprehensive explanation of what a Risk Management Plan (RMP) is in Saudi Arabia, outlining its key components and regulatory significance? Please structure your response using a clear format (e.g., a table) for ease of reference"
+        short: "Risk Management Plan"
+      - text: "Could you please provide a structured table outlining the steps and essential elements required to complete the cover letter for a reported signal? Please include clear guidelines for each component"
+        short: "Signal-Cover Letter Guidance"
 
-veterinary:
-  title: "Veterinary Medicines FAQs"
-  icon: "bi-box-seam"
-  questions:
-    - text: "What are the data requirements for veterinary products?"
-      short: "Veterinary Data Requirements"
-    - text: "What are the labeling requirements for veterinary medicines?"
-      short: "Veterinary Labeling"
-    - text: "What are the bioequivalence requirements for veterinary products?"
-      short: "Veterinary Bioequivalence"
+  veterinary:
+    title: "Veterinary Medicines FAQs"
+    icon: "bi-box-seam"
+    questions:
+      - text: "What are the data requirements for veterinary products?"
+        short: "Veterinary Data Requirements"
+      - text: "What are the labeling requirements for veterinary medicines?"
+        short: "Veterinary Labeling"
+      - text: "What are the bioequivalence requirements for veterinary products?"
+        short: "Veterinary Bioequivalence"
 
-biological:
-  title: "Biological Products FAQs"
-  icon: "bi-droplet"
-  questions:
-    - text: "What are the guidelines for biosimilar products?"
-      short: "Biosimilar Guidelines"
-    - text: "What are the requirements for vaccine manufacturing?"
-      short: "Vaccine Manufacturing"
-    - text: "What are the blood product quality control requirements?"
-      short: "Blood Product QC"
+  biological:
+    title: "Biological Products FAQs"
+    icon: "bi-droplet"
+    questions:
+      - text: "What are the guidelines for biosimilar products?"
+        short: "Biosimilar Guidelines"
+      - text: "What are the requirements for vaccine manufacturing?"
+        short: "Vaccine Manufacturing"
+      - text: "What are the blood product quality control requirements?"
+        short: "Blood Product QC"
+
+ar:
+  regulatory:
+    title: "الأسئلة الشائعة — التنظيمية"
+    icon: "bi-journal-text"
+    questions:
+      - text: "ما هي متطلبات تسجيل الأدوية في المملكة العربية السعودية؟"
+        short: "تسجيل الأدوية"
+      - text: "كيف يتم تقديم التغييرات على الأدوية المسجّلة؟"
+        short: "تقديم التغييرات"
+      - text: "ما هي متطلبات ممارسات التصنيع الجيدة للمواقع التصنيعية؟"
+        short: "متطلبات التصنيع الجيد"
+      - text: "ما هي إجراءات الموافقة على الدراسات السريرية؟"
+        short: "الموافقة على الدراسات السريرية"
+      - text: "ما هي متطلبات وضع البطاقة التعريفية للمستحضرات الدوائية؟"
+        short: "متطلبات البطاقة التعريفية"
+
+  pharmacovigilance:
+    title: "الأسئلة الشائعة — التيقظ الدوائي"
+    icon: "bi-shield-check"
+    questions:
+      - text: "هل يمكنك تقديم بيان تفصيلي، على شكل قائمة نقطية، للمعلومات الأساسية التي يجب تضمينها في ملف النظام الفرعي الوطني للتيقظ الدوائي (PSSF)؟ يرجى إبراز المكوّنات الرئيسية وأي متطلبات تنظيمية ذات صلة"
+        short: "ملف النظام الفرعي (PSSF)"
+      - text: "ما هو دور الشخص المؤهل المسؤول عن التيقظ الدوائي (QPPV) في المملكة العربية السعودية؟"
+        short: "دور الـ QPPV"
+      - text: "ما الذي يجب تضمينه في التقرير الدوري المحدّث للسلامة (PSUR)؟ يرجى شرح مكوّناته الرئيسية وأهميته التنظيمية، وتنظيم الإجابة في جدول واضح"
+        short: "متطلبات الـ PSUR"
+      - text: "هل يمكنك تقديم جدول يوضّح الأطر الزمنية لتقديم تقارير سلامة الحالات الفردية (ICSRs)؟"
+        short: "المهل الزمنية للإبلاغ"
+      - text: "هل يمكنك تقديم شرح شامل لخطة إدارة المخاطر (RMP) في المملكة العربية السعودية، مع بيان مكوّناتها الرئيسية وأهميتها التنظيمية في جدول واضح؟"
+        short: "خطة إدارة المخاطر"
+      - text: "هل يمكنك تقديم جدول منظّم يوضّح الخطوات والعناصر الأساسية اللازمة لاستكمال خطاب الإحالة الخاص بإشارة سلامة مبلّغ عنها؟"
+        short: "إرشادات خطاب الإشارة"
+
+  veterinary:
+    title: "الأسئلة الشائعة — الأدوية البيطرية"
+    icon: "bi-box-seam"
+    questions:
+      - text: "ما هي متطلبات البيانات الخاصة بالمستحضرات البيطرية؟"
+        short: "متطلبات البيانات البيطرية"
+      - text: "ما هي متطلبات البطاقة التعريفية للأدوية البيطرية؟"
+        short: "البطاقة التعريفية البيطرية"
+      - text: "ما هي متطلبات التكافؤ الحيوي للمستحضرات البيطرية؟"
+        short: "التكافؤ الحيوي البيطري"
+
+  biological:
+    title: "الأسئلة الشائعة — المنتجات الحيوية"
+    icon: "bi-droplet"
+    questions:
+      - text: "ما هي الاشتراطات الخاصة بالمستحضرات الحيوية المماثلة؟"
+        short: "المستحضرات الحيوية المماثلة"
+      - text: "ما هي متطلبات تصنيع اللقاحات؟"
+        short: "تصنيع اللقاحات"
+      - text: "ما هي متطلبات مراقبة جودة مشتقات الدم؟"
+        short: "جودة مشتقات الدم"

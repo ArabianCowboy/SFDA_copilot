@@ -6,6 +6,7 @@
 
 import { CONFIG } from './config.js';
 import { DOMCache, logError } from './dom.js';
+import { I18n } from './i18n.js';
 
 export const ThemeManager = {
   init() {
@@ -95,7 +96,7 @@ export const ThemeManager = {
   announceChange(newTheme) {
     const announcement = DOMCache.createElement('div', 'sr-only');
     DOMCache.setAttributes(announcement, { role: 'status', 'aria-live': 'polite' });
-    announcement.textContent = `Theme changed to ${newTheme} mode`;
+    announcement.textContent = I18n.t('theme.announced', { mode: newTheme });
     document.body.appendChild(announcement);
     setTimeout(() => announcement.remove(), 1000);
   },

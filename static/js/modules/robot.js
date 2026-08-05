@@ -19,6 +19,7 @@
  */
 
 import { prefersReducedMotion } from './config.js';
+import { I18n } from './i18n.js';
 
 let uidCounter = 0;
 
@@ -124,14 +125,15 @@ export const RobotStateManager = {
   _thinkingTimeout: null,
 
   VALID_STATES: ['idle', 'thinking', 'talking', 'happy', 'error', 'searching', 'retrieved'],
-  STATUS_MESSAGES: {
-    idle: 'Ready to help',
-    thinking: 'Processing your question...',
-    talking: "Here's what I found",
-    happy: 'Great question!',
-    error: 'Something went wrong',
-    searching: 'Searching the guidelines...',
-    retrieved: 'Reading the passages...',
+  /* Keys, not literals — resolved at use so a language switch is picked up. */
+  STATUS_KEYS: {
+    idle: 'robot.idle',
+    thinking: 'robot.thinking',
+    talking: 'robot.talking',
+    happy: 'robot.happy',
+    error: 'robot.error',
+    searching: 'robot.searching',
+    retrieved: 'robot.retrieved',
   },
 
   _getAvatars() {
@@ -181,7 +183,7 @@ export const RobotStateManager = {
     }
 
     const status = this._getStatusText();
-    if (status) status.textContent = this.STATUS_MESSAGES[state] || 'Ready to help';
+    if (status) status.textContent = I18n.t(this.STATUS_KEYS[state] || 'robot.idle');
   },
 
   /** User sent a message: celebrate, then drift into thinking.
@@ -217,16 +219,14 @@ export const RobotStateManager = {
       case 'retrieved':
         this.setState('retrieved');
         this._pulseAntenna(data.count || 0);
-        this._setStatus(
-          `Found ${data.count} passage${data.count === 1 ? '' : 's'}`
-        );
+        this._setStatus(I18n.plural(data.count, 'robot.foundPassage', 'robot.foundPassages'));
         break;
       case 'drafting':
         this.setState('thinking');
-        this._setStatus('Drafting the answer...');
+        this._setStatus(I18n.t('robot.draftingStatus'));
         break;
       case 'finalizing':
-        this._setStatus('Finishing up...');
+        this._setStatus(I18n.t('robot.finalizingStatus'));
         break;
       default:
         break;
@@ -308,7 +308,7 @@ export const RobotStateManager = {
       landingRobot.classList.add('robot-exit');
       this.celebrate(landingBody);
     }
-    if (landingStatus) landingStatus.textContent = 'See you in the chat! 🚀';
+    if (landingStatus) landingStatus.textContent = I18n.t('robot.farewell');
 
     setTimeout(() => {
       if (companionBody) {

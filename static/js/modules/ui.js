@@ -15,6 +15,7 @@ import { ThemeManager } from './theme.js';
 import { RobotStateManager } from './robot.js';
 import { bindCitations, renderSourceDeck, nextMessageId } from './citations.js';
 import { MarkdownStream } from './stream-render.js';
+import { I18n } from './i18n.js';
 
 function createMessageContent(text, isBot) {
   const contentDiv = DOMCache.createElement('div', 'message-content');
@@ -80,7 +81,7 @@ export const UI = {
   hydrateTimestamps() {
     const now = new Date();
     document.querySelectorAll('[data-ts-now]').forEach(el => {
-      el.textContent = now.toLocaleTimeString();
+      el.textContent = now.toLocaleTimeString(I18n.lang);
       el.dateTime = now.toISOString();
     });
   },
@@ -190,7 +191,9 @@ export const UI = {
     Utils.renderSuggestedQuestions(container, suggestedQuestions);
 
     const count = handle.state.sources.length;
-    this.announce(count ? `Answer complete. ${count} sources cited.` : 'Answer complete.');
+    this.announce(count
+      ? I18n.t('cite.answerCompleteWithSources', { n: count })
+      : I18n.t('cite.answerComplete'));
     this.scrollMessagesToBottom();
   },
 
@@ -203,7 +206,7 @@ export const UI = {
     handle.messageEl.classList.add(kind === 'cancelled' ? 'is-cancelled' : 'is-errored');
 
     const note = DOMCache.createElement('div', 'stream-note', kind);
-    note.textContent = kind === 'cancelled' ? 'Stopped' : 'Answer incomplete — something went wrong';
+    note.textContent = I18n.t(kind === 'cancelled' ? 'chat.stopped' : 'chat.incomplete');
     handle.messageEl.querySelector('.message-bubble')?.appendChild(note);
   },
 
@@ -294,13 +297,13 @@ export const UI = {
 
     const sendBtn = DOMCache.get(CONFIG.SELECTORS.SEND_BTN);
     if (sendBtn) {
-      const originalText = AppState.get('originalSendButtonText') || 'Send';
+      const originalText = AppState.get('originalSendButtonText') || I18n.t('chat.send');
       sendBtn.innerHTML = isSending
-        ? '<i class="bi bi-stop-circle"></i> Cancel'
+        ? `<i class="bi bi-stop-circle"></i> ${I18n.t('chat.cancel')}`
         : `<i class="bi bi-send"></i> ${originalText}`;
       sendBtn.setAttribute(
         'aria-label',
-        isSending ? 'Cancel message' : 'Send message'
+        isSending ? I18n.t('chat.cancelAria') : I18n.t('chat.sendAria')
       );
     }
   },
@@ -349,7 +352,7 @@ export const UI = {
           section.appendChild(index === 0 ? content : content.cloneNode(true));
           section.querySelector('h4:first-of-type')?.classList.remove('mt-3');
         } else {
-          section.innerHTML = '<div class="text-secondary small text-center py-3">No FAQs available.</div>';
+          section.innerHTML = `<div class="text-secondary small text-center py-3">${I18n.t('faq.empty')}</div>`;
         }
       });
     },

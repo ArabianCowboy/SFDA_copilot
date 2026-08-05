@@ -53,8 +53,11 @@
 .unified-button:hover { background: var(--signal-hover); }
 .unified-button:active { transform: translateY(1px); }
 
-/* Shared base for the small circular icon controls in the page chrome. */
+/* Shared base for the small icon controls in the page chrome.
+   .lang-toggle-btn is deliberately a separate class from .theme-toggle-btn:
+   test_theme_toggle.py asserts there are exactly three of the latter. */
 .theme-toggle-btn,
+.lang-toggle-btn,
 .utility-icon-link {
   display: inline-flex; align-items: center; justify-content: center;
   inline-size: 36px; block-size: 36px; padding: 0;
@@ -65,10 +68,24 @@
   transition: var(--btn-transition);
 }
 .theme-toggle-btn:hover,
+.lang-toggle-btn:hover,
 .utility-icon-link:hover {
   color: var(--fg-primary);
   background: var(--bg-sunken);
   border-color: var(--hairline-strong);
+}
+.lang-code {
+  font-family: var(--font-sans);
+  font-size: var(--fs-200);
+  font-weight: var(--fw-display);
+  line-height: 1;
+}
+/* In the sidebar the switcher sits inline under the tagline rather than in a
+   row of circular chrome buttons. */
+.sidebar-header .lang-toggle-btn {
+  inline-size: auto;
+  padding-inline: var(--space-3);
+  margin-block-end: var(--space-4);
 }
 
 .landing-header-utility {

@@ -75,8 +75,8 @@ export const Services = {
 
   parseSseFrame,
 
-  async getFaqData() {
-    const response = await fetch('/api/frequent-questions');
+  async getFaqData(lang = document.documentElement.lang || 'en') {
+    const response = await fetch(`/api/frequent-questions?lang=${encodeURIComponent(lang)}`);
     if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
     return response.json();
   },

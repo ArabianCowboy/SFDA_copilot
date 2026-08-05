@@ -31,6 +31,7 @@ from flask import (
     Response,
     current_app,
     jsonify,
+    make_response,
     redirect,
     render_template,
     request,
@@ -98,6 +99,14 @@ from web.services.sse import sse, sse_headers
 from web.services.search_engine import ImprovedSearchEngine, SearchResult
 from web.services.search_exceptions import ManifestValidationError
 from web.utils.config_loader import config
+from web.utils.i18n import (
+    load_catalog,
+    make_translator,
+    normalize_lang,
+    pick_lang,
+    runtime_subset,
+    text_direction,
+)
 from web.utils.supabase_client import get_supabase
 
 # ──────────────────────────────────────────────────────────
@@ -106,6 +115,7 @@ from web.utils.supabase_client import get_supabase
 MAX_SESSION_CHAT_HISTORY_CHARS = 3_500
 DEFAULT_MAX_CHAT_MESSAGES_COUNT = 5
 ALLOWED_CHAT_CATEGORIES = {"all", "regulatory", "pharmacovigilance", "veterinary", "biological"}
+SUPPORTED_FAQ_LANGS = ("en", "ar")
 
 # Cache-buster appended to every static CSS/JS URL. Bump this in any commit that
 # changes a stylesheet or module, otherwise returning users get a stale
@@ -395,18 +405,31 @@ def _initialize_services(app: Flask, testing: bool) -> None:
 
 
 def _load_faq_data() -> Dict[str, Any]:
-    """Load FAQ data from YAML file."""
+    """Load FAQ data from YAML, keyed by language.
+
+    Accepts both the language-keyed shape ({en: {...}, ar: {...}}) and the
+    older flat shape, so the file can be rolled back without a code change.
+    Always returns {lang: {category: {...}}}.
+    """
     faq_path = PROJECT_ROOT / "faq.yaml"
     try:
         with faq_path.open("r", encoding="utf-8") as f:
-            faq_data = yaml.safe_load(f)
-        logging.info("FAQ data loaded successfully with %d categories.", len(faq_data or {}))
-        return faq_data or {}
+            faq_data = yaml.safe_load(f) or {}
     except FileNotFoundError:
         logging.error("faq.yaml not found. FAQ feature will be disabled.")
+        return {}
     except Exception as e:
         logging.error("Error parsing faq.yaml: %s", e)
-    return {}
+        return {}
+
+    if not set(faq_data) & set(SUPPORTED_FAQ_LANGS):
+        logging.info("faq.yaml is in the legacy flat shape; treating it as English.")
+        faq_data = {"en": faq_data}
+
+    logging.info(
+        "FAQ data loaded for %s.", ", ".join(sorted(faq_data)) or "no languages"
+    )
+    return faq_data
 
 
 def _register_routes(app: Flask, limiter: Limiter) -> None:
@@ -432,7 +455,7 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
     def index():
         supabase_url = os.getenv("SUPABASE_URL")
         supabase_anon_key = os.getenv("SUPABASE_ANON_KEY")
-        
+
         # Validate Supabase configuration
         if not supabase_url or not supabase_anon_key:
             logging.warning(
@@ -440,14 +463,29 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
                 "present" if supabase_url else "missing",
                 "present" if supabase_anon_key else "missing"
             )
-        
-        return render_template(
+
+        # Rendering the page strings server-side means an Arabic reader never
+        # sees a flash of English while the JS boots.
+        lang = pick_lang(request)
+        catalog = load_catalog(lang)
+
+        response = make_response(render_template(
             "index.html",
             SUPABASE_URL=supabase_url or "",
             SUPABASE_ANON_KEY=supabase_anon_key or "",
             is_authenticated=bool(session.get("user_email")),
             user_email=session.get("user_email"),
-        )
+            lang=lang,
+            text_dir=text_direction(lang),
+            t=make_translator(catalog),
+            i18n_runtime=runtime_subset(catalog),
+        ))
+        # Persist an explicit ?lang= so the choice survives the next visit.
+        if request.args.get("lang"):
+            response.set_cookie(
+                "lang", lang, max_age=31_536_000, samesite="Lax", path="/"
+            )
+        return response
 
     @app.route("/favicon.ico")
     def favicon() -> Response:
@@ -455,7 +493,19 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
 
     @app.route("/api/frequent-questions")
     def get_frequent_questions() -> Response:
-        return jsonify(current_app.config["FREQUENT_QUESTIONS"])
+        """Return one language's FAQ block.
+
+        The response shape is unchanged from before the i18n work, so the
+        client and its tests need no changes.
+        """
+        catalogs = current_app.config["FREQUENT_QUESTIONS"]
+        lang = normalize_lang(request.args.get("lang") or request.cookies.get("lang"))
+
+        selected = dict(catalogs.get("en", {}))
+        # Per-category fallback: a category missing from Arabic still renders,
+        # in English, rather than vanishing from the sidebar.
+        selected.update(catalogs.get(lang, {}))
+        return jsonify(selected)
 
     # Shared across both chat routes so a client cannot double its allowance by
     # alternating between the streaming and blocking endpoints.

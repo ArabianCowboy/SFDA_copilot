@@ -8,10 +8,13 @@
 import { CONFIG } from './config.js';
 import { DOMCache } from './dom.js';
 import { RobotStateManager } from './robot.js';
+import { I18n } from './i18n.js';
 
 function updateStatusAndActions(user) {
   const isLoggedIn = !!user;
-  const statusText = isLoggedIn ? `Logged in as: ${user.email}` : 'Not logged in';
+  const statusText = isLoggedIn
+    ? I18n.t('auth.loggedInAs', { email: user.email })
+    : I18n.t('auth.notLoggedIn');
 
   DOMCache.getAll(`${CONFIG.SELECTORS.USER_STATUS}, ${CONFIG.SELECTORS.USER_STATUS_OFFCANVAS}`).forEach(el => {
     if (el) el.textContent = statusText;

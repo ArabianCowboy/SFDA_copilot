@@ -11,16 +11,17 @@ import { UI } from './ui.js';
 import { Services } from './services.js';
 import { ThemeManager } from './theme.js';
 import { RobotStateManager } from './robot.js';
+import { I18n } from './i18n.js';
 
-/* Set from window.__LANG once i18n lands (Phase 7); 'en' until then. */
-const I18N_LANG = window.__LANG || 'en';
+/* Sent with every chat request so the model answers in the reader's language. */
+const I18N_LANG = I18n.lang;
 
 /* Honest progress text, driven by real server stages rather than a timer. */
 const STAGE_LABELS = {
-  searching: () => 'Searching the guidelines',
-  retrieved: (d) => `Found ${d.count} passage${d.count === 1 ? '' : 's'}`,
-  drafting: () => 'Drafting the answer',
-  finalizing: () => 'Finishing up',
+  searching: () => I18n.t('stage.searching'),
+  retrieved: (d) => I18n.plural(d.count, 'stage.retrievedOne', 'stage.retrieved'),
+  drafting: () => I18n.t('stage.drafting'),
+  finalizing: () => I18n.t('stage.finalizing'),
 };
 
 export const Handlers = {
@@ -111,7 +112,7 @@ export const Handlers = {
       } catch (error) {
         logError(error, 'processChatRequestInternal.getSessionToken');
         ErrorHandler.showToast(
-          'Unable to verify your session. Please try again.',
+          I18n.t('chat.sessionUnverified'),
           true
         );
         RobotStateManager.resetToIdle();
@@ -120,7 +121,7 @@ export const Handlers = {
 
       if (!token && !window.location.search.includes('testing=true')) {
         AppState.get('authModal')?.show();
-        ErrorHandler.showToast('Please log in to chat with the AI.', true);
+        ErrorHandler.showToast(I18n.t('chat.loginRequired'), true);
         RobotStateManager.resetToIdle();
         return;
       }
@@ -138,8 +139,8 @@ export const Handlers = {
       }
 
       logError(error, 'processChatRequestInternal');
-      UI.addMessage('Sorry, I encountered an error while processing your request. Please try again.', 'bot');
-      ErrorHandler.showToast('Failed to send message.', true);
+      UI.addMessage(I18n.t('chat.genericError'), 'bot');
+      ErrorHandler.showToast(I18n.t('chat.sendFailed'), true);
       RobotStateManager.showError();
     } finally {
       UI.setSendingState(false);
@@ -190,7 +191,7 @@ export const Handlers = {
       // A failure after streaming began cannot change the 200 status line, so
       // it arrives in-band. Keep the partial answer and flag it.
       UI.markStreamIncomplete(handle, 'error');
-      ErrorHandler.showToast('Failed to send message.', true);
+      ErrorHandler.showToast(I18n.t('chat.sendFailed'), true);
       RobotStateManager.showError();
       return;
     }
@@ -211,7 +212,7 @@ export const Handlers = {
       UI.toggleTypingIndicator(false);
       RobotStateManager.startTalking();
 
-      if (!data?.response) throw new Error('Invalid response format from AI service.');
+      if (!data?.response) throw new Error(I18n.t('chat.invalidResponse'));
       UI.addMessage(data.response, 'bot', data.suggested_questions || [], data.sources || []);
       RobotStateManager.returnToIdle(4000);
     } finally {

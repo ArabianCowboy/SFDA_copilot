@@ -13,19 +13,26 @@
   {% if show_title %}
   <h3 class="sidebar-title">
     <i class="bi bi-shield-shaded" aria-hidden="true"></i>
-    <span>SFDA Copilot</span>
+    <span>{{ t('page.brand.name') }}</span>
   </h3>
   {% endif %}
-  <p class="sidebar-tagline">Your AI Regulatory Assistant</p>
+  <p class="sidebar-tagline">{{ t('page.brand.tagline') }}</p>
+
+  <button class="lang-toggle-btn btn btn-sm" type="button"
+          data-lang="{{ 'en' if lang == 'ar' else 'ar' }}"
+          aria-label="{{ t('runtime.lang.switchAria') }}"
+          title="{{ t('runtime.lang.toEnglish') if lang == 'ar' else t('runtime.lang.toArabic') }}">
+    <span class="lang-code">{{ 'EN' if lang == 'ar' else 'ع' }}</span>
+  </button>
 
   <div class="auth-status-container">
-    <span id="user-status{{ suffix }}" class="auth-status-text">Checking status...</span>
+    <span id="user-status{{ suffix }}" class="auth-status-text">{{ t('runtime.auth.checkingStatus') }}</span>
     <div class="auth-status-actions">
-      <button id="auth-button{{ suffix }}" class="btn btn-sm btn-primary" type="button">Login / Signup</button>
-      <button id="logout-button{{ suffix }}" class="btn btn-sm btn-ghost d-none" type="button">Logout</button>
+      <button id="auth-button{{ suffix }}" class="btn btn-sm btn-primary" type="button">{{ t('page.auth.loginSignup') }}</button>
+      <button id="logout-button{{ suffix }}" class="btn btn-sm btn-ghost d-none" type="button">{{ t('page.auth.logout') }}</button>
       <button id="profile-button{{ suffix }}" class="btn btn-sm btn-ghost d-none" type="button"
               data-bs-toggle="modal" data-bs-target="#profileModal">
-        <i class="bi bi-person-circle" aria-hidden="true"></i> Profile
+        <i class="bi bi-person-circle" aria-hidden="true"></i> {{ t('page.profile.button') }}
       </button>
     </div>
   </div>
