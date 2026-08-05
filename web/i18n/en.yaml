@@ -107,7 +107,9 @@ page:
     heading: "Why Use Our Platform?"
     coverage:
       title: "Extensive Guideline Coverage"
-      body: "Access regulatory insights backed by over 99 SFDA guidelines, ensuring you have the most comprehensive and up-to-date information at your fingertips."
+      # No guideline count, deliberately: the corpus changes on every ingest and
+      # any hard number goes stale in place. See PRODUCT.md, Evidence on Hand.
+      body: "Access regulatory insights drawn from the official SFDA guideline corpus, spanning regulatory, pharmacovigilance, veterinary and biological products."
       badge: "Guidelines current through August 2026"
     authoritative:
       title: "Authoritative Guidance"
