@@ -10,16 +10,61 @@
   transition: transform var(--duration-m) var(--ease-out);
 }
 .robot-avatar-wrapper:hover { transform: scale(1.1) rotate(-3deg); }
-.sunny-svg { display: block; overflow: visible; }
+/* Sunny's palette. Every fill in the generated SVG references one of these,
+   so state changes and theme changes are both just token overrides.
+   The eyes carry the CONFIDENCE colour and the antenna the RETRIEVAL signal —
+   the mascot's face is the progress indicator. */
+.sunny-svg {
+  display: block;
+  overflow: visible;
+
+  --sunny-shell: var(--seal-600);
+  --sunny-shell-deep: var(--seal-700);
+  --sunny-visor-top: var(--ink-900);
+  --sunny-visor-bottom: var(--ink-700);
+  --sunny-eye: var(--verify-600);
+  --sunny-chrome: var(--rule-300);
+  --sunny-signal: var(--seal-600);
+  --sunny-core: var(--paper-000);
+  --sunny-mouth: var(--verify-600);
+  --sunny-cheek: var(--verify-100);
+  --sunny-ink: var(--ink-900);
+}
 
 /* Default state of toggled parts */
 .robot-mouth-talk { opacity: 0; }
 .antenna-glow { opacity: 0; }
 
+/* In RTL Sunny mirrors so it still faces into the text it is commenting on.
+   No glyph-bearing children, so nothing needs un-mirroring. */
+[dir="rtl"] .sunny-svg { transform: scaleX(-1); }
+
 /* ——————————————— IDLE: gentle breathing + blink ——————————————— */
+/* Replaces the SVG <animate> elements that used to drive these. SMIL ignores
+   prefers-reduced-motion; CSS keyframes are caught by the global reduced-motion
+   rule in base.css. */
 .robot-idle .robot-head { animation: sunnyBreathe 4s ease-in-out infinite; transform-origin: center 88px; }
-.robot-idle .robot-blink-left,
-.robot-idle .robot-blink-right { animation: sunnyBlink 4.5s ease-in-out infinite; }
+.robot-idle .antenna-ball { animation: sunnyBallBreathe 2.4s ease-in-out infinite; transform-origin: 100px 28px; }
+.robot-idle .chest-light { animation: sunnyBallPulse 2.4s ease-in-out infinite; }
+/* Eyes blink slightly out of sync, which reads as alive rather than mechanical. */
+.robot-idle .robot-blink-left { animation: sunnyBlink 4.5s ease-in-out infinite; }
+.robot-idle .robot-blink-right { animation: sunnyBlink 4.5s ease-in-out .08s infinite; }
+
+/* ——————————————— SEARCHING / RETRIEVED ———————————————
+   Sunny's face is the progress indicator: the eyes are the confidence colour
+   and the antenna is the retrieval signal, so both report real work. */
+.robot-searching .robot-head { animation: sunnyThink 1.2s ease-in-out infinite; transform-origin: center 96px; }
+.robot-searching .antenna-glow { animation: sunnyAntennaPulse .9s ease-in-out infinite; }
+.robot-searching .antenna-ball { animation: sunnyBallPulse .9s ease-in-out infinite; }
+/* Eyes go signal-blue while retrieving, confidence-green once passages are in
+   hand. Targets .sunny-svg because that is where the palette is declared. */
+.robot-searching .sunny-svg { --sunny-eye: var(--seal-600); }
+
+.robot-retrieved .sunny-svg { --sunny-eye: var(--verify-600); }
+.robot-retrieved .eye-glow { opacity: .35; }
+
+/* One flash per retrieved passage, fired from robot.js. */
+.antenna-flash { animation: sunnyAntennaFlash .28s var(--ease-out); transform-origin: 100px 28px; }
 
 /* ——————————————— THINKING ——————————————— */
 .robot-thinking .robot-head { animation: sunnyThink 1.6s ease-in-out infinite; transform-origin: center 96px; }
@@ -44,8 +89,7 @@
 
 /* ——————————————— ERROR ——————————————— */
 .robot-error .robot-head { animation: sunnyShake .4s ease-in-out 2; transform-origin: center 96px; }
-.robot-error .eye-pupil-left,
-.robot-error .eye-pupil-right { fill: var(--alert-600); }
+.robot-error .sunny-svg { --sunny-eye: var(--alert-600); --sunny-mouth: var(--alert-600); }
 
 /* Entrance applied in companion hand-off */
 .robot-entrance { animation: robotCompanionEntrance 1.2s var(--ease-out) both; }
@@ -72,7 +116,9 @@
 @keyframes sunnyThink { 0%,100% { transform: rotate(-5deg) translateY(0); } 50% { transform: rotate(5deg) translateY(-3px); } }
 @keyframes sunnyNod { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-3px) scale(1.02); } }
 @keyframes sunnyWobble { 0%,100% { transform: rotate(0); } 25% { transform: rotate(-8deg); } 75% { transform: rotate(8deg); } }
-@keyframes sunnyShake { 0%,100% { transform: translateX(0) rotate(0); } 25% { transform: translateX(-5px) rotate(-4deg); } 75% { transform: translateX(5px) rotate(4deg); } }
+@keyframes sunnyShake { 0%,100% { transform: translateX(0) rotate(0); } 25% { transform: translateX(calc(-5px * var(--flip))) rotate(-4deg); } 75% { transform: translateX(calc(5px * var(--flip))) rotate(4deg); } }
+@keyframes sunnyBallBreathe { 0%,100% { transform: scale(1); } 50% { transform: scale(1.12); } }
+@keyframes sunnyAntennaFlash { 0% { transform: scale(1); } 45% { transform: scale(1.5); } 100% { transform: scale(1); } }
 @keyframes sunnyHop { 0%,100% { transform: translateY(0); } 40% { transform: translateY(-14px) scale(1.04); } }
 @keyframes sunnyAntennaPulse { 0%,100% { opacity: .2; } 50% { opacity: .9; } }
 @keyframes sunnyAntennaHappy { 0%,100% { opacity: .4; transform: scale(1); } 50% { opacity: 1; transform: scale(1.4); } }
