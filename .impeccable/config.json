@@ -1,0 +1,14 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "bounce-easing",
+        "value": "typingbounce",
+        "createdAt": "2026-08-05T23:03:03.673Z",
+        "reason": "User confirmed typingBounce is intentional: ease-in-out translateY rise-and-return, no overshoot or elastic curve. Name-matched, not behavior-matched."
+      }
+    ]
+  }
+}
