@@ -23,6 +23,8 @@ runtime:
     stopped: "Stopped"
     incomplete: "Answer incomplete — something went wrong"
     askPrefix: "Ask: {question}"
+    jumpToLatest: "Jump to latest"
+    jumpToLatestAria: "Scroll to the latest message"
 
   stage:
     searching: "Searching the guidelines"

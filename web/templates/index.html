@@ -440,6 +440,18 @@
                         </div>
                     </div>
 
+                    <!-- Shown only when the reader has scrolled away from the
+                         bottom, so streaming never yanks them back mid-read.
+                         Placed in the same grid cell as #messages with
+                         align-self:end, which overlays it without absolute
+                         positioning and mirrors correctly under RTL. -->
+                    <button type="button" id="jump-to-latest" class="jump-to-latest" hidden
+                            aria-label="{{ t('runtime.chat.jumpToLatestAria') }}">
+                        <i class="bi bi-arrow-down" aria-hidden="true"></i>
+                        <span class="jump-label">{{ t('runtime.chat.jumpToLatest') }}</span>
+                        <span class="jump-dot" hidden></span>
+                    </button>
+
                     <!-- Rail: a column that belongs to the mascot and (from Phase 4)
                          the source deck, so the reading column is never padded
                          around a floating ghost. Hidden below xl. -->

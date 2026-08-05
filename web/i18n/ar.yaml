@@ -22,6 +22,8 @@ runtime:
     stopped: "أُوقف"
     incomplete: "الإجابة غير مكتملة — حدث خطأ ما"
     askPrefix: "اسأل: {question}"
+    jumpToLatest: "الانتقال إلى الأحدث"
+    jumpToLatestAria: "التمرير إلى أحدث رسالة"
 
   stage:
     searching: "جارٍ البحث في الأدلة"

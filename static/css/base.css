@@ -169,7 +169,13 @@ a:hover { color: var(--signal-hover); text-decoration: underline; }
   grid-template-columns: minmax(0, 1fr);
   min-block-size: 0;
 }
+/* All three children are placed explicitly. Relying on auto-placement here is
+   a trap: the jump-to-latest pill overlays this cell, and an auto-placed
+   .messages would get pushed into the rail's column the moment the pill became
+   visible (while hidden it is display:none and does not participate). */
 .messages {
+  grid-column: 1;
+  grid-row: 1;
   display: flex;
   flex-direction: column;
   gap: var(--space-5);
@@ -194,6 +200,8 @@ a:hover { color: var(--signal-hover); text-decoration: underline; }
     column-gap: var(--space-6);
   }
   .chat-rail {
+    grid-column: 2;
+    grid-row: 1;
     display: block;
     position: relative;
     padding-inline-end: var(--gutter);

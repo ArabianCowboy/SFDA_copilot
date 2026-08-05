@@ -166,3 +166,20 @@ def test_faq_shape_is_unchanged_so_the_client_needs_no_changes(client):
 def test_faq_falls_back_to_english_for_an_unknown_language(client):
     data = client.get("/api/frequent-questions?lang=fr").get_json()
     assert data["regulatory"]["questions"][0]["short"] == "Drug Registration"
+
+
+# ── Jump-to-latest pill ─────────────────────────────────────────────────────
+
+def test_jump_to_latest_is_present_and_hidden_by_default(client):
+    html = page(client)
+    assert 'id="jump-to-latest"' in html
+    # Hidden at rest: it only appears once the reader scrolls away.
+    assert 'class="jump-to-latest" hidden' in html
+    assert "Jump to latest" in html
+
+
+def test_jump_to_latest_is_translated(client):
+    html = page(client, "/?lang=ar")
+    assert "الانتقال إلى الأحدث" in html
+    assert "التمرير إلى أحدث رسالة" in html
+    assert "Jump to latest" not in html

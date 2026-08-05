@@ -89,6 +89,10 @@ export const UI = {
   scrollMessagesToBottom() {
     const container = DOMCache.get(CONFIG.SELECTORS.MESSAGES);
     container?.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+    // Going to the bottom always clears the pill — including when the reader
+    // sends a message, which should bring them back regardless of where they
+    // had scrolled to.
+    this.setJumpToLatest(false);
   },
 
   addMessage(text, sender, suggestedQuestions = [], sources = []) {
@@ -164,11 +168,68 @@ export const UI = {
 
   /** Auto-scroll only when the reader hasn't scrolled away. */
   followStream() {
-    if (!this.isPinnedToBottom()) return;
+    if (!this.isPinnedToBottom()) {
+      // Content is arriving below the fold; flag it rather than yanking them back.
+      this.setJumpToLatest(true, true);
+      return;
+    }
     const c = DOMCache.get(CONFIG.SELECTORS.MESSAGES);
     /* 'auto', not 'smooth': a smooth scroll target retargeted at 60Hz is
        visibly janky. The CSS smooth behaviour resumes once streaming ends. */
     c?.scrollTo({ top: c.scrollHeight, behavior: 'auto' });
+  },
+
+  /**
+   * Show or hide the jump-to-latest pill.
+   * @param {boolean} show
+   * @param {boolean} [unread] mark that new content arrived below the fold
+   */
+  setJumpToLatest(show, unread = false) {
+    const pill = document.getElementById('jump-to-latest');
+    if (!pill) return;
+
+    if (unread) pill.querySelector('.jump-dot')?.removeAttribute('hidden');
+
+    if (show === !pill.hidden) return;   // already in the requested state
+
+    pill.hidden = !show;
+    // The entrance is a CSS animation keyed off :not([hidden]), so nothing
+    // here depends on an animation frame ever arriving.
+    if (!show) pill.querySelector('.jump-dot')?.setAttribute('hidden', '');
+  },
+
+  /**
+   * Track scroll position and reveal the pill when the reader scrolls away
+   * from the bottom, so a long answer streaming in never drags them along.
+   */
+  initJumpToLatest() {
+    const container = DOMCache.get(CONFIG.SELECTORS.MESSAGES);
+    const pill = document.getElementById('jump-to-latest');
+    if (!container || !pill) return;
+
+    let queued = false;
+    const sync = () => {
+      queued = false;
+      this.setJumpToLatest(!this.isPinnedToBottom());
+    };
+
+    // rAF-coalesced: scroll fires far more often than once per frame.
+    container.addEventListener('scroll', () => {
+      if (queued) return;
+      queued = true;
+      requestAnimationFrame(sync);
+    }, { passive: true });
+
+    /* rAF is throttled while the tab is hidden, so a scroll that happened just
+       before backgrounding may not have synced. Re-check on return. */
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) sync();
+    });
+
+    pill.addEventListener('click', () => {
+      this.setJumpToLatest(false);
+      this.scrollMessagesToBottom();
+    });
   },
 
   attachSourceDeck(handle, sources) {

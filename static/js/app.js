@@ -65,6 +65,7 @@ const App = {
     ThemeManager.init();
     UI.hydrateTimestamps();
     initCitationInteractions(DOMCache.get(CONFIG.SELECTORS.MESSAGES));
+    UI.initJumpToLatest();
     initLanguageToggle();
     /* A language switch reloads the page; this puts the transcript back. */
     Transcript.restore();

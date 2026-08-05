@@ -609,6 +609,51 @@
 }
 .stream-note.error { color: var(--danger); }
 
+/* ——————————————— Jump to latest ———————————————
+   Sits in the same grid cell as #messages (base.css) rather than being
+   absolutely positioned, so it needs no offsets and mirrors under RTL. */
+.jump-to-latest {
+  grid-column: 1;
+  grid-row: 1;
+  align-self: end;
+  justify-self: center;
+  z-index: var(--z-raised);
+
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-block-end: var(--space-4);
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-pill);
+  font-size: var(--fs-200);
+  font-weight: var(--fw-medium);
+  color: var(--fg-secondary);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-md);
+  cursor: pointer;
+  transition: opacity var(--duration-m) var(--ease-soft),
+              transform var(--duration-m) var(--ease-soft),
+              color var(--duration-s) var(--ease-soft),
+              border-color var(--duration-s) var(--ease-soft);
+}
+.jump-to-latest:hover { color: var(--fg-primary); border-color: var(--fg-faint); }
+/* [hidden] alone would be overridden by the display above. */
+.jump-to-latest[hidden] { display: none; }
+/* The entrance is a keyframe animation rather than a class toggled on the next
+   animation frame: rAF is throttled in a background tab, which would leave the
+   pill mounted at opacity 0 — visible to hit-testing but not to the reader. */
+.jump-to-latest:not([hidden]) { animation: jumpPillIn var(--duration-m) var(--ease-out); }
+
+/* Unread marker: the signal colour, because something arrived below the fold. */
+.jump-dot {
+  inline-size: 6px;
+  block-size: 6px;
+  border-radius: 50%;
+  background: var(--signal);
+}
+.jump-dot[hidden] { display: none; }
+
 /* Honest retrieval progress: names the stage the request is actually in. */
 .stage-line {
   display: flex; align-items: center; gap: var(--space-2);
