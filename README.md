@@ -266,6 +266,21 @@ python -m pytest -m integration
 python -m pytest -m "not browser and not integration" --cov=web
 ```
 
+### Smoke check against the real stack
+
+The suite mocks OpenAI and the search index, so it cannot tell you whether the
+model still cites correctly against the real corpus. After changing retrieval,
+the prompt, or the citation format, run:
+
+```bash
+python scripts/smoke_real.py
+python scripts/smoke_real.py "ما هي متطلبات تسجيل الأدوية؟" ar
+```
+
+It makes real API calls (a few cents on gpt-4o-mini) and reports time to first
+token, whether any citation index fell outside the retrieved set, and whether
+the model reverted to the old prose citation format.
+
 Playwright starts an ephemeral Flask test server from `web/tests/conftest.py`.
 GitHub Actions installs Chromium and runs the browser suite as a separate
 merge gate.
