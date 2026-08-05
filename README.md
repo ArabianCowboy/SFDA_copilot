@@ -4,13 +4,18 @@ An AI-powered regulatory guidance system for pharmaceutical regulations in Saudi
 
 ## 🌟 Features
 
-- **AI-Powered Chat Interface**: Get intelligent answers about SFDA regulations
+- **Streaming answers**: tokens arrive as the model writes them, over SSE
+- **Traceable citations**: every claim carries a numbered marker that resolves
+  to the source document, page, and its hybrid relevance score — the
+  semantic/lexical split included
+- **Hybrid retrieval**: FAISS semantic search fused with TF-IDF lexical search
+  over 112 official SFDA guidelines
+- **Bilingual EN/AR** with full RTL, including Arabic queries and answers
 - **Comprehensive FAQ System**: Browse categorized regulatory guidelines
 - **User Authentication**: Secure login/signup with Supabase
 - **Profile Management**: User profiles with theme preferences
 - **Dark/Light Theme**: Accessible theme toggle with system preference detection
 - **Responsive Design**: Works seamlessly across desktop and mobile devices
-- **Real-time Updates**: Live chat with typing indicators and suggested questions
 
 ## 🎨 Theme Toggle System
 
@@ -34,7 +39,7 @@ Theme toggle buttons are defined directly in the HTML with proper accessibility 
 <!-- Landing page theme toggle -->
 <button
     id="landing-theme-toggle"
-    class="theme-toggle-btn btn btn-outline-secondary btn-sm ms-2"
+    class="theme-toggle-btn btn btn-sm"
     aria-label="Toggle theme between light and dark"
     title="Toggle theme between light and dark"
 >
@@ -44,7 +49,7 @@ Theme toggle buttons are defined directly in the HTML with proper accessibility 
 <!-- Sidebar theme toggle -->
 <button
     id="sidebar-theme-toggle"
-    class="theme-toggle-btn btn btn-outline-secondary btn-sm ms-2"
+    class="theme-toggle-btn btn btn-sm"
     aria-label="Toggle theme between light and dark"
     title="Toggle theme between light and dark"
 >
@@ -54,7 +59,7 @@ Theme toggle buttons are defined directly in the HTML with proper accessibility 
 <!-- Offcanvas theme toggle -->
 <button
     id="offcanvas-theme-toggle"
-    class="theme-toggle-btn btn btn-outline-secondary btn-sm ms-2"
+    class="theme-toggle-btn btn btn-sm"
     aria-label="Toggle theme between light and dark"
     title="Toggle theme between light and dark"
 >
@@ -142,11 +147,49 @@ document.addEventListener('keydown', (e) => {
 
 5. **Run the application**
    ```bash
-   # Start Flask development server
-   python web/app.py
-   
-   # Open your browser to http://localhost:5000
+   # Start Flask development server (host/port come from web/config.yaml)
+   python web/api/app.py
+
+   # Open your browser to http://localhost:5001
    ```
+
+   Without an OpenAI key or a built index, `?testing=true` serves a full
+   working demo — streaming, sources and citations — against mock services:
+   ```bash
+   FLASK_TESTING=true python web/api/app.py
+   # then open http://localhost:5001/?testing=true
+   # Arabic:   http://localhost:5001/?lang=ar&testing=true
+   ```
+
+### Running in production
+
+Chat answers stream over Server-Sent Events, which imposes two requirements.
+
+**Single worker.** Conversation history lives in a process-local
+`ConversationStore` (it cannot live in the session cookie — Flask writes
+`Set-Cookie` before the WSGI server iterates a streaming body, so a session
+write inside the generator is silently discarded). The in-RAM FAISS index and
+sentence-transformers model already require this:
+
+```bash
+gunicorn --workers 1 --threads 8 --timeout 300 "web.api.app:create_app()"
+```
+
+Running more than one worker splits conversations across them; the app logs a
+warning at startup if `WEB_CONCURRENCY` is not `1`.
+
+**Do not buffer the stream.** nginx buffers proxied responses by default, which
+would hold each answer until it completed and defeat streaming entirely. The
+app sends `X-Accel-Buffering: no`, but set it explicitly too:
+
+```nginx
+location /api/chat/stream {
+    proxy_pass http://127.0.0.1:5001;
+    proxy_buffering off;
+    proxy_read_timeout 300s;
+    gzip off;
+}
+```
 
 ## 📁 Project Structure
 
@@ -157,19 +200,26 @@ sfda-copilot/
 ├── package.json             # Node.js dependencies
 ├── .env.example            # Environment variables template
 ├── faq.yaml                # FAQ data configuration
-├── static/                 # Static frontend assets
-│   ├── css/
-│   │   └── style.css       # Custom CSS styles
+├── static/                 # Static frontend assets (no bundler, ES modules)
+│   ├── css/                # Layered: tokens -> base -> components -> robot -> effects
+│   │   ├── tokens.css      # Design tokens: primitives, scales, semantics
+│   │   ├── base.css        # Reset, typography, app shell
+│   │   ├── components.css  # Buttons, chat, citations, composer
+│   │   ├── robot.css       # Mascot states
+│   │   └── effects.css     # Motion + shared keyframes
 │   ├── js/
-│   │   └── app.js          # Main JavaScript application
+│   │   ├── app.js          # Entry point
+│   │   └── modules/        # config, dom, state, services, ui, handlers,
+│   │                       # citations, stream-render, i18n, robot, theme
 │   └── images/             # Image assets
 ├── web/                    # Flask backend
-│   ├── app.py             # Flask application entry point
-│   ├── api/               # API endpoints
-│   ├── services/          # Business logic services
-│   ├── utils/             # Utility functions
+│   ├── api/app.py         # Flask application entry point
+│   ├── i18n/              # en.yaml / ar.yaml UI catalogues
+│   ├── services/          # Search, LLM, citations, SSE, conversation store
+│   ├── utils/             # Config loader, i18n loader, Supabase client
 │   ├── templates/         # HTML templates
-│   │   └── index.html     # Main application template
+│   │   ├── index.html     # Main application template
+│   │   └── partials/      # Jinja macros (sidebar)
 │   └── tests/             # Test files
 ├── data/                  # Regulatory guideline data
 │   ├── regulatory/
@@ -216,15 +266,36 @@ python -m pytest -m integration
 python -m pytest -m "not browser and not integration" --cov=web
 ```
 
+### Smoke check against the real stack
+
+The suite mocks OpenAI and the search index, so it cannot tell you whether the
+model still cites correctly against the real corpus. After changing retrieval,
+the prompt, or the citation format, run:
+
+```bash
+python scripts/smoke_real.py
+python scripts/smoke_real.py "ما هي متطلبات تسجيل الأدوية؟" ar
+```
+
+It makes real API calls (a few cents on gpt-4o-mini) and reports time to first
+token, whether any citation index fell outside the retrieved set, and whether
+the model reverted to the old prose citation format.
+
 Playwright starts an ephemeral Flask test server from `web/tests/conftest.py`.
 GitHub Actions installs Chromium and runs the browser suite as a separate
 merge gate.
 
 ### Test Coverage
-- **Theme Toggle Tests**: Verify theme persistence, accessibility, and functionality
-- **Profile Integration Tests**: Test theme preference synchronization with user profiles
-- **Authentication Tests**: Test user authentication and session management
-- **API Tests**: Test backend API endpoints
+- **Chat API** (`test_chat_api.py`): the blocking `/api/chat` route end to end
+- **Streaming** (`test_chat_stream.py`): SSE frame ordering, in-band errors,
+  history persistence across a streamed response, and the conversation store
+- **Citations** (`test_citations.py`): source payload coercion (numpy scalars
+  and NaN would otherwise 500 the endpoint) and legacy-citation normalisation
+- **CSS contract** (`test_css_contract.py`): fails on physical properties that
+  cannot mirror under RTL
+- **Architecture** (`test_frontend_architecture.py`): module boundaries, plus
+  the frozen English strings the browser suite asserts verbatim
+- **Theme / Profile / Frontend**: browser-level flows via Playwright
 
 ## 🔧 Configuration
 
@@ -247,22 +318,27 @@ DATABASE_URL=your_database_url
 Edit `faq.yaml` to customize the FAQ categories and questions:
 
 ```yaml
-regulatory:
-  title: "Regulatory Guidelines"
-  icon: "bi-shield-check"
-  questions:
-    - short: "Drug Registration"
-      text: "What are the requirements for drug registration in Saudi Arabia?"
+en:
+  regulatory:
+    title: "Regulatory Guidelines"
+    icon: "bi-shield-check"
+    questions:
+      - short: "Drug Registration"
+        text: "What are the requirements for drug registration in Saudi Arabia?"
+ar:
+  regulatory:
+    title: "الأسئلة الشائعة — التنظيمية"
+    icon: "bi-shield-check"
+    questions:
+      - short: "تسجيل الأدوية"
+        text: "ما هي متطلبات تسجيل الأدوية في المملكة العربية السعودية؟"
 ```
 
 ## 📚 Documentation
 
 ### Component Documentation
-- [SFDA Copilot Component Documentation](SFDA_Copilot_Component_Documentation.md)
-- [SFDA Copilot Workflow Diagram](SFDA_Copilot_Workflow_Diagram.md)
 
 ### Theme Toggle Refactoring
-- [Theme Toggle Refactoring Plan](THEME_TOGGLE_REFACTORING_PLAN.md)
 - Detailed implementation plan and technical specifications
 
 ### API Documentation

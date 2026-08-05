@@ -5,6 +5,37 @@
 
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.7/+esm';
 
+/* Deliberately NOT global: a /g regex carries lastIndex between calls, and
+   this one is reused across every drain of the stream buffer. */
+const FRAME_SEPARATOR = /\r?\n\r?\n/;
+
+/**
+ * Parse one SSE frame into { event, data }.
+ * Returns null for comment-only frames (keep-alive pings) and unparseable data.
+ */
+export function parseSseFrame(raw) {
+  let event = 'message';
+  const dataLines = [];
+
+  for (const line of raw.split(/\r?\n/)) {
+    if (!line || line.startsWith(':')) continue;   // blank or comment
+    const colon = line.indexOf(':');
+    const field = colon === -1 ? line : line.slice(0, colon);
+    let value = colon === -1 ? '' : line.slice(colon + 1);
+    if (value.startsWith(' ')) value = value.slice(1);
+
+    if (field === 'event') event = value;
+    else if (field === 'data') dataLines.push(value);
+  }
+
+  if (!dataLines.length) return null;
+  try {
+    return { event, data: JSON.parse(dataLines.join('\n')) };
+  } catch {
+    return null;
+  }
+}
+
 export const Services = {
   supabase: null,
   chatAbortController: null,
@@ -42,8 +73,10 @@ export const Services = {
     return this.supabase;
   },
 
-  async getFaqData() {
-    const response = await fetch('/api/frequent-questions');
+  parseSseFrame,
+
+  async getFaqData(lang = document.documentElement.lang || 'en') {
+    const response = await fetch(`/api/frequent-questions?lang=${encodeURIComponent(lang)}`);
     if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
     return response.json();
   },
@@ -67,6 +100,71 @@ export const Services = {
       throw new Error(errorJson.error || `Network error (${response.status})`);
     }
     return response.json();
+  },
+
+  /**
+   * Stream a chat answer over SSE.
+   *
+   * EventSource cannot set an Authorization header, and the alternatives are
+   * all worse — a token in the query string leaks into access logs, Referer
+   * and history; a cookie duplicates the header-based Supabase auth surface.
+   * fetch + response.body.getReader() avoids both and gives AbortController
+   * support, which EventSource also lacks.
+   *
+   * `on` is a map of event name -> handler, keeping this module free of any
+   * dom/state/ui import (enforced by test_frontend_architecture.py).
+   */
+  async streamChatRequest(query, category, token, lang, on = {}) {
+    this.cancelChatRequest();
+    this.chatAbortController = new AbortController();
+
+    const headers = { 'Content-Type': 'application/json', 'Accept': 'text/event-stream' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    const response = await fetch('/api/chat/stream', {
+      method: 'POST',
+      headers,
+      cache: 'no-store',
+      signal: this.chatAbortController.signal,
+      body: JSON.stringify({ query, category, lang }),
+    });
+
+    // Failures before the first frame still carry a real status code, so the
+    // caller can distinguish them from an in-band `error` event.
+    if (!response.ok) {
+      const errorJson = await response.json().catch(() => ({}));
+      throw new Error(errorJson.error || `Network error (${response.status})`);
+    }
+    if (!response.body) throw new Error('STREAM_UNSUPPORTED');
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder('utf-8');
+    let buffer = '';
+
+    /* A chunk is not a frame: one read may deliver half a frame or twelve of
+       them. Drain whatever complete frames the buffer currently holds. */
+    const drain = () => {
+      let boundary;
+      while ((boundary = FRAME_SEPARATOR.exec(buffer)) !== null) {
+        const raw = buffer.slice(0, boundary.index);
+        buffer = buffer.slice(boundary.index + boundary[0].length);
+        const frame = parseSseFrame(raw);
+        if (frame) on[frame.event]?.(frame.data);
+      }
+    };
+
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        drain();
+      }
+      buffer += decoder.decode();  // flush any trailing multi-byte sequence
+      drain();
+    } finally {
+      try { reader.releaseLock(); } catch { /* already released */ }
+    }
   },
 
   cancelChatRequest() {

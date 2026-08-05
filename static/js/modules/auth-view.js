@@ -7,13 +7,14 @@
 
 import { CONFIG } from './config.js';
 import { DOMCache } from './dom.js';
-import { AppState } from './state.js';
-import { Effects } from './effects.js';
 import { RobotStateManager } from './robot.js';
+import { I18n } from './i18n.js';
 
 function updateStatusAndActions(user) {
   const isLoggedIn = !!user;
-  const statusText = isLoggedIn ? `Logged in as: ${user.email}` : 'Not logged in';
+  const statusText = isLoggedIn
+    ? I18n.t('auth.loggedInAs', { email: user.email })
+    : I18n.t('auth.notLoggedIn');
 
   DOMCache.getAll(`${CONFIG.SELECTORS.USER_STATUS}, ${CONFIG.SELECTORS.USER_STATUS_OFFCANVAS}`).forEach(el => {
     if (el) el.textContent = statusText;
@@ -45,14 +46,7 @@ function showAuthenticatedView() {
   RobotStateManager.transitionToAuthenticatedView();
 
   setTimeout(() => {
-    if (unauthView) {
-      unauthView.classList.add(CONFIG.CLASSES.D_NONE);
-      const particles = AppState.get('particleBackground');
-      if (particles) {
-        particles.destroy();
-        AppState.set('particleBackground', null);
-      }
-    }
+    if (unauthView) unauthView.classList.add(CONFIG.CLASSES.D_NONE);
     if (authView) {
       authView.classList.remove(CONFIG.CLASSES.D_NONE);
       authView.style.animation = 'viewFadeIn 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards';
@@ -68,7 +62,6 @@ function showUnauthenticatedView() {
   if (unauthView) {
     unauthView.classList.remove(CONFIG.CLASSES.D_NONE);
     unauthView.style.animation = 'viewFadeIn 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards';
-    setTimeout(() => Effects.initParticles(), 100);
   }
 }
 

@@ -17,6 +17,7 @@ import json
 import logging
 import re
 import sys
+import uuid
 from functools import wraps
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union, Tuple, cast, Sequence, Callable # Added Callable
@@ -30,11 +31,13 @@ from flask import (
     Response,
     current_app,
     jsonify,
+    make_response,
     redirect,
     render_template,
     request,
     send_from_directory,
     session,
+    stream_with_context,
     url_for,
 )
 from flask_cors import CORS
@@ -89,10 +92,21 @@ for module, default_level in [
 # Application-Specific Imports (after logger setup)
 # ──────────────────────────────────────────────────────────
 from web.api.auth import auth_bp
+from web.services.citations import build_source_payload, normalize_legacy_citations
+from web.services.conversation_store import ConversationStore
 from web.services.openai_app import OpenAIHandler
+from web.services.sse import sse, sse_headers
 from web.services.search_engine import ImprovedSearchEngine, SearchResult
 from web.services.search_exceptions import ManifestValidationError
 from web.utils.config_loader import config
+from web.utils.i18n import (
+    load_catalog,
+    make_translator,
+    normalize_lang,
+    pick_lang,
+    runtime_subset,
+    text_direction,
+)
 from web.utils.supabase_client import get_supabase
 
 # ──────────────────────────────────────────────────────────
@@ -101,6 +115,12 @@ from web.utils.supabase_client import get_supabase
 MAX_SESSION_CHAT_HISTORY_CHARS = 3_500
 DEFAULT_MAX_CHAT_MESSAGES_COUNT = 5
 ALLOWED_CHAT_CATEGORIES = {"all", "regulatory", "pharmacovigilance", "veterinary", "biological"}
+SUPPORTED_FAQ_LANGS = ("en", "ar")
+
+# Cache-buster appended to every static CSS/JS URL. Bump this in any commit that
+# changes a stylesheet or module, otherwise returning users get a stale
+# components.css against a fresh tokens.css and see a half-styled app.
+ASSET_VERSION = "dossier7"
 
 # ──────────────────────────────────────────────────────────
 # Helper Functions
@@ -232,13 +252,24 @@ def _init_extensions(app: Flask, testing: bool) -> Limiter:
         connect_src.append(f"wss://{project_ref}.supabase.co")
     connect_src.append("wss://*.supabase.co")  # Allow all Supabase WebSocket connections
     
+    # Dev-only allowance for the Impeccable live-mode helper, which serves its
+    # picker script and an SSE channel from http://localhost:8400. It needs both
+    # script-src (to load) and connect-src (to poll).
+    #
+    # This CANNOT reach production: is_debug_mode is `config.is_debug() or testing`
+    # (see above), so a deployed app with debug:false and testing off gets an empty
+    # list and an unchanged policy. Note the origin is http, not https — the
+    # permissive debug connect-src below allows `https:` and `wss:` only, so the
+    # allowance has to be appended there too rather than being covered by it.
+    impeccable_live_dev = ["http://localhost:8400"] if is_debug_mode else []
+
     csp = {
         "default-src": ["'self'"],
-        "script-src": ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net", "https://cdn.lordicon.com", "https://cdnjs.cloudflare.com"],
+        "script-src": ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net", "https://cdn.lordicon.com", "https://cdnjs.cloudflare.com"] + impeccable_live_dev,
         "style-src": ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net", "https://cdnjs.cloudflare.com", "https://fonts.googleapis.com"],
         "img-src": ["'self'", "data:", "https:"],
         "font-src": ["'self'", "https://cdn.jsdelivr.net", "https://cdnjs.cloudflare.com", "data:", "https://fonts.gstatic.com", "https://r2cdn.perplexity.ai"],
-        "connect-src": connect_src,
+        "connect-src": connect_src + impeccable_live_dev,
     }
     
     # In debug mode, be more permissive for development (allows browser extensions)
@@ -246,7 +277,7 @@ def _init_extensions(app: Flask, testing: bool) -> Limiter:
         # Allow fonts from any HTTPS source (for browser extensions like Perplexity)
         csp["font-src"] = ["'self'", "https:", "data:"]
         # Allow connections to any HTTPS/WSS (for development and browser extensions)
-        csp["connect-src"] = ["'self'", "https:", "wss:"]
+        csp["connect-src"] = ["'self'", "https:", "wss:"] + impeccable_live_dev
         logging.info("CSP configured in permissive debug mode for development")
     
     # Disable force_https when:
@@ -277,13 +308,79 @@ def _init_extensions(app: Flask, testing: bool) -> Limiter:
     return limiter
 
 
+def _register_testing_doubles(app: Flask) -> None:
+    """Wire up mock search and LLM services.
+
+    These return real objects rather than bare MagicMocks, so ``?testing=true``
+    is a working demo of the full pipeline — streaming, sources and citations —
+    without an OpenAI key or a built index. Tests override the return values
+    they care about.
+    """
+    from unittest.mock import MagicMock
+
+    # max_context_results is assigned in OpenAIHandler.__init__, so spec= alone
+    # does not expose it and any access raises AttributeError.
+    handler = MagicMock(spec=OpenAIHandler)
+    handler.max_context_results = config.get("openai", "max_context_results", 8)
+    handler.model = config.get("openai", "model", "gpt-4o-mini")
+
+    demo_answer = (
+        "Applications for drug registration must be submitted through the SFDA electronic "
+        "portal [1]. The dossier follows the **eCTD** structure, and the manufacturing site "
+        "must hold a valid GMP certificate issued by a recognised authority [2].\n\n"
+        "| Stage | Timeline |\n| --- | --- |\n| Screening | 20 working days |\n"
+        "| Scientific review | 180 working days |\n\n"
+        "Marketing authorisation holders must additionally nominate a qualified person "
+        "resident in the Kingdom [3]."
+    )
+
+    def fake_stream(*_args, **_kwargs):
+        # Chunked on word boundaries to exercise the incremental renderer the
+        # way a real model would.
+        import re as _re
+        for token in _re.findall(r"\S+\s*", demo_answer):
+            yield token
+
+    demo_suggestions = ["What documents are required?", "How long does review take?"]
+
+    # stream_response needs side_effect because each call must yield a fresh
+    # generator. The other two use return_value so a test can simply assign
+    # its own return_value — side_effect would take precedence and silently
+    # ignore it.
+    handler.stream_response.side_effect = fake_stream
+    handler.generate_response.return_value = (demo_answer, demo_suggestions)
+    handler.generate_suggestions.return_value = demo_suggestions
+
+    documents = [
+        ("2022-10-19_Guidance_for_Submission.pdf", 14, "regulatory", 0.71, 0.63, 0.80),
+        ("2021-03-02_GMP_Requirements.pdf", 7, "regulatory", 0.52, 0.59, 0.41),
+        ("2023-01-11_Pharmacovigilance_Guideline.pdf", 31, "pharmacovigilance", 0.34, 0.30, 0.37),
+    ]
+    demo_results = [
+        SearchResult(
+            text=(
+                f"Extract from {name}: registration dossiers shall be submitted electronically "
+                "and reviewed against the applicable SFDA guidance in force at the time of filing."
+            ),
+            score=score, document=name, category=category, page=page,
+            chunk_id=f"{name}_p{page}_1",
+            metadata={"semantic_score": semantic, "lexical_score": lexical},
+        )
+        for name, page, category, score, semantic, lexical in documents
+    ]
+
+    search_engine = MagicMock(spec=ImprovedSearchEngine, is_initialized=lambda: True)
+    search_engine.search.return_value = demo_results
+
+    app.config["openai_handler"] = handler
+    app.config["search_engine"] = search_engine
+    logging.info("Mock services registered for testing.")
+
+
 def _initialize_services(app: Flask, testing: bool) -> None:
     """Attach search engine and LLM handlers to the app config."""
     if testing:
-        from unittest.mock import MagicMock
-        app.config["openai_handler"] = MagicMock(spec=OpenAIHandler)
-        app.config["search_engine"] = MagicMock(spec=ImprovedSearchEngine, is_initialized=lambda: True)
-        logging.info("Mock services registered for testing.")
+        _register_testing_doubles(app)
         return
 
     app.config["openai_handler"] = OpenAIHandler()
@@ -319,30 +416,57 @@ def _initialize_services(app: Flask, testing: bool) -> None:
 
 
 def _load_faq_data() -> Dict[str, Any]:
-    """Load FAQ data from YAML file."""
+    """Load FAQ data from YAML, keyed by language.
+
+    Accepts both the language-keyed shape ({en: {...}, ar: {...}}) and the
+    older flat shape, so the file can be rolled back without a code change.
+    Always returns {lang: {category: {...}}}.
+    """
     faq_path = PROJECT_ROOT / "faq.yaml"
     try:
         with faq_path.open("r", encoding="utf-8") as f:
-            faq_data = yaml.safe_load(f)
-        logging.info("FAQ data loaded successfully with %d categories.", len(faq_data or {}))
-        return faq_data or {}
+            faq_data = yaml.safe_load(f) or {}
     except FileNotFoundError:
         logging.error("faq.yaml not found. FAQ feature will be disabled.")
+        return {}
     except Exception as e:
         logging.error("Error parsing faq.yaml: %s", e)
-    return {}
+        return {}
+
+    if not set(faq_data) & set(SUPPORTED_FAQ_LANGS):
+        logging.info("faq.yaml is in the legacy flat shape; treating it as English.")
+        faq_data = {"en": faq_data}
+
+    logging.info(
+        "FAQ data loaded for %s.", ", ".join(sorted(faq_data)) or "no languages"
+    )
+    return faq_data
 
 
 def _register_routes(app: Flask, limiter: Limiter) -> None:
     """Register all application routes and blueprints."""
     app.config["FREQUENT_QUESTIONS"] = _load_faq_data()
+    app.config["conversations"] = ConversationStore()
     app.register_blueprint(auth_bp, url_prefix="/auth")
+
+    workers = os.getenv("WEB_CONCURRENCY", "1")
+    if workers != "1":
+        logging.warning(
+            "WEB_CONCURRENCY=%s but ConversationStore is process-local — conversations "
+            "will split across workers and users will randomly lose context. This app "
+            "must run single-worker anyway (in-RAM FAISS index); use --workers 1 --threads 8.",
+            workers,
+        )
+
+    @app.context_processor
+    def inject_template_globals() -> Dict[str, Any]:
+        return {"asset_version": ASSET_VERSION}
 
     @app.route("/")
     def index():
         supabase_url = os.getenv("SUPABASE_URL")
         supabase_anon_key = os.getenv("SUPABASE_ANON_KEY")
-        
+
         # Validate Supabase configuration
         if not supabase_url or not supabase_anon_key:
             logging.warning(
@@ -350,14 +474,29 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
                 "present" if supabase_url else "missing",
                 "present" if supabase_anon_key else "missing"
             )
-        
-        return render_template(
+
+        # Rendering the page strings server-side means an Arabic reader never
+        # sees a flash of English while the JS boots.
+        lang = pick_lang(request)
+        catalog = load_catalog(lang)
+
+        response = make_response(render_template(
             "index.html",
             SUPABASE_URL=supabase_url or "",
             SUPABASE_ANON_KEY=supabase_anon_key or "",
             is_authenticated=bool(session.get("user_email")),
             user_email=session.get("user_email"),
-        )
+            lang=lang,
+            text_dir=text_direction(lang),
+            t=make_translator(catalog),
+            i18n_runtime=runtime_subset(catalog),
+        ))
+        # Persist an explicit ?lang= so the choice survives the next visit.
+        if request.args.get("lang"):
+            response.set_cookie(
+                "lang", lang, max_age=31_536_000, samesite="Lax", path="/"
+            )
+        return response
 
     @app.route("/favicon.ico")
     def favicon() -> Response:
@@ -365,11 +504,135 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
 
     @app.route("/api/frequent-questions")
     def get_frequent_questions() -> Response:
-        return jsonify(current_app.config["FREQUENT_QUESTIONS"])
+        """Return one language's FAQ block.
+
+        The response shape is unchanged from before the i18n work, so the
+        client and its tests need no changes.
+        """
+        catalogs = current_app.config["FREQUENT_QUESTIONS"]
+        lang = normalize_lang(request.args.get("lang") or request.cookies.get("lang"))
+
+        selected = dict(catalogs.get("en", {}))
+        # Per-category fallback: a category missing from Arabic still renders,
+        # in English, rather than vanishing from the sidebar.
+        selected.update(catalogs.get(lang, {}))
+        return jsonify(selected)
+
+    # Shared across both chat routes so a client cannot double its allowance by
+    # alternating between the streaming and blocking endpoints.
+    chat_limit = limiter.shared_limit(
+        lambda: config.get("server", "rate_limit", {}).get("chat_api", "10 per minute"),
+        scope="chat",
+    )
+
+    def _validate_chat_request() -> Tuple[Optional[Dict[str, Any]], Optional[Tuple[Response, int]]]:
+        """Parse and validate a chat payload. Returns (payload, error_response)."""
+        body = request.get_json(force=True, silent=True) or {}
+        query = (body.get("query") or "").strip()
+        category = (body.get("category") or "all").lower()
+        lang = (body.get("lang") or "en").lower()
+
+        if not query:
+            return None, (jsonify(error="Query cannot be empty"), 400)
+        if category not in ALLOWED_CHAT_CATEGORIES:
+            return None, (
+                jsonify(error=f"Invalid category. Allowed: {', '.join(ALLOWED_CHAT_CATEGORIES)}"),
+                400,
+            )
+
+        engine = current_app.config.get("search_engine")
+        if not engine or not engine.is_initialized():
+            logging.error("Search engine unavailable for chat request.")
+            return None, (jsonify(error="Search service is currently unavailable."), 503)
+
+        return {
+            "query": query,
+            "category": category,
+            "lang": lang if lang in ("en", "ar") else "en",
+            "engine": engine,
+        }, None
+
+    @app.route("/api/chat/stream", methods=["POST"])
+    @auth_required
+    @chat_limit
+    def handle_chat_stream() -> Union[Response, Tuple[Response, int]]:
+        payload, error = _validate_chat_request()
+        if error:
+            return error
+
+        query, category, lang = payload["query"], payload["category"], payload["lang"]
+        engine = payload["engine"]
+        handler: OpenAIHandler = current_app.config["openai_handler"]
+        store: ConversationStore = current_app.config["conversations"]
+        max_pairs = current_app.config["MAX_CHAT_HISTORY_MESSAGE_PAIRS"]
+
+        # ── Every session touch happens HERE, in the view body. ──
+        # Flask writes Set-Cookie in finalize_request(), which runs after this
+        # function returns but before the WSGI server iterates the generator
+        # below, so a session write inside generate() would be silently dropped.
+        conversation_id = session.get("conv_id")
+        if not conversation_id:
+            conversation_id = uuid.uuid4().hex
+            session["conv_id"] = conversation_id
+        store.adopt_cookie_history(conversation_id, session.pop("chat_history", None))
+        history = store.get(conversation_id)
+
+        def generate():
+            try:
+                yield sse("meta", {
+                    "conversation_id": conversation_id,
+                    "category": category,
+                    "lang": lang,
+                    "model": getattr(handler, "model", "unknown"),
+                })
+                yield sse("stage", {"stage": "searching"})
+
+                results = engine.search(query, category)
+                sources = build_source_payload(results, limit=handler.max_context_results)
+                yield sse("sources", {"sources": sources})
+                yield sse("stage", {"stage": "retrieved", "count": len(sources)})
+
+                llm_context = [
+                    {"text": r.text, "document": r.document, "category": r.category, "page": r.page}
+                    for r in results
+                ]
+
+                yield sse("stage", {"stage": "drafting"})
+                parts: List[str] = []
+                for token in handler.stream_response(query, llm_context, category, history, lang=lang):
+                    parts.append(token)
+                    yield sse("delta", {"t": token})
+
+                answer = normalize_legacy_citations("".join(parts).strip(), sources)
+
+                yield sse("stage", {"stage": "finalizing"})
+                yield sse("suggestions", {
+                    "suggested_questions": handler.generate_suggestions(query, answer, lang=lang),
+                })
+
+                store.append_turn(conversation_id, query, answer, max_pairs, MAX_SESSION_CHAT_HISTORY_CHARS)
+                yield sse("done", {"finish_reason": "stop", "chars": len(answer)})
+
+            except GeneratorExit:
+                # Client disconnected (cancelled or navigated away). Re-raising
+                # lets stream_response's context manager close the upstream
+                # connection, and skips append_turn so a cancelled turn is
+                # correctly not recorded in history.
+                logging.info("Client disconnected mid-stream (conv=%s)", conversation_id)
+                raise
+            except Exception:
+                logging.error("Streaming chat failed (conv=%s)", conversation_id, exc_info=True)
+                # The 200 status line is already sent, so failures after the
+                # first yield can only be reported in-band.
+                yield sse("error", {"error": "An internal server error occurred.", "code": "internal"})
+
+        response = Response(stream_with_context(generate()), mimetype="text/event-stream")
+        sse_headers(response)
+        return response
 
     @app.route("/api/chat", methods=["POST"])
     @auth_required
-    @limiter.limit(lambda: config.get("server", "rate_limit", {}).get("chat_api", "10 per minute"))
+    @chat_limit
     def handle_chat() -> Union[Response, Tuple[Response, int]]:
         try:
             payload = request.get_json(force=True)
@@ -390,13 +653,18 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
             llm_context = [{"text": r.text, "document": r.document, "category": r.category, "page": r.page} for r in search_results]
 
             openai_handler: OpenAIHandler = current_app.config["openai_handler"]
+            # sources[i] must be the same passage as prompt block [i], so both
+            # are cut to the same limit.
+            sources = build_source_payload(search_results, limit=openai_handler.max_context_results)
+
             chat_history = session.get("chat_history", [])
             answer, suggested_questions = openai_handler.generate_response(query, llm_context, category, chat_history)
+            answer = normalize_legacy_citations(answer, sources)
 
             chat_history.extend([{"role": "user", "content": query}, {"role": "assistant", "content": answer}])
             session["chat_history"] = _truncate_chat_history(chat_history, current_app.config["MAX_CHAT_HISTORY_MESSAGE_PAIRS"], MAX_SESSION_CHAT_HISTORY_CHARS)
-            
-            return jsonify(response=answer, suggested_questions=suggested_questions)
+
+            return jsonify(response=answer, suggested_questions=suggested_questions, sources=sources)
 
         except Exception as exception:
             logging.error("Unhandled error in /api/chat: %s", exception, exc_info=True)

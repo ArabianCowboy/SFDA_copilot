@@ -4,7 +4,7 @@
  * AI-powered regulatory guidance for pharmaceutical regulations.
  * This file wires the ES modules together; logic lives under ./modules/.
  *
- * @version 4.0.0 (Clinical Blue refactor — modular + fresh mascot)
+ * @version 5.0.0 (Dossier — ink + Plex, citations as the signature element)
  */
 
 import { CONFIG } from './modules/config.js';
@@ -18,6 +18,8 @@ import { Services } from './modules/services.js';
 import { Handlers } from './modules/handlers.js';
 import { CustomDropdown } from './modules/dropdown.js';
 import { mountRobots, initLandingRobot, RobotCompanion } from './modules/robot.js';
+import { initCitationInteractions } from './modules/citations.js';
+import { I18n, Transcript, initLanguageToggle } from './modules/i18n.js';
 
 const App = {
   async loadProfileWithTimeout(userId, timeoutMs = CONFIG.API_TIMEOUT, retries = CONFIG.RETRY_MAX_ATTEMPTS) {
@@ -51,7 +53,7 @@ const App = {
     } catch (error) {
       logError(error, 'handleTestingModeInit.getFaqData');
       UI.Faq.clearButtons();
-      ErrorHandler.showToast('Failed to load FAQs in testing mode.', true);
+      ErrorHandler.showToast(I18n.t('faq.loadFailedTesting'), true);
     }
   },
 
@@ -61,21 +63,24 @@ const App = {
 
     Handlers.bindEvents();
     ThemeManager.init();
+    UI.hydrateTimestamps();
+    initCitationInteractions(DOMCache.get(CONFIG.SELECTORS.MESSAGES));
+    UI.initJumpToLatest();
+    initLanguageToggle();
+    /* A language switch reloads the page; this puts the transcript back. */
+    Transcript.restore();
 
-    /* Mount the mascot, then start the purely-decorative cinematic layer.
-       These run regardless of whether auth services are configured below. */
+    /* Mount the mascot and the card reveal. These run regardless of whether
+       auth services are configured below. */
     mountRobots();
-    Effects.initParticles();
     Effects.initCardAnimations();
-    Effects.initHeroParallax();
-    Effects.initButtonRipples();
     initLandingRobot();
     RobotCompanion.init();
     CustomDropdown.init();
 
     if (!window.SUPABASE_URL || !window.SUPABASE_ANON_KEY) {
       logError('Supabase configuration missing.', 'App.init');
-      return ErrorHandler.showToast('Authentication services are not configured.', true);
+      return ErrorHandler.showToast(I18n.t('auth.servicesUnavailable'), true);
     }
 
     try {
@@ -99,11 +104,11 @@ const App = {
 
       const sendBtn = DOMCache.get(CONFIG.SELECTORS.SEND_BTN);
       if (sendBtn) {
-        AppState.set('originalSendButtonText', sendBtn.textContent?.trim() || 'Send');
+        AppState.set('originalSendButtonText', sendBtn.textContent?.trim() || I18n.t('chat.send'));
       }
     } catch (error) {
       logError(error, 'App.init services');
-      return ErrorHandler.showToast('Failed to initialize core application services.', true);
+      return ErrorHandler.showToast(I18n.t('auth.initFailed'), true);
     }
 
     if (window.location.search.includes('testing=true')) {
@@ -141,7 +146,7 @@ const App = {
         } catch (error) {
           logError(error, 'onAuthStateChange.getFaqData');
           UI.Faq.clearButtons();
-          ErrorHandler.showToast('Failed to load FAQs.', true);
+          ErrorHandler.showToast(I18n.t('faq.loadFailed'), true);
         }
 
         this.loadProfileWithTimeout(user.id)

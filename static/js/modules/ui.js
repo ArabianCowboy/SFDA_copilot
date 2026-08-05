@@ -13,6 +13,9 @@ import { AppState } from './state.js';
 import { Utils } from './utils.js';
 import { ThemeManager } from './theme.js';
 import { RobotStateManager } from './robot.js';
+import { bindCitations, renderSourceDeck, nextMessageId } from './citations.js';
+import { MarkdownStream } from './stream-render.js';
+import { I18n } from './i18n.js';
 
 function createMessageContent(text, isBot) {
   const contentDiv = DOMCache.createElement('div', 'message-content');
@@ -24,42 +27,77 @@ function createMessageContent(text, isBot) {
   return contentDiv;
 }
 
-function createMessageElement(text, sender) {
+function createMessageElement(text, sender, msgId) {
   const isBot = sender === 'bot';
   const messageWrapper = DOMCache.createElement(
-    'div', 'message', isBot ? 'chatbot-message' : 'user-message', 'mb-3', 'message-medium'
+    'div', 'message', isBot ? 'chatbot-message' : 'user-message', 'mb-3'
   );
+  if (msgId) messageWrapper.dataset.msgId = msgId;
+
   const messageBubble = DOMCache.createElement('div', 'message-bubble');
 
   if (isBot) {
-    const avatarDiv = DOMCache.createElement('div', 'avatar', 'mb-2');
+    const avatarDiv = DOMCache.createElement('div', 'avatar');
     avatarDiv.innerHTML = RobotStateManager.createAvatarHTML();
     messageBubble.appendChild(avatarDiv);
   }
 
-  messageBubble.appendChild(createMessageContent(text, isBot));
+  const content = createMessageContent(text, isBot);
+  /* dir="auto" so an Arabic answer lays out RTL inside an LTR page, and an
+     English answer lays out LTR inside an Arabic one. */
+  content.setAttribute('dir', 'auto');
+  messageBubble.appendChild(content);
 
-  const timestampEl = DOMCache.createElement('div', 'timestamp');
-  timestampEl.textContent = new Date().toLocaleTimeString();
+  const timestampEl = DOMCache.createElement('time', 'timestamp');
+  const now = new Date();
+  timestampEl.textContent = now.toLocaleTimeString();
+  timestampEl.dateTime = now.toISOString();
   messageBubble.appendChild(timestampEl);
 
   messageWrapper.appendChild(messageBubble);
 
   if (isBot) {
-    messageWrapper.appendChild(DOMCache.createElement('div', CONFIG.CLASSES.SUGGESTED_CONTAINER, 'mt-2'));
+    messageWrapper.appendChild(DOMCache.createElement('div', CONFIG.CLASSES.SUGGESTED_CONTAINER));
   }
 
   return messageWrapper;
 }
 
+/** Apply the markdown class hooks the stylesheet expects. */
+function decorateMarkdown(scope) {
+  scope.querySelectorAll('ul, ol').forEach(el => {
+    if (!el.closest('.source-deck')) el.classList.add(CONFIG.CLASSES.MESSAGE_LIST);
+  });
+  scope.querySelectorAll('pre code').forEach(el => el.parentElement?.classList.add(CONFIG.CLASSES.MESSAGE_CODE_BLOCK));
+  scope.querySelectorAll(':not(pre) > code').forEach(el => el.classList.add(CONFIG.CLASSES.MESSAGE_INLINE_CODE));
+}
+
 export const UI = {
+  /**
+   * Fill any server-rendered `<time data-ts-now>` with the reader's local time.
+   * The welcome bubble's timestamp used to be a `{{ now }}` Jinja variable that
+   * was never provided, so it always shipped empty.
+   */
+  hydrateTimestamps() {
+    const now = new Date();
+    document.querySelectorAll('[data-ts-now]').forEach(el => {
+      el.textContent = now.toLocaleTimeString(I18n.lang);
+      el.dateTime = now.toISOString();
+    });
+  },
+
   scrollMessagesToBottom() {
     const container = DOMCache.get(CONFIG.SELECTORS.MESSAGES);
     container?.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+    // Going to the bottom always clears the pill — including when the reader
+    // sends a message, which should bring them back regardless of where they
+    // had scrolled to.
+    this.setJumpToLatest(false);
   },
 
-  addMessage(text, sender, suggestedQuestions = []) {
-    const messageEl = createMessageElement(text, sender);
+  addMessage(text, sender, suggestedQuestions = [], sources = []) {
+    const msgId = sender === 'bot' ? nextMessageId() : null;
+    const messageEl = createMessageElement(text, sender, msgId);
     const container = DOMCache.get(CONFIG.SELECTORS.MESSAGES);
     if (!container) return;
 
@@ -67,9 +105,16 @@ export const UI = {
       container.appendChild(messageEl);
 
       if (sender === 'bot') {
-        messageEl.querySelectorAll('ul, ol').forEach(el => el.classList.add(CONFIG.CLASSES.MESSAGE_LIST));
-        messageEl.querySelectorAll('pre code').forEach(el => el.parentElement?.classList.add(CONFIG.CLASSES.MESSAGE_CODE_BLOCK));
-        messageEl.querySelectorAll(':not(pre) > code').forEach(el => el.classList.add(CONFIG.CLASSES.MESSAGE_INLINE_CODE));
+        const content = messageEl.querySelector('.message-content');
+        decorateMarkdown(messageEl);
+        bindCitations(content, sources, msgId);
+
+        if (Array.isArray(sources) && sources.length) {
+          messageEl.insertBefore(
+            renderSourceDeck(sources, msgId),
+            messageEl.querySelector(`.${CONFIG.CLASSES.SUGGESTED_CONTAINER}`)
+          );
+        }
 
         const suggestionsContainer = messageEl.querySelector(`.${CONFIG.CLASSES.SUGGESTED_CONTAINER}`);
         Utils.renderSuggestedQuestions(suggestionsContainer, suggestedQuestions);
@@ -80,6 +125,178 @@ export const UI = {
     AppState.get('viewTransitionEnabled') ? document.startViewTransition(render) : render();
   },
 
+  /** True when the reader is at (or near) the bottom of the transcript. */
+  isPinnedToBottom() {
+    const c = DOMCache.get(CONFIG.SELECTORS.MESSAGES);
+    if (!c) return true;
+    return c.scrollHeight - c.scrollTop - c.clientHeight < 80;
+  },
+
+  /**
+   * Insert an empty bot bubble and return a MarkdownStream that fills it.
+   *
+   * This is the ONLY view-transition-wrapped call in the streaming path. A
+   * view transition snapshots the whole page; running one per token would
+   * freeze the tab.
+   */
+  beginStreamingMessage() {
+    const container = DOMCache.get(CONFIG.SELECTORS.MESSAGES);
+    if (!container) return null;
+
+    const msgId = nextMessageId();
+    const messageEl = createMessageElement('', 'bot', msgId);
+    const content = messageEl.querySelector('.message-content');
+
+    /* Announcing a 2000-character answer token by token makes the app
+       unusable with a screen reader. #messages stays aria-live="polite" for
+       completed messages; the in-flight one opts out and announces once at
+       the end instead. */
+    messageEl.setAttribute('aria-live', 'off');
+    messageEl.setAttribute('aria-busy', 'true');
+
+    const render = () => container.appendChild(messageEl);
+    AppState.get('viewTransitionEnabled') ? document.startViewTransition(render) : render();
+
+    const state = { sources: [] };
+    const stream = new MarkdownStream(content, (scope) => {
+      decorateMarkdown(scope);
+      bindCitations(scope, state.sources, msgId);
+    });
+
+    return { msgId, messageEl, content, stream, state };
+  },
+
+  /** Auto-scroll only when the reader hasn't scrolled away. */
+  followStream() {
+    if (!this.isPinnedToBottom()) {
+      // Content is arriving below the fold; flag it rather than yanking them back.
+      this.setJumpToLatest(true, true);
+      return;
+    }
+    const c = DOMCache.get(CONFIG.SELECTORS.MESSAGES);
+    /* 'auto', not 'smooth': a smooth scroll target retargeted at 60Hz is
+       visibly janky. The CSS smooth behaviour resumes once streaming ends. */
+    c?.scrollTo({ top: c.scrollHeight, behavior: 'auto' });
+  },
+
+  /**
+   * Show or hide the jump-to-latest pill.
+   * @param {boolean} show
+   * @param {boolean} [unread] mark that new content arrived below the fold
+   */
+  setJumpToLatest(show, unread = false) {
+    const pill = document.getElementById('jump-to-latest');
+    if (!pill) return;
+
+    if (unread) pill.querySelector('.jump-dot')?.removeAttribute('hidden');
+
+    if (show === !pill.hidden) return;   // already in the requested state
+
+    pill.hidden = !show;
+    // The entrance is a CSS animation keyed off :not([hidden]), so nothing
+    // here depends on an animation frame ever arriving.
+    if (!show) pill.querySelector('.jump-dot')?.setAttribute('hidden', '');
+  },
+
+  /**
+   * Track scroll position and reveal the pill when the reader scrolls away
+   * from the bottom, so a long answer streaming in never drags them along.
+   */
+  initJumpToLatest() {
+    const container = DOMCache.get(CONFIG.SELECTORS.MESSAGES);
+    const pill = document.getElementById('jump-to-latest');
+    if (!container || !pill) return;
+
+    let queued = false;
+    const sync = () => {
+      queued = false;
+      this.setJumpToLatest(!this.isPinnedToBottom());
+    };
+
+    // rAF-coalesced: scroll fires far more often than once per frame.
+    container.addEventListener('scroll', () => {
+      if (queued) return;
+      queued = true;
+      requestAnimationFrame(sync);
+    }, { passive: true });
+
+    /* rAF is throttled while the tab is hidden, so a scroll that happened just
+       before backgrounding may not have synced. Re-check on return. */
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) sync();
+    });
+
+    pill.addEventListener('click', () => {
+      this.setJumpToLatest(false);
+      this.scrollMessagesToBottom();
+    });
+  },
+
+  attachSourceDeck(handle, sources) {
+    if (!handle || !Array.isArray(sources) || !sources.length) return;
+    handle.state.sources = sources;
+    handle.messageEl.insertBefore(
+      renderSourceDeck(sources, handle.msgId),
+      handle.messageEl.querySelector(`.${CONFIG.CLASSES.SUGGESTED_CONTAINER}`)
+    );
+  },
+
+  finishStreamingMessage(handle, suggestedQuestions = []) {
+    if (!handle) return;
+    handle.stream.finish();
+    this.setStage(handle, null);
+    handle.messageEl.removeAttribute('aria-busy');
+    handle.messageEl.setAttribute('aria-live', 'polite');
+
+    const container = handle.messageEl.querySelector(`.${CONFIG.CLASSES.SUGGESTED_CONTAINER}`);
+    Utils.renderSuggestedQuestions(container, suggestedQuestions);
+
+    const count = handle.state.sources.length;
+    this.announce(count
+      ? I18n.t('cite.answerCompleteWithSources', { n: count })
+      : I18n.t('cite.answerComplete'));
+    this.scrollMessagesToBottom();
+  },
+
+  /** Mark a stream that failed or was cancelled, keeping whatever arrived. */
+  markStreamIncomplete(handle, kind = 'error') {
+    if (!handle) return;
+    handle.stream.finish();
+    this.setStage(handle, null);
+    handle.messageEl.removeAttribute('aria-busy');
+    handle.messageEl.classList.add(kind === 'cancelled' ? 'is-cancelled' : 'is-errored');
+
+    const note = DOMCache.createElement('div', 'stream-note', kind);
+    note.textContent = I18n.t(kind === 'cancelled' ? 'chat.stopped' : 'chat.incomplete');
+    handle.messageEl.querySelector('.message-bubble')?.appendChild(note);
+  },
+
+  /** One-shot screen-reader announcement. */
+  announce(message) {
+    let region = document.getElementById('sr-announcer');
+    if (!region) {
+      region = DOMCache.createElement('div', 'sr-only');
+      region.id = 'sr-announcer';
+      region.setAttribute('role', 'status');
+      region.setAttribute('aria-live', 'polite');
+      document.body.appendChild(region);
+    }
+    region.textContent = message;
+  },
+
+  /** Honest retrieval progress, replacing the blind 800ms timer. */
+  setStage(handle, text) {
+    if (!handle) return;
+    let line = handle.messageEl.querySelector('.stage-line');
+    if (!text) { line?.remove(); return; }
+    if (!line) {
+      line = DOMCache.createElement('div', 'stage-line');
+      line.innerHTML = '<span class="stage-dot"></span><span class="stage-text"></span>';
+      handle.messageEl.querySelector('.message-bubble')?.prepend(line);
+    }
+    line.querySelector('.stage-text').textContent = text;
+  },
+
   toggleTypingIndicator(show) {
     const container = DOMCache.get(CONFIG.SELECTORS.MESSAGES);
     if (!container) return;
@@ -88,7 +305,7 @@ export const UI = {
     const existingIndicator = document.getElementById(indicatorId);
 
     if (show && !existingIndicator) {
-      const wrapper = DOMCache.createElement('div', 'message', 'chatbot-message', 'message-medium');
+      const wrapper = DOMCache.createElement('div', 'message', 'chatbot-message');
       wrapper.id = indicatorId;
       wrapper.style.opacity = '1';
 
@@ -141,13 +358,13 @@ export const UI = {
 
     const sendBtn = DOMCache.get(CONFIG.SELECTORS.SEND_BTN);
     if (sendBtn) {
-      const originalText = AppState.get('originalSendButtonText') || 'Send';
+      const originalText = AppState.get('originalSendButtonText') || I18n.t('chat.send');
       sendBtn.innerHTML = isSending
-        ? '<i class="bi bi-stop-circle"></i> Cancel'
+        ? `<i class="bi bi-stop-circle"></i> ${I18n.t('chat.cancel')}`
         : `<i class="bi bi-send"></i> ${originalText}`;
       sendBtn.setAttribute(
         'aria-label',
-        isSending ? 'Cancel message' : 'Send message'
+        isSending ? I18n.t('chat.cancelAria') : I18n.t('chat.sendAria')
       );
     }
   },
@@ -196,7 +413,7 @@ export const UI = {
           section.appendChild(index === 0 ? content : content.cloneNode(true));
           section.querySelector('h4:first-of-type')?.classList.remove('mt-3');
         } else {
-          section.innerHTML = '<div class="text-secondary small text-center py-3">No FAQs available.</div>';
+          section.innerHTML = `<div class="text-secondary small text-center py-3">${I18n.t('faq.empty')}</div>`;
         }
       });
     },

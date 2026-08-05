@@ -1,169 +1,263 @@
 /* ===================================================================
-   SFDA Copilot — Design Tokens  ("Clinical Blue" theme)
-   Royal/sky-blue brand on cool neutral surfaces, with a muted
-   slate-blue secondary. Light + dark, semi-professional.
+   SFDA Copilot — Design Tokens  ("Dossier" theme)
+
+   A regulatory reference instrument, not a chat toy. Ink on paper,
+   hairline rules, one signal colour reserved exclusively for retrieval
+   and citation state, and a confidence green for relevance.
+
+   Three layers, in dependency order:
+     1. PRIMITIVES — raw ramps. The ONLY thing dark mode overrides.
+     2. SCALES     — spacing, type, z-index, radii, motion.
+     3. SEMANTICS  — what components are allowed to reference.
+
+   Rule: components use LAYER 3 names only. If you find yourself reaching
+   for a primitive in components.css, the semantic layer is missing a name.
+
+   (A fourth layer of @deprecated Clinical Blue aliases existed during the
+   migration so the new palette could land without touching components.css.
+   It shrank to nothing as each section was rewritten and has been removed.)
    =================================================================== */
 
 :root {
-  /* Brand — royal blue (darker for AA contrast on light surfaces) */
-  --primary-color: #2563eb;
-  --primary-color-rgb: 37 99 235;
-  --accent-color: #3b82f6;
-  --accent-color-rgb: 59 130 246;
-  --accent-color-hover: #1d4ed8;      /* filled-button hover bg (white text on it) */
-  --accent-link: #1d4ed8;             /* text/link accent on light surfaces (AA) */
+  /* ═══ LAYER 1 — PRIMITIVES ═══════════════════════════════════════ */
 
-  /* Secondary — muted slate-blue (depth only, never a second hue) */
-  --accent-warm: #64748b;
-  --accent-warm-rgb: 100 116 139;
-  --accent-amber: #94a3b8;
-  --accent-orange: #475569;
-  --accent-coral: #64748b;
-  --accent-coral-rgb: 100 116 139;
+  /* Ink — text and dark surfaces */
+  --ink-900: #0C1A2B;
+  --ink-700: #22364B;
+  --ink-500: #4A5D74;
+  --ink-300: #8195A9;
 
-  /* Signature gradients — single-hue blue, no rainbow */
-  --gradient-brand: linear-gradient(120deg, #2563eb 0%, #3b82f6 100%);
-  --gradient-brand-flow: linear-gradient(120deg, #1d4ed8 0%, #3b82f6 55%, #60a5fa 100%);
-  --gradient-sun: radial-gradient(circle at 50% 40%, #eff6ff 0%, #93c5fd 45%, #3b82f6 100%);
+  /* Paper — cool, archival, never cream */
+  --paper-000: #FFFFFF;
+  --paper-050: #FAFBFC;
+  --paper-100: #F2F5F8;
+
+  /* Rules — hairlines carry the structure in place of shadows */
+  --rule-200: #DDE3EA;
+  --rule-300: #C4CDD8;
+
+  /* Seal — the signal. Retrieval and citation state ONLY. Using this
+     colour for a generic button is a bug: it dilutes the one cue that
+     tells a reader "this came from a document". */
+  --seal-600: #1B4DB1;
+  --seal-700: #153C8C;
+  --seal-100: #E7EDFA;
+
+  /* Verify — confidence, relevance, high-scoring retrieval */
+  --verify-600: #0E7C66;
+  --verify-700: #0B6654;
+  --verify-100: #E2F1ED;
 
   /* Status */
-  --color-success: #059669;
-  --color-error: #dc2626;
-  --color-warning: #d97706;
+  --alert-600: #B3261E;
+  --warn-600: #8A5A00;
 
-  /* Text */
-  --text-color-dark: #1f2937;
-  --text-color-dark-muted: #6b7280;
-  --text-color-light: #111827;
-  --text-color-light-secondary: #4b5563;
-  --text-color-light-muted: #9ca3af;
+  /* ═══ LAYER 2 — SCALES ═══════════════════════════════════════════ */
 
-  /* Surfaces — cool neutral off-white (not warm cream) */
-  --background-light: #f4f6fb;
-  --background-light-alt: #e8edf5;
-  --surface: #ffffff;
-  --gradient-background: linear-gradient(160deg, #f4f6fb 0%, #eef2f8 50%, #e8eef6 100%);
-  --gradient-hero: radial-gradient(1200px 600px at 70% 10%, rgba(37 99 235 / 0.10) 0%, transparent 55%),
-                   radial-gradient(900px 500px at 15% 80%, rgba(100 116 139 / 0.10) 0%, transparent 55%),
-                   linear-gradient(160deg, #f4f6fb 0%, #eef2f8 50%, #e8eef6 100%);
+  /* Spacing — 4px base. Never write a raw px margin again. */
+  --space-0: 0;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 64px;
+  --space-9: 96px;
 
-  /* Borders — cool slate-gray */
-  --border-color-light: #dbe2ec;
-  --border-color-medium: #c3cdda;
-  --border-color-dark: #9aa8bd;
-  --border-color-modal: rgba(37 99 235 / 0.18);
+  /* Layout */
+  --gutter: clamp(16px, 4vw, 48px);
+  --measure: 68ch;                 /* reading column — answers are prose */
+  --rail-w: clamp(240px, 20vw, 320px);
 
-  /* Typography */
-  --font-primary: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --font-headings: 'Plus Jakarta Sans', 'Inter', sans-serif;
-  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+  /* Type scale */
+  --fs-100: .75rem;
+  --fs-200: .8125rem;
+  --fs-300: .9375rem;
+  --fs-400: 1.0625rem;             /* body — 17px, set for sustained reading */
+  --fs-500: 1.25rem;
+  --fs-600: 1.5rem;
+  --fs-700: 2rem;
+  --fs-800: 2.75rem;
+  /* Floor is 2.25rem, not 2.75rem: the Arabic wordmark is nearly twice the
+     inline length of the English one, and at 44px it wraps to two lines on a
+     390px screen. 36px keeps it on one line and matches what the old
+     Bootstrap .display-3 actually rendered at that width (~37px). */
+  --fs-900: clamp(2.25rem, 6vw, 4rem);
 
-  /* Radii */
-  --radius-xs: 4px;
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 16px;
-  --radius-xl: 24px;
-  --radius-msg: 18px;
+  --lh-tight: 1.15;
+  --lh-snug: 1.3;
+  --lh-body: 1.65;
+  --lh-loose: 1.8;
 
-  /* Motion */
-  --duration-s: .2s;
-  --duration-m: .35s;
-  --duration-l: .6s;
-  --duration-xl: .8s;
-  --ease-out: cubic-bezier(0.25, 0.46, 0.45, 0.94);
-  --ease-soft: cubic-bezier(0.4, 0, 0.2, 1);
-  --btn-transition: background var(--duration-s) ease, border-color var(--duration-s) ease,
-                    box-shadow var(--duration-s) ease, color var(--duration-s) ease, transform var(--duration-s) ease;
+  --track-display: -.022em;
+  --track-tight: -.01em;
+  --track-normal: 0;
+  --track-caps: .06em;
 
-  /* Shadows — neutral slate tint (not warm brown) */
-  --shadow-sm: 0 1px 3px rgba(30 41 59 / 0.06), 0 1px 2px rgba(30 41 59 / 0.04);
-  --shadow-md: 0 4px 6px -1px rgba(30 41 59 / 0.08), 0 2px 4px -2px rgba(30 41 59 / 0.05);
-  --shadow-lg: 0 10px 20px -5px rgba(30 41 59 / 0.10), 0 4px 8px -4px rgba(30 41 59 / 0.06);
-  --shadow-xl: 0 24px 40px -12px rgba(30 41 59 / 0.14);
-  --shadow-2xl: 0 30px 60px -15px rgba(30 41 59 / 0.20);
-  --shadow-warm-glow: 0 0 22px rgba(59 130 246 / 0.18);
-  --shadow-brand-glow: 0 0 20px rgba(37 99 235 / 0.16);
-  --shadow-brand-accent: 0 6px 22px rgba(37 99 235 / 0.22);
+  --fw-body: 400;
+  --fw-medium: 500;
+  --fw-display: 600;
+  --fw-bold: 600;
 
-  /* Glass */
-  --glass-bg: rgba(255 255 255 / 0.72);
-  --glass-bg-subtle: rgba(255 255 255 / 0.5);
-  --glass-border: rgba(255 255 255 / 0.55);
-  --glass-border-subtle: rgba(59 130 246 / 0.12);
-  --backdrop-blur: blur(16px) saturate(180%);
-  --shadow-glass: 0 8px 32px rgba(30 41 59 / 0.08), inset 0 1px 0 rgba(255 255 255 / 0.6);
-  --shadow-glass-hover: 0 18px 50px rgba(30 41 59 / 0.14), inset 0 1px 0 rgba(255 255 255 / 0.7);
+  /* IBM Plex: the typeface of technical documentation, and the only
+     high-quality free family with a real Arabic sibling — which this
+     bilingual corpus needs. */
+  --font-sans: 'IBM Plex Sans', 'IBM Plex Sans Arabic', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-arabic: 'IBM Plex Sans Arabic', 'IBM Plex Sans', -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', 'Cascadia Mono', monospace;
 
-  /* Misc */
-  --toast-bg: #1f2937;
-  --toast-text: #f9fafb;
-  --focus-shadow-color: rgba(59 130 246 / 0.30);
+  /* z-index — aligned to Bootstrap 5.3's own scale so the two never fight */
+  --z-base: 0;
+  --z-raised: 10;
+  --z-rail: 20;
+  --z-mascot: 30;
+  --z-sticky: 100;
+  --z-dropdown: 1000;
+  --z-sticky-top: 1020;
+  --z-offcanvas: 1045;
+  --z-modal: 1055;
+  --z-popover: 1070;
+  --z-tooltip: 1080;
+  --z-toast: 1090;
 
-  /* White / black ramps (kept for component reuse) */
-  --white-05: rgba(255 255 255 / 0.05); --white-10: rgba(255 255 255 / 0.10);
-  --white-15: rgba(255 255 255 / 0.15); --white-20: rgba(255 255 255 / 0.20);
-  --white-40: rgba(255 255 255 / 0.40); --white-60: rgba(255 255 255 / 0.60);
-  --white-80: rgba(255 255 255 / 0.80); --white-90: rgba(255 255 255 / 0.90);
-  --black-05: rgba(0 0 0 / 0.04); --black-10: rgba(0 0 0 / 0.10);
-  --black-20: rgba(0 0 0 / 0.20); --black-30: rgba(0 0 0 / 0.30);
+  /* Radii — Dossier is squarer than Clinical Blue. Documents have corners. */
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
+  --radius-msg: 10px;
+  --radius-pill: 999px;
 
-  --navbar-toggler-icon: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3e%3cpath stroke='rgba%28255,255,255,.85%29' stroke-linecap='round' stroke-width='2' d='M4 7h22M4 15h22M4 23h22'/%3e%3c/svg%3e");
+  /* Direction multiplier for transforms that carry meaning (slide-in from the
+     inline-start edge). CSS has no logical translate, so keyframes write
+     `translateX(calc(-12px * var(--flip)))` and this flips it under RTL. */
+  --flip: 1;
+
+  /* Motion — quicker and flatter. Decoration is not the point. */
+  --duration-s: .15s;
+  --duration-m: .25s;
+  --duration-l: .4s;
+  --duration-xl: .6s;
+  --ease-out: cubic-bezier(.2, .8, .3, 1);
+  --ease-soft: cubic-bezier(.4, 0, .2, 1);
+  --btn-transition: background var(--duration-s) var(--ease-soft),
+                    border-color var(--duration-s) var(--ease-soft),
+                    box-shadow var(--duration-s) var(--ease-soft),
+                    color var(--duration-s) var(--ease-soft),
+                    transform var(--duration-s) var(--ease-soft);
+
+  /* ═══ LAYER 3 — SEMANTICS ════════════════════════════════════════ */
+
+  --bg-page: var(--paper-050);
+  --bg-surface: var(--paper-000);
+  --bg-sunken: var(--paper-100);
+
+  --fg-primary: var(--ink-900);
+  --fg-secondary: var(--ink-700);
+  --fg-muted: var(--ink-500);
+  --fg-faint: var(--ink-300);
+  --fg-on-signal: #fff;
+
+  --hairline: var(--rule-200);
+  --hairline-strong: var(--rule-300);
+
+  --signal: var(--seal-600);
+  --signal-hover: var(--seal-700);        /* semantic: darkens in light, LIGHTENS in dark */
+  --signal-tint: var(--seal-100);
+
+  --confidence: var(--verify-600);
+  --confidence-strong: var(--verify-700); /* use when white text sits on the fill */
+  --confidence-tint: var(--verify-100);
+
+  --danger: var(--alert-600);
+  --warning: var(--warn-600);
+
+  --focus-ring: var(--seal-600);
+  --focus-ring-shadow: rgb(27 77 177 / .28);
+
+  /* Inverted surface, used by the toast so it reads as a system message
+     rather than another card. */
+  --bg-inverse: var(--ink-900);
+  --fg-inverse: var(--paper-050);
+
+  /* Channel triplet, not a hex: rgb(var(--x) / .28) cannot take a var holding
+     "#1B4DB1". Kept in sync with --seal-600 by hand — there are four uses. */
+  --signal-rgb: 27 77 177;
+
+  --icon-navbar-toggler: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3e%3cpath stroke='rgba%2874,93,116,.9%29' stroke-linecap='round' stroke-width='2' d='M4 7h22M4 15h22M4 23h22'/%3e%3c/svg%3e");
+
+  /* Shadows are a supporting cue only — hairlines do the structural work. */
+  --shadow-sm: 0 1px 2px rgb(12 26 43 / .06);
+  --shadow-md: 0 2px 8px rgb(12 26 43 / .08);
+  --shadow-lg: 0 8px 24px rgb(12 26 43 / .10);
+  --shadow-xl: 0 20px 48px rgb(12 26 43 / .14);
 }
 
+/* ═══════════════════════════════════════════════════════════════════
+   DARK — only PRIMITIVES flip. Every Layer 3 name resolves correctly
+   without a single dark-mode branch in any component.
+   ═══════════════════════════════════════════════════════════════════ */
 [data-bs-theme="dark"] {
-  --primary-color: #3b82f6;
-  --primary-color-rgb: 59 130 246;
-  --accent-color: #60a5fa;
-  --accent-color-rgb: 96 165 250;
-  --accent-color-hover: #2563eb;      /* filled-button hover bg (white text = 5.2:1) */
-  --accent-link: #93c5fd;             /* text/link accent on dark surfaces (AA) */
+  --ink-900: #E9EEF4;
+  --ink-700: #C3CEDB;
+  --ink-500: #93A3B6;
+  --ink-300: #63748A;
 
-  /* Secondary — muted slate-blue */
-  --accent-warm: #94a3b8;
-  --accent-warm-rgb: 148 163 184;
-  --accent-amber: #cbd5e1;
-  --accent-orange: #64748b;
-  --accent-coral: #94a3b8;
-  --accent-coral-rgb: 148 163 184;
+  --paper-000: #111D2C;
+  --paper-050: #0B1420;
+  --paper-100: #16232F;
 
-  --text-color-dark: #f1f5f9;
-  --text-color-dark-muted: #94a3b8;
-  --text-color-light: #f8fafc;
-  --text-color-light-secondary: #cbd5e1;
-  --text-color-light-muted: #64748b;
+  --rule-200: #22303F;
+  --rule-300: #2E3F52;
 
-  --background-light: #0b1120;
-  --background-light-alt: #111a2e;
-  --surface: #0f172a;
-  --gradient-background: linear-gradient(160deg, #0b1120 0%, #0f172a 50%, #0b1120 100%);
-  --gradient-hero: radial-gradient(1200px 600px at 72% 8%, rgba(96 165 250 / 0.16) 0%, transparent 55%),
-                   radial-gradient(900px 520px at 12% 82%, rgba(100 116 139 / 0.16) 0%, transparent 55%),
-                   linear-gradient(160deg, #0b1120 0%, #0f172a 55%, #0b1120 100%);
+  /* Lifted so seal clears 7:1 on the dark page. #1B4DB1 on #0B1420 is
+     ~1.7:1 — unreadable. This is why the ramp flips, not the semantics. */
+  --seal-600: #6E9BF0;
+  --seal-700: #9CBCF7;               /* hover goes LIGHTER in dark */
+  --seal-100: #16294A;
 
-  --border-color-light: #1e293b;
-  --border-color-medium: #293548;
-  --border-color-dark: #3b4a63;
-  --border-color-modal: rgba(96 165 250 / 0.18);
+  --verify-600: #35C3A3;
+  --verify-700: #5FD7BC;
+  --verify-100: #0F2B26;
 
-  --glass-bg: rgba(15 23 42 / 0.62);
-  --glass-bg-subtle: rgba(15 23 42 / 0.42);
-  --glass-border: rgba(148 163 184 / 0.16);
-  --glass-border-subtle: rgba(96 165 250 / 0.14);
-  --shadow-glass: 0 8px 32px rgba(0 0 0 / 0.4), inset 0 1px 0 rgba(255 255 255 / 0.06);
-  --shadow-glass-hover: 0 18px 50px rgba(0 0 0 / 0.5), inset 0 1px 0 rgba(255 255 255 / 0.09);
+  --alert-600: #F08279;
+  --warn-600: #E0A94D;
 
-  --shadow-sm: 0 1px 3px rgba(0 0 0 / 0.3);
-  --shadow-md: 0 4px 8px rgba(0 0 0 / 0.35);
-  --shadow-lg: 0 12px 24px rgba(0 0 0 / 0.4);
-  --shadow-xl: 0 24px 44px rgba(0 0 0 / 0.5);
-  --shadow-2xl: 0 30px 60px rgba(0 0 0 / 0.55);
-  --shadow-warm-glow: 0 0 22px rgba(96 165 250 / 0.20);
-  --shadow-brand-glow: 0 0 20px rgba(59 130 246 / 0.18);
-  --shadow-brand-accent: 0 6px 22px rgba(59 130 246 / 0.26);
+  --fg-on-signal: #08111C;           /* dark text on a light-blue fill */
+  --focus-ring-shadow: rgb(110 155 240 / .32);
+  --signal-rgb: 110 155 240;
+  --icon-navbar-toggler: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3e%3cpath stroke='rgba%28195,206,219,.9%29' stroke-linecap='round' stroke-width='2' d='M4 7h22M4 15h22M4 23h22'/%3e%3c/svg%3e");
 
-  --surface-card: rgba(15 23 42 / 0.7);
-  --toast-bg: #1e293b;
-  --toast-text: #f1f5f9;
-  --focus-shadow-color: rgba(96 165 250 / 0.30);
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / .40);
+  --shadow-md: 0 2px 8px rgb(0 0 0 / .45);
+  --shadow-lg: 0 8px 24px rgb(0 0 0 / .50);
+  --shadow-xl: 0 20px 48px rgb(0 0 0 / .55);
 }
+
+/* ═══════════════════════════════════════════════════════════════════
+   RTL / ARABIC token overrides.
+
+   Negative letter-spacing breaks Arabic glyph joining and renders the
+   text as disconnected gibberish. Zeroing the tracking tokens fixes it
+   for anything using the scale; the blanket reset below catches rules
+   that hardcode letter-spacing. Arabic also needs more leading.
+   ═══════════════════════════════════════════════════════════════════ */
+[dir="rtl"] {
+  --flip: -1;
+  --track-display: 0;
+  --track-tight: 0;
+  --track-caps: 0;
+  --lh-body: 1.85;
+  --lh-snug: 1.45;
+  --font-sans: var(--font-arabic);
+}
+[dir="rtl"],
+[dir="rtl"] * { letter-spacing: normal; }
+
+/* Layer 4 (the @deprecated Clinical Blue compatibility shim) is gone: every
+   component now references a Layer 3 semantic name directly. It existed so the
+   Dossier palette could land across the whole app without touching
+   components.css, and it shrank to nothing as each section was rewritten. */

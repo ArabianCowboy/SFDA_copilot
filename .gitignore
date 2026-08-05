@@ -71,9 +71,22 @@ logs/
 # build artifacts a fresh clone won't have).
 web/processed_data/
 
+# Impeccable design tooling.
+# Tracked deliberately (shared, team-wide state — do NOT ignore the directory):
+#   .impeccable/design.json       design-system sidecar, the companion to DESIGN.md
+#   .impeccable/config.json       detector config, incl. reviewed rule exceptions
+#   .impeccable/live/config.json  live-mode inject targets and the CSP-checked flag
+# Everything below is per-machine runtime state, regenerated on demand.
+.impeccable/hook.cache.json
+.impeccable/config.local.json
+.impeccable/live/roots.json
+.impeccable/live/inject-journal.json
+.impeccable/live/sessions/
+
 # macOS
 .DS_Store
 
 # Windows
 Thumbs.db
 memory-bank/Issue-teckting/
+server-debug.log

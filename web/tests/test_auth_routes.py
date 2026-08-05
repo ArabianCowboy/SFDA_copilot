@@ -115,10 +115,14 @@ def test_chat_success(client, app):
     )
 
     assert response.status_code == 200
-    assert response.get_json() == {
-        "response": "Mock answer",
-        "suggested_questions": ["Follow up?"],
-    }
+    body = response.get_json()
+    assert body["response"] == "Mock answer"
+    assert body["suggested_questions"] == ["Follow up?"]
+    # The response also carries the retrieval sources; their content is covered
+    # by test_citations.py, so this only pins the contract.
+    assert body["sources"][0]["document"] == "guide.pdf"
+    assert body["sources"][0]["page"] == 2
+    assert body["sources"][0]["index"] == 1
 
 
 def test_chat_returns_503_when_search_engine_is_unavailable(client, app):

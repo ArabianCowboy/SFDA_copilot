@@ -91,6 +91,23 @@ export function createClient() {
 """
 
 
+# One canned SSE exchange, in the order the real route emits.
+# "Mock regulatory answer" is split across two delta frames so the tests
+# exercise incremental assembly rather than a single-shot write.
+SSE_CHAT_MOCK = (
+    'event: meta\ndata: {"conversation_id":"test","category":"all","lang":"en","model":"mock"}\n\n'
+    'event: stage\ndata: {"stage":"searching"}\n\n'
+    'event: sources\ndata: {"sources":[]}\n\n'
+    'event: stage\ndata: {"stage":"retrieved","count":0}\n\n'
+    'event: stage\ndata: {"stage":"drafting"}\n\n'
+    'event: delta\ndata: {"t":"Mock regulatory "}\n\n'
+    'event: delta\ndata: {"t":"answer"}\n\n'
+    'event: stage\ndata: {"stage":"finalizing"}\n\n'
+    'event: suggestions\ndata: {"suggested_questions":["Next question?"]}\n\n'
+    'event: done\ndata: {"finish_reason":"stop","chars":22}\n\n'
+)
+
+
 @pytest.fixture(autouse=True)
 def test_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     """Provide deterministic application settings without real credentials."""
@@ -117,7 +134,10 @@ def live_server_url():
 
     from web.api.app import create_app
 
-    server = make_server("127.0.0.1", 0, create_app(testing=True))
+    # threaded=True is required: a held-open SSE connection to /api/chat/stream
+    # would otherwise monopolise the single serving thread and hang every other
+    # request for the rest of the session.
+    server = make_server("127.0.0.1", 0, create_app(testing=True), threaded=True)
     thread = Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
@@ -149,7 +169,19 @@ def browser_page(page):
         lambda route: route.fulfill(
             status=200,
             content_type="application/json",
-            body='{"response":"Mock regulatory answer","suggested_questions":["Next question?"]}',
+            body='{"response":"Mock regulatory answer","suggested_questions":["Next question?"],"sources":[]}',
+        ),
+    )
+    # The client prefers the streaming endpoint; /api/chat above stays mocked
+    # for the fallback path. Playwright delivers this whole body as a single
+    # chunk, which is a useful check in itself: the SSE reader must not assume
+    # one frame per chunk.
+    page.route(
+        "**/api/chat/stream",
+        lambda route: route.fulfill(
+            status=200,
+            content_type="text/event-stream",
+            body=SSE_CHAT_MOCK,
         ),
     )
     return page

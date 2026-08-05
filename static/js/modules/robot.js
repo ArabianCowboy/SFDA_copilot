@@ -5,14 +5,21 @@
  * once here and mounted wherever a robot is needed (landing hero, chat companion
  * and inline chat avatars), removing the previous triple-duplication in the HTML.
  *
- * Visual language: teal body with a warm "sunrise" core — a glowing amber→coral
- * sun on the antenna and chest, expressive cyan eyes.
+ * Visual language: the Dossier signal blue for the shell and antenna, with the
+ * confidence green in the eyes. Every colour is a CSS custom property on the
+ * <svg>, so a state change is a token override rather than a set of per-class
+ * fill rules — and the mascot follows the light/dark theme with no JS.
  *
- * State classes (idle / thinking / talking / happy / error) are toggled on the
- * wrapper elements and driven by robot.css.
+ * Sunny is not decoration: its antenna pulses once per retrieved passage and
+ * its status line reports the real retrieval stage, so the face is the
+ * progress indicator.
+ *
+ * State classes (idle / searching / retrieved / thinking / talking / happy /
+ * error) are toggled on the wrapper elements and driven by robot.css.
  */
 
 import { prefersReducedMotion } from './config.js';
+import { I18n } from './i18n.js';
 
 let uidCounter = 0;
 
@@ -26,84 +33,87 @@ let uidCounter = 0;
 export function createRobot({ size = 180, svgId = '' } = {}) {
   const u = `sn${++uidCounter}`;
   const idAttr = svgId ? ` id="${svgId}"` : '';
+
+  /* The --sunny-* palette lives in robot.css on .sunny-svg, NOT inline here.
+     An inline style would set the properties on the <svg> itself, which beats
+     any value inherited from a state class on an ancestor wrapper — so
+     `.robot-searching { --sunny-eye: ... }` would silently never apply. */
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="${size}" height="${size}"${idAttr} class="sunny-svg" role="img" aria-label="Sunny, the SFDA Copilot mascot">
     <defs>
       <linearGradient id="body-${u}" x1="0%" y1="0%" x2="100%" y2="100%">
-        <stop offset="0%" stop-color="#14b8a6"/>
-        <stop offset="100%" stop-color="#2dd4bf"/>
+        <stop offset="0%" stop-color="var(--sunny-shell)"/>
+        <stop offset="100%" stop-color="var(--sunny-shell-deep)"/>
       </linearGradient>
       <linearGradient id="visor-${u}" x1="0%" y1="0%" x2="0%" y2="100%">
-        <stop offset="0%" stop-color="#0b1120"/>
-        <stop offset="100%" stop-color="#1e293b"/>
+        <stop offset="0%" stop-color="var(--sunny-visor-top)"/>
+        <stop offset="100%" stop-color="var(--sunny-visor-bottom)"/>
       </linearGradient>
       <radialGradient id="sun-${u}" cx="50%" cy="45%" r="60%">
-        <stop offset="0%" stop-color="#fff7ed"/>
-        <stop offset="45%" stop-color="#fbbf24"/>
-        <stop offset="100%" stop-color="#fb7185"/>
+        <stop offset="0%" stop-color="var(--sunny-core)"/>
+        <stop offset="55%" stop-color="var(--sunny-signal)"/>
+        <stop offset="100%" stop-color="var(--sunny-signal)"/>
       </radialGradient>
       <radialGradient id="sunglow-${u}" cx="50%" cy="50%" r="50%">
-        <stop offset="0%" stop-color="#fbbf24" stop-opacity="0.75"/>
-        <stop offset="100%" stop-color="#fb7185" stop-opacity="0"/>
+        <stop offset="0%" stop-color="var(--sunny-signal)" stop-opacity="0.7"/>
+        <stop offset="100%" stop-color="var(--sunny-signal)" stop-opacity="0"/>
       </radialGradient>
-      <filter id="glow-${u}"><feGaussianBlur stdDeviation="2.6" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
-      <filter id="soft-${u}" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="5" stdDeviation="6" flood-color="#0f766e" flood-opacity="0.35"/></filter>
+      <filter id="glow-${u}"><feGaussianBlur stdDeviation="2.2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
     </defs>
 
-    <!-- Antenna with a little sun -->
+    <!-- Flat ground shadow. A drop-shadow filter on every robot on the page is
+         a per-frame blur; an ellipse is free and reads the same at this size. -->
+    <ellipse class="robot-ground" cx="100" cy="186" rx="42" ry="6" fill="var(--sunny-ink)" opacity="0.10"/>
+
+    <!-- Antenna: the retrieval indicator. Pulses once per passage found. -->
     <g class="robot-antenna">
       <circle cx="100" cy="26" r="24" fill="url(#sunglow-${u})" class="antenna-glow" opacity="0"/>
-      <rect x="97" y="40" width="6" height="20" rx="3" fill="#cbd5e1"/>
-      <circle cx="100" cy="28" r="11" fill="url(#sun-${u})" class="antenna-ball" filter="url(#glow-${u})">
-        <animate attributeName="r" values="10;12;10" dur="2.4s" repeatCount="indefinite"/>
-      </circle>
+      <rect x="97" y="40" width="6" height="20" rx="3" fill="var(--sunny-chrome)"/>
+      <circle cx="100" cy="28" r="11" fill="url(#sun-${u})" class="antenna-ball" filter="url(#glow-${u})"/>
     </g>
 
     <!-- Side ears / headphones -->
-    <rect x="38" y="74" width="14" height="30" rx="7" fill="#cbd5e1"/>
-    <rect x="148" y="74" width="14" height="30" rx="7" fill="#cbd5e1"/>
+    <rect x="38" y="74" width="14" height="30" rx="7" fill="var(--sunny-chrome)"/>
+    <rect x="148" y="74" width="14" height="30" rx="7" fill="var(--sunny-chrome)"/>
 
     <!-- Head -->
     <g class="robot-head">
-      <rect x="50" y="50" width="100" height="78" rx="28" fill="url(#body-${u})" filter="url(#soft-${u})"/>
-      <rect x="54" y="54" width="92" height="30" rx="22" fill="rgba(255,255,255,0.18)"/>
-      <rect x="62" y="62" width="76" height="52" rx="20" fill="url(#visor-${u})" stroke="#334155" stroke-width="1.5"/>
+      <rect x="50" y="50" width="100" height="78" rx="28" fill="url(#body-${u})"
+            stroke="var(--sunny-shell-deep)" stroke-width="1"/>
+      <rect x="54" y="54" width="92" height="30" rx="22" fill="var(--sunny-core)" opacity="0.14"/>
+      <rect x="62" y="62" width="76" height="52" rx="20" fill="url(#visor-${u})"
+            stroke="var(--sunny-shell-deep)" stroke-width="1.5"/>
       <g class="robot-eye-left">
-        <ellipse cx="80" cy="86" rx="13" ry="13" fill="#5eead4" opacity="0.16" class="eye-glow"/>
-        <circle cx="80" cy="86" r="7.5" fill="#5eead4" class="eye-pupil-left" filter="url(#glow-${u})">
-          <animate attributeName="r" values="6.5;8;6.5" dur="3s" repeatCount="indefinite"/>
-        </circle>
-        <circle cx="82.5" cy="83.5" r="3" fill="#ffffff" opacity="0.95"/>
+        <ellipse cx="80" cy="86" rx="13" ry="13" fill="var(--sunny-eye)" opacity="0.16" class="eye-glow"/>
+        <circle cx="80" cy="86" r="7.5" fill="var(--sunny-eye)" class="eye-pupil-left" filter="url(#glow-${u})"/>
+        <circle cx="82.5" cy="83.5" r="3" fill="var(--sunny-core)" opacity="0.95"/>
       </g>
       <g class="robot-eye-right">
-        <ellipse cx="120" cy="86" rx="13" ry="13" fill="#5eead4" opacity="0.16" class="eye-glow"/>
-        <circle cx="120" cy="86" r="7.5" fill="#5eead4" class="eye-pupil-right" filter="url(#glow-${u})">
-          <animate attributeName="r" values="6.5;8;6.5" dur="3s" repeatCount="indefinite" begin="0.15s"/>
-        </circle>
-        <circle cx="122.5" cy="83.5" r="3" fill="#ffffff" opacity="0.95"/>
+        <ellipse cx="120" cy="86" rx="13" ry="13" fill="var(--sunny-eye)" opacity="0.16" class="eye-glow"/>
+        <circle cx="120" cy="86" r="7.5" fill="var(--sunny-eye)" class="eye-pupil-right" filter="url(#glow-${u})"/>
+        <circle cx="122.5" cy="83.5" r="3" fill="var(--sunny-core)" opacity="0.95"/>
       </g>
-      <g class="robot-blink-left" opacity="0"><rect x="70" y="82" width="20" height="8" rx="4" fill="#0b1120"/></g>
-      <g class="robot-blink-right" opacity="0"><rect x="110" y="82" width="20" height="8" rx="4" fill="#0b1120"/></g>
-      <path class="robot-mouth-idle" d="M 86 101 Q 100 112 114 101" fill="none" stroke="#fbbf24" stroke-width="3" stroke-linecap="round" filter="url(#glow-${u})"/>
-      <ellipse class="robot-mouth-talk" cx="100" cy="104" rx="9" ry="7" fill="#fbbf24" opacity="0" filter="url(#glow-${u})"/>
-      <circle cx="66" cy="100" r="6" fill="#fb7185" opacity="0.18" class="robot-cheek-left"/>
-      <circle cx="134" cy="100" r="6" fill="#fb7185" opacity="0.18" class="robot-cheek-right"/>
+      <g class="robot-blink-left" opacity="0"><rect x="70" y="82" width="20" height="8" rx="4" fill="var(--sunny-visor-top)"/></g>
+      <g class="robot-blink-right" opacity="0"><rect x="110" y="82" width="20" height="8" rx="4" fill="var(--sunny-visor-top)"/></g>
+      <path class="robot-mouth-idle" d="M 86 101 Q 100 112 114 101" fill="none" stroke="var(--sunny-mouth)" stroke-width="3" stroke-linecap="round"/>
+      <ellipse class="robot-mouth-talk" cx="100" cy="104" rx="9" ry="7" fill="var(--sunny-mouth)" opacity="0"/>
+      <circle cx="66" cy="100" r="6" fill="var(--sunny-cheek)" opacity="0.5" class="robot-cheek-left"/>
+      <circle cx="134" cy="100" r="6" fill="var(--sunny-cheek)" opacity="0.5" class="robot-cheek-right"/>
     </g>
 
-    <!-- Body with a glowing sun core -->
+    <!-- Body -->
     <g class="robot-body">
-      <rect x="92" y="126" width="16" height="10" rx="4" fill="#cbd5e1"/>
-      <rect x="56" y="134" width="88" height="46" rx="20" fill="url(#body-${u})" filter="url(#soft-${u})"/>
-      <rect x="60" y="138" width="80" height="18" rx="13" fill="rgba(255,255,255,0.14)"/>
+      <rect x="92" y="126" width="16" height="10" rx="4" fill="var(--sunny-chrome)"/>
+      <rect x="56" y="134" width="88" height="46" rx="20" fill="url(#body-${u})"
+            stroke="var(--sunny-shell-deep)" stroke-width="1"/>
+      <rect x="60" y="138" width="80" height="18" rx="13" fill="var(--sunny-core)" opacity="0.12"/>
       <circle cx="100" cy="158" r="11" fill="url(#sunglow-${u})" opacity="0.9"/>
-      <circle cx="100" cy="158" r="7" fill="#0b1120" stroke="#fbbf24" stroke-width="2"/>
-      <circle cx="100" cy="158" r="4" fill="url(#sun-${u})" class="chest-light" filter="url(#glow-${u})">
-        <animate attributeName="opacity" values="0.65;1;0.65" dur="2.4s" repeatCount="indefinite"/>
-      </circle>
+      <circle cx="100" cy="158" r="7" fill="var(--sunny-visor-top)" stroke="var(--sunny-signal)" stroke-width="2"/>
+      <circle cx="100" cy="158" r="4" fill="url(#sun-${u})" class="chest-light" filter="url(#glow-${u})"/>
     </g>
 
     <!-- Arms -->
-    <g class="robot-arm-left"><rect x="32" y="140" width="26" height="12" rx="6" fill="#cbd5e1"/><circle cx="28" cy="146" r="7" fill="#cbd5e1"/></g>
-    <g class="robot-arm-right"><rect x="142" y="140" width="26" height="12" rx="6" fill="#cbd5e1"/><circle cx="172" cy="146" r="7" fill="#cbd5e1"/></g>
+    <g class="robot-arm-left"><rect x="32" y="140" width="26" height="12" rx="6" fill="var(--sunny-chrome)"/><circle cx="28" cy="146" r="7" fill="var(--sunny-chrome)"/></g>
+    <g class="robot-arm-right"><rect x="142" y="140" width="26" height="12" rx="6" fill="var(--sunny-chrome)"/><circle cx="172" cy="146" r="7" fill="var(--sunny-chrome)"/></g>
   </svg>`;
 }
 
@@ -114,13 +124,16 @@ export const RobotStateManager = {
   _revertTimer: null,
   _thinkingTimeout: null,
 
-  VALID_STATES: ['idle', 'thinking', 'talking', 'happy', 'error'],
-  STATUS_MESSAGES: {
-    idle: 'Ready to help',
-    thinking: 'Processing your question...',
-    talking: "Here's what I found",
-    happy: 'Great question!',
-    error: 'Something went wrong',
+  VALID_STATES: ['idle', 'thinking', 'talking', 'happy', 'error', 'searching', 'retrieved'],
+  /* Keys, not literals — resolved at use so a language switch is picked up. */
+  STATUS_KEYS: {
+    idle: 'robot.idle',
+    thinking: 'robot.thinking',
+    talking: 'robot.talking',
+    happy: 'robot.happy',
+    error: 'robot.error',
+    searching: 'robot.searching',
+    retrieved: 'robot.retrieved',
   },
 
   _getAvatars() {
@@ -170,10 +183,12 @@ export const RobotStateManager = {
     }
 
     const status = this._getStatusText();
-    if (status) status.textContent = this.STATUS_MESSAGES[state] || 'Ready to help';
+    if (status) status.textContent = I18n.t(this.STATUS_KEYS[state] || 'robot.idle');
   },
 
-  /** User sent a message: celebrate, then drift into thinking. */
+  /** User sent a message: celebrate, then drift into thinking.
+   *  Under streaming the real `stage` events take over almost immediately, so
+   *  the timer below is only a fallback for the blocking path. */
   reactToUser() {
     this.setState('happy');
     this._spawnReactionParticles();
@@ -184,6 +199,60 @@ export const RobotStateManager = {
         this.setState('thinking');
       }
     }, 800);
+  },
+
+  /**
+   * Drive the mascot from real server progress rather than a blind timer.
+   * This is the whole argument for keeping Sunny: it reports actual work.
+   */
+  onStage(stage, data = {}) {
+    if (this._thinkingTimeout) {
+      clearTimeout(this._thinkingTimeout);
+      this._thinkingTimeout = null;
+    }
+    this._cancelRevert();
+
+    switch (stage) {
+      case 'searching':
+        this.setState('searching');
+        break;
+      case 'retrieved':
+        this.setState('retrieved');
+        this._pulseAntenna(data.count || 0);
+        this._setStatus(I18n.plural(data.count, 'robot.foundPassage', 'robot.foundPassages'));
+        break;
+      case 'drafting':
+        this.setState('thinking');
+        this._setStatus(I18n.t('robot.draftingStatus'));
+        break;
+      case 'finalizing':
+        this._setStatus(I18n.t('robot.finalizingStatus'));
+        break;
+      default:
+        break;
+    }
+  },
+
+  _setStatus(text) {
+    const status = this._getStatusText();
+    if (status) status.textContent = text;
+  },
+
+  /** One antenna flash per retrieved passage, capped so eight doesn't strobe. */
+  _pulseAntenna(count) {
+    if (prefersReducedMotion() || count <= 0) return;
+    const balls = document.querySelectorAll('.antenna-ball');
+    const flashes = Math.min(count, 8);
+
+    for (let i = 0; i < flashes; i++) {
+      setTimeout(() => {
+        balls.forEach(ball => {
+          ball.classList.remove('antenna-flash');
+          void ball.offsetWidth;      // restart the animation
+          ball.classList.add('antenna-flash');
+        });
+      }, i * 70);
+    }
   },
 
   startThinking() {
@@ -239,7 +308,7 @@ export const RobotStateManager = {
       landingRobot.classList.add('robot-exit');
       this.celebrate(landingBody);
     }
-    if (landingStatus) landingStatus.textContent = 'See you in the chat! 🚀';
+    if (landingStatus) landingStatus.textContent = I18n.t('robot.farewell');
 
     setTimeout(() => {
       if (companionBody) {
@@ -265,17 +334,20 @@ export const RobotStateManager = {
     const container = document.createElement('div');
     container.className = 'robot-reaction-particles';
 
+    /* Horizontal offsets are mirrored under RTL so the burst still fans away
+       from the mascot rather than into it. */
+    const flip = getComputedStyle(document.documentElement).direction === 'rtl' ? -1 : 1;
     const dirs = [
-      { px: '22px', py: '-28px' }, { px: '-20px', py: '-22px' },
-      { px: '18px', py: '18px' }, { px: '-25px', py: '12px' },
-      { px: '6px', py: '-32px' },
+      { px: 22, py: -28 }, { px: -20, py: -22 },
+      { px: 18, py: 18 }, { px: -25, py: 12 },
+      { px: 6, py: -32 },
     ];
 
     dirs.forEach(dir => {
       const p = document.createElement('div');
       p.className = 'robot-reaction-particle';
-      p.style.setProperty('--px', dir.px);
-      p.style.setProperty('--py', dir.py);
+      p.style.setProperty('--px', `${dir.px * flip}px`);
+      p.style.setProperty('--py', `${dir.py}px`);
       container.appendChild(p);
     });
 

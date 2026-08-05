@@ -1,0 +1,179 @@
+# SFDA Copilot — English catalogue
+#
+# Two subtrees, deliberately:
+#   runtime:  exported to the browser as window.__I18N (JS-facing strings only)
+#   page:     server-rendered via {{ t('page....') }}, never sent to JS
+#
+# IMPORTANT: several values below are asserted verbatim by the Playwright suite
+# (web/tests/test_frontend.py, test_theme_toggle.py). Changing their wording is
+# a test change, not just a copy change. They are marked "frozen".
+
+runtime:
+  chat:
+    send: "Send"                                        # frozen
+    cancel: "Cancel"
+    sendAria: "Send message"                            # frozen
+    cancelAria: "Cancel message"                         # frozen
+    sendFailed: "Failed to send message."                # frozen
+    cancelled: "Chat request cancelled."                 # frozen
+    loginRequired: "Please log in to chat with the AI."  # frozen
+    sessionUnverified: "Unable to verify your session. Please try again."  # frozen
+    genericError: "Sorry, I encountered an error while processing your request. Please try again."  # frozen (prefix)
+    invalidResponse: "Invalid response format from AI service."
+    stopped: "Stopped"
+    incomplete: "Answer incomplete — something went wrong"
+    askPrefix: "Ask: {question}"
+    jumpToLatest: "Jump to latest"
+    jumpToLatestAria: "Scroll to the latest message"
+
+  stage:
+    searching: "Searching the guidelines"
+    retrieved: "Found {count} passages"
+    retrievedOne: "Found {count} passage"
+    drafting: "Drafting the answer"
+    finalizing: "Finishing up"
+
+  robot:
+    idle: "Ready to help"                                # frozen
+    thinking: "Processing your question..."
+    talking: "Here's what I found"
+    happy: "Great question!"
+    error: "Something went wrong"
+    searching: "Searching the guidelines..."
+    retrieved: "Reading the passages..."
+    draftingStatus: "Drafting the answer..."
+    finalizingStatus: "Finishing up..."
+    foundPassages: "Found {count} passages"
+    foundPassage: "Found {count} passage"
+    farewell: "See you in the chat! 🚀"
+
+  auth:
+    loggedInAs: "Logged in as: {email}"                  # frozen
+    notLoggedIn: "Not logged in"
+    invalidCredentials: "Incorrect email or password."   # frozen
+    emailNotConfirmed: "Please confirm your email before logging in."
+    alreadyRegistered: "This email is already registered. Please log in."
+    invalidEmail: "Please provide a valid email address."
+    checkingStatus: "Checking status..."
+    servicesUnavailable: "Authentication services are not configured."
+    initFailed: "Failed to initialize core application services."
+
+  profile:
+    loadFailed: "Failed to load your profile."
+    saveFailed: "Failed to save your profile."
+    saved: "Profile saved."
+
+  faq:
+    loadFailed: "Failed to load FAQs."
+    loadFailedTesting: "Failed to load FAQs in testing mode."
+    empty: "No FAQs available."
+
+  theme:
+    announced: "Theme changed to {mode} mode"            # frozen
+    light: "light"
+    dark: "dark"
+
+  cite:
+    marker: "Source {n}"
+    sourcesOne: "{n} source"
+    sourcesMany: "{n} sources"
+    answerComplete: "Answer complete."
+    answerCompleteWithSources: "Answer complete. {n} sources cited."
+    relevance: "Relevance {pct} percent"
+
+  lang:
+    switchAria: "Switch language"
+    toArabic: "التبديل إلى العربية"
+    toEnglish: "Switch to English"
+
+page:
+  meta:
+    title: "SFDA Copilot"
+    description: "SFDA Copilot - AI-powered regulatory guidance for pharmaceutical regulations in Saudi Arabia"
+
+  brand:
+    name: "SFDA Copilot"
+    tagline: "Your AI Regulatory Assistant"
+
+  landing:
+    greeting: "Hello! 👋"
+    lead: "Streamline regulatory compliance with your AI‑powered assistant for pharmaceutical regulations in Saudi Arabia"
+    heroAlt: "AI Regulatory Guidance"
+    cta: "Get Started"
+    hubLink: "AI Fouda Hub Website"
+    linkedinLink: "Mohamed Fouda's LinkedIn"
+
+  features:
+    heading: "Why Use Our Platform?"
+    coverage:
+      title: "Extensive Guideline Coverage"
+      # No guideline count, deliberately: the corpus changes on every ingest and
+      # any hard number goes stale in place. See PRODUCT.md, Evidence on Hand.
+      body: "Access regulatory insights drawn from the official SFDA guideline corpus, spanning regulatory, pharmacovigilance, veterinary and biological products."
+      badge: "Guidelines current through August 2026"
+    authoritative:
+      title: "Authoritative Guidance"
+      body: "Gain confidence with every answer, backed by precise page and paragraph citations from official SFDA guidelines, ensuring unparalleled accuracy and traceability."
+    streamlined:
+      title: "Streamlined Regulatory Access"
+      body: "Navigate complex drug registration procedures and requirements effortlessly with comprehensive, easy-to-access guidelines."
+    accuracy:
+      title: "Unwavering Accuracy"
+      body: "Rely on consistently updated and verified information, providing the most current insights into Saudi Arabian pharmaceutical regulations."
+    search:
+      title: "Intelligent Search"
+      body: "Leverage cutting-edge AI to swiftly comprehend intricate regulatory queries and deliver highly precise, actionable answers."
+
+  nav:
+    menu: "Menu"
+    toggleNav: "Toggle navigation"
+    toggleTheme: "Toggle theme"
+    toggleThemeLong: "Toggle theme between light and dark"
+    close: "Close"
+    assistantStatus: "Assistant status"
+
+  auth:
+    modalTitle: "Welcome to SFDA Copilot"
+    login: "Login"
+    signup: "Signup"
+    email: "Email address"
+    password: "Password"
+    passwordHint: "Min. 8 chars, 1 uppercase, 1 lowercase, 1 number."
+    emailInvalid: "Please provide a valid email."
+    passwordRequired: "Password is required."
+    passwordInvalid: "Password must meet the requirements."
+    loginSignup: "Login / Signup"
+    logout: "Logout"
+
+  profile:
+    heading: "Edit Your Profile"
+    button: "Profile"
+    fullName: "Full Name"
+    organization: "Organization"
+    specialization: "Specialization"
+    themePreference: "Theme Preference"
+    light: "Light"
+    dark: "Dark"
+    save: "Save Changes"
+
+  chat:
+    welcomeLead: "Welcome to"
+    welcomeRest: "! Your AI assistant for pharmaceutical regulations in Saudi Arabia. You can:"
+    bullet1: "Ask specific questions about regulatory requirements"
+    bullet2: "Select a category to focus your search"
+    bullet3: "Click on FAQ buttons for common questions"
+    cutoff: "SFDA Copilot provides regulatory guidance based on official SFDA guidelines current through August 2026. For the most recent regulatory updates and post-August 2026 changes, please consult the official SFDA website."
+    prompt: "How can I assist you today?"
+    searchIn: "Search in:"
+    inputPlaceholder: "Ask about SFDA regulations..."
+    inputAria: "Chat message input"
+    send: "Send"
+    sendAria: "Send message"
+
+  categories:
+    aria: "Search category"
+    all: "All Categories"
+    regulatory: "Regulatory"
+    pharmacovigilance: "Pharmacovigilance"
+    veterinary: "Veterinary Medicines"
+    biological: "Biological Products"

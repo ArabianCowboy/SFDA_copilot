@@ -1,155 +1,208 @@
 /* ===================================================================
-   SFDA Copilot — Cinematic effects & keyframes
-   Ambient background layers + all shared @keyframes.
+   SFDA Copilot — Motion
+   Entrance choreography, the mascot's stage, and all shared @keyframes.
+
+   The Dossier redesign removed the ambient layer that used to live here:
+   three spinning conic rings, six blurred orbs, a lens flare and a canvas
+   particle field. They animated behind every screen at once, so nothing
+   read as the hero. What remains is motion that marks a state change.
+
+   Direction-dependent transforms multiply by --flip so they mirror in RTL.
    =================================================================== */
 
 /* ——————————————— Landing hero stage ——————————————— */
 .landing-hero {
   position: relative;
-  padding: clamp(40px, 8vh, 90px) 20px 40px;
+  padding: clamp(40px, 8vh, 90px) var(--space-5) var(--space-6);
+  border: 1px solid var(--hairline);
   border-radius: var(--radius-xl);
-  background: var(--gradient-hero);
-  box-shadow: var(--shadow-xl);
-  overflow: hidden;
-  transition: transform var(--duration-xl) var(--ease-out);
-  transform-style: preserve-3d;
-}
-#landing-particles { position: absolute; inset: 0; z-index: 0; }
-
-/* Sunrise glow rings */
-.hero-3d-rings { position: absolute; inset: 0; display: grid; place-items: center; z-index: 0; pointer-events: none; }
-.hero-3d-ring {
-  position: absolute; border-radius: 50%;
-  border: 1.5px solid transparent;
-  background: conic-gradient(from 0deg, rgba(59 130 246 / 0.45), rgba(96 165 250 / 0.45), rgba(100 116 139 / 0.4), rgba(59 130 246 / 0.45)) border-box;
-  -webkit-mask: linear-gradient(#000 0 0) padding-box, linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor; mask-composite: exclude;
-  opacity: .5;
-}
-.hero-3d-ring-1 { width: 320px; height: 320px; animation: ringSpin 26s linear infinite; }
-.hero-3d-ring-2 { width: 460px; height: 460px; animation: ringSpin 40s linear infinite reverse; opacity: .35; }
-.hero-3d-ring-3 { width: 600px; height: 600px; animation: ringSpin 60s linear infinite; opacity: .22; }
-
-/* Floating orbs */
-.hero-floating-orb, .chat-ambient-orb {
-  position: absolute; border-radius: 50%;
-  filter: blur(40px); opacity: .32; pointer-events: none; z-index: 0;
-}
-.hero-floating-orb-1 { width: 160px; height: 160px; top: 12%; left: 8%; background: radial-gradient(circle, rgba(59 130 246 / 0.6), transparent 70%); animation: orbFloat 11s ease-in-out infinite; }
-.hero-floating-orb-2 { width: 200px; height: 200px; bottom: 8%; right: 10%; background: radial-gradient(circle, rgba(96 165 250 / 0.5), transparent 70%); animation: orbFloat 14s ease-in-out infinite reverse; }
-.hero-floating-orb-3 { width: 120px; height: 120px; top: 55%; left: 18%; background: radial-gradient(circle, rgba(100 116 139 / 0.45), transparent 70%); animation: orbFloat 9s ease-in-out infinite; }
-
-.hero-lens-flare {
-  position: absolute; top: 14%; right: 18%; width: 8px; height: 8px;
-  border-radius: 50%; background: #fff;
-  box-shadow: 0 0 18px 8px rgba(96 165 250 / 0.5), 0 0 60px 24px rgba(59 130 246 / 0.2);
-  animation: lensFlare 6s ease-in-out infinite; z-index: 1; pointer-events: none;
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-sm);
 }
 
-.hero-title-wrapper, .landing-hero .lead, .hero-visual,
-#auth-button-main, .landing-robot { position: relative; z-index: 2; }
+.hero-title-wrapper,
+.landing-hero .lead,
+.hero-visual,
+#auth-button-main,
+.landing-robot { position: relative; z-index: var(--z-raised); }
 
-/* ——————————————— Landing robot ——————————————— */
+/* ——————————————— Landing mascot ——————————————— */
 .landing-robot {
-  position: relative; z-index: 3;
-  display: inline-flex; flex-direction: column; align-items: center;
-  margin-bottom: 8px;
+  position: relative;
+  z-index: var(--z-raised);
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  margin-block-end: var(--space-2);
 }
-.landing-robot-body { cursor: pointer; animation: robotFloat 5s ease-in-out infinite; will-change: transform; }
+.landing-robot-body {
+  cursor: pointer;
+  animation: robotFloat 5s ease-in-out infinite;
+  will-change: transform;
+}
+/* Centred via auto inline margins rather than left:50% + translateX(-50%),
+   so the mascot's stage mirrors cleanly under dir="rtl". */
 .landing-robot-glow {
-  position: absolute; top: 40%; left: 50%; width: 140px; height: 60px;
-  transform: translate(-50%, -50%);
-  border-radius: 50%; filter: blur(26px);
-  background: radial-gradient(circle, rgba(96 165 250 / 0.45), transparent 70%);
-  animation: glowPulse 4s ease-in-out infinite; z-index: -1;
+  position: absolute;
+  inset-block-start: 40%;
+  inset-inline: 0;
+  inline-size: 140px;
+  block-size: 60px;
+  margin-inline: auto;
+  transform: translateY(-50%);
+  border-radius: 50%;
+  filter: blur(26px);
+  background: radial-gradient(circle, rgb(var(--signal-rgb) / .28), transparent 70%);
+  animation: glowPulse 4s ease-in-out infinite;
+  z-index: -1;
 }
 .landing-robot-status {
-  margin-top: 6px; padding: 4px 12px;
-  border-radius: 999px; font-size: .8rem; font-weight: 600;
-  color: var(--accent-link);
-  background: var(--glass-bg); border: 1px solid var(--border-color-light);
-  animation: statusPulse 3s ease-in-out infinite;
+  margin-block-start: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-pill);
+  font-size: var(--fs-200);
+  font-weight: var(--fw-medium);
+  color: var(--fg-secondary);
+  background: var(--bg-surface);
 }
 .landing-robot.robot-exit { animation: robotExit 1s var(--ease-out) forwards; }
 
-/* ——————————————— Chat ambient ——————————————— */
-.chat-ambient-rings { position: absolute; inset: 0; display: grid; place-items: center; z-index: 0; pointer-events: none; }
-.chat-ring {
-  position: absolute; border-radius: 50%; border: 1px solid rgba(59 130 246 / 0.18);
-}
-.chat-ring-1 { width: 380px; height: 380px; animation: ringSpin 50s linear infinite; }
-.chat-ring-2 { width: 560px; height: 560px; animation: ringSpin 80s linear infinite reverse; }
-.chat-orb-1 { width: 200px; height: 200px; top: 8%; right: 6%; background: radial-gradient(circle, rgba(59 130 246 / 0.45), transparent 70%); animation: orbFloat 13s ease-in-out infinite; }
-.chat-orb-2 { width: 160px; height: 160px; bottom: 18%; left: 4%; background: radial-gradient(circle, rgba(96 165 250 / 0.45), transparent 70%); animation: orbFloat 16s ease-in-out infinite reverse; }
-.chat-orb-3 { width: 120px; height: 120px; top: 45%; left: 40%; background: radial-gradient(circle, rgba(100 116 139 / 0.4), transparent 70%); animation: orbFloat 11s ease-in-out infinite; }
-
-/* ——————————————— Chat companion robot ——————————————— */
+/* ——————————————— Chat companion mascot ——————————————— */
+/* Sunny lives in the rail column now, sticking to its bottom, rather than
+   floating over the transcript and forcing a 168px gutter through it. */
 .robot-companion {
-  position: absolute; bottom: 100px; right: 14px; z-index: 4;
-  display: none; width: 120px;
-  flex-direction: column; align-items: center;
+  position: sticky;
+  inset-block-start: calc(100% - 190px);
+  z-index: var(--z-mascot);
+  display: flex;
+  inline-size: 120px;
+  margin-inline: auto;
+  flex-direction: column;
+  align-items: center;
   pointer-events: none;
 }
-.robot-companion-body { pointer-events: auto; cursor: pointer; animation: robotFloat 5s ease-in-out infinite; will-change: transform; }
-.robot-companion-body .sunny-svg { width: 104px; height: 104px; }
+.robot-companion-body {
+  pointer-events: auto;
+  cursor: pointer;
+  animation: robotFloat 5s ease-in-out infinite;
+  will-change: transform;
+}
+.robot-companion-body .sunny-svg { inline-size: 104px; block-size: 104px; }
 .robot-companion-glow {
-  position: absolute; top: 38%; left: 50%; width: 180px; height: 80px;
-  transform: translate(-50%, -50%);
-  border-radius: 50%; filter: blur(30px);
-  background: radial-gradient(circle, rgba(96 165 250 / 0.4), transparent 70%);
-  animation: glowPulse 4s ease-in-out infinite; z-index: -1;
+  position: absolute;
+  inset-block-start: 38%;
+  inset-inline: 0;
+  inline-size: 180px;
+  block-size: 80px;
+  margin-inline: auto;
+  transform: translateY(-50%);
+  border-radius: 50%;
+  filter: blur(30px);
+  background: radial-gradient(circle, rgb(var(--signal-rgb) / .26), transparent 70%);
+  animation: glowPulse 4s ease-in-out infinite;
+  z-index: -1;
 }
 .robot-companion-platform {
-  position: absolute; bottom: 26px; left: 50%; width: 120px; height: 16px;
-  transform: translateX(-50%);
+  position: absolute;
+  inset-block-end: 26px;
+  inset-inline: 0;
+  inline-size: 120px;
+  block-size: 16px;
+  margin-inline: auto;
   border-radius: 50%;
-  background: radial-gradient(ellipse, rgba(59 130 246 / 0.32), transparent 70%);
+  background: radial-gradient(ellipse, rgb(var(--signal-rgb) / .20), transparent 70%);
   animation: platformPulse 4s ease-in-out infinite;
 }
 .robot-companion-status {
-  margin-top: 4px; padding: 3px 12px; max-width: 120px;
-  border-radius: 999px; font-size: .7rem; font-weight: 600;
-  color: var(--accent-link);
-  background: var(--glass-bg); border: 1px solid var(--border-color-light);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  animation: statusPulse 3s ease-in-out infinite;
+  margin-block-start: var(--space-1);
+  padding: 3px var(--space-3);
+  max-inline-size: 120px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-pill);
+  font-size: var(--fs-100);
+  font-weight: var(--fw-medium);
+  color: var(--fg-secondary);
+  background: var(--bg-surface);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-/* Only float the companion where there's room for a clear lane beside the
-   chat. Below xl the inline message avatars carry the mascot instead. */
-@media (min-width: 1200px) { .robot-companion { display: flex; } }
+/* Visibility is the rail's job (base.css): below xl there is no rail, and the
+   inline message avatars carry the mascot instead. */
 
 /* ——————————————— Message entrances ——————————————— */
-.chatbot-message { animation: botMessageIn .6s var(--ease-out) both; }
-.user-message { animation: userMessageIn .45s var(--ease-out) both; }
-#typing-indicator { animation: botMessageIn .4s var(--ease-out) both; transition: opacity .2s ease, transform .2s ease; }
+.chatbot-message { animation: botMessageIn .5s var(--ease-out) both; }
+.user-message { animation: userMessageIn .4s var(--ease-out) both; }
+#typing-indicator {
+  animation: botMessageIn .35s var(--ease-out) both;
+  transition: opacity var(--duration-s) ease, transform var(--duration-s) ease;
+}
 
 /* ═══════════════════ KEYFRAMES ═══════════════════ */
-@keyframes brandShift { 0%,100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
-@keyframes ringSpin { to { transform: rotate(360deg); } }
-@keyframes orbFloat {
-  0%,100% { transform: translateY(0) translateX(0); }
-  33% { transform: translateY(-22px) translateX(12px); }
-  66% { transform: translateY(12px) translateX(-10px); }
+@keyframes glowPulse {
+  0%, 100% { opacity: .45; transform: translateY(-50%) scale(1); }
+  50% { opacity: .8; transform: translateY(-50%) scale(1.12); }
 }
-@keyframes lensFlare { 0%,100% { opacity: .4; transform: scale(.9); } 50% { opacity: 1; transform: scale(1.15); } }
-@keyframes glowPulse { 0%,100% { opacity: .45; transform: translate(-50%, -50%) scale(1); } 50% { opacity: .8; transform: translate(-50%, -50%) scale(1.12); } }
-@keyframes platformPulse { 0%,100% { opacity: .5; transform: translateX(-50%) scale(1); } 50% { opacity: .8; transform: translateX(-50%) scale(1.1); } }
-@keyframes statusPulse { 0%,100% { opacity: .85; } 50% { opacity: 1; } }
-@keyframes robotFloat { 0%,100% { transform: translateY(0) rotate(0); } 50% { transform: translateY(-12px) rotate(1.5deg); } }
-@keyframes robotExit { to { transform: translateY(-160px) scale(.4) rotate(20deg); opacity: 0; } }
+@keyframes platformPulse {
+  0%, 100% { opacity: .5; transform: scale(1); }
+  50% { opacity: .8; transform: scale(1.1); }
+}
+@keyframes robotFloat {
+  0%, 100% { transform: translateY(0) rotate(0); }
+  50% { transform: translateY(-12px) rotate(1.5deg); }
+}
+@keyframes robotExit {
+  to { transform: translateY(-160px) scale(.4) rotate(20deg); opacity: 0; }
+}
 @keyframes robotCompanionEntrance {
   0% { transform: translateY(-80px) scale(.3) rotate(-20deg); opacity: 0; }
   60% { transform: translateY(8px) scale(1.08) rotate(4deg); opacity: 1; }
   100% { transform: translateY(0) scale(1) rotate(0); opacity: 1; }
 }
-@keyframes titleReveal { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes titleReveal {
+  from { opacity: 0; transform: translateY(24px); }
+  to { opacity: 1; transform: translateY(0); }
+}
 @keyframes cardReveal { to { opacity: 1; transform: translateY(0) scale(1); } }
-@keyframes sidebarReveal { from { opacity: 0; transform: translateX(-16px); } to { opacity: 1; transform: translateX(0); } }
-@keyframes faqSlideIn { from { opacity: 0; transform: translateX(-12px); } to { opacity: 1; transform: translateX(0); } }
-@keyframes viewFadeIn { from { opacity: 0; transform: scale(.99); } to { opacity: 1; transform: scale(1); } }
-@keyframes botMessageIn { from { opacity: 0; transform: translateY(16px) translateX(-8px); } to { opacity: 1; transform: translateY(0) translateX(0); } }
-@keyframes userMessageIn { from { opacity: 0; transform: translateY(16px) translateX(8px); } to { opacity: 1; transform: translateY(0) translateX(0); } }
-@keyframes messageSlideIn3D { from { opacity: 0; transform: translateY(12px) scale(.95); } to { opacity: 1; transform: translateY(0) scale(1); } }
-@keyframes typingBounce { 0%,60%,100% { transform: translateY(0); opacity: .6; } 30% { transform: translateY(-8px); opacity: 1; } }
-@keyframes themeToggleSpin { from { transform: rotate(0) scale(1); } 50% { transform: rotate(180deg) scale(1.2); } to { transform: rotate(360deg) scale(1); } }
-@keyframes rippleExpand { to { transform: scale(2.4); opacity: 0; } }
+@keyframes viewFadeIn {
+  from { opacity: 0; transform: scale(.99); }
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes messageSlideIn3D {
+  from { opacity: 0; transform: translateY(12px) scale(.95); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes caretBlink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+@keyframes jumpPillIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes typingBounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: .6; }
+  30% { transform: translateY(-8px); opacity: 1; }
+}
+@keyframes themeToggleSpin {
+  from { transform: rotate(0) scale(1); }
+  50% { transform: rotate(180deg) scale(1.2); }
+  to { transform: rotate(360deg) scale(1); }
+}
+
+/* Direction-dependent entrances: --flip is 1 in LTR, -1 in RTL, so the
+   sidebar and FAQ items always slide in from the inline-start edge. */
+@keyframes sidebarReveal {
+  from { opacity: 0; transform: translateX(calc(-16px * var(--flip))); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes faqSlideIn {
+  from { opacity: 0; transform: translateX(calc(-12px * var(--flip))); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes botMessageIn {
+  from { opacity: 0; transform: translateY(16px) translateX(calc(-8px * var(--flip))); }
+  to { opacity: 1; transform: translateY(0) translateX(0); }
+}
+@keyframes userMessageIn {
+  from { opacity: 0; transform: translateY(16px) translateX(calc(8px * var(--flip))); }
+  to { opacity: 1; transform: translateY(0) translateX(0); }
+}

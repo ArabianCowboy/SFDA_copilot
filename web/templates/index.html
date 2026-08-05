@@ -1,13 +1,15 @@
-<!DOCTYPE html>
-<html lang="en">
+{# "with context" is required: without it the macro cannot see `t` or `lang`,
+   and every render raises UndefinedError. #}
+{% from "partials/_sidebar.html" import sidebar_body with context %}<!DOCTYPE html>
+<html lang="{{ lang }}" dir="{{ text_dir }}">
 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description"
-        content="SFDA Copilot - AI-powered regulatory guidance for pharmaceutical regulations in Saudi Arabia">
-    <meta name="theme-color" content="#2563eb">
-    <title>SFDA Copilot</title>
+        content="{{ t('page.meta.description') }}">
+    <meta name="theme-color" content="#1B4DB1">
+    <title>{{ t('page.meta.title') }}</title>
 
     <!-- Favicon -->
     <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
@@ -15,10 +17,12 @@
     <link rel="alternate icon" href="{{ url_for('static', filename='favicon.ico') }}">
     <link rel="apple-touch-icon" href="{{ url_for('static', filename='favicon.png') }}">
 
-    <!-- Fonts: Inter + Plus Jakarta Sans + JetBrains Mono -->
+    <!-- Fonts: IBM Plex Sans / Sans Arabic / Mono — one family, three scripts.
+         Plex Sans Arabic is the reason for this choice: the corpus is mixed AR/EN
+         and the UI is bilingual, so body and Arabic must come from one design. -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap"
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap"
         rel="stylesheet">
 
     <!-- Bootstrap 5.3 -->
@@ -27,23 +31,45 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css"
         integrity="sha384-l4UPAMHGzl7zwogLW4nOwaU2XTk6oiM1jhCRQstZEndoIiA2I5bg6fST3wzBSRBD" crossorigin="anonymous">
 
-    <!-- Stylesheets (Clinical Blue — layered) -->
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}?v=blue1">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}?v=blue1">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/components.css') }}?v=blue1">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/robot.css') }}?v=blue1">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/effects.css') }}?v=blue1">
+    <!-- Stylesheets (Dossier — layered). asset_version is a single constant in
+         app.py; bump it in any commit that touches CSS or JS, or returning users
+         get a stale components.css against a fresh tokens.css. -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}?v={{ asset_version }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}?v={{ asset_version }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components.css') }}?v={{ asset_version }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/robot.css') }}?v={{ asset_version }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/effects.css') }}?v={{ asset_version }}">
 
     <!-- Preload LCP hero image -->
     <link rel="preload" as="image" href="{{ url_for('static', filename='images/hero-image.webp') }}">
 
-    <!-- Prevent FOUC -->
+    <!-- Prevent FOUC. Runs before first paint. -->
     <script>
         (function() {
             try {
                 var t = localStorage.getItem('theme');
                 if (!t) t = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
                 document.documentElement.setAttribute('data-bs-theme', t);
+
+                /* The server picks the language from a cookie, which can be stale
+                   (cleared cookies, private mode) while localStorage still holds
+                   the real preference. Reconcile once, then reload so the
+                   server-rendered strings match. sessionStorage guards the loop. */
+                var l = localStorage.getItem('lang');
+                if (l === 'ar' || l === 'en') {
+                    if (document.documentElement.lang !== l) {
+                        if (!sessionStorage.getItem('__langfix')) {
+                            sessionStorage.setItem('__langfix', '1');
+                            document.cookie = 'lang=' + l + ';path=/;max-age=31536000;samesite=lax';
+                            location.reload();
+                            return;
+                        }
+                        /* Reload did not settle it — accept the server's choice
+                           rather than looping, and keep the two in sync. */
+                        localStorage.setItem('lang', document.documentElement.lang);
+                    }
+                }
+                sessionStorage.removeItem('__langfix');
             } catch(e) {}
         })();
     </script>
@@ -51,6 +77,10 @@
     <script>
         window.SUPABASE_URL = {{ SUPABASE_URL | tojson }};
         window.SUPABASE_ANON_KEY = {{ SUPABASE_ANON_KEY | tojson }};
+        /* The runtime slice of the catalogue, inlined so there is no extra
+           request and no CSP change (script-src already allows inline). */
+        window.__I18N = {{ i18n_runtime | tojson }};
+        window.__LANG = {{ lang | tojson }};
     </script>
 </head>
 
@@ -65,10 +95,10 @@
                 <!-- Header -->
                 <div class="modal-header text-white">
                     <h2 class="modal-title h5" id="authModalLabel">
-                        <i class="bi bi-shield-shaded me-2"></i>Welcome to SFDA Copilot
+                        <i class="bi bi-shield-shaded me-2"></i>{{ t('page.auth.modalTitle') }}
                     </h2>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"
-                        aria-label="Close"></button>
+                        aria-label="{{ t('page.nav.close') }}"></button>
                 </div>
 
                 <!-- Body -->
@@ -79,14 +109,14 @@
                             <button class="nav-link active py-3" aria-current="true" id="login-tab" data-bs-toggle="tab"
                                 data-bs-target="#login-pane" type="button" role="tab" aria-controls="login-pane"
                                 aria-selected="true">
-                                <i class="bi bi-box-arrow-in-right me-2"></i>Login
+                                <i class="bi bi-box-arrow-in-right me-2"></i>{{ t('page.auth.login') }}
                             </button>
                         </li>
                         <li class="nav-item" role="presentation">
                             <button class="nav-link py-3" id="signup-tab" data-bs-toggle="tab"
                                 data-bs-target="#signup-pane" type="button" role="tab" aria-controls="signup-pane"
                                 aria-selected="false">
-                                <i class="bi bi-person-plus me-2"></i>Signup
+                                <i class="bi bi-person-plus me-2"></i>{{ t('page.auth.signup') }}
                             </button>
                         </li>
                     </ul>
@@ -101,26 +131,24 @@
                                     <input type="email" class="form-control" id="login-email" placeholder=" " required
                                         autocomplete="username">
                                     <label for="login-email">
-                                        <i class="bi bi-envelope me-2"></i>Email address
+                                        <i class="bi bi-envelope me-2"></i>{{ t('page.auth.email') }}
                                     </label>
-                                    <div class="invalid-feedback">Please provide a valid email.</div>
+                                    <div class="invalid-feedback">{{ t('page.auth.emailInvalid') }}</div>
                                 </div>
 
                                 <div class="form-floating mb-4">
                                     <input type="password" class="form-control" id="login-password" placeholder=" "
                                         required autocomplete="current-password">
                                     <label for="login-password">
-                                        <i class="bi bi-lock me-2"></i>Password
+                                        <i class="bi bi-lock me-2"></i>{{ t('page.auth.password') }}
                                     </label>
-                                    <div class="invalid-feedback">Password is required.</div>
+                                    <div class="invalid-feedback">{{ t('page.auth.passwordRequired') }}</div>
                                 </div>
 
                                 <button type="submit" id="login-btn-submit"
                                     class="btn btn-primary w-100 btn-lg py-2 fw-bold">
                                     <span class="spinner-border spinner-border-sm d-none me-2" role="status"
-                                        aria-hidden="true"></span>
-                                    Login
-                                </button>
+                                        aria-hidden="true"></span>{{ t('page.auth.login') }}</button>
                             </form>
                         </div>
 
@@ -131,9 +159,9 @@
                                     <input type="email" class="form-control" id="signup-email" placeholder=" " required
                                         autocomplete="username">
                                     <label for="signup-email">
-                                        <i class="bi bi-envelope me-2"></i>Email address
+                                        <i class="bi bi-envelope me-2"></i>{{ t('page.auth.email') }}
                                     </label>
-                                    <div class="invalid-feedback">Please provide a valid email.</div>
+                                    <div class="invalid-feedback">{{ t('page.auth.emailInvalid') }}</div>
                                 </div>
 
                                 <div class="form-floating mb-4">
@@ -141,21 +169,19 @@
                                         required pattern="(?=.*\d)(?=.*[a-z])(?=.*[A-Z]).{8,}"
                                         autocomplete="new-password" aria-describedby="password-requirements">
                                     <label for="signup-password">
-                                        <i class="bi bi-lock me-2"></i>Password
+                                        <i class="bi bi-lock me-2"></i>{{ t('page.auth.password') }}
                                     </label>
                                     <div id="password-requirements" class="form-text mt-1">
-                                        Min. 8 chars, 1 uppercase, 1 lowercase, 1 number.
+                                        {{ t('page.auth.passwordHint') }}
                                     </div>
                                     <div class="invalid-feedback">
-                                        Password must meet the requirements.
+                                        {{ t('page.auth.passwordInvalid') }}
                                     </div>
                                 </div>
 
                                 <button type="submit" class="btn btn-primary w-100 btn-lg py-2 fw-bold">
                                     <span class="spinner-border spinner-border-sm d-none me-2" role="status"
-                                        aria-hidden="true"></span>
-                                    Signup
-                                </button>
+                                        aria-hidden="true"></span>{{ t('page.auth.signup') }}</button>
                             </form>
                         </div>
                     </div>
@@ -175,46 +201,46 @@
             <div class="modal-content">
                 <div class="modal-header text-white">
                     <h2 class="modal-title h5" id="profileModalLabel">
-                        <i class="bi bi-person-circle me-2"></i>Edit Your Profile
+                        <i class="bi bi-person-circle me-2"></i>{{ t('page.profile.heading') }}
                     </h2>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"
-                        aria-label="Close"></button>
+                        aria-label="{{ t('page.nav.close') }}"></button>
                 </div>
                 <div class="modal-body p-4">
                     <form id="profile-form" novalidate>
                         <div class="form-floating mb-3">
                             <input type="text" class="form-control" id="profile-full-name" name="full_name"
                                 placeholder=" ">
-                            <label for="profile-full-name"><i class="bi bi-person me-2"></i>Full Name</label>
+                            <label for="profile-full-name"><i class="bi bi-person me-2"></i>{{ t('page.profile.fullName') }}</label>
                         </div>
                         <div class="form-floating mb-3">
                             <input type="text" class="form-control" id="profile-organization" name="organization"
                                 placeholder=" ">
-                            <label for="profile-organization"><i class="bi bi-building me-2"></i>Organization</label>
+                            <label for="profile-organization"><i class="bi bi-building me-2"></i>{{ t('page.profile.organization') }}</label>
                         </div>
                         <div class="form-floating mb-3">
                             <input type="text" class="form-control" id="profile-specialization" name="specialization"
                                 placeholder=" ">
                             <label for="profile-specialization"><i
-                                    class="bi bi-briefcase me-2"></i>Specialization</label>
+                                    class="bi bi-briefcase me-2"></i>{{ t('page.profile.specialization') }}</label>
                         </div>
                         <div class="mb-3">
-                            <label class="form-label"><i class="bi bi-palette me-2"></i>Theme Preference</label>
+                            <label class="form-label"><i class="bi bi-palette me-2"></i>{{ t('page.profile.themePreference') }}</label>
                             <div class="form-check">
                                 <input class="form-check-input" type="radio" name="theme-preference" id="theme-light"
                                     value="light">
-                                <label class="form-check-label" for="theme-light">Light</label>
+                                <label class="form-check-label" for="theme-light">{{ t('page.profile.light') }}</label>
                             </div>
                             <div class="form-check">
                                 <input class="form-check-input" type="radio" name="theme-preference" id="theme-dark"
                                     value="dark">
-                                <label class="form-check-label" for="theme-dark">Dark</label>
+                                <label class="form-check-label" for="theme-dark">{{ t('page.profile.dark') }}</label>
                             </div>
                         </div>
                         <button type="submit" class="btn btn-primary w-100 btn-lg py-2 fw-bold">
                             <span class="spinner-border spinner-border-sm d-none me-2" role="status"
                                 aria-hidden="true"></span>
-                            Save Changes
+                            {{ t('page.profile.save') }}
                         </button>
                     </form>
                     <div id="profile-error" class="alert alert-danger mt-3 d-none" role="alert"></div>
@@ -229,12 +255,20 @@
     <main id="unauthenticated-view" class="container-fluid flex-grow-1">
         <!-- Utility Links -->
         <div class="landing-header-utility">
-            <a href="https://aifoudahub.com" target="_blank" aria-label="AI Fouda Hub Website"
+            <a href="https://aifoudahub.com" target="_blank" aria-label="{{ t('page.landing.hubLink') }}"
                 class="utility-icon-link"><i class="bi bi-globe"></i></a>
-            <a href="https://www.linkedin.com/in/mohfouda/" target="_blank" aria-label="Mohamed Fouda's LinkedIn"
+            <a href="https://www.linkedin.com/in/mohfouda/" target="_blank" aria-label="{{ t('page.landing.linkedinLink') }}"
                 class="utility-icon-link"><i class="bi bi-linkedin"></i></a>
+            <!-- .lang-toggle-btn, NOT .theme-toggle-btn: test_theme_toggle.py
+                 asserts exactly three of the latter on the page. -->
+            <button class="lang-toggle-btn btn btn-sm" type="button"
+                data-lang="{{ 'en' if lang == 'ar' else 'ar' }}"
+                aria-label="{{ t('runtime.lang.switchAria') }}"
+                title="{{ t('runtime.lang.toEnglish') if lang == 'ar' else t('runtime.lang.toArabic') }}">
+                <span class="lang-code">{{ 'EN' if lang == 'ar' else 'ع' }}</span>
+            </button>
             <button id="landing-theme-toggle" class="theme-toggle-btn btn btn-sm ms-2"
-                aria-label="Toggle theme between light and dark" title="Toggle theme">
+                aria-label="{{ t('page.nav.toggleThemeLong') }}" title="{{ t('page.nav.toggleTheme') }}">
                 <i class="bi bi-moon-fill"></i>
             </button>
         </div>
@@ -243,67 +277,51 @@
             <div class="col-md-8 text-center">
                 <!-- Hero Section -->
                 <div class="landing-hero">
-                    <!-- Particle canvas inserted here by JS -->
-                    <div id="landing-particles"></div>
-
-                    <!-- 3D Rotating Rings -->
-                    <div class="hero-3d-rings">
-                        <div class="hero-3d-ring hero-3d-ring-1"></div>
-                        <div class="hero-3d-ring hero-3d-ring-2"></div>
-                        <div class="hero-3d-ring hero-3d-ring-3"></div>
-                    </div>
-
-                    <!-- Floating Orbs -->
-                    <div class="hero-floating-orb hero-floating-orb-1"></div>
-                    <div class="hero-floating-orb hero-floating-orb-2"></div>
-                    <div class="hero-floating-orb hero-floating-orb-3"></div>
-
-                    <!-- Lens Flare -->
-                    <div class="hero-lens-flare"></div>
-
                     <!-- Landing Robot Companion (Sunny — mounted by robot.js) -->
                     <div class="landing-robot" id="landing-robot">
                         <div class="landing-robot-glow"></div>
                         <div class="landing-robot-body" id="landing-robot-body"></div>
-                        <div class="landing-robot-status" id="landing-robot-status">Hello! 👋</div>
+                        <div class="landing-robot-status" id="landing-robot-status">{{ t('page.landing.greeting') }}</div>
                     </div>
 
+                    {# Size and weight come from the scale (--fs-900 / --fw-display)
+                       in components.css. Bootstrap's .display-3 and .fw-bold used to
+                       carry them, which put the largest type on the site outside the
+                       token system. #}
                     <div class="hero-title-wrapper">
-                        <h1 class="display-3 fw-bold">SFDA Copilot</h1>
+                        <h1>{{ t('page.brand.name') }}</h1>
                     </div>
                     <p class="lead mb-4">
-                        Streamline regulatory compliance with your AI‑powered assistant for pharmaceutical regulations in Saudi Arabia
+                        {{ t('page.landing.lead') }}
                     </p>
 
                     <!-- Hero Image -->
                     <div class="hero-visual mb-4">
                         <img src="{{ url_for('static', filename='images/hero-image.webp') }}"
-                            alt="AI Regulatory Guidance" fetchpriority="high">
+                            alt="{{ t('page.landing.heroAlt') }}" fetchpriority="high">
                     </div>
 
                     <!-- CTA Button -->
                     <button id="auth-button-main" class="unified-button btn-lg" type="button" data-bs-toggle="modal"
                         data-bs-target="#authModal">
-                        <i class="bi bi-box-arrow-in-right me-2"></i>Get Started
+                        <i class="bi bi-box-arrow-in-right me-2"></i>{{ t('page.landing.cta') }}
                     </button>
                 </div>
 
                 <!-- Feature Cards Section -->
                 <div class="why-use-platform-section mt-5">
-                    <h2 class="h3 mb-5 text-center fw-bold">Why Use Our Platform?</h2>
+                    <h2 class="mb-5 text-center">{{ t('page.features.heading') }}</h2>
                     <div class="row justify-content-center g-4">
                         <div class="col-md-6 col-lg-5">
                             <div class="feature-card animate-card" data-delay="100">
                                 <div class="feature-icon-wrapper">
                                     <i class="bi bi-collection feature-icon"></i>
                                 </div>
-                                <h3 class="h5 fw-bold">Extensive Guideline Coverage</h3>
-                                <p>Access regulatory insights backed by over 99 SFDA guidelines,
-                                    ensuring you have the most comprehensive and up-to-date information at your
-                                    fingertips.</p>
+                                <h3 class="h5 fw-bold">{{ t('page.features.coverage.title') }}</h3>
+                                <p>{{ t('page.features.coverage.body') }}</p>
                                 <small class="landing-knowledge-badge d-inline-flex align-items-center mt-2">
                                     <i class="bi bi-calendar-check me-1"></i>
-                                    Guidelines current through August 2026
+                                    {{ t('page.features.coverage.badge') }}
                                 </small>
                             </div>
                         </div>
@@ -312,10 +330,8 @@
                                 <div class="feature-icon-wrapper">
                                     <i class="bi bi-shield-fill-check feature-icon"></i>
                                 </div>
-                                <h3 class="h5 fw-bold">Authoritative Guidance</h3>
-                                <p>Gain confidence with every answer, backed by precise page and
-                                    paragraph citations from official SFDA guidelines, ensuring unparalleled accuracy
-                                    and traceability.</p>
+                                <h3 class="h5 fw-bold">{{ t('page.features.authoritative.title') }}</h3>
+                                <p>{{ t('page.features.authoritative.body') }}</p>
                             </div>
                         </div>
                         <div class="col-md-6 col-lg-5">
@@ -323,9 +339,8 @@
                                 <div class="feature-icon-wrapper">
                                     <i class="bi bi-book feature-icon"></i>
                                 </div>
-                                <h3 class="h5 fw-bold">Streamlined Regulatory Access</h3>
-                                <p>Navigate complex drug registration procedures and requirements
-                                    effortlessly with comprehensive, easy-to-access guidelines.</p>
+                                <h3 class="h5 fw-bold">{{ t('page.features.streamlined.title') }}</h3>
+                                <p>{{ t('page.features.streamlined.body') }}</p>
                             </div>
                         </div>
                         <div class="col-md-6 col-lg-5">
@@ -333,9 +348,8 @@
                                 <div class="feature-icon-wrapper">
                                     <i class="bi bi-check-circle feature-icon"></i>
                                 </div>
-                                <h3 class="h5 fw-bold">Unwavering Accuracy</h3>
-                                <p>Rely on consistently updated and verified information, providing
-                                    the most current insights into Saudi Arabian pharmaceutical regulations.</p>
+                                <h3 class="h5 fw-bold">{{ t('page.features.accuracy.title') }}</h3>
+                                <p>{{ t('page.features.accuracy.body') }}</p>
                             </div>
                         </div>
                         <div class="col-md-6 col-lg-5">
@@ -343,9 +357,8 @@
                                 <div class="feature-icon-wrapper">
                                     <i class="bi bi-cpu feature-icon"></i>
                                 </div>
-                                <h3 class="h5 fw-bold">Intelligent Search</h3>
-                                <p>Leverage cutting-edge AI to swiftly comprehend intricate
-                                    regulatory queries and deliver highly precise, actionable answers.</p>
+                                <h3 class="h5 fw-bold">{{ t('page.features.search.title') }}</h3>
+                                <p>{{ t('page.features.search.body') }}</p>
                             </div>
                         </div>
                     </div>
@@ -362,37 +375,23 @@
         <nav class="navbar navbar-dark d-lg-none sticky-top">
             <div class="container-fluid">
                 <button class="navbar-toggler" type="button" data-bs-toggle="offcanvas"
-                    data-bs-target="#sidebarOffcanvas" aria-controls="sidebarOffcanvas" aria-label="Toggle navigation">
+                    data-bs-target="#sidebarOffcanvas" aria-controls="sidebarOffcanvas" aria-label="{{ t('page.nav.toggleNav') }}">
                     <span class="navbar-toggler-icon"></span>
                 </button>
-                <span class="navbar-brand mb-0 h1">SFDA Copilot</span>
+                <span class="navbar-brand mb-0 h1">{{ t('page.brand.name') }}</span>
             </div>
         </nav>
 
         <div class="row h-100">
             <!-- Desktop Sidebar -->
             <aside class="col-lg-3 col-md-4 sidebar d-none d-lg-block h-100" id="sidebarContentRegular">
-                <header class="sidebar-header">
-                    <h3 class="d-flex align-items-center justify-content-between">
-                        <span><i class="bi bi-shield-shaded me-2"></i>SFDA Copilot</span>
-                        <button id="sidebar-theme-toggle" class="theme-toggle-btn btn btn-sm ms-2"
-                            aria-label="Toggle theme" title="Toggle theme">
-                            <i class="bi bi-moon-fill"></i>
-                        </button>
-                    </h3>
-                    <p class="text-muted small mb-3">Your AI Regulatory Assistant</p>
-                    <div class="auth-status-container mt-2">
-                        <span id="user-status" class="small">Checking status...</span>
-                        <button id="auth-button" class="btn btn-sm btn-primary ms-2" type="button">Login /
-                            Signup</button>
-                        <button id="logout-button" class="btn btn-sm btn-outline-warning ms-2 d-none"
-                            type="button">Logout</button>
-                        <button id="profile-button" class="btn btn-sm btn-outline-info ms-2 d-none" type="button"
-                            data-bs-toggle="modal" data-bs-target="#profileModal"><i class="bi bi-person-circle"></i>
-                            Profile</button>
-                    </div>
-                </header>
-                <div class="faq-section" id="faq-sidebar-section"></div>
+                <div class="sidebar-brandbar">
+                    <button id="sidebar-theme-toggle" class="theme-toggle-btn btn btn-sm"
+                        aria-label="{{ t('page.nav.toggleTheme') }}" title="{{ t('page.nav.toggleTheme') }}">
+                        <i class="bi bi-moon-fill"></i>
+                    </button>
+                </div>
+                {{ sidebar_body('', 'faq-sidebar-section') }}
             </aside>
 
             <!-- Mobile Offcanvas Sidebar -->
@@ -401,122 +400,111 @@
                 <header class="offcanvas-header">
                     <h5 class="offcanvas-title d-flex align-items-center justify-content-between w-100"
                         id="sidebarOffcanvasLabel">
-                        <span><i class="bi bi-shield-shaded me-2"></i>Menu</span>
+                        <span><i class="bi bi-shield-shaded me-2"></i>{{ t('page.nav.menu') }}</span>
                         <button id="offcanvas-theme-toggle"
                             class="theme-toggle-btn btn btn-sm"
-                            aria-label="Toggle theme" title="Toggle theme">
+                            aria-label="{{ t('page.nav.toggleTheme') }}" title="{{ t('page.nav.toggleTheme') }}">
                             <i class="bi bi-moon-fill"></i>
                         </button>
                     </h5>
                     <button type="button" class="btn-close text-reset" data-bs-dismiss="offcanvas"
-                        aria-label="Close"></button>
+                        aria-label="{{ t('page.nav.close') }}"></button>
                 </header>
                 <div class="offcanvas-body sidebar">
-                    <div class="sidebar-header">
-                        <h3 class="d-flex align-items-center justify-content-between">
-                            <span><i class="bi bi-shield-shaded me-2"></i>SFDA Copilot</span>
-                        </h3>
-                        <p class="text-muted small mb-3">Your AI Regulatory Assistant</p>
-                        <div class="auth-status-container mt-2">
-                            <span id="user-status-offcanvas" class="small">Checking status...</span>
-                            <button id="auth-button-offcanvas" class="btn btn-sm btn-primary ms-2" type="button">Login
-                                / Signup</button>
-                            <button id="logout-button-offcanvas" class="btn btn-sm btn-outline-warning ms-2 d-none"
-                                type="button">Logout</button>
-                            <button id="profile-button-offcanvas" class="btn btn-sm btn-outline-info ms-2 d-none"
-                                type="button" data-bs-toggle="modal" data-bs-target="#profileModal"><i
-                                    class="bi bi-person-circle"></i> Profile</button>
-                        </div>
-                    </div>
-                    <div class="faq-section" id="faq-offcanvas-section"></div>
+                    {{ sidebar_body('-offcanvas', 'faq-offcanvas-section') }}
                 </div>
             </div>
 
             <!-- Chat Area -->
-            <section class="col-12 col-lg-9 chat-area h-100 d-flex flex-column">
-                <!-- Chat ambient background effects -->
-                <div class="chat-ambient-rings">
-                    <div class="chat-ring chat-ring-1"></div>
-                    <div class="chat-ring chat-ring-2"></div>
-                </div>
-                <div class="chat-ambient-orb chat-orb-1"></div>
-                <div class="chat-ambient-orb chat-orb-2"></div>
-                <div class="chat-ambient-orb chat-orb-3"></div>
-
-                <!-- Large Robot Companion (Sunny — mounted by robot.js) -->
-                <div class="robot-companion" id="robot-companion">
-                    <div class="robot-companion-glow"></div>
-                    <div class="robot-companion-platform"></div>
-                    <div class="robot-companion-body" id="robot-companion-body"></div>
-                    <div class="robot-companion-status" id="robot-status-text">Ready to help</div>
-                </div>
-
+            <section class="col-12 col-lg-9 chat-area h-100">
                 <div class="chat-container">
                     <div id="messages" class="messages" aria-live="polite">
                         <!-- Welcome Message -->
-                        <div class="message chatbot-message animated-message mb-3 message-medium">
+                        <div class="message chatbot-message mb-3">
                             <div class="message-bubble">
                                 <div class="avatar mb-2">
                                     <div class="robot-avatar-wrapper robot-idle" id="welcome-robot-avatar"></div>
                                 </div>
                                 <div class="message-content">
-                                    <p>Welcome to <strong>SFDA Copilot</strong>! Your AI assistant for pharmaceutical regulations in
-                                        Saudi Arabia. You can:</p>
+                                    <p>{{ t('page.chat.welcomeLead') }} <strong>{{ t('page.brand.name') }}</strong>{{ t('page.chat.welcomeRest') }}</p>
                                     <ul class="message-list">
-                                        <li><i class="bi bi-question-circle me-2 text-primary"></i>Ask specific
-                                            questions about regulatory requirements</li>
-                                        <li><i class="bi bi-filter-circle me-2 text-success"></i>Select a category to
-                                            focus your search</li>
-                                        <li><i class="bi bi-hand-index-thumb me-2 text-info"></i>Click on FAQ buttons
-                                            for common questions</li>
+                                        <li><i class="bi bi-question-circle me-2 text-primary"></i>{{ t('page.chat.bullet1') }}</li>
+                                        <li><i class="bi bi-filter-circle me-2 text-success"></i>{{ t('page.chat.bullet2') }}</li>
+                                        <li><i class="bi bi-hand-index-thumb me-2 text-info"></i>{{ t('page.chat.bullet3') }}</li>
                                     </ul>
-                                    <div class="knowledge-cutoff-notice"><i class="bi bi-info-circle me-2"></i><em>SFDA
-                                            Copilot provides regulatory guidance based on official SFDA guidelines
-                                            current through August 2026. For the most recent regulatory updates and
-                                            post-August 2026 changes, please consult the official SFDA website.</em></div>
-                                    <p>How can I assist you today?</p>
+                                    <div class="knowledge-cutoff-notice"><i class="bi bi-info-circle me-2"></i><em>{{ t('page.chat.cutoff') }}</em></div>
+                                    <p>{{ t('page.chat.prompt') }}</p>
                                 </div>
-                                <div class="timestamp">{{ now }}</div>
+                                <!-- Filled by JS on boot: the server's timezone is not the
+                                     reader's, and toLocaleTimeString gives us locale-correct
+                                     Arabic numerals for free once i18n lands. -->
+                                <time class="timestamp" data-ts-now></time>
                             </div>
                             <div class="suggested-questions-container mt-2"></div>
                         </div>
                     </div>
+
+                    <!-- Shown only when the reader has scrolled away from the
+                         bottom, so streaming never yanks them back mid-read.
+                         Placed in the same grid cell as #messages with
+                         align-self:end, which overlays it without absolute
+                         positioning and mirrors correctly under RTL. -->
+                    <button type="button" id="jump-to-latest" class="jump-to-latest" hidden
+                            aria-label="{{ t('runtime.chat.jumpToLatestAria') }}">
+                        <i class="bi bi-arrow-down" aria-hidden="true"></i>
+                        <span class="jump-label">{{ t('runtime.chat.jumpToLatest') }}</span>
+                        <span class="jump-dot" hidden></span>
+                    </button>
+
+                    <!-- Rail: a column that belongs to the mascot and (from Phase 4)
+                         the source deck, so the reading column is never padded
+                         around a floating ghost. Hidden below xl. -->
+                    <aside class="chat-rail" id="chat-rail" aria-label="{{ t('page.nav.assistantStatus') }}">
+                        <div class="robot-companion" id="robot-companion">
+                            <div class="robot-companion-glow"></div>
+                            <div class="robot-companion-platform"></div>
+                            <div class="robot-companion-body" id="robot-companion-body"></div>
+                            <div class="robot-companion-status" id="robot-status-text">{{ t('runtime.robot.idle') }}</div>
+                        </div>
+                    </aside>
                 </div>
 
                 <!-- Input Area -->
                 <footer class="input-area">
-                    <div class="category-selector mb-2">
-                        <label class="form-label">Search in:</label>
+                  <div class="composer-inner">
+                    <div class="category-selector">
+                        <label class="form-label">{{ t('page.chat.searchIn') }}</label>
                         <div class="custom-dropdown" id="category-dropdown">
                             <button class="custom-dropdown-trigger" id="query-category" type="button" aria-haspopup="listbox" aria-expanded="false" data-value="all">
                                 <span class="dropdown-icon">🌐</span>
-                                <span class="dropdown-text">All Categories</span>
+                                <span class="dropdown-text">{{ t('page.categories.all') }}</span>
                                 <i class="bi bi-chevron-down dropdown-arrow"></i>
                             </button>
                             <ul class="custom-dropdown-menu" role="listbox">
-                                <li class="custom-dropdown-item active" data-value="all" data-icon="🌐" role="option"><span class="dropdown-icon">🌐</span>All Categories</li>
-                                <li class="custom-dropdown-item" data-value="regulatory" data-icon="📋" role="option"><span class="dropdown-icon">📋</span>Regulatory</li>
-                                <li class="custom-dropdown-item" data-value="pharmacovigilance" data-icon="💊" role="option"><span class="dropdown-icon">💊</span>Pharmacovigilance</li>
-                                <li class="custom-dropdown-item" data-value="veterinary" data-icon="🐾" role="option"><span class="dropdown-icon">🐾</span>Veterinary Medicines</li>
-                                <li class="custom-dropdown-item" data-value="biological" data-icon="🧬" role="option"><span class="dropdown-icon">🧬</span>Biological Products</li>
+                                <li class="custom-dropdown-item active" data-value="all" data-icon="🌐" role="option"><span class="dropdown-icon">🌐</span>{{ t('page.categories.all') }}</li>
+                                <li class="custom-dropdown-item" data-value="regulatory" data-icon="📋" role="option"><span class="dropdown-icon">📋</span>{{ t('page.categories.regulatory') }}</li>
+                                <li class="custom-dropdown-item" data-value="pharmacovigilance" data-icon="💊" role="option"><span class="dropdown-icon">💊</span>{{ t('page.categories.pharmacovigilance') }}</li>
+                                <li class="custom-dropdown-item" data-value="veterinary" data-icon="🐾" role="option"><span class="dropdown-icon">🐾</span>{{ t('page.categories.veterinary') }}</li>
+                                <li class="custom-dropdown-item" data-value="biological" data-icon="🧬" role="option"><span class="dropdown-icon">🧬</span>{{ t('page.categories.biological') }}</li>
                             </ul>
                         </div>
-                        <select id="query-category-hidden" class="d-none" aria-label="Search category">
-                            <option value="all" selected>All Categories</option>
-                            <option value="regulatory">Regulatory</option>
-                            <option value="pharmacovigilance">Pharmacovigilance</option>
-                            <option value="veterinary">Veterinary Medicines</option>
-                            <option value="biological">Biological Products</option>
+                        <select id="query-category-hidden" class="d-none" aria-label="{{ t('page.categories.aria') }}">
+                            <option value="all" selected>{{ t('page.categories.all') }}</option>
+                            <option value="regulatory">{{ t('page.categories.regulatory') }}</option>
+                            <option value="pharmacovigilance">{{ t('page.categories.pharmacovigilance') }}</option>
+                            <option value="veterinary">{{ t('page.categories.veterinary') }}</option>
+                            <option value="biological">{{ t('page.categories.biological') }}</option>
                         </select>
                     </div>
                     <div class="input-group">
                         <input type="text" id="query-input" class="form-control"
-                            placeholder="Ask about SFDA regulations..." aria-label="Chat message input"
+                            placeholder="{{ t('page.chat.inputPlaceholder') }}" aria-label="{{ t('page.chat.inputAria') }}"
                             aria-describedby="inputHelp" maxlength="500">
-                        <button class="btn" type="button" id="send-button" aria-label="Send message">
-                            <i class="bi bi-send"></i> Send
+                        <button class="btn" type="button" id="send-button" aria-label="{{ t('page.chat.sendAria') }}">
+                            <i class="bi bi-send"></i> {{ t('page.chat.send') }}
                         </button>
                     </div>
+                  </div>
                 </footer>
             </section>
         </div>
@@ -529,7 +517,7 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"
         integrity="sha384-geWF76RCwLtnZ8qwWowPQNguL3RmwHVBC9FhGdlKrxdiJJigb/j/68SIy3Te4Bkz"
         crossorigin="anonymous"></script>
-    <script type="module" src="{{ url_for('static', filename='js/app.js') }}?v=blue1"></script>
+    <script type="module" src="{{ url_for('static', filename='js/app.js') }}?v={{ asset_version }}"></script>
 
     <!-- CDN fallback -->
     <script>

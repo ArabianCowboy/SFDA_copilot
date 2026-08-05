@@ -11,6 +11,18 @@ import { UI } from './ui.js';
 import { Services } from './services.js';
 import { ThemeManager } from './theme.js';
 import { RobotStateManager } from './robot.js';
+import { I18n } from './i18n.js';
+
+/* Sent with every chat request so the model answers in the reader's language. */
+const I18N_LANG = I18n.lang;
+
+/* Honest progress text, driven by real server stages rather than a timer. */
+const STAGE_LABELS = {
+  searching: () => I18n.t('stage.searching'),
+  retrieved: (d) => I18n.plural(d.count, 'stage.retrievedOne', 'stage.retrieved'),
+  drafting: () => I18n.t('stage.drafting'),
+  finalizing: () => I18n.t('stage.finalizing'),
+};
 
 export const Handlers = {
   bindEvents() {
@@ -91,12 +103,7 @@ export const Handlers = {
   async processChatRequestInternal(queryText, category = '') {
     UI.addMessage(queryText, 'user');
     UI.setSendingState(true);
-
     RobotStateManager.reactToUser();
-    const thinkingTimer = setTimeout(() => {
-      RobotStateManager.startThinking();
-      UI.toggleTypingIndicator(true);
-    }, 800);
 
     try {
       let token;
@@ -105,7 +112,7 @@ export const Handlers = {
       } catch (error) {
         logError(error, 'processChatRequestInternal.getSessionToken');
         ErrorHandler.showToast(
-          'Unable to verify your session. Please try again.',
+          I18n.t('chat.sessionUnverified'),
           true
         );
         RobotStateManager.resetToIdle();
@@ -114,23 +121,16 @@ export const Handlers = {
 
       if (!token && !window.location.search.includes('testing=true')) {
         AppState.get('authModal')?.show();
-        ErrorHandler.showToast('Please log in to chat with the AI.', true);
+        ErrorHandler.showToast(I18n.t('chat.loginRequired'), true);
         RobotStateManager.resetToIdle();
         return;
       }
 
-      const data = await Services.sendChatRequest(queryText, category, token);
-
-      UI.toggleTypingIndicator(false);
-      RobotStateManager.startTalking();
-
-      if (data?.response) {
-        UI.addMessage(data.response, 'bot', data.suggested_questions || []);
+      if (CONFIG.STREAMING && 'body' in Response.prototype) {
+        await this.streamChat(queryText, category, token);
       } else {
-        throw new Error('Invalid response format from AI service.');
+        await this.blockingChat(queryText, category, token);
       }
-
-      RobotStateManager.returnToIdle(4000);
     } catch (error) {
       UI.toggleTypingIndicator(false);
       if (error?.name === 'AbortError') {
@@ -139,12 +139,84 @@ export const Handlers = {
       }
 
       logError(error, 'processChatRequestInternal');
-      UI.addMessage('Sorry, I encountered an error while processing your request. Please try again.', 'bot');
-      ErrorHandler.showToast('Failed to send message.', true);
+      UI.addMessage(I18n.t('chat.genericError'), 'bot');
+      ErrorHandler.showToast(I18n.t('chat.sendFailed'), true);
       RobotStateManager.showError();
     } finally {
-      clearTimeout(thinkingTimer);
       UI.setSendingState(false);
+    }
+  },
+
+  /** SSE path: sources land before the first token, so the reader can see
+   *  what was retrieved while the answer is still being written. */
+  async streamChat(queryText, category, token) {
+    const handle = UI.beginStreamingMessage();
+    let sawToken = false;
+    let failed = null;
+
+    try {
+      await Services.streamChatRequest(queryText, category, token, I18N_LANG, {
+        stage: (d) => {
+          RobotStateManager.onStage?.(d.stage, d);
+          UI.setStage(handle, STAGE_LABELS[d.stage]
+            ? STAGE_LABELS[d.stage](d)
+            : null);
+        },
+        sources: (d) => UI.attachSourceDeck(handle, d.sources || []),
+        delta: (d) => {
+          if (!sawToken) {
+            sawToken = true;
+            UI.setStage(handle, null);
+            RobotStateManager.startTalking();
+          }
+          handle.stream.push(d.t);
+          UI.followStream();
+        },
+        suggestions: (d) => { handle.suggested = d.suggested_questions || []; },
+        error: (d) => { failed = d; },
+        done: () => { /* terminal; the reader loop ends on its own */ },
+      });
+    } catch (error) {
+      if (error?.name === 'AbortError') {
+        // Keep whatever arrived rather than leaving an empty bubble.
+        UI.markStreamIncomplete(handle, 'cancelled');
+        RobotStateManager.resetToIdle();
+        return;
+      }
+      UI.markStreamIncomplete(handle, 'error');
+      throw error;
+    }
+
+    if (failed) {
+      // A failure after streaming began cannot change the 200 status line, so
+      // it arrives in-band. Keep the partial answer and flag it.
+      UI.markStreamIncomplete(handle, 'error');
+      ErrorHandler.showToast(I18n.t('chat.sendFailed'), true);
+      RobotStateManager.showError();
+      return;
+    }
+
+    UI.finishStreamingMessage(handle, handle.suggested || []);
+    RobotStateManager.returnToIdle(4000);
+  },
+
+  /** Fallback for browsers without streaming bodies, or CONFIG.STREAMING off. */
+  async blockingChat(queryText, category, token) {
+    const thinkingTimer = setTimeout(() => {
+      RobotStateManager.startThinking();
+      UI.toggleTypingIndicator(true);
+    }, 800);
+
+    try {
+      const data = await Services.sendChatRequest(queryText, category, token);
+      UI.toggleTypingIndicator(false);
+      RobotStateManager.startTalking();
+
+      if (!data?.response) throw new Error(I18n.t('chat.invalidResponse'));
+      UI.addMessage(data.response, 'bot', data.suggested_questions || [], data.sources || []);
+      RobotStateManager.returnToIdle(4000);
+    } finally {
+      clearTimeout(thinkingTimer);
     }
   },
 
