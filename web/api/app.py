@@ -252,13 +252,24 @@ def _init_extensions(app: Flask, testing: bool) -> Limiter:
         connect_src.append(f"wss://{project_ref}.supabase.co")
     connect_src.append("wss://*.supabase.co")  # Allow all Supabase WebSocket connections
     
+    # Dev-only allowance for the Impeccable live-mode helper, which serves its
+    # picker script and an SSE channel from http://localhost:8400. It needs both
+    # script-src (to load) and connect-src (to poll).
+    #
+    # This CANNOT reach production: is_debug_mode is `config.is_debug() or testing`
+    # (see above), so a deployed app with debug:false and testing off gets an empty
+    # list and an unchanged policy. Note the origin is http, not https — the
+    # permissive debug connect-src below allows `https:` and `wss:` only, so the
+    # allowance has to be appended there too rather than being covered by it.
+    impeccable_live_dev = ["http://localhost:8400"] if is_debug_mode else []
+
     csp = {
         "default-src": ["'self'"],
-        "script-src": ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net", "https://cdn.lordicon.com", "https://cdnjs.cloudflare.com"],
+        "script-src": ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net", "https://cdn.lordicon.com", "https://cdnjs.cloudflare.com"] + impeccable_live_dev,
         "style-src": ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net", "https://cdnjs.cloudflare.com", "https://fonts.googleapis.com"],
         "img-src": ["'self'", "data:", "https:"],
         "font-src": ["'self'", "https://cdn.jsdelivr.net", "https://cdnjs.cloudflare.com", "data:", "https://fonts.gstatic.com", "https://r2cdn.perplexity.ai"],
-        "connect-src": connect_src,
+        "connect-src": connect_src + impeccable_live_dev,
     }
     
     # In debug mode, be more permissive for development (allows browser extensions)
@@ -266,7 +277,7 @@ def _init_extensions(app: Flask, testing: bool) -> Limiter:
         # Allow fonts from any HTTPS source (for browser extensions like Perplexity)
         csp["font-src"] = ["'self'", "https:", "data:"]
         # Allow connections to any HTTPS/WSS (for development and browser extensions)
-        csp["connect-src"] = ["'self'", "https:", "wss:"]
+        csp["connect-src"] = ["'self'", "https:", "wss:"] + impeccable_live_dev
         logging.info("CSP configured in permissive debug mode for development")
     
     # Disable force_https when:
