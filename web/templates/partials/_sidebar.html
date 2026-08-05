@@ -1,0 +1,35 @@
+{#
+  The sidebar is rendered twice: once as the desktop aside, once inside the
+  mobile offcanvas. Everything but the element ids was identical, so it lives
+  here and the caller supplies the suffix.
+
+  The theme toggle is deliberately NOT in this macro. The desktop and offcanvas
+  toggles sit in different headers, and web/tests/test_theme_toggle.py asserts
+  there are exactly three .theme-toggle-btn on the page (landing + these two).
+  Rendering one here would make it four.
+#}
+{% macro sidebar_body(suffix='', faq_id='faq-sidebar-section', show_title=true) %}
+<div class="sidebar-header">
+  {% if show_title %}
+  <h3 class="sidebar-title">
+    <i class="bi bi-shield-shaded" aria-hidden="true"></i>
+    <span>SFDA Copilot</span>
+  </h3>
+  {% endif %}
+  <p class="sidebar-tagline">Your AI Regulatory Assistant</p>
+
+  <div class="auth-status-container">
+    <span id="user-status{{ suffix }}" class="auth-status-text">Checking status...</span>
+    <div class="auth-status-actions">
+      <button id="auth-button{{ suffix }}" class="btn btn-sm btn-primary" type="button">Login / Signup</button>
+      <button id="logout-button{{ suffix }}" class="btn btn-sm btn-ghost d-none" type="button">Logout</button>
+      <button id="profile-button{{ suffix }}" class="btn btn-sm btn-ghost d-none" type="button"
+              data-bs-toggle="modal" data-bs-target="#profileModal">
+        <i class="bi bi-person-circle" aria-hidden="true"></i> Profile
+      </button>
+    </div>
+  </div>
+</div>
+
+<div class="faq-section" id="{{ faq_id }}"></div>
+{% endmacro %}

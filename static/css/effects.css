@@ -69,13 +69,15 @@
 .landing-robot.robot-exit { animation: robotExit 1s var(--ease-out) forwards; }
 
 /* ——————————————— Chat companion mascot ——————————————— */
+/* Sunny lives in the rail column now, sticking to its bottom, rather than
+   floating over the transcript and forcing a 168px gutter through it. */
 .robot-companion {
-  position: absolute;
-  inset-block-end: 100px;
-  inset-inline-end: 14px;
+  position: sticky;
+  inset-block-start: calc(100% - 190px);
   z-index: var(--z-mascot);
-  display: none;
+  display: flex;
   inline-size: 120px;
+  margin-inline: auto;
   flex-direction: column;
   align-items: center;
   pointer-events: none;
@@ -126,9 +128,8 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-/* Only float the companion where there's room for a clear lane beside the
-   chat. Below xl the inline message avatars carry the mascot instead. */
-@media (min-width: 1200px) { .robot-companion { display: flex; } }
+/* Visibility is the rail's job (base.css): below xl there is no rail, and the
+   inline message avatars carry the mascot instead. */
 
 /* ——————————————— Message entrances ——————————————— */
 .chatbot-message { animation: botMessageIn .5s var(--ease-out) both; }

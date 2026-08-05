@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+{% from "partials/_sidebar.html" import sidebar_body %}<!DOCTYPE html>
 <html lang="en">
 
 <head>
@@ -358,27 +358,13 @@
         <div class="row h-100">
             <!-- Desktop Sidebar -->
             <aside class="col-lg-3 col-md-4 sidebar d-none d-lg-block h-100" id="sidebarContentRegular">
-                <header class="sidebar-header">
-                    <h3 class="d-flex align-items-center justify-content-between">
-                        <span><i class="bi bi-shield-shaded me-2"></i>SFDA Copilot</span>
-                        <button id="sidebar-theme-toggle" class="theme-toggle-btn btn btn-sm ms-2"
-                            aria-label="Toggle theme" title="Toggle theme">
-                            <i class="bi bi-moon-fill"></i>
-                        </button>
-                    </h3>
-                    <p class="text-muted small mb-3">Your AI Regulatory Assistant</p>
-                    <div class="auth-status-container mt-2">
-                        <span id="user-status" class="small">Checking status...</span>
-                        <button id="auth-button" class="btn btn-sm btn-primary ms-2" type="button">Login /
-                            Signup</button>
-                        <button id="logout-button" class="btn btn-sm btn-outline-warning ms-2 d-none"
-                            type="button">Logout</button>
-                        <button id="profile-button" class="btn btn-sm btn-outline-info ms-2 d-none" type="button"
-                            data-bs-toggle="modal" data-bs-target="#profileModal"><i class="bi bi-person-circle"></i>
-                            Profile</button>
-                    </div>
-                </header>
-                <div class="faq-section" id="faq-sidebar-section"></div>
+                <div class="sidebar-brandbar">
+                    <button id="sidebar-theme-toggle" class="theme-toggle-btn btn btn-sm"
+                        aria-label="Toggle theme" title="Toggle theme">
+                        <i class="bi bi-moon-fill"></i>
+                    </button>
+                </div>
+                {{ sidebar_body('', 'faq-sidebar-section') }}
             </aside>
 
             <!-- Mobile Offcanvas Sidebar -->
@@ -398,36 +384,12 @@
                         aria-label="Close"></button>
                 </header>
                 <div class="offcanvas-body sidebar">
-                    <div class="sidebar-header">
-                        <h3 class="d-flex align-items-center justify-content-between">
-                            <span><i class="bi bi-shield-shaded me-2"></i>SFDA Copilot</span>
-                        </h3>
-                        <p class="text-muted small mb-3">Your AI Regulatory Assistant</p>
-                        <div class="auth-status-container mt-2">
-                            <span id="user-status-offcanvas" class="small">Checking status...</span>
-                            <button id="auth-button-offcanvas" class="btn btn-sm btn-primary ms-2" type="button">Login
-                                / Signup</button>
-                            <button id="logout-button-offcanvas" class="btn btn-sm btn-outline-warning ms-2 d-none"
-                                type="button">Logout</button>
-                            <button id="profile-button-offcanvas" class="btn btn-sm btn-outline-info ms-2 d-none"
-                                type="button" data-bs-toggle="modal" data-bs-target="#profileModal"><i
-                                    class="bi bi-person-circle"></i> Profile</button>
-                        </div>
-                    </div>
-                    <div class="faq-section" id="faq-offcanvas-section"></div>
+                    {{ sidebar_body('-offcanvas', 'faq-offcanvas-section') }}
                 </div>
             </div>
 
             <!-- Chat Area -->
-            <section class="col-12 col-lg-9 chat-area h-100 d-flex flex-column">
-                <!-- Large Robot Companion (Sunny — mounted by robot.js) -->
-                <div class="robot-companion" id="robot-companion">
-                    <div class="robot-companion-glow"></div>
-                    <div class="robot-companion-platform"></div>
-                    <div class="robot-companion-body" id="robot-companion-body"></div>
-                    <div class="robot-companion-status" id="robot-status-text">Ready to help</div>
-                </div>
-
+            <section class="col-12 col-lg-9 chat-area h-100">
                 <div class="chat-container">
                     <div id="messages" class="messages" aria-live="polite">
                         <!-- Welcome Message -->
@@ -461,11 +423,24 @@
                             <div class="suggested-questions-container mt-2"></div>
                         </div>
                     </div>
+
+                    <!-- Rail: a column that belongs to the mascot and (from Phase 4)
+                         the source deck, so the reading column is never padded
+                         around a floating ghost. Hidden below xl. -->
+                    <aside class="chat-rail" id="chat-rail" aria-label="Assistant status">
+                        <div class="robot-companion" id="robot-companion">
+                            <div class="robot-companion-glow"></div>
+                            <div class="robot-companion-platform"></div>
+                            <div class="robot-companion-body" id="robot-companion-body"></div>
+                            <div class="robot-companion-status" id="robot-status-text">Ready to help</div>
+                        </div>
+                    </aside>
                 </div>
 
                 <!-- Input Area -->
                 <footer class="input-area">
-                    <div class="category-selector mb-2">
+                  <div class="composer-inner">
+                    <div class="category-selector">
                         <label class="form-label">Search in:</label>
                         <div class="custom-dropdown" id="category-dropdown">
                             <button class="custom-dropdown-trigger" id="query-category" type="button" aria-haspopup="listbox" aria-expanded="false" data-value="all">
@@ -497,6 +472,7 @@
                             <i class="bi bi-send"></i> Send
                         </button>
                     </div>
+                  </div>
                 </footer>
             </section>
         </div>
