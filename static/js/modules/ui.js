@@ -27,7 +27,7 @@ function createMessageContent(text, isBot) {
 function createMessageElement(text, sender) {
   const isBot = sender === 'bot';
   const messageWrapper = DOMCache.createElement(
-    'div', 'message', isBot ? 'chatbot-message' : 'user-message', 'mb-3', 'message-medium'
+    'div', 'message', isBot ? 'chatbot-message' : 'user-message', 'mb-3'
   );
   const messageBubble = DOMCache.createElement('div', 'message-bubble');
 
@@ -53,6 +53,19 @@ function createMessageElement(text, sender) {
 }
 
 export const UI = {
+  /**
+   * Fill any server-rendered `<time data-ts-now>` with the reader's local time.
+   * The welcome bubble's timestamp used to be a `{{ now }}` Jinja variable that
+   * was never provided, so it always shipped empty.
+   */
+  hydrateTimestamps() {
+    const now = new Date();
+    document.querySelectorAll('[data-ts-now]').forEach(el => {
+      el.textContent = now.toLocaleTimeString();
+      el.dateTime = now.toISOString();
+    });
+  },
+
   scrollMessagesToBottom() {
     const container = DOMCache.get(CONFIG.SELECTORS.MESSAGES);
     container?.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
@@ -88,7 +101,7 @@ export const UI = {
     const existingIndicator = document.getElementById(indicatorId);
 
     if (show && !existingIndicator) {
-      const wrapper = DOMCache.createElement('div', 'message', 'chatbot-message', 'message-medium');
+      const wrapper = DOMCache.createElement('div', 'message', 'chatbot-message');
       wrapper.id = indicatorId;
       wrapper.style.opacity = '1';
 

@@ -117,7 +117,10 @@ def live_server_url():
 
     from web.api.app import create_app
 
-    server = make_server("127.0.0.1", 0, create_app(testing=True))
+    # threaded=True is required: a held-open SSE connection to /api/chat/stream
+    # would otherwise monopolise the single serving thread and hang every other
+    # request for the rest of the session.
+    server = make_server("127.0.0.1", 0, create_app(testing=True), threaded=True)
     thread = Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:

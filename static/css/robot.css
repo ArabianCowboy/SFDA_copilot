@@ -45,18 +45,24 @@
 /* ——————————————— ERROR ——————————————— */
 .robot-error .robot-head { animation: sunnyShake .4s ease-in-out 2; transform-origin: center 96px; }
 .robot-error .eye-pupil-left,
-.robot-error .eye-pupil-right { fill: #fb7185; }
+.robot-error .eye-pupil-right { fill: var(--alert-600); }
 
 /* Entrance applied in companion hand-off */
 .robot-entrance { animation: robotCompanionEntrance 1.2s var(--ease-out) both; }
 
 /* ——————————————— Reaction sparks ——————————————— */
-.robot-reaction-particles { position: absolute; top: 50%; left: 50%; width: 0; height: 0; pointer-events: none; z-index: 5; }
+.robot-reaction-particles {
+  position: absolute;
+  inset-block-start: 50%; inset-inline-start: 50%;
+  inline-size: 0; block-size: 0;
+  pointer-events: none; z-index: var(--z-raised);
+}
 .robot-reaction-particle {
-  position: absolute; top: 0; left: 0;
-  width: 7px; height: 7px; border-radius: 50%;
-  background: var(--gradient-sun);
-  box-shadow: 0 0 8px rgba(251 191 36 / 0.7);
+  position: absolute;
+  inset-block-start: 0; inset-inline-start: 0;
+  inline-size: 7px; block-size: 7px; border-radius: 50%;
+  background: var(--signal);
+  box-shadow: 0 0 8px rgb(var(--accent-color-rgb) / .55);
   animation: sunnySpark .9s var(--ease-out) forwards;
 }
 

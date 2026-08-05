@@ -27,21 +27,15 @@
   font-size: 1.05rem;
   color: #fff;
   background: var(--gradient-brand-flow);
-  background-size: 200% 200%;
-  box-shadow: var(--shadow-lg), var(--shadow-warm-glow);
+  box-shadow: var(--shadow-lg);
   cursor: pointer;
   transition: var(--btn-transition);
-  animation: brandShift 8s ease infinite;
 }
 .unified-button:hover {
   transform: translateY(-3px) scale(1.02);
   box-shadow: var(--shadow-xl), var(--shadow-warm-glow);
 }
 .unified-button:active { transform: translateY(-1px) scale(.99); }
-
-/* Ripple */
-.ripple-container { position: absolute; inset: 0; overflow: hidden; border-radius: inherit; pointer-events: none; }
-.ripple { position: absolute; border-radius: 50%; background: rgba(255 255 255 / 0.45); transform: scale(0); animation: rippleExpand .6s ease-out; pointer-events: none; }
 
 /* Theme toggle */
 .theme-toggle-btn {
@@ -64,7 +58,8 @@
 
 /* Utility links on landing */
 .landing-header-utility {
-  position: absolute; top: 18px; right: 22px; z-index: 20;
+  position: absolute;
+  inset-block-start: 18px; inset-inline-end: 22px; z-index: var(--z-rail);
   display: flex; align-items: center; gap: 10px;
 }
 .utility-icon-link {
@@ -115,8 +110,7 @@
   box-shadow: var(--shadow-glass);
   backdrop-filter: var(--backdrop-blur);
   -webkit-backdrop-filter: var(--backdrop-blur);
-  text-align: left;
-  transform-style: preserve-3d;
+  text-align: start;
   transition: box-shadow var(--duration-m) ease, border-color var(--duration-m) ease;
 }
 .feature-card:hover { box-shadow: var(--shadow-glass-hover); border-color: var(--glass-border-subtle); }
@@ -177,7 +171,7 @@
   color: var(--text-color-dark);
   text-transform: uppercase; letter-spacing: .05em;
 }
-.faq-section h4 i { margin-right: 8px; color: var(--accent-warm); }
+.faq-section h4 i { margin-inline-end: var(--space-2); color: var(--accent-warm); }
 .faq-section .nav-pills { display: flex; flex-direction: column; gap: 8px; }
 .faq-section .nav-link.faq-button {
   position: relative; overflow: hidden;
@@ -186,16 +180,15 @@
   border-radius: var(--radius-md);
   font-size: .88rem; font-weight: 500;
   color: var(--text-color-dark);
-  text-align: left;
+  text-align: start;
   background: var(--glass-bg);
-  backdrop-filter: blur(8px);
   transition: all var(--duration-m) var(--ease-out);
 }
 .faq-section .nav-link.faq-button:hover,
 .faq-section .nav-link.faq-button:focus {
   border-color: var(--accent-warm);
   box-shadow: var(--shadow-md), var(--shadow-warm-glow);
-  transform: translateX(4px);
+  transform: translateX(calc(4px * var(--flip)));
   cursor: pointer;
 }
 .faq-section .nav-link.faq-button.active {
@@ -226,12 +219,14 @@
   backdrop-filter: var(--backdrop-blur);
   -webkit-backdrop-filter: var(--backdrop-blur);
 }
-.chatbot-message .message-bubble { border-top-left-radius: 6px; }
+/* The bubble's squared corner points back at its speaker, so it must follow
+   the writing direction rather than a fixed side. */
+.chatbot-message .message-bubble { border-start-start-radius: var(--radius-sm); }
 .user-message .message-bubble {
-  color: #fff;
-  background: var(--gradient-brand);
+  color: var(--fg-on-signal);
+  background: var(--signal);
   border: none;
-  border-top-right-radius: 6px;
+  border-start-end-radius: var(--radius-sm);
   box-shadow: var(--shadow-brand-accent);
 }
 .user-message .message-bubble .timestamp { color: rgba(255 255 255 / 0.8); }
@@ -239,7 +234,7 @@
 .message-content p:last-child { margin-bottom: 0; }
 .message-content { color: var(--text-color-dark); line-height: 1.6; }
 .user-message .message-content { color: #fff; }
-.message-list { padding-left: 1.2rem; }
+.message-list { padding-inline-start: 1.2rem; }
 
 /* Markdown tables — keep borders clearly visible */
 .message-content table {
@@ -253,9 +248,9 @@
 }
 .message-content th,
 .message-content td {
-  padding: 8px 12px;
+  padding: var(--space-2) var(--space-3);
   border: 1px solid var(--border-color-dark);
-  text-align: left;
+  text-align: start;
 }
 .message-content thead th {
   background: rgba(var(--accent-color-rgb) / 0.14);
@@ -281,7 +276,7 @@
 }
 .knowledge-cutoff-notice {
   padding: 10px 12px; margin: 12px 0;
-  border-left: 3px solid var(--accent-warm);
+  border-inline-start: 3px solid var(--accent-warm);
   border-radius: var(--radius-sm);
   background: rgba(100 116 139 / 0.10);
   font-size: .85rem; color: var(--text-color-light-secondary);
@@ -331,25 +326,31 @@
 .category-selector { display: flex; align-items: center; gap: 10px; }
 .category-selector .form-label { margin: 0; font-size: .85rem; font-weight: 600; color: var(--text-color-dark-muted); }
 
+/* The composer is one pill split in two. Physical corner shorthands would keep
+   the rounded end on the left under RTL, so each corner is set logically. */
 .input-group #query-input {
   border: 1px solid var(--border-color-medium);
-  border-right: none;
-  border-radius: 999px 0 0 999px;
-  padding: 12px 18px;
+  border-inline-end: none;
+  border-start-start-radius: var(--radius-pill);
+  border-end-start-radius: var(--radius-pill);
+  border-start-end-radius: 0;
+  border-end-end-radius: 0;
+  padding: var(--space-3) var(--space-4);
   background: var(--surface);
   color: var(--text-color-dark);
 }
 .input-group #query-input:focus { box-shadow: none; border-color: var(--accent-color); }
 #send-button {
-  display: inline-flex; align-items: center; gap: 6px;
-  padding: 12px 22px;
+  display: inline-flex; align-items: center; gap: var(--space-2);
+  padding: var(--space-3) var(--space-5);
   border: none;
-  border-radius: 0 999px 999px 0;
-  font-weight: 600; color: #fff;
-  background: var(--gradient-brand-flow);
-  background-size: 200% 200%;
+  border-start-start-radius: 0;
+  border-end-start-radius: 0;
+  border-start-end-radius: var(--radius-pill);
+  border-end-end-radius: var(--radius-pill);
+  font-weight: var(--fw-display); color: var(--fg-on-signal);
+  background: var(--signal);
   transition: var(--btn-transition);
-  animation: brandShift 8s ease infinite;
 }
 #send-button:hover { filter: brightness(1.05); box-shadow: var(--shadow-warm-glow); }
 #send-button:disabled { opacity: .6; }
@@ -371,7 +372,9 @@
 .dropdown-arrow { transition: transform var(--duration-s) ease; font-size: .75rem; }
 .custom-dropdown.open .dropdown-arrow { transform: rotate(180deg); }
 .custom-dropdown-menu {
-  position: absolute; bottom: calc(100% + 8px); left: 0; z-index: 50;
+  position: absolute;
+  inset-block-end: calc(100% + var(--space-2)); inset-inline-start: 0;
+  z-index: var(--z-dropdown);
   min-width: 220px; margin: 0; padding: 6px;
   list-style: none;
   border: 1px solid var(--border-color-light);
@@ -393,19 +396,24 @@
 .dropdown-icon { font-size: 1rem; }
 
 /* ——————————————— Toast ——————————————— */
+/* Centred with auto inline margins instead of left:50% + translateX(-50%), so
+   the transform stays free for the enter/exit motion and it mirrors in RTL. */
 .toast-notification {
-  position: fixed; bottom: 24px; left: 50%;
-  z-index: 1080;
-  max-width: min(420px, 90vw);
-  padding: 14px 20px;
+  position: fixed;
+  inset-block-end: var(--space-5);
+  inset-inline: 0;
+  z-index: var(--z-toast);
+  inline-size: fit-content;
+  max-inline-size: min(420px, 90vw);
+  margin-inline: auto;
+  padding: var(--space-3) var(--space-5);
   border-radius: var(--radius-md);
   color: var(--toast-text);
   background: var(--toast-bg);
   box-shadow: var(--shadow-xl);
-  transform: translateX(-50%);
   opacity: 1;
   transition: opacity var(--duration-m) ease, transform var(--duration-m) ease;
 }
-.toast-notification.hidden { opacity: 0; transform: translateX(-50%) translateY(16px); pointer-events: none; }
-.toast-notification.error { border-left: 4px solid var(--color-error); }
-.toast-notification.success { border-left: 4px solid var(--accent-color); }
+.toast-notification.hidden { opacity: 0; transform: translateY(16px); pointer-events: none; }
+.toast-notification.error { border-inline-start: 4px solid var(--color-error); }
+.toast-notification.success { border-inline-start: 4px solid var(--accent-color); }

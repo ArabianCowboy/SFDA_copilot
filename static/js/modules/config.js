@@ -23,7 +23,6 @@ export const CONFIG = {
     ACTIVE: 'active',
     ERROR: 'error',
     SUCCESS: 'success',
-    SKELETON: 'skeleton',
     TYPING_INDICATOR_ID: 'typing-indicator',
     THEME_TOGGLE: 'theme-toggle-btn',
     SUGGESTED_CONTAINER: 'suggested-questions-container',
@@ -61,7 +60,6 @@ export const CONFIG = {
     PROFILE_ERROR: '#profile-error',
     PROFILE_BTN: '#profile-button',
     PROFILE_BTN_OFFCANVAS: '#profile-button-offcanvas',
-    PARTICLES_CONTAINER: '#landing-particles',
   },
 };
 

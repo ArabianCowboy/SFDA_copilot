@@ -102,6 +102,11 @@ MAX_SESSION_CHAT_HISTORY_CHARS = 3_500
 DEFAULT_MAX_CHAT_MESSAGES_COUNT = 5
 ALLOWED_CHAT_CATEGORIES = {"all", "regulatory", "pharmacovigilance", "veterinary", "biological"}
 
+# Cache-buster appended to every static CSS/JS URL. Bump this in any commit that
+# changes a stylesheet or module, otherwise returning users get a stale
+# components.css against a fresh tokens.css and see a half-styled app.
+ASSET_VERSION = "dossier1"
+
 # ──────────────────────────────────────────────────────────
 # Helper Functions
 # ──────────────────────────────────────────────────────────
@@ -337,6 +342,10 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
     """Register all application routes and blueprints."""
     app.config["FREQUENT_QUESTIONS"] = _load_faq_data()
     app.register_blueprint(auth_bp, url_prefix="/auth")
+
+    @app.context_processor
+    def inject_template_globals() -> Dict[str, Any]:
+        return {"asset_version": ASSET_VERSION}
 
     @app.route("/")
     def index():

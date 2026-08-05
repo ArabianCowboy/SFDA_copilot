@@ -4,7 +4,7 @@
  * AI-powered regulatory guidance for pharmaceutical regulations.
  * This file wires the ES modules together; logic lives under ./modules/.
  *
- * @version 4.0.0 (Clinical Blue refactor — modular + fresh mascot)
+ * @version 5.0.0 (Dossier — ink + Plex, citations as the signature element)
  */
 
 import { CONFIG } from './modules/config.js';
@@ -61,14 +61,12 @@ const App = {
 
     Handlers.bindEvents();
     ThemeManager.init();
+    UI.hydrateTimestamps();
 
-    /* Mount the mascot, then start the purely-decorative cinematic layer.
-       These run regardless of whether auth services are configured below. */
+    /* Mount the mascot and the card reveal. These run regardless of whether
+       auth services are configured below. */
     mountRobots();
-    Effects.initParticles();
     Effects.initCardAnimations();
-    Effects.initHeroParallax();
-    Effects.initButtonRipples();
     initLandingRobot();
     RobotCompanion.init();
     CustomDropdown.init();

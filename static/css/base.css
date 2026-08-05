@@ -35,26 +35,24 @@ a:hover { color: var(--accent-link); }
 #authenticated-view { display: flex; flex-direction: column; height: 100%; }
 #authenticated-view > .row { flex: 1; min-height: 0; }
 
-/* Brand wordmark gradient */
+/* Brand wordmark. Dossier sets it in solid ink with tight display tracking
+   rather than clipping a gradient to the glyphs. */
 .text-gradient,
 .hero-title-wrapper h1 {
-  background: var(--gradient-brand-flow);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  color: transparent;
+  color: var(--fg-primary);
+  letter-spacing: var(--track-display);
 }
 
 /* Scrollbars */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
-  background: linear-gradient(var(--accent-color), var(--accent-warm));
-  border-radius: 10px;
+  background: var(--hairline-strong);
+  border-radius: var(--radius-pill);
   border: 2px solid transparent;
   background-clip: padding-box;
 }
-::-webkit-scrollbar-thumb:hover { background: var(--accent-warm); background-clip: padding-box; }
+::-webkit-scrollbar-thumb:hover { background: var(--fg-faint); background-clip: padding-box; }
 
 /* Accessibility helpers */
 .sr-only {
@@ -90,10 +88,10 @@ a:hover { color: var(--accent-link); }
   padding: 22px;
   overflow-y: auto;
   color: var(--text-color-dark);
-  background: var(--gradient-background);
-  border-right: 1px solid var(--border-color-light);
+  background: var(--bg-page);
+  border-inline-end: 1px solid var(--hairline);
 }
-.offcanvas.offcanvas-start { border-right: none; }
+.offcanvas.offcanvas-start { border-inline-end: none; }
 .offcanvas.offcanvas-start .offcanvas-header {
   border-bottom: 1px solid var(--border-color-light);
   background: var(--background-light);
@@ -133,10 +131,7 @@ a:hover { color: var(--accent-link); }
   position: relative;
   min-height: 0;
   overflow: hidden;
-  background:
-    radial-gradient(900px 500px at 80% -10%, rgba(59 130 246 / 0.10) 0%, transparent 55%),
-    radial-gradient(800px 500px at 0% 110%, rgba(100 116 139 / 0.10) 0%, transparent 55%),
-    var(--background-light);
+  background: var(--bg-page);
 }
 .chat-container {
   position: relative;
@@ -156,10 +151,12 @@ a:hover { color: var(--accent-link); }
   overflow-y: auto;
   scroll-behavior: smooth;
 }
-/* Reserve a lane on the right wide enough to fully clear the floating
-   companion (≈134px footprint) so message bubbles never collide with it. */
+/* Reserve a lane wide enough to fully clear the floating companion (≈134px
+   footprint) so message bubbles never collide with it.
+   TODO(Phase 6): replaced by a real grid column that the mascot and the
+   source deck share, so the reading column stops being padded around a ghost. */
 @media (min-width: 1200px) {
-  .messages { padding-right: 168px; }
+  .messages { padding-inline-end: 168px; }
 }
 
 /* Reduced motion: calm everything down */

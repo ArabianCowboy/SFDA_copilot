@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description"
         content="SFDA Copilot - AI-powered regulatory guidance for pharmaceutical regulations in Saudi Arabia">
-    <meta name="theme-color" content="#2563eb">
+    <meta name="theme-color" content="#1B4DB1">
     <title>SFDA Copilot</title>
 
     <!-- Favicon -->
@@ -15,10 +15,12 @@
     <link rel="alternate icon" href="{{ url_for('static', filename='favicon.ico') }}">
     <link rel="apple-touch-icon" href="{{ url_for('static', filename='favicon.png') }}">
 
-    <!-- Fonts: Inter + Plus Jakarta Sans + JetBrains Mono -->
+    <!-- Fonts: IBM Plex Sans / Sans Arabic / Mono — one family, three scripts.
+         Plex Sans Arabic is the reason for this choice: the corpus is mixed AR/EN
+         and the UI is bilingual, so body and Arabic must come from one design. -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap"
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap"
         rel="stylesheet">
 
     <!-- Bootstrap 5.3 -->
@@ -27,12 +29,14 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css"
         integrity="sha384-l4UPAMHGzl7zwogLW4nOwaU2XTk6oiM1jhCRQstZEndoIiA2I5bg6fST3wzBSRBD" crossorigin="anonymous">
 
-    <!-- Stylesheets (Clinical Blue — layered) -->
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}?v=blue1">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}?v=blue1">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/components.css') }}?v=blue1">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/robot.css') }}?v=blue1">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/effects.css') }}?v=blue1">
+    <!-- Stylesheets (Dossier — layered). asset_version is a single constant in
+         app.py; bump it in any commit that touches CSS or JS, or returning users
+         get a stale components.css against a fresh tokens.css. -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}?v={{ asset_version }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}?v={{ asset_version }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components.css') }}?v={{ asset_version }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/robot.css') }}?v={{ asset_version }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/effects.css') }}?v={{ asset_version }}">
 
     <!-- Preload LCP hero image -->
     <link rel="preload" as="image" href="{{ url_for('static', filename='images/hero-image.webp') }}">
@@ -243,24 +247,6 @@
             <div class="col-md-8 text-center">
                 <!-- Hero Section -->
                 <div class="landing-hero">
-                    <!-- Particle canvas inserted here by JS -->
-                    <div id="landing-particles"></div>
-
-                    <!-- 3D Rotating Rings -->
-                    <div class="hero-3d-rings">
-                        <div class="hero-3d-ring hero-3d-ring-1"></div>
-                        <div class="hero-3d-ring hero-3d-ring-2"></div>
-                        <div class="hero-3d-ring hero-3d-ring-3"></div>
-                    </div>
-
-                    <!-- Floating Orbs -->
-                    <div class="hero-floating-orb hero-floating-orb-1"></div>
-                    <div class="hero-floating-orb hero-floating-orb-2"></div>
-                    <div class="hero-floating-orb hero-floating-orb-3"></div>
-
-                    <!-- Lens Flare -->
-                    <div class="hero-lens-flare"></div>
-
                     <!-- Landing Robot Companion (Sunny — mounted by robot.js) -->
                     <div class="landing-robot" id="landing-robot">
                         <div class="landing-robot-glow"></div>
@@ -434,15 +420,6 @@
 
             <!-- Chat Area -->
             <section class="col-12 col-lg-9 chat-area h-100 d-flex flex-column">
-                <!-- Chat ambient background effects -->
-                <div class="chat-ambient-rings">
-                    <div class="chat-ring chat-ring-1"></div>
-                    <div class="chat-ring chat-ring-2"></div>
-                </div>
-                <div class="chat-ambient-orb chat-orb-1"></div>
-                <div class="chat-ambient-orb chat-orb-2"></div>
-                <div class="chat-ambient-orb chat-orb-3"></div>
-
                 <!-- Large Robot Companion (Sunny — mounted by robot.js) -->
                 <div class="robot-companion" id="robot-companion">
                     <div class="robot-companion-glow"></div>
@@ -454,7 +431,7 @@
                 <div class="chat-container">
                     <div id="messages" class="messages" aria-live="polite">
                         <!-- Welcome Message -->
-                        <div class="message chatbot-message animated-message mb-3 message-medium">
+                        <div class="message chatbot-message mb-3">
                             <div class="message-bubble">
                                 <div class="avatar mb-2">
                                     <div class="robot-avatar-wrapper robot-idle" id="welcome-robot-avatar"></div>
@@ -476,7 +453,10 @@
                                             post-August 2026 changes, please consult the official SFDA website.</em></div>
                                     <p>How can I assist you today?</p>
                                 </div>
-                                <div class="timestamp">{{ now }}</div>
+                                <!-- Filled by JS on boot: the server's timezone is not the
+                                     reader's, and toLocaleTimeString gives us locale-correct
+                                     Arabic numerals for free once i18n lands. -->
+                                <time class="timestamp" data-ts-now></time>
                             </div>
                             <div class="suggested-questions-container mt-2"></div>
                         </div>
@@ -529,7 +509,7 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"
         integrity="sha384-geWF76RCwLtnZ8qwWowPQNguL3RmwHVBC9FhGdlKrxdiJJigb/j/68SIy3Te4Bkz"
         crossorigin="anonymous"></script>
-    <script type="module" src="{{ url_for('static', filename='js/app.js') }}?v=blue1"></script>
+    <script type="module" src="{{ url_for('static', filename='js/app.js') }}?v={{ asset_version }}"></script>
 
     <!-- CDN fallback -->
     <script>
