@@ -52,7 +52,7 @@
   transform: translateY(-50%);
   border-radius: 50%;
   filter: blur(26px);
-  background: radial-gradient(circle, rgb(var(--accent-color-rgb) / .28), transparent 70%);
+  background: radial-gradient(circle, rgb(var(--signal-rgb) / .28), transparent 70%);
   animation: glowPulse 4s ease-in-out infinite;
   z-index: -1;
 }
@@ -99,7 +99,7 @@
   transform: translateY(-50%);
   border-radius: 50%;
   filter: blur(30px);
-  background: radial-gradient(circle, rgb(var(--accent-color-rgb) / .26), transparent 70%);
+  background: radial-gradient(circle, rgb(var(--signal-rgb) / .26), transparent 70%);
   animation: glowPulse 4s ease-in-out infinite;
   z-index: -1;
 }
@@ -111,7 +111,7 @@
   block-size: 16px;
   margin-inline: auto;
   border-radius: 50%;
-  background: radial-gradient(ellipse, rgb(var(--accent-color-rgb) / .20), transparent 70%);
+  background: radial-gradient(ellipse, rgb(var(--signal-rgb) / .20), transparent 70%);
   animation: platformPulse 4s ease-in-out infinite;
 }
 .robot-companion-status {

@@ -5,14 +5,17 @@
    hairline rules, one signal colour reserved exclusively for retrieval
    and citation state, and a confidence green for relevance.
 
-   Four layers, in dependency order:
+   Three layers, in dependency order:
      1. PRIMITIVES — raw ramps. The ONLY thing dark mode overrides.
      2. SCALES     — spacing, type, z-index, radii, motion.
      3. SEMANTICS  — what components are allowed to reference.
-     4. COMPAT     — @deprecated Clinical Blue aliases. Shrinking to zero.
 
    Rule: components use LAYER 3 names only. If you find yourself reaching
    for a primitive in components.css, the semantic layer is missing a name.
+
+   (A fourth layer of @deprecated Clinical Blue aliases existed during the
+   migration so the new palette could land without touching components.css.
+   It shrank to nothing as each section was rewritten and has been removed.)
    =================================================================== */
 
 :root {
@@ -171,6 +174,17 @@
   --focus-ring: var(--seal-600);
   --focus-ring-shadow: rgb(27 77 177 / .28);
 
+  /* Inverted surface, used by the toast so it reads as a system message
+     rather than another card. */
+  --bg-inverse: var(--ink-900);
+  --fg-inverse: var(--paper-050);
+
+  /* Channel triplet, not a hex: rgb(var(--x) / .28) cannot take a var holding
+     "#1B4DB1". Kept in sync with --seal-600 by hand — there are four uses. */
+  --signal-rgb: 27 77 177;
+
+  --icon-navbar-toggler: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3e%3cpath stroke='rgba%2874,93,116,.9%29' stroke-linecap='round' stroke-width='2' d='M4 7h22M4 15h22M4 23h22'/%3e%3c/svg%3e");
+
   /* Shadows are a supporting cue only — hairlines do the structural work. */
   --shadow-sm: 0 1px 2px rgb(12 26 43 / .06);
   --shadow-md: 0 2px 8px rgb(12 26 43 / .08);
@@ -210,6 +224,8 @@
 
   --fg-on-signal: #08111C;           /* dark text on a light-blue fill */
   --focus-ring-shadow: rgb(110 155 240 / .32);
+  --signal-rgb: 110 155 240;
+  --icon-navbar-toggler: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3e%3cpath stroke='rgba%28195,206,219,.9%29' stroke-linecap='round' stroke-width='2' d='M4 7h22M4 15h22M4 23h22'/%3e%3c/svg%3e");
 
   --shadow-sm: 0 1px 2px rgb(0 0 0 / .40);
   --shadow-md: 0 2px 8px rgb(0 0 0 / .45);
@@ -237,93 +253,7 @@
 [dir="rtl"],
 [dir="rtl"] * { letter-spacing: normal; }
 
-/* ═══════════════════════════════════════════════════════════════════
-   LAYER 4 — @deprecated COMPAT SHIM
-
-   Every name below is a Clinical Blue token still referenced by
-   base.css / components.css / effects.css / robot.css. Aliasing them
-   means the Dossier palette lands across the entire app without
-   touching a single component rule.
-
-   This block only ever shrinks. Delete each line as its last consumer
-   migrates to a Layer 3 name; the target is an empty block.
-
-   Remaining consumers:
-       rg -o 'var\(--accent-warm\)' static/css | wc -l
-   ═══════════════════════════════════════════════════════════════════ */
-:root,
-[data-bs-theme="dark"] {
-  /* Brand → signal */
-  --primary-color: var(--signal);
-  --accent-color: var(--signal);
-  --accent-color-hover: var(--signal-hover);
-  --accent-link: var(--signal);
-
-  /* Secondary → muted foreground. Dossier has no second hue. */
-  --accent-warm: var(--fg-muted);
-
-  /* Dossier has no gradients — these collapse to flat fills. The animated
-     `background-size` / `brandShift` pairing that used to ride on them, and
-     the gradient-clipped-to-text wordmark, have both been removed outright. */
-  --gradient-brand: var(--signal);
-  --gradient-brand-flow: var(--signal);
-  --gradient-sun: var(--signal);
-  --gradient-background: none;
-  --gradient-hero: none;
-
-  /* Text */
-  --text-color-dark: var(--fg-primary);
-  --text-color-dark-muted: var(--fg-muted);
-  --text-color-light-secondary: var(--fg-secondary);
-
-  /* Surfaces */
-  --background-light: var(--bg-page);
-  --background-light-alt: var(--bg-sunken);
-  --surface: var(--bg-surface);
-
-  /* Borders */
-  --border-color-light: var(--hairline);
-  --border-color-medium: var(--hairline-strong);
-  --border-color-dark: var(--hairline-strong);
-  --border-color-modal: var(--hairline);
-
-  /* Type */
-  --font-primary: var(--font-sans);
-  --font-headings: var(--font-sans);      /* Dossier is a single-family system */
-
-  /* Glass is gone. Flattening to opaque surfaces + hairlines removes
-     backdrop-filter from nine surfaces at once — the single biggest
-     paint win available, delivered by one declaration. */
-  --glass-bg: var(--bg-surface);
-  --glass-bg-subtle: var(--bg-sunken);
-  --glass-border: var(--hairline);
-  --glass-border-subtle: var(--hairline);
-  --backdrop-blur: none;
-  --shadow-glass: var(--shadow-sm);
-  --shadow-glass-hover: var(--shadow-md);
-  --shadow-warm-glow: none;
-  --shadow-brand-glow: none;
-  --shadow-brand-accent: var(--shadow-sm);
-  --shadow-2xl: var(--shadow-xl);
-
-  /* Status */
-  --color-error: var(--danger);
-
-  /* Misc */
-  --toast-bg: var(--ink-900);
-  --toast-text: var(--paper-050);
-  --focus-shadow-color: var(--focus-ring-shadow);
-  --white-20: rgb(255 255 255 / .20);
-
-  /* Consumed inside `rgba(var(--x) / .12)`, so these must stay literal
-     channel triplets — a var() holding a hex cannot be used that way. */
-  --accent-color-rgb: 27 77 177;
-  --accent-warm-rgb: 74 93 116;
-
-  --navbar-toggler-icon: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3e%3cpath stroke='rgba%28255,255,255,.85%29' stroke-linecap='round' stroke-width='2' d='M4 7h22M4 15h22M4 23h22'/%3e%3c/svg%3e");
-}
-
-[data-bs-theme="dark"] {
-  --accent-color-rgb: 110 155 240;
-  --accent-warm-rgb: 147 163 182;
-}
+/* Layer 4 (the @deprecated Clinical Blue compatibility shim) is gone: every
+   component now references a Layer 3 semantic name directly. It existed so the
+   Dossier palette could land across the whole app without touching
+   components.css, and it shrank to nothing as each section was rewritten. */

@@ -86,7 +86,7 @@ a:hover { color: var(--signal-hover); text-decoration: underline; }
   border-color: var(--hairline);
   color: var(--fg-secondary);
 }
-.navbar.d-lg-none .navbar-toggler-icon { background-image: var(--navbar-toggler-icon); }
+.navbar.d-lg-none .navbar-toggler-icon { background-image: var(--icon-navbar-toggler); }
 
 /* ——————————————— Sidebar ——————————————— */
 .sidebar, .offcanvas.offcanvas-start {

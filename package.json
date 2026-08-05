@@ -1,5 +1,5 @@
 {
-  "//": "No bundler and no node_modules: these packages are loaded in the browser from cdn.jsdelivr.net, so this file exists only so `npm audit` covers what users actually run. Versions are pinned exactly and MUST be kept in sync with the URLs in static/js/modules/ui.js, static/js/modules/services.js and web/templates/index.html.",
+  "//": "No bundler and no node_modules: these packages are loaded in the browser from cdn.jsdelivr.net, so this file exists only so `npm audit` covers what users actually run. Versions are pinned exactly and MUST be kept in sync with the URLs in static/js/modules/ui.js, static/js/modules/stream-render.js, static/js/modules/services.js and web/templates/index.html.",
   "dependencies": {
     "@supabase/supabase-js": "2.39.7",
     "bootstrap": "5.3.0",

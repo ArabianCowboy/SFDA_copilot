@@ -741,8 +741,8 @@
   padding: var(--space-3) var(--space-5);
   border-radius: var(--radius-md);
   font-size: var(--fs-300);
-  color: var(--toast-text);
-  background: var(--toast-bg);
+  color: var(--fg-inverse);
+  background: var(--bg-inverse);
   box-shadow: var(--shadow-xl);
   opacity: 1;
   transition: opacity var(--duration-m) ease, transform var(--duration-m) ease;

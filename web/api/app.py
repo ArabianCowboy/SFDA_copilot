@@ -120,7 +120,7 @@ SUPPORTED_FAQ_LANGS = ("en", "ar")
 # Cache-buster appended to every static CSS/JS URL. Bump this in any commit that
 # changes a stylesheet or module, otherwise returning users get a stale
 # components.css against a fresh tokens.css and see a half-styled app.
-ASSET_VERSION = "dossier1"
+ASSET_VERSION = "dossier2"
 
 # ──────────────────────────────────────────────────────────
 # Helper Functions
