@@ -96,7 +96,12 @@
 }
 
 /* ——————————————— Landing hero ——————————————— */
+/* Sized from the scale, not from Bootstrap's .display-3. The utility carried
+   its own font-size (and .fw-bold forced 700 past --fw-display), so the two
+   largest headings on the site were the only type on the page not answering
+   to tokens.css. */
 .hero-title-wrapper h1 {
+  font-size: var(--fs-900);
   font-weight: var(--fw-display);
   animation: titleReveal var(--duration-xl) var(--ease-out) both;
 }
@@ -127,6 +132,7 @@
 
 /* ——————————————— Feature cards ——————————————— */
 .why-use-platform-section h2 {
+  font-size: var(--fs-700);
   color: var(--fg-primary);
   letter-spacing: var(--track-tight);
 }
@@ -793,5 +799,9 @@
   transition: opacity var(--duration-m) ease, transform var(--duration-m) ease;
 }
 .toast-notification.hidden { opacity: 0; transform: translateY(16px); pointer-events: none; }
-.toast-notification.error { border-inline-start: 3px solid var(--danger); }
-.toast-notification.success { border-inline-start: 3px solid var(--confidence); }
+/* 2px, matching the tab indicator, blockquote and cutoff notice. This rule is the
+   only thing separating an error toast from a success one, so it carries meaning
+   rather than decoration — but it answers to the same weight as every other
+   meaningful rule in the system. */
+.toast-notification.error { border-inline-start: 2px solid var(--danger); }
+.toast-notification.success { border-inline-start: 2px solid var(--confidence); }

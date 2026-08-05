@@ -284,8 +284,12 @@
                         <div class="landing-robot-status" id="landing-robot-status">{{ t('page.landing.greeting') }}</div>
                     </div>
 
+                    {# Size and weight come from the scale (--fs-900 / --fw-display)
+                       in components.css. Bootstrap's .display-3 and .fw-bold used to
+                       carry them, which put the largest type on the site outside the
+                       token system. #}
                     <div class="hero-title-wrapper">
-                        <h1 class="display-3 fw-bold">{{ t('page.brand.name') }}</h1>
+                        <h1>{{ t('page.brand.name') }}</h1>
                     </div>
                     <p class="lead mb-4">
                         {{ t('page.landing.lead') }}
@@ -306,7 +310,7 @@
 
                 <!-- Feature Cards Section -->
                 <div class="why-use-platform-section mt-5">
-                    <h2 class="h3 mb-5 text-center fw-bold">{{ t('page.features.heading') }}</h2>
+                    <h2 class="mb-5 text-center">{{ t('page.features.heading') }}</h2>
                     <div class="row justify-content-center g-4">
                         <div class="col-md-6 col-lg-5">
                             <div class="feature-card animate-card" data-delay="100">
