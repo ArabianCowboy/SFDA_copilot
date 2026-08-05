@@ -14,6 +14,7 @@ import { Utils } from './utils.js';
 import { ThemeManager } from './theme.js';
 import { RobotStateManager } from './robot.js';
 import { bindCitations, renderSourceDeck, nextMessageId } from './citations.js';
+import { MarkdownStream } from './stream-render.js';
 
 function createMessageContent(text, isBot) {
   const contentDiv = DOMCache.createElement('div', 'message-content');
@@ -117,6 +118,119 @@ export const UI = {
     };
 
     AppState.get('viewTransitionEnabled') ? document.startViewTransition(render) : render();
+  },
+
+  /** True when the reader is at (or near) the bottom of the transcript. */
+  isPinnedToBottom() {
+    const c = DOMCache.get(CONFIG.SELECTORS.MESSAGES);
+    if (!c) return true;
+    return c.scrollHeight - c.scrollTop - c.clientHeight < 80;
+  },
+
+  /**
+   * Insert an empty bot bubble and return a MarkdownStream that fills it.
+   *
+   * This is the ONLY view-transition-wrapped call in the streaming path. A
+   * view transition snapshots the whole page; running one per token would
+   * freeze the tab.
+   */
+  beginStreamingMessage() {
+    const container = DOMCache.get(CONFIG.SELECTORS.MESSAGES);
+    if (!container) return null;
+
+    const msgId = nextMessageId();
+    const messageEl = createMessageElement('', 'bot', msgId);
+    const content = messageEl.querySelector('.message-content');
+
+    /* Announcing a 2000-character answer token by token makes the app
+       unusable with a screen reader. #messages stays aria-live="polite" for
+       completed messages; the in-flight one opts out and announces once at
+       the end instead. */
+    messageEl.setAttribute('aria-live', 'off');
+    messageEl.setAttribute('aria-busy', 'true');
+
+    const render = () => container.appendChild(messageEl);
+    AppState.get('viewTransitionEnabled') ? document.startViewTransition(render) : render();
+
+    const state = { sources: [] };
+    const stream = new MarkdownStream(content, (scope) => {
+      decorateMarkdown(scope);
+      bindCitations(scope, state.sources, msgId);
+    });
+
+    return { msgId, messageEl, content, stream, state };
+  },
+
+  /** Auto-scroll only when the reader hasn't scrolled away. */
+  followStream() {
+    if (!this.isPinnedToBottom()) return;
+    const c = DOMCache.get(CONFIG.SELECTORS.MESSAGES);
+    /* 'auto', not 'smooth': a smooth scroll target retargeted at 60Hz is
+       visibly janky. The CSS smooth behaviour resumes once streaming ends. */
+    c?.scrollTo({ top: c.scrollHeight, behavior: 'auto' });
+  },
+
+  attachSourceDeck(handle, sources) {
+    if (!handle || !Array.isArray(sources) || !sources.length) return;
+    handle.state.sources = sources;
+    handle.messageEl.insertBefore(
+      renderSourceDeck(sources, handle.msgId),
+      handle.messageEl.querySelector(`.${CONFIG.CLASSES.SUGGESTED_CONTAINER}`)
+    );
+  },
+
+  finishStreamingMessage(handle, suggestedQuestions = []) {
+    if (!handle) return;
+    handle.stream.finish();
+    this.setStage(handle, null);
+    handle.messageEl.removeAttribute('aria-busy');
+    handle.messageEl.setAttribute('aria-live', 'polite');
+
+    const container = handle.messageEl.querySelector(`.${CONFIG.CLASSES.SUGGESTED_CONTAINER}`);
+    Utils.renderSuggestedQuestions(container, suggestedQuestions);
+
+    const count = handle.state.sources.length;
+    this.announce(count ? `Answer complete. ${count} sources cited.` : 'Answer complete.');
+    this.scrollMessagesToBottom();
+  },
+
+  /** Mark a stream that failed or was cancelled, keeping whatever arrived. */
+  markStreamIncomplete(handle, kind = 'error') {
+    if (!handle) return;
+    handle.stream.finish();
+    this.setStage(handle, null);
+    handle.messageEl.removeAttribute('aria-busy');
+    handle.messageEl.classList.add(kind === 'cancelled' ? 'is-cancelled' : 'is-errored');
+
+    const note = DOMCache.createElement('div', 'stream-note', kind);
+    note.textContent = kind === 'cancelled' ? 'Stopped' : 'Answer incomplete — something went wrong';
+    handle.messageEl.querySelector('.message-bubble')?.appendChild(note);
+  },
+
+  /** One-shot screen-reader announcement. */
+  announce(message) {
+    let region = document.getElementById('sr-announcer');
+    if (!region) {
+      region = DOMCache.createElement('div', 'sr-only');
+      region.id = 'sr-announcer';
+      region.setAttribute('role', 'status');
+      region.setAttribute('aria-live', 'polite');
+      document.body.appendChild(region);
+    }
+    region.textContent = message;
+  },
+
+  /** Honest retrieval progress, replacing the blind 800ms timer. */
+  setStage(handle, text) {
+    if (!handle) return;
+    let line = handle.messageEl.querySelector('.stage-line');
+    if (!text) { line?.remove(); return; }
+    if (!line) {
+      line = DOMCache.createElement('div', 'stage-line');
+      line.innerHTML = '<span class="stage-dot"></span><span class="stage-text"></span>';
+      handle.messageEl.querySelector('.message-bubble')?.prepend(line);
+    }
+    line.querySelector('.stage-text').textContent = text;
   },
 
   toggleTypingIndicator(show) {

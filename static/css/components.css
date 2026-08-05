@@ -561,6 +561,37 @@
 .typing-indicator .dot:nth-child(2) { animation-delay: .15s; }
 .typing-indicator .dot:nth-child(3) { animation-delay: .3s; }
 
+/* Only the short volatile tail is ever replaced. `contain` keeps its repaint
+   from invalidating the whole transcript above it. */
+.md-pending { contain: content; }
+.md-committed > :last-child, .md-pending > :last-child { margin-block-end: 0; }
+
+/* A caret on the tail, so a paused stream reads as "still writing" rather
+   than "finished". */
+.md-pending::after {
+  content: '';
+  display: inline-block;
+  inline-size: 2px;
+  block-size: 1em;
+  margin-inline-start: 2px;
+  vertical-align: text-bottom;
+  background: var(--signal);
+  animation: caretBlink 1s steps(2, start) infinite;
+}
+.message.is-cancelled .md-pending::after,
+.message.is-errored .md-pending::after { display: none; }
+
+.stream-note {
+  display: inline-flex; align-items: center; gap: var(--space-2);
+  margin-block-start: var(--space-3);
+  font-family: var(--font-mono);
+  font-size: var(--fs-100);
+  letter-spacing: var(--track-caps);
+  text-transform: uppercase;
+  color: var(--fg-faint);
+}
+.stream-note.error { color: var(--danger); }
+
 /* Honest retrieval progress: names the stage the request is actually in. */
 .stage-line {
   display: flex; align-items: center; gap: var(--space-2);
