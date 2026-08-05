@@ -391,7 +391,15 @@
 .source-deck {
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
   gap: var(--space-2);
+  margin-block-start: var(--space-3);
+}
+.source-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  inline-size: 100%;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -510,11 +518,10 @@
 
 /* Wide screens: the deck promotes into the rail beside the answer. Grid areas
    follow writing mode, so RTL puts it on the other side with no override. */
-@media (max-width: 1439px) {
-  .source-deck:not(.is-open) .source-card { display: none; }
-}
+.source-deck:not(.is-open) .source-list { display: none; }
 @media (min-width: 1440px) {
   .source-deck-summary { display: none; }
+  .source-deck .source-list { display: flex; }
 }
 
 /* ——————————————— Suggested questions ——————————————— */

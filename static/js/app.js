@@ -18,6 +18,7 @@ import { Services } from './modules/services.js';
 import { Handlers } from './modules/handlers.js';
 import { CustomDropdown } from './modules/dropdown.js';
 import { mountRobots, initLandingRobot, RobotCompanion } from './modules/robot.js';
+import { initCitationInteractions } from './modules/citations.js';
 
 const App = {
   async loadProfileWithTimeout(userId, timeoutMs = CONFIG.API_TIMEOUT, retries = CONFIG.RETRY_MAX_ATTEMPTS) {
@@ -62,6 +63,7 @@ const App = {
     Handlers.bindEvents();
     ThemeManager.init();
     UI.hydrateTimestamps();
+    initCitationInteractions(DOMCache.get(CONFIG.SELECTORS.MESSAGES));
 
     /* Mount the mascot and the card reveal. These run regardless of whether
        auth services are configured below. */

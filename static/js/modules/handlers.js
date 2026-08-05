@@ -125,7 +125,7 @@ export const Handlers = {
       RobotStateManager.startTalking();
 
       if (data?.response) {
-        UI.addMessage(data.response, 'bot', data.suggested_questions || []);
+        UI.addMessage(data.response, 'bot', data.suggested_questions || [], data.sources || []);
       } else {
         throw new Error('Invalid response format from AI service.');
       }

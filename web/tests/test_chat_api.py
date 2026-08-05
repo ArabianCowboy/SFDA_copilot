@@ -135,6 +135,43 @@ def test_response_is_json_serialisable_end_to_end(client):
     json.dumps(response.get_json())
 
 
+# ── Sources ─────────────────────────────────────────────────────────────────
+
+def test_chat_returns_a_sources_array(client):
+    body = client.post("/api/chat", json={"query": "hello"}, headers=AUTH).get_json()
+    assert len(body["sources"]) == 8
+    assert set(body["sources"][0]) == {
+        "index", "document", "page", "category",
+        "score", "semantic_score", "lexical_score", "chunk_id", "snippet",
+    }
+
+
+def test_source_indices_align_with_the_prompt_context(app, client):
+    """sources[i] must be the passage the model saw as block [i]."""
+    client.post("/api/chat", json={"query": "hello"}, headers=AUTH)
+    body = client.post("/api/chat", json={"query": "hello"}, headers=AUTH).get_json()
+    llm_context = app.config["llm_calls"][-1]["llm_context"]
+
+    assert len(body["sources"]) == len(llm_context)
+    for source, context in zip(body["sources"], llm_context):
+        assert source["document"] == context["document"]
+        assert source["page"] == context["page"]
+
+
+def test_sources_survive_numpy_scalars_from_the_search_layer(app, client):
+    import numpy as np
+    app.config["search_engine"].search.return_value = [
+        SearchResult(
+            text="chunk", score=np.float32(0.5), document="A.pdf", category="regulatory",
+            page=np.int64(7), chunk_id="a_p7",
+            metadata={"semantic_score": np.float64(0.4), "lexical_score": np.float32(0.6)},
+        )
+    ]
+    response = client.post("/api/chat", json={"query": "hello"}, headers=AUTH)
+    assert response.status_code == 200
+    assert response.get_json()["sources"][0]["page"] == 7
+
+
 # ── Conversation history ────────────────────────────────────────────────────
 
 def test_first_turn_sees_no_history(app, client):

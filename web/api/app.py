@@ -89,6 +89,7 @@ for module, default_level in [
 # Application-Specific Imports (after logger setup)
 # ──────────────────────────────────────────────────────────
 from web.api.auth import auth_bp
+from web.services.citations import build_source_payload, normalize_legacy_citations
 from web.services.openai_app import OpenAIHandler
 from web.services.search_engine import ImprovedSearchEngine, SearchResult
 from web.services.search_exceptions import ManifestValidationError
@@ -286,7 +287,12 @@ def _initialize_services(app: Flask, testing: bool) -> None:
     """Attach search engine and LLM handlers to the app config."""
     if testing:
         from unittest.mock import MagicMock
-        app.config["openai_handler"] = MagicMock(spec=OpenAIHandler)
+        # max_context_results is set in OpenAIHandler.__init__, so spec= alone
+        # does not expose it and any access raises AttributeError. Configure it
+        # explicitly, otherwise the chat route 500s in testing mode.
+        handler = MagicMock(spec=OpenAIHandler)
+        handler.max_context_results = config.get("openai", "max_context_results", 8)
+        app.config["openai_handler"] = handler
         app.config["search_engine"] = MagicMock(spec=ImprovedSearchEngine, is_initialized=lambda: True)
         logging.info("Mock services registered for testing.")
         return
@@ -399,13 +405,18 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
             llm_context = [{"text": r.text, "document": r.document, "category": r.category, "page": r.page} for r in search_results]
 
             openai_handler: OpenAIHandler = current_app.config["openai_handler"]
+            # sources[i] must be the same passage as prompt block [i], so both
+            # are cut to the same limit.
+            sources = build_source_payload(search_results, limit=openai_handler.max_context_results)
+
             chat_history = session.get("chat_history", [])
             answer, suggested_questions = openai_handler.generate_response(query, llm_context, category, chat_history)
+            answer = normalize_legacy_citations(answer, sources)
 
             chat_history.extend([{"role": "user", "content": query}, {"role": "assistant", "content": answer}])
             session["chat_history"] = _truncate_chat_history(chat_history, current_app.config["MAX_CHAT_HISTORY_MESSAGE_PAIRS"], MAX_SESSION_CHAT_HISTORY_CHARS)
-            
-            return jsonify(response=answer, suggested_questions=suggested_questions)
+
+            return jsonify(response=answer, suggested_questions=suggested_questions, sources=sources)
 
         except Exception as exception:
             logging.error("Unhandled error in /api/chat: %s", exception, exc_info=True)

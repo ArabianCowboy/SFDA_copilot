@@ -13,6 +13,7 @@ import { AppState } from './state.js';
 import { Utils } from './utils.js';
 import { ThemeManager } from './theme.js';
 import { RobotStateManager } from './robot.js';
+import { bindCitations, renderSourceDeck, nextMessageId } from './citations.js';
 
 function createMessageContent(text, isBot) {
   const contentDiv = DOMCache.createElement('div', 'message-content');
@@ -24,32 +25,49 @@ function createMessageContent(text, isBot) {
   return contentDiv;
 }
 
-function createMessageElement(text, sender) {
+function createMessageElement(text, sender, msgId) {
   const isBot = sender === 'bot';
   const messageWrapper = DOMCache.createElement(
     'div', 'message', isBot ? 'chatbot-message' : 'user-message', 'mb-3'
   );
+  if (msgId) messageWrapper.dataset.msgId = msgId;
+
   const messageBubble = DOMCache.createElement('div', 'message-bubble');
 
   if (isBot) {
-    const avatarDiv = DOMCache.createElement('div', 'avatar', 'mb-2');
+    const avatarDiv = DOMCache.createElement('div', 'avatar');
     avatarDiv.innerHTML = RobotStateManager.createAvatarHTML();
     messageBubble.appendChild(avatarDiv);
   }
 
-  messageBubble.appendChild(createMessageContent(text, isBot));
+  const content = createMessageContent(text, isBot);
+  /* dir="auto" so an Arabic answer lays out RTL inside an LTR page, and an
+     English answer lays out LTR inside an Arabic one. */
+  content.setAttribute('dir', 'auto');
+  messageBubble.appendChild(content);
 
-  const timestampEl = DOMCache.createElement('div', 'timestamp');
-  timestampEl.textContent = new Date().toLocaleTimeString();
+  const timestampEl = DOMCache.createElement('time', 'timestamp');
+  const now = new Date();
+  timestampEl.textContent = now.toLocaleTimeString();
+  timestampEl.dateTime = now.toISOString();
   messageBubble.appendChild(timestampEl);
 
   messageWrapper.appendChild(messageBubble);
 
   if (isBot) {
-    messageWrapper.appendChild(DOMCache.createElement('div', CONFIG.CLASSES.SUGGESTED_CONTAINER, 'mt-2'));
+    messageWrapper.appendChild(DOMCache.createElement('div', CONFIG.CLASSES.SUGGESTED_CONTAINER));
   }
 
   return messageWrapper;
+}
+
+/** Apply the markdown class hooks the stylesheet expects. */
+function decorateMarkdown(scope) {
+  scope.querySelectorAll('ul, ol').forEach(el => {
+    if (!el.closest('.source-deck')) el.classList.add(CONFIG.CLASSES.MESSAGE_LIST);
+  });
+  scope.querySelectorAll('pre code').forEach(el => el.parentElement?.classList.add(CONFIG.CLASSES.MESSAGE_CODE_BLOCK));
+  scope.querySelectorAll(':not(pre) > code').forEach(el => el.classList.add(CONFIG.CLASSES.MESSAGE_INLINE_CODE));
 }
 
 export const UI = {
@@ -71,8 +89,9 @@ export const UI = {
     container?.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
   },
 
-  addMessage(text, sender, suggestedQuestions = []) {
-    const messageEl = createMessageElement(text, sender);
+  addMessage(text, sender, suggestedQuestions = [], sources = []) {
+    const msgId = sender === 'bot' ? nextMessageId() : null;
+    const messageEl = createMessageElement(text, sender, msgId);
     const container = DOMCache.get(CONFIG.SELECTORS.MESSAGES);
     if (!container) return;
 
@@ -80,9 +99,16 @@ export const UI = {
       container.appendChild(messageEl);
 
       if (sender === 'bot') {
-        messageEl.querySelectorAll('ul, ol').forEach(el => el.classList.add(CONFIG.CLASSES.MESSAGE_LIST));
-        messageEl.querySelectorAll('pre code').forEach(el => el.parentElement?.classList.add(CONFIG.CLASSES.MESSAGE_CODE_BLOCK));
-        messageEl.querySelectorAll(':not(pre) > code').forEach(el => el.classList.add(CONFIG.CLASSES.MESSAGE_INLINE_CODE));
+        const content = messageEl.querySelector('.message-content');
+        decorateMarkdown(messageEl);
+        bindCitations(content, sources, msgId);
+
+        if (Array.isArray(sources) && sources.length) {
+          messageEl.insertBefore(
+            renderSourceDeck(sources, msgId),
+            messageEl.querySelector(`.${CONFIG.CLASSES.SUGGESTED_CONTAINER}`)
+          );
+        }
 
         const suggestionsContainer = messageEl.querySelector(`.${CONFIG.CLASSES.SUGGESTED_CONTAINER}`);
         Utils.renderSuggestedQuestions(suggestionsContainer, suggestedQuestions);
