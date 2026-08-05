@@ -330,15 +330,15 @@ def _register_testing_doubles(app: Flask) -> None:
         for token in _re.findall(r"\S+\s*", demo_answer):
             yield token
 
+    demo_suggestions = ["What documents are required?", "How long does review take?"]
+
+    # stream_response needs side_effect because each call must yield a fresh
+    # generator. The other two use return_value so a test can simply assign
+    # its own return_value — side_effect would take precedence and silently
+    # ignore it.
     handler.stream_response.side_effect = fake_stream
-    handler.generate_response.side_effect = lambda *a, **k: (
-        demo_answer,
-        ["What documents are required?", "How long does review take?"],
-    )
-    handler.generate_suggestions.side_effect = lambda *a, **k: [
-        "What documents are required?",
-        "How long does review take?",
-    ]
+    handler.generate_response.return_value = (demo_answer, demo_suggestions)
+    handler.generate_suggestions.return_value = demo_suggestions
 
     documents = [
         ("2022-10-19_Guidance_for_Submission.pdf", 14, "regulatory", 0.71, 0.63, 0.80),

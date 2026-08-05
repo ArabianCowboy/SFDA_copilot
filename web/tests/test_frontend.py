@@ -53,14 +53,19 @@ def test_faq_and_chat_success(authenticated_page: Page):
 
 
 def test_chat_failure_is_handled(authenticated_page: Page):
-    authenticated_page.route(
-        "**/api/chat",
-        lambda route: route.fulfill(
-            status=503,
-            content_type="application/json",
-            body='{"error":"Search unavailable"}',
-        ),
-    )
+    # Both endpoints: the client prefers /api/chat/stream and falls back to
+    # /api/chat, so overriding only one would leave the other succeeding.
+    # A 503 arrives before the first frame, so it is a normal JSON error
+    # response rather than an in-band `error` event.
+    for pattern in ("**/api/chat/stream", "**/api/chat"):
+        authenticated_page.route(
+            pattern,
+            lambda route: route.fulfill(
+                status=503,
+                content_type="application/json",
+                body='{"error":"Search unavailable"}',
+            ),
+        )
 
     authenticated_page.locator("#query-input").fill("What is required?")
     authenticated_page.locator("#send-button").click()
