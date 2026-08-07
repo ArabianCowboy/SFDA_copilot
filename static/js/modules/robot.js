@@ -322,6 +322,61 @@ export const RobotStateManager = {
     }, 600);
   },
 
+  /** Bring the landing mascot back when the reader logs out.
+   *
+   * This exists because .robot-exit animates with `forwards`, so its final
+   * frame (opacity 0, 160px up, 40% scale) PERSISTS. Nothing on the logout
+   * path used to clear it, so Sunny was still on stage — just invisible and
+   * off-position — every time the landing came back. Four states were stuck:
+   * the exit class, the farewell status text, the eye-tracking guard that
+   * keys off that same class, and any inline transform left by a hover.
+   * All four are cleared here, in one place, so the landing view can never
+   * again be shown with the mascot mid-exit.
+   */
+  transitionToUnauthenticatedView() {
+    const landingRobot = document.getElementById('landing-robot');
+    const landingBody = document.getElementById('landing-robot-body');
+    const landingStatus = document.getElementById('landing-robot-status');
+    const companion = document.getElementById('robot-companion');
+    const companionBody = document.getElementById('robot-companion-body');
+
+    /* Park the companion so its entrance replays cleanly on the next login
+       rather than being stuck at the end of its own `both` animation. */
+    if (companion) companion.style.opacity = '';
+    if (companionBody) {
+      companionBody.style.animation = '';
+      companionBody.classList.remove('robot-entrance');
+    }
+
+    this.setState('idle');
+
+    if (!landingRobot) return;
+
+    /* Hover handlers write inline transforms; a logout mid-hover would
+       otherwise leave Sunny frozen scaled-up under the return animation. */
+    if (landingBody) {
+      landingBody.style.transition = '';
+      landingBody.style.transform = '';
+    }
+    if (landingStatus && landingStatus.dataset.greeting) {
+      landingStatus.textContent = landingStatus.dataset.greeting;
+    }
+
+    landingRobot.classList.remove('robot-exit', 'robot-return');
+
+    if (prefersReducedMotion()) return;
+
+    /* Force a reflow between removing and re-adding, or the browser
+       coalesces both mutations and the animation never restarts. */
+    void landingRobot.offsetWidth;
+    landingRobot.classList.add('robot-return');
+    landingRobot.addEventListener(
+      'animationend',
+      () => landingRobot.classList.remove('robot-return'),
+      { once: true },
+    );
+  },
+
   _spawnReactionParticles() {
     this._getAvatars().forEach(avatar => this._spawnReactionAt(avatar));
   },
@@ -377,6 +432,14 @@ export function mountRobots() {
     companionBody.dataset.mounted = 'true';
   }
 
+  /* The greeting is a server-rendered page.* string, which never reaches
+     window.__I18N, so JS cannot look it up. Stash the rendered text once and
+     restore from it — that keeps the reset correct in both languages. */
+  const landingStatus = document.getElementById('landing-robot-status');
+  if (landingStatus && !landingStatus.dataset.greeting) {
+    landingStatus.dataset.greeting = landingStatus.textContent.trim();
+  }
+
   const welcomeAvatar = document.getElementById('welcome-robot-avatar');
   if (welcomeAvatar && !welcomeAvatar.dataset.mounted) {
     welcomeAvatar.innerHTML = createRobot({ size: 42 });
@@ -420,39 +483,34 @@ export function initLandingRobot() {
   });
 
   const body = document.getElementById('landing-robot-body');
-  const status = document.getElementById('landing-robot-status');
   if (!body) return;
 
+  /* The reaction is physical only. These handlers used to write 'Wave! 👋',
+     'Hello! 👋' and 'Click! ⚡' as hardcoded English literals, which showed
+     English to Arabic readers and permanently overwrote the localized
+     greeting. Motion carries the personality; the status line keeps saying
+     the one true thing it was rendered with. */
   let wiggleTimer = null;
   body.addEventListener('mouseenter', () => {
     if (RobotStateManager._currentState !== 'idle') return;
     clearTimeout(wiggleTimer);
     body.style.transition = 'transform 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94)';
-    body.style.transform = 'scale(1.12) translateY(-5px) rotate(4deg)';
-    if (status) status.textContent = 'Wave! 👋';
-    wiggleTimer = setTimeout(() => {
-      body.style.transform = '';
-      if (status) status.textContent = 'Hello! 👋';
-    }, 2000);
+    body.style.transform = 'scale(1.08) translateY(-5px) rotate(3deg)';
+    wiggleTimer = setTimeout(() => { body.style.transform = ''; }, 2000);
   });
   body.addEventListener('mouseleave', () => {
     clearTimeout(wiggleTimer);
     body.style.transition = 'transform 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94)';
     body.style.transform = '';
-    if (status) status.textContent = 'Hello! 👋';
   });
   body.addEventListener('click', () => {
     if (RobotStateManager._currentState !== 'idle') return;
     body.style.transition = 'transform 0.15s ease';
-    body.style.transform = 'scale(0.9)';
+    body.style.transform = 'scale(0.92)';
     setTimeout(() => {
       body.style.transition = 'transform 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94)';
-      body.style.transform = 'scale(1.1) translateY(-8px)';
-      if (status) status.textContent = 'Click! ⚡';
-      setTimeout(() => {
-        body.style.transform = '';
-        if (status) status.textContent = 'Hello! 👋';
-      }, 800);
+      body.style.transform = 'scale(1.08) translateY(-8px)';
+      setTimeout(() => { body.style.transform = ''; }, 800);
     }, 150);
     RobotStateManager.celebrate(body);
   });

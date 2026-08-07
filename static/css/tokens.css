@@ -263,7 +263,9 @@
   --track-display: 0;
   --track-tight: 0;
   --track-caps: 0;
-  --lh-tight: 1.25;
+  /* 1.25 was not enough once the wordmark gained a word ending in yaa:
+     Zain gives final yaa a long swash that dropped into the line below. */
+  --lh-tight: 1.42;
   --lh-body: 1.85;
   --lh-snug: 1.45;
   --font-sans: var(--font-arabic);

@@ -58,6 +58,10 @@ function showUnauthenticatedView() {
   const unauthView = DOMCache.get(CONFIG.SELECTORS.UNAUTH_VIEW);
   const authView = DOMCache.get(CONFIG.SELECTORS.AUTH_VIEW);
 
+  /* Symmetry with showAuthenticatedView. Without this the landing came back
+     with the mascot still held at the last frame of its exit animation. */
+  RobotStateManager.transitionToUnauthenticatedView();
+
   if (authView) authView.classList.add(CONFIG.CLASSES.D_NONE);
   if (unauthView) {
     unauthView.classList.remove(CONFIG.CLASSES.D_NONE);

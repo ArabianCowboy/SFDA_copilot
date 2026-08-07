@@ -60,6 +60,7 @@
   box-shadow: var(--shadow-sm);
 }
 .landing-robot.robot-exit { animation: robotExit 1s var(--ease-out) forwards; }
+.landing-robot.robot-return { animation: robotReturn 1.1s var(--ease-out) both; }
 
 /* ——————————————— Chat companion mascot ——————————————— */
 /* Sunny lives in the rail column now, sticking to its bottom, rather than
@@ -145,8 +146,21 @@
   0%, 100% { transform: translateY(0) rotate(0); }
   50% { transform: translateY(-12px) rotate(1.5deg); }
 }
+/* Sunny leaves the landing upward, toward the chat. `forwards` is load-bearing
+   here: it holds him off-stage for as long as the app view is up. Anything
+   that brings the landing back MUST clear .robot-exit, or he stays held at
+   opacity 0 — which is exactly the bug this pair was written to fix. */
 @keyframes robotExit {
   to { transform: translateY(-160px) scale(.4) rotate(20deg); opacity: 0; }
+}
+/* …and comes back down the way he left, with a settle. The inverse of the
+   exit rather than a generic fade, so the round trip reads as one character
+   going somewhere and returning. */
+@keyframes robotReturn {
+  0%   { transform: translateY(-160px) scale(.4) rotate(20deg); opacity: 0; }
+  55%  { transform: translateY(14px) scale(1.06) rotate(-5deg); opacity: 1; }
+  78%  { transform: translateY(-6px) scale(.98) rotate(2deg); }
+  100% { transform: translateY(0) scale(1) rotate(0); opacity: 1; }
 }
 @keyframes robotCompanionEntrance {
   0% { transform: translateY(-80px) scale(.3) rotate(-20deg); opacity: 0; }

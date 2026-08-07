@@ -96,7 +96,7 @@ page:
     # The wordmark's counterpart in the other script. The hero sets the two
     # together, because full EN/AR parity is a binding brand commitment and
     # the mark should state it rather than the copy claiming it.
-    nameOther: "مساعد الغذاء والدواء"
+    nameOther: "مساعد الغذاء والدواء الذكي"
     tagline: "Your AI Regulatory Assistant"
 
   landing:
@@ -109,6 +109,7 @@ page:
     # PRODUCT.md, Principle 2: the name contains "SFDA", so every surface
     # carries the burden of saying this is not the SFDA. Not optional copy.
     notice: "<strong>SFDA Copilot is an independent tool.</strong> It is not affiliated with, endorsed by, or operated by the Saudi Food and Drug Authority. It reads the SFDA's published guidelines and shows you where each answer comes from, so you can verify it against the official source."
+    version: "Version {v}"
     builtBy: "Built by Mohamed Fouda"
 
   features:
