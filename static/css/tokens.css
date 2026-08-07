@@ -1,9 +1,10 @@
 /* ===================================================================
-   SFDA Copilot — Design Tokens  ("Dossier" theme)
+   SFDA Copilot — Design Tokens
 
-   A regulatory reference instrument, not a chat toy. Ink on paper,
-   hairline rules, one signal colour reserved exclusively for retrieval
-   and citation state, and a confidence green for relevance.
+   A regulatory instrument that is pleasant to sit in front of. Warm
+   porcelain ground, aubergine ink, one deep teal reserved for retrieval
+   and citation state, and a marigold that carries the product's warmth —
+   the mascot, relevance, the small marks that make the page feel alive.
 
    Three layers, in dependency order:
      1. PRIMITIVES — raw ramps. The ONLY thing dark mode overrides.
@@ -12,44 +13,46 @@
 
    Rule: components use LAYER 3 names only. If you find yourself reaching
    for a primitive in components.css, the semantic layer is missing a name.
-
-   (A fourth layer of @deprecated Clinical Blue aliases existed during the
-   migration so the new palette could land without touching components.css.
-   It shrank to nothing as each section was rewritten and has been removed.)
    =================================================================== */
 
 :root {
   /* ═══ LAYER 1 — PRIMITIVES ═══════════════════════════════════════ */
 
-  /* Ink — text and dark surfaces */
-  --ink-900: #0C1A2B;
-  --ink-700: #22364B;
-  --ink-500: #4A5D74;
-  --ink-300: #8195A9;
+  /* Ink — aubergine rather than neutral grey, so even body copy is warm. */
+  --ink-900: #241F2B;
+  --ink-700: #463E52;
+  --ink-500: #675D75;
+  --ink-300: #857A94;
 
-  /* Paper — cool, archival, never cream */
+  /* Paper — warm porcelain. Warm, but not the cream-and-serif default: the
+     hue is grey-warm, and the display voice is a modern Arabic-first sans
+     rather than a bookish serif. */
   --paper-000: #FFFFFF;
-  --paper-050: #FAFBFC;
-  --paper-100: #F2F5F8;
+  --paper-050: #F4F2F0;
+  --paper-100: #E9E5E1;
 
-  /* Rules — hairlines carry the structure in place of shadows */
-  --rule-200: #DDE3EA;
-  --rule-300: #C4CDD8;
+  /* Rules */
+  --rule-200: #DCD7D1;
+  --rule-300: #BFB8B0;
 
-  /* Seal — the signal. Retrieval and citation state ONLY. Using this
-     colour for a generic button is a bug: it dilutes the one cue that
-     tells a reader "this came from a document". */
-  --seal-600: #1B4DB1;
-  --seal-700: #153C8C;
-  --seal-100: #E7EDFA;
+  /* Teal — the brand's action colour AND the citation signal. Two jobs,
+     split by surface. On the landing it carries the primary action and the
+     card icons that sit beneath it. Inside the chat transcript it is rationed to retrieval and
+     citation state only — the marker, the lit source card, the streaming
+     caret, the user's own bubble — because there it is the one cue that says
+     "this came from a document", and a decorative use would dilute it. */
+  --teal-600: #0F5E63;
+  --teal-700: #0B4A4E;
+  --teal-100: #DCECEC;
 
-  /* Verify — confidence, relevance, high-scoring retrieval */
-  --verify-600: #0E7C66;
-  --verify-700: #0B6654;
-  --verify-100: #E2F1ED;
+  /* Marigold — the product's warmth, and confidence. The mascot, the
+     relevance bar, the knowledge badge, small active marks. */
+  --gold-600: #B87310;
+  --gold-700: #94590A;
+  --gold-100: #FAEEDA;
 
   /* Status */
-  --alert-600: #B3261E;
+  --alert-600: #A8301F;
   --warn-600: #8A5A00;
 
   /* ═══ LAYER 2 — SCALES ═══════════════════════════════════════════ */
@@ -70,6 +73,7 @@
   --gutter: clamp(16px, 4vw, 48px);
   --measure: 68ch;                 /* reading column — answers are prose */
   --rail-w: clamp(240px, 20vw, 320px);
+  --page-max: 1180px;              /* the landing's content width */
 
   /* Type scale */
   --fs-100: .75rem;
@@ -80,33 +84,37 @@
   --fs-600: 1.5rem;
   --fs-700: 2rem;
   --fs-800: 2.75rem;
-  /* Floor is 2.25rem, not 2.75rem: the Arabic wordmark is nearly twice the
-     inline length of the English one, and at 44px it wraps to two lines on a
-     390px screen. 36px keeps it on one line and matches what the old
-     Bootstrap .display-3 actually rendered at that width (~37px). */
-  --fs-900: clamp(2.25rem, 6vw, 4rem);
+  /* The floor is set by the LONGER script. The Arabic wordmark runs about
+     1.4x the inline length of the English one, so a minimum that looks
+     generous in English wraps it onto two lines on a 390px screen. */
+  --fs-900: clamp(2.5rem, 7vw, 5rem);
 
-  --lh-tight: 1.15;
+  --lh-tight: 1.08;
   --lh-snug: 1.3;
   --lh-body: 1.65;
   --lh-loose: 1.8;
 
-  --track-display: -.022em;
-  --track-tight: -.01em;
+  --track-display: -.03em;
+  --track-tight: -.012em;
   --track-normal: 0;
-  --track-caps: .06em;
+  --track-caps: .08em;
 
   --fw-body: 400;
   --fw-medium: 500;
-  --fw-display: 600;
-  --fw-bold: 600;
+  --fw-display: 700;
+  --fw-bold: 800;
 
-  /* IBM Plex: the typeface of technical documentation, and the only
-     high-quality free family with a real Arabic sibling — which this
-     bilingual corpus needs. */
-  --font-sans: 'IBM Plex Sans', 'IBM Plex Sans Arabic', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --font-arabic: 'IBM Plex Sans Arabic', 'IBM Plex Sans', -apple-system, 'Segoe UI', sans-serif;
-  --font-mono: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', 'Cascadia Mono', monospace;
+  /* Zain is an Arabic-first family with a matching Latin, which is the right
+     way round for this product: the display voice is designed for the script
+     the corpus is written in rather than retrofitted to it.
+     Readex Pro is one variable family drawn across Latin AND Arabic — a
+     bilingual corpus cannot afford body text that changes designer between
+     scripts. Mono marks machine-reported facts (page numbers, scores,
+     timestamps) and is never a costume for "technical". */
+  --font-display: 'Zain', 'Readex Pro', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-sans: 'Readex Pro', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-arabic: 'Readex Pro', 'Zain', -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'Azeret Mono', ui-monospace, 'SFMono-Regular', 'Cascadia Mono', monospace;
 
   /* z-index — aligned to Bootstrap 5.3's own scale so the two never fight */
   --z-base: 0;
@@ -122,26 +130,26 @@
   --z-tooltip: 1080;
   --z-toast: 1090;
 
-  /* Radii — Dossier is squarer than Clinical Blue. Documents have corners. */
-  --radius-xs: 2px;
-  --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 10px;
-  --radius-xl: 14px;
-  --radius-msg: 10px;
+  /* Radii — softer than the old archival system. A tool you sit in front of
+     all day does not need to be sharp. */
+  --radius-xs: 3px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+  --radius-msg: 14px;
   --radius-pill: 999px;
 
-  /* Direction multiplier for transforms that carry meaning (slide-in from the
-     inline-start edge). CSS has no logical translate, so keyframes write
-     `translateX(calc(-12px * var(--flip)))` and this flips it under RTL. */
+  /* Direction multiplier for transforms that carry meaning. CSS has no
+     logical translate, so keyframes write translateX(calc(-12px * var(--flip))). */
   --flip: 1;
 
-  /* Motion — quicker and flatter. Decoration is not the point. */
+  /* Motion */
   --duration-s: .15s;
   --duration-m: .25s;
   --duration-l: .4s;
-  --duration-xl: .6s;
-  --ease-out: cubic-bezier(.2, .8, .3, 1);
+  --duration-xl: .7s;
+  --ease-out: cubic-bezier(.16, 1, .3, 1);
   --ease-soft: cubic-bezier(.4, 0, .2, 1);
   --btn-transition: background var(--duration-s) var(--ease-soft),
                     border-color var(--duration-s) var(--ease-soft),
@@ -164,36 +172,38 @@
   --hairline: var(--rule-200);
   --hairline-strong: var(--rule-300);
 
-  --signal: var(--seal-600);
-  --signal-hover: var(--seal-700);        /* semantic: darkens in light, LIGHTENS in dark */
-  --signal-tint: var(--seal-100);
+  --signal: var(--teal-600);
+  --signal-hover: var(--teal-700);        /* darkens in light, LIGHTENS in dark */
+  --signal-tint: var(--teal-100);
 
-  --confidence: var(--verify-600);
-  --confidence-strong: var(--verify-700); /* use when white text sits on the fill */
-  --confidence-tint: var(--verify-100);
+  --confidence: var(--gold-600);
+  --confidence-strong: var(--gold-700);   /* use when white text sits on the fill */
+  --confidence-tint: var(--gold-100);
 
   --danger: var(--alert-600);
   --warning: var(--warn-600);
 
-  --focus-ring: var(--seal-600);
-  --focus-ring-shadow: rgb(27 77 177 / .28);
+  --focus-ring: var(--teal-600);
+  --focus-ring-shadow: rgb(15 94 99 / .28);
 
   /* Inverted surface, used by the toast so it reads as a system message
      rather than another card. */
   --bg-inverse: var(--ink-900);
   --fg-inverse: var(--paper-050);
 
-  /* Channel triplet, not a hex: rgb(var(--x) / .28) cannot take a var holding
-     "#1B4DB1". Kept in sync with --seal-600 by hand — there are four uses. */
-  --signal-rgb: 27 77 177;
+  /* Channel triplets, not hexes: rgb(var(--x) / .28) cannot take a var
+     holding "#0F5E63". Kept in sync with their ramps by hand. */
+  --signal-rgb: 15 94 99;
+  --confidence-rgb: 184 115 16;
 
-  --icon-navbar-toggler: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3e%3cpath stroke='rgba%2874,93,116,.9%29' stroke-linecap='round' stroke-width='2' d='M4 7h22M4 15h22M4 23h22'/%3e%3c/svg%3e");
+  --icon-navbar-toggler: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3e%3cpath stroke='rgba%28103,93,117,.9%29' stroke-linecap='round' stroke-width='2' d='M4 7h22M4 15h22M4 23h22'/%3e%3c/svg%3e");
 
-  /* Shadows are a supporting cue only — hairlines do the structural work. */
-  --shadow-sm: 0 1px 2px rgb(12 26 43 / .06);
-  --shadow-md: 0 2px 8px rgb(12 26 43 / .08);
-  --shadow-lg: 0 8px 24px rgb(12 26 43 / .10);
-  --shadow-xl: 0 20px 48px rgb(12 26 43 / .14);
+  /* Shadows are warm-tinted, never neutral grey: a grey shadow on a warm
+     ground reads as dirt. */
+  --shadow-sm: 0 1px 2px rgb(36 31 43 / .05);
+  --shadow-md: 0 4px 14px rgb(36 31 43 / .07);
+  --shadow-lg: 0 12px 32px rgb(36 31 43 / .10);
+  --shadow-xl: 0 24px 60px rgb(36 31 43 / .16);
 }
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -201,63 +211,68 @@
    without a single dark-mode branch in any component.
    ═══════════════════════════════════════════════════════════════════ */
 [data-bs-theme="dark"] {
-  --ink-900: #E9EEF4;
-  --ink-700: #C3CEDB;
-  --ink-500: #93A3B6;
-  --ink-300: #63748A;
+  --ink-900: #F1ECF4;
+  --ink-700: #D2CAD9;
+  --ink-500: #A79DB1;
+  --ink-300: #837A8D;
 
-  --paper-000: #111D2C;
-  --paper-050: #0B1420;
-  --paper-100: #16232F;
+  --paper-000: #241E2C;
+  --paper-050: #191420;
+  --paper-100: #2F2839;
 
-  --rule-200: #22303F;
-  --rule-300: #2E3F52;
+  --rule-200: #362E42;
+  --rule-300: #4A4058;
 
-  /* Lifted so seal clears 7:1 on the dark page. #1B4DB1 on #0B1420 is
-     ~1.7:1 — unreadable. This is why the ramp flips, not the semantics. */
-  --seal-600: #6E9BF0;
-  --seal-700: #9CBCF7;               /* hover goes LIGHTER in dark */
-  --seal-100: #16294A;
+  /* Lifted so the signal clears AA on the dark page. #0F5E63 on #191420 is
+     roughly 2.1:1 — unreadable. This is why the ramp flips, not the
+     semantics, and why the hover goes LIGHTER here. */
+  --teal-600: #4FC2C8;
+  --teal-700: #7FD9DD;
+  --teal-100: #0D3437;
 
-  --verify-600: #35C3A3;
-  --verify-700: #5FD7BC;
-  --verify-100: #0F2B26;
+  --gold-600: #E9A84B;
+  --gold-700: #F3C176;
+  --gold-100: #332A26;
 
-  --alert-600: #F08279;
+  --alert-600: #F0857A;
   --warn-600: #E0A94D;
 
-  --fg-on-signal: #08111C;           /* dark text on a light-blue fill */
-  --focus-ring-shadow: rgb(110 155 240 / .32);
-  --signal-rgb: 110 155 240;
-  --icon-navbar-toggler: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3e%3cpath stroke='rgba%28195,206,219,.9%29' stroke-linecap='round' stroke-width='2' d='M4 7h22M4 15h22M4 23h22'/%3e%3c/svg%3e");
+  --fg-on-signal: #062325;           /* dark text on a bright teal fill */
+  --focus-ring-shadow: rgb(79 194 200 / .32);
+  --signal-rgb: 79 194 200;
+  --confidence-rgb: 233 168 75;
+  --icon-navbar-toggler: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3e%3cpath stroke='rgba%28210,202,217,.9%29' stroke-linecap='round' stroke-width='2' d='M4 7h22M4 15h22M4 23h22'/%3e%3c/svg%3e");
 
   --shadow-sm: 0 1px 2px rgb(0 0 0 / .40);
-  --shadow-md: 0 2px 8px rgb(0 0 0 / .45);
-  --shadow-lg: 0 8px 24px rgb(0 0 0 / .50);
-  --shadow-xl: 0 20px 48px rgb(0 0 0 / .55);
+  --shadow-md: 0 4px 14px rgb(0 0 0 / .45);
+  --shadow-lg: 0 12px 32px rgb(0 0 0 / .50);
+  --shadow-xl: 0 24px 60px rgb(0 0 0 / .60);
 }
 
 /* ═══════════════════════════════════════════════════════════════════
    RTL / ARABIC token overrides.
 
-   Negative letter-spacing breaks Arabic glyph joining and renders the
-   text as disconnected gibberish. Zeroing the tracking tokens fixes it
-   for anything using the scale; the blanket reset below catches rules
-   that hardcode letter-spacing. Arabic also needs more leading.
+   Negative letter-spacing breaks Arabic glyph joining and renders the text
+   as disconnected gibberish. Zeroing the tracking tokens fixes it for
+   anything using the scale; the blanket reset below catches rules that
+   hardcode letter-spacing. Arabic also needs more leading, and its display
+   setting needs a looser line than the tight Latin one.
    ═══════════════════════════════════════════════════════════════════ */
 [dir="rtl"] {
   --flip: -1;
   --track-display: 0;
   --track-tight: 0;
   --track-caps: 0;
+  --lh-tight: 1.25;
   --lh-body: 1.85;
   --lh-snug: 1.45;
   --font-sans: var(--font-arabic);
+  --font-display: var(--font-arabic);
 }
 [dir="rtl"],
 [dir="rtl"] * { letter-spacing: normal; }
 
-/* Layer 4 (the @deprecated Clinical Blue compatibility shim) is gone: every
-   component now references a Layer 3 semantic name directly. It existed so the
-   Dossier palette could land across the whole app without touching
-   components.css, and it shrank to nothing as each section was rewritten. */
+/* Uppercasing is a Latin device: Arabic has no case, so the transform does
+   nothing while the wide tracking that goes with it breaks joins. Small
+   labels keep their role through weight and colour instead. */
+[dir="rtl"] .label-caps { text-transform: none; }

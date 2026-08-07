@@ -18,17 +18,17 @@
   display: block;
   overflow: visible;
 
-  --sunny-shell: var(--seal-600);
-  --sunny-shell-deep: var(--seal-700);
-  --sunny-visor-top: var(--ink-900);
-  --sunny-visor-bottom: var(--ink-700);
-  --sunny-eye: var(--verify-600);
-  --sunny-chrome: var(--rule-300);
-  --sunny-signal: var(--seal-600);
-  --sunny-core: var(--paper-000);
-  --sunny-mouth: var(--verify-600);
-  --sunny-cheek: var(--verify-100);
-  --sunny-ink: var(--ink-900);
+  --sunny-shell: var(--signal);
+  --sunny-shell-deep: var(--signal-hover);
+  --sunny-visor-top: var(--fg-primary);
+  --sunny-visor-bottom: var(--fg-secondary);
+  --sunny-eye: var(--confidence);
+  --sunny-chrome: var(--hairline-strong);
+  --sunny-signal: var(--confidence);
+  --sunny-core: var(--bg-surface);
+  --sunny-mouth: var(--confidence);
+  --sunny-cheek: var(--confidence-tint);
+  --sunny-ink: var(--fg-primary);
 }
 
 /* Default state of toggled parts */
@@ -58,9 +58,9 @@
 .robot-searching .antenna-ball { animation: sunnyBallPulse .9s ease-in-out infinite; }
 /* Eyes go signal-blue while retrieving, confidence-green once passages are in
    hand. Targets .sunny-svg because that is where the palette is declared. */
-.robot-searching .sunny-svg { --sunny-eye: var(--seal-600); }
+.robot-searching .sunny-svg { --sunny-eye: var(--signal); }
 
-.robot-retrieved .sunny-svg { --sunny-eye: var(--verify-600); }
+.robot-retrieved .sunny-svg { --sunny-eye: var(--confidence); }
 .robot-retrieved .eye-glow { opacity: .35; }
 
 /* One flash per retrieved passage, fired from robot.js. */
@@ -89,7 +89,7 @@
 
 /* ——————————————— ERROR ——————————————— */
 .robot-error .robot-head { animation: sunnyShake .4s ease-in-out 2; transform-origin: center 96px; }
-.robot-error .sunny-svg { --sunny-eye: var(--alert-600); --sunny-mouth: var(--alert-600); }
+.robot-error .sunny-svg { --sunny-eye: var(--danger); --sunny-mouth: var(--danger); }
 
 /* Entrance applied in companion hand-off */
 .robot-entrance { animation: robotCompanionEntrance 1.2s var(--ease-out) both; }

@@ -1,71 +1,69 @@
 ---
 name: SFDA Copilot
-description: A regulatory reference instrument — ink on paper, hairline structure, one seal reserved for traceable sources.
+description: A regulatory instrument that is pleasant to sit in front of — warm porcelain, aubergine ink, deep teal signal, marigold warmth, bilingual by construction.
 colors:
-  ink-900: "#0C1A2B"
-  ink-700: "#22364B"
-  ink-500: "#4A5D74"
-  ink-300: "#8195A9"
+  ink-900: "#241F2B"
+  ink-700: "#463E52"
+  ink-500: "#675D75"
+  ink-300: "#857A94"
   paper-000: "#FFFFFF"
-  paper-050: "#FAFBFC"
-  paper-100: "#F2F5F8"
-  rule-200: "#DDE3EA"
-  rule-300: "#C4CDD8"
-  seal-600: "#1B4DB1"
-  seal-700: "#153C8C"
-  seal-100: "#E7EDFA"
-  verify-600: "#0E7C66"
-  verify-700: "#0B6654"
-  verify-100: "#E2F1ED"
-  alert-600: "#B3261E"
+  paper-050: "#F4F2F0"
+  paper-100: "#E9E5E1"
+  rule-200: "#DCD7D1"
+  rule-300: "#BFB8B0"
+  teal-600: "#0F5E63"
+  teal-700: "#0B4A4E"
+  teal-100: "#DCECEC"
+  gold-600: "#B87310"
+  gold-700: "#94590A"
+  gold-100: "#FAEEDA"
+  alert-600: "#A8301F"
   warn-600: "#8A5A00"
 typography:
   display:
-    fontFamily: "IBM Plex Sans, IBM Plex Sans Arabic, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
-    fontSize: "clamp(2.25rem, 6vw, 4rem)"
-    fontWeight: 600
-    lineHeight: 1.15
-    letterSpacing: "-0.022em"
+    fontFamily: "Zain, Readex Pro, -apple-system, BlinkMacSystemFont, sans-serif"
+    fontSize: "clamp(2.5rem, 7vw, 5rem)"
+    fontWeight: 800
+    lineHeight: 1.08
+    letterSpacing: "-0.03em"
   headline:
-    fontFamily: "IBM Plex Sans, IBM Plex Sans Arabic, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
-    fontSize: "2rem"
-    fontWeight: 600
-    lineHeight: 1.15
-    letterSpacing: "-0.01em"
+    fontFamily: "Zain, Readex Pro, -apple-system, BlinkMacSystemFont, sans-serif"
+    fontSize: "clamp(2rem, 3.2vw, 2.75rem)"
+    fontWeight: 800
+    lineHeight: 1.08
+    letterSpacing: "-0.03em"
   title:
-    fontFamily: "IBM Plex Sans, IBM Plex Sans Arabic, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
+    fontFamily: "Zain, Readex Pro, -apple-system, BlinkMacSystemFont, sans-serif"
     fontSize: "1.25rem"
-    fontWeight: 600
+    fontWeight: 700
     lineHeight: 1.3
-    letterSpacing: "-0.01em"
+    letterSpacing: "-0.012em"
   body:
-    fontFamily: "IBM Plex Sans, IBM Plex Sans Arabic, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
+    fontFamily: "Readex Pro, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
     fontSize: "1.0625rem"
     fontWeight: 400
     lineHeight: 1.65
     letterSpacing: "0"
-  body-small:
-    fontFamily: "IBM Plex Sans, IBM Plex Sans Arabic, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
-    fontSize: "0.9375rem"
-    fontWeight: 400
-    lineHeight: 1.3
-  meta:
-    fontFamily: "IBM Plex Sans, IBM Plex Sans Arabic, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
-    fontSize: "0.8125rem"
-    fontWeight: 500
-    lineHeight: 1.3
   label:
-    fontFamily: "IBM Plex Mono, ui-monospace, SFMono-Regular, Cascadia Mono, monospace"
+    fontFamily: "Readex Pro, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
     fontSize: "0.75rem"
     fontWeight: 500
-    letterSpacing: "0.06em"
+    lineHeight: 1.3
+    letterSpacing: "0.08em"
+  mono:
+    fontFamily: "Azeret Mono, ui-monospace, SFMono-Regular, Cascadia Mono, monospace"
+    fontSize: "0.75rem"
+    fontWeight: 400
+    lineHeight: 1.5
+    letterSpacing: "0"
+    fontFeature: "tabular-nums"
 rounded:
-  xs: "2px"
-  sm: "4px"
-  md: "6px"
-  lg: "10px"
-  xl: "14px"
-  msg: "10px"
+  xs: "3px"
+  sm: "6px"
+  md: "10px"
+  msg: "14px"
+  lg: "16px"
+  xl: "24px"
   pill: "999px"
 spacing:
   "1": "4px"
@@ -79,592 +77,227 @@ spacing:
   "9": "96px"
 components:
   button-primary:
-    backgroundColor: "{colors.seal-600}"
+    backgroundColor: "{colors.teal-600}"
     textColor: "#FFFFFF"
-    rounded: "{rounded.md}"
-    padding: "12px 32px"
+    typography: "{typography.body}"
+    rounded: "{rounded.pill}"
+    padding: "16px 48px"
   button-primary-hover:
-    backgroundColor: "{colors.seal-700}"
+    backgroundColor: "{colors.teal-700}"
+    textColor: "#FFFFFF"
   button-ghost:
     backgroundColor: "transparent"
     textColor: "{colors.ink-700}"
-    rounded: "{rounded.md}"
-    padding: "4px 12px"
-  button-ghost-hover:
-    backgroundColor: "{colors.paper-100}"
-    textColor: "{colors.ink-900}"
-  button-icon:
+    rounded: "{rounded.sm}"
+  icon-control:
     backgroundColor: "{colors.paper-000}"
     textColor: "{colors.ink-500}"
-    rounded: "{rounded.md}"
-    size: "36px"
-  input-field:
-    backgroundColor: "{colors.paper-000}"
-    textColor: "{colors.ink-900}"
-    rounded: "{rounded.sm}"
-  input-composer:
-    backgroundColor: "{colors.paper-000}"
-    textColor: "{colors.ink-900}"
-    rounded: "{rounded.md}"
-    padding: "12px 16px"
+    rounded: "{rounded.pill}"
+    height: "38px"
+    width: "38px"
+  badge-knowledge:
+    backgroundColor: "{colors.gold-100}"
+    textColor: "{colors.gold-700}"
+    rounded: "{rounded.pill}"
+    padding: "8px 16px"
   card-feature:
     backgroundColor: "{colors.paper-000}"
     textColor: "{colors.ink-700}"
     rounded: "{rounded.lg}"
-    padding: "24px"
-  card-source:
+    padding: "32px"
+  card-feature-lead:
+    backgroundColor: "{colors.gold-100}"
+    textColor: "{colors.ink-700}"
+    rounded: "{rounded.lg}"
+    padding: "32px"
+  input-text:
     backgroundColor: "{colors.paper-000}"
     textColor: "{colors.ink-900}"
     rounded: "{rounded.sm}"
-    padding: "12px"
-  card-source-lit:
-    backgroundColor: "{colors.seal-100}"
-  message-bubble-bot:
-    backgroundColor: "{colors.paper-000}"
-    textColor: "{colors.ink-900}"
-    rounded: "{rounded.msg}"
-    padding: "16px 24px"
-  message-bubble-user:
-    backgroundColor: "{colors.seal-600}"
-    textColor: "#FFFFFF"
-    rounded: "{rounded.msg}"
-    padding: "16px 24px"
-  cite-marker:
-    backgroundColor: "{colors.seal-100}"
-    textColor: "{colors.seal-600}"
-    rounded: "{rounded.xs}"
-    padding: "0 0.3em"
-  cite-marker-active:
-    backgroundColor: "{colors.seal-600}"
-    textColor: "#FFFFFF"
+    padding: "12px 16px"
   chip-suggested:
     backgroundColor: "{colors.paper-000}"
     textColor: "{colors.ink-700}"
     rounded: "{rounded.pill}"
     padding: "8px 12px"
-  faq-button:
-    backgroundColor: "transparent"
-    textColor: "{colors.ink-700}"
-    rounded: "{rounded.sm}"
-    padding: "8px 12px"
-  faq-button-active:
-    backgroundColor: "{colors.seal-600}"
-    textColor: "#FFFFFF"
-  badge-knowledge:
-    backgroundColor: "{colors.paper-100}"
-    textColor: "{colors.ink-500}"
-    typography: "{typography.label}"
-    rounded: "{rounded.sm}"
-    padding: "4px 12px"
-  toast:
-    backgroundColor: "{colors.ink-900}"
-    textColor: "{colors.paper-050}"
-    rounded: "{rounded.md}"
-    padding: "12px 24px"
+  cite-marker:
+    backgroundColor: "{colors.teal-100}"
+    textColor: "{colors.teal-600}"
+    typography: "{typography.mono}"
+    rounded: "{rounded.xs}"
+    padding: "0 0.3em"
 ---
 
 # Design System: SFDA Copilot
 
 ## Overview
 
-**Creative North Star: "The Dossier"**
+**Creative North Star: "The Warm Instrument"**
 
-A dossier is a case file: paper, hairline rules, tabbed sources, and a seal that
-means a specific thing. This system builds a regulatory answer the way a dossier
-is built — the structure is drawn, not stacked; the evidence is filed beside the
-claim; and exactly one colour is reserved for the mark that says *this came from a
-document*. The product's whole promise is traceability, so the visual system spends
-its scarcest resource on making provenance visible and spends almost nothing
-anywhere else.
+This is a regulatory instrument that is pleasant to sit in front of. The reader arrives mid-task with one question and a deadline, and the surface has to be sober enough to be defended to an auditor while being warm enough to spend an hour inside. The resolution of that tension is material, not decorative: a warm porcelain ground (`#F4F2F0`) under a cool radial signal-tint wash, aubergine ink instead of neutral grey so even body copy carries warmth, one deep teal that means *action* on the landing and *provenance* in the transcript, and a marigold that carries the product's character — the mascot, the lead card, the confidence marks.
 
-The mood is **sober, traceable, warm at the edges**. The core is disciplined:
-cool archival paper (never cream), 1px rules doing the structural work shadows
-would do elsewhere, tabular figures wherever a number carries meaning, and a
-reading column set at 68ch in 17px type with 1.65 leading because answers are prose
-that people actually read. The warmth is deliberate and lives at the perimeter —
-the assistant says "Ready to help" rather than "Awaiting input", and a mascot may
-occupy the rail. Neither is allowed to migrate into the answer surface, where
-sobriety is the point.
+The system is built in three layers and the layering is load-bearing, not organizational hygiene. Layer 1 is raw ramps (ink, paper, rule, teal, gold, status). Layer 2 is scales (spacing, type, radii, z-index, motion). Layer 3 is semantics — the only names a component is allowed to say. Dark mode overrides **primitives only**: there is not one dark-mode branch in any component file, and every Layer 3 name resolves correctly on both themes because the ramps beneath it flipped. The same discipline governs direction: the corpus is bilingual, so RTL is structural rather than a stylesheet variant, and a build test fails on any physical property that cannot mirror.
 
-This is a bilingual system by construction, not by translation. IBM Plex Sans,
-Plex Sans Arabic, and Plex Mono are one family across three scripts, chosen because
-the corpus is mixed AR/EN and body text must not change designer between languages.
-Direction is handled structurally: every rule uses logical properties, tracking
-tokens zero out under RTL because negative letter-spacing shatters Arabic glyph
-joining, and a `--flip` multiplier mirrors the transforms that carry meaning.
+Bilingualism also chooses the type. Zain is an Arabic-first display family with a matching Latin — the right way round for a product whose corpus is written in Arabic — and Readex Pro is one variable family drawn across both scripts, so body text does not change designer between languages. Azeret Mono appears only where a machine reports a fact: page numbers, relevance scores, timestamps, citation indices. It is never a costume for "technical".
+
+This pass redesigned the **landing surface only**. The authenticated chat app inherits the token ramp unchanged and renders correctly on it, but its composition has not been re-examined against this world; treat the chat sections below as *recorded as shipped*, not as designed to this world.
 
 **Key Characteristics:**
-
-- Hairlines, not shadows, carry structure
-- One signal colour, spent only on retrieval and citation
-- Cool archival paper; squarer corners than a chat product
-- 68ch reading measure, 17px body, 1.65 leading
-- Bilingual by construction — logical properties throughout, RTL-aware tracking
-- Motion marks a state change; nothing animates for atmosphere
-- Dark mode flips primitives only; no component contains a theme branch
+- Warm porcelain ground under a cool teal wash; warmth and coolness both present, neither dominant
+- Aubergine ink ramp — no neutral grey anywhere in the text stack
+- Soft radii (3/6/10/14/16/24px + pill) and warm-tinted shadows; the archival hairline-only world is retired
+- One teal, two jobs split by surface: brand action on the landing, provenance inside the transcript
+- Arabic-first display voice; one variable body family across both scripts
+- Three token layers; dark mode touches only the bottom one
+- Logical properties are enforced by a test, not by preference
 
 ## Colors
 
-A cool, archival palette: four ink weights on three paper weights, separated by two
-hairline greys, with two carrier colours that are rationed rather than decorative.
+A warm porcelain-and-aubergine field holding two saturated voices — a deep teal that carries action and provenance, and a marigold that carries warmth and confidence.
 
 ### Primary
-
-- **Seal Blue** (`seal-600`): the signal. Retrieval and citation state, and
-  essentially nothing else — the citation marker, the lit source card, the
-  streaming caret, the unread dot, the stage indicator, and the user's own message
-  bubble. `seal-700` is its hover; `seal-100` is the tint behind a marker or a lit
-  card.
+- **Deep Teal** (`teal-600`): The brand's action colour and the retrieval signal. On the landing it is the primary CTA fill, the feature-card icons, the link colour, the focus ring, the text selection, the caret and the scrollbar-adjacent chrome accents. Inside the chat transcript it is rationed to retrieval and citation state only — the numbered marker, the lit source card, the streaming caret, the user's own bubble, the stage dot. Its hover partner (`teal-700`) *darkens* in light mode and *lightens* in dark, because the ramp flips and the semantics do not.
+- **Teal Wash** (`teal-100`): The landing's ground gradient (`radial-gradient(120% 70% at 50% -18%, …)` from the top edge), the resting fill of a citation marker, and the lit state of a source card.
 
 ### Secondary
-
-- **Verified Green** (`verify-600`): confidence and relevance. The relevance bar
-  under a source card, the mascot's eyes once passages are in hand, the success
-  rule on a toast. `verify-700` is for white text on the fill; `verify-100` is its
-  tint.
+- **Marigold** (`gold-600`): The product's warmth and its confidence signal. Sunny's eyes, mouth and antenna; the relevance bar; the knowledge-cutoff badge outline; the success toast rule; the mascot's ambient glow. `gold-700` is the variant to use when text sits on or beside a fill, including the badge's own label.
+- **Marigold Tint** (`gold-100`): The lead feature card's fill and Sunny's cheeks. The only large tinted surface on the landing.
 
 ### Neutral
+- **Aubergine Ink** (`ink-900` → `ink-300`): The full text ramp — primary copy and headings, secondary body, muted meta, faint labels. Warm-violet rather than grey, deliberately.
+- **Warm Porcelain** (`paper-050`): The page ground.
+- **Card White** (`paper-000`): Every raised surface — cards, modals, composer, sidebar, chrome buttons, status pills.
+- **Sunken Porcelain** (`paper-100`): Recessed fills — the independence notice, code blocks, table headers, hover states, the cutoff notice.
+- **Rule** (`rule-200`, `rule-300`): The hairline pair. `rule-200` is the default 1px border on cards, modals and dividers; `rule-300` is the stronger stroke used on input borders, blockquote rules, the paired-wordmark hairlines and the scrollbar thumb.
 
-- **Ink** (`ink-900` → `ink-300`): the four text weights. `ink-900` is primary
-  text and the inverted toast surface; `ink-700` is secondary prose; `ink-500` is
-  muted labels and captions; `ink-300` is faint metadata that must recede.
-- **Paper** (`paper-050`, `paper-000`, `paper-100`): page, raised surface, and
-  sunken surface. Cool and archival — never cream, never warm.
-- **Rule** (`rule-200`, `rule-300`): the hairline pair. `rule-200` is the default
-  divider and border; `rule-300` is the emphasized one, used for input borders,
-  blockquote rules, and hover states.
-
-### Status
-
-- **Alert** (`alert-600`): errors, the mascot's error face, the toast error rule.
-- **Warn** (`warn-600`): cautions. Currently declared and reserved.
+### Tertiary
+- **Alert** (`alert-600`) and **Warn** (`warn-600`): Error text, the error toast rule, and Sunny's error face. Nothing else.
 
 ### Named Rules
+**The Two Jobs Rule.** Teal is the brand's action colour on the landing (CTA and card icons) and is rationed to retrieval and citation state inside the chat transcript. A decorative teal in the transcript dilutes the one cue that says "this sentence came from a document"; a rationed teal on the landing leaves the page with no action colour. Which job applies is decided by surface, never by taste.
 
-**The One Seal Rule.** Seal Blue appears only where retrieval or citation state is
-being reported. Using it for a generic button is a bug, not a preference: it
-dilutes the single cue that tells a reader a sentence is traceable to a document.
-When a new component wants emphasis, it gets a hairline, a weight change, or a
-sunken background — not the seal.
+**The Primitives-Only Dark Rule.** Dark mode overrides Layer 1 primitives and nothing else. A `[data-bs-theme="dark"]` branch inside a component means the primitive ramp is wrong — fix the ramp. The teal ramp lifts to `#4FC2C8` in dark because `#0F5E63` on `#191420` is roughly 2.1:1 and unreadable; that is a ramp decision, not a component decision.
 
-**The Flip-the-Ramp Rule.** Dark mode overrides **primitives only**. Every semantic
-name resolves correctly without a single dark-mode branch anywhere in a component.
-If you find yourself writing `[data-bs-theme="dark"] .my-component`, the primitive
-ramp is wrong, not the component. The ramp genuinely inverts rather than dimming:
-Seal Blue lifts to `#6E9BF0` in dark and its *hover goes lighter* (`#9CBCF7`),
-because `#1B4DB1` on the dark page measures roughly 1.7:1 and is unreadable.
-Verified Green lifts the same way, to `#35C3A3`.
+**The Semantic-Names-Only Rule.** Components reference Layer 3 names (`--bg-surface`, `--fg-muted`, `--signal`, `--confidence`, `--hairline`). Reaching for a primitive in a component file means the semantic layer is missing a name; add the name.
 
-**The Three-Layer Rule.** Primitives → scales → semantics, and components
-reference **semantics only**. Reaching for a primitive inside a component means the
-semantic layer is missing a name; add the name rather than the exception.
+**The Warm Shadow Rule.** Shadows are tinted with the ink hue (`rgb(36 31 43 / …)`), never neutral grey. A grey shadow on a warm ground reads as dirt.
 
 ## Typography
 
-**Display / Body Font:** IBM Plex Sans (with IBM Plex Sans Arabic, then system sans)
-**Arabic Font:** IBM Plex Sans Arabic (substituted wholesale for `--font-sans`
-under `[dir="rtl"]`)
-**Label / Mono Font:** IBM Plex Mono
+**Display Font:** Zain (falling back to Readex Pro, then system sans)
+**Body Font:** Readex Pro (variable, 200–700, drawn across Latin **and** Arabic)
+**Label/Mono Font:** Azeret Mono (400/500)
 
-**Character:** One family, three scripts. Plex is the typeface of technical
-documentation — engineered, legible at small sizes, and unglamorous in a way that
-suits a regulatory instrument. Plex Sans Arabic is the actual reason for the
-choice: it is the only high-quality free family with a genuine Arabic sibling, and
-a bilingual corpus cannot afford body text that changes designer between languages.
-Mono is not for code — it marks *machine-reported facts*: page numbers, relevance
-scores, timestamps, stage labels, and the knowledge-cutoff badge.
+**Character:** An Arabic-first display voice over a bilingual variable body — modern, open, unmistakably not the bookish serif that a "warm" palette usually invites. The mono is a reporting instrument, never a mood.
 
 ### Hierarchy
-
-- **Display** (600, `clamp(2.25rem, 6vw, 4rem)`, 1.15, -0.022em): the landing
-  wordmark. One per page, at most. The floor is set by Arabic, not English: the
-  Arabic wordmark runs ~1.4× the inline length of the English one, so a floor
-  that looks generous in English wraps it to two lines on a phone.
-- **Headline** (600, 2rem, 1.15, -0.01em): section headings on marketing surfaces.
-- **Title** (600, 1.25rem, 1.3, -0.01em): card titles, modal titles, the sidebar
-  wordmark. The workhorse heading.
-- **Body** (400, 1.0625rem/17px, 1.65): answers and sustained prose. The size and
-  leading are set for reading, not for UI density.
-- **Body Small** (400, 0.9375rem, 1.3): secondary prose — feature card copy, FAQ
-  entries, composer input, table cells.
-- **Meta** (500, 0.8125rem): source titles, taglines, chips, form help.
-- **Label** (mono, 500, 0.75rem, 0.06em, uppercase): the machine register —
-  category headers, stage lines, scores, page numbers, timestamps, the cutoff
-  badge.
+- **Display** (800, `clamp(2.5rem, 7vw, 5rem)`, 1.08, −0.03em): The wordmark only. The clamp floor is set by the *longer* script — the Arabic wordmark runs about 1.4× the inline length of the English one, so the minimum is tuned to keep it on one line at 390px.
+- **Headline** (800, `clamp(2rem, 3.2vw, 2.75rem)`, 1.08, −0.03em): Section headings on the landing.
+- **Title** (700, 1.25rem/1.5rem, 1.3, −0.012em): Card headings, modal titles, sidebar title. The lead card's heading steps up one rung (1.5rem) rather than getting its own token.
+- **Body** (400, 1.0625rem/17px, 1.65): All prose. The reading measure is 68ch (`--measure`); the hero lead is tightened to 54ch and the independence notice to 70ch.
+- **Label** (500, 0.75rem, +0.08em, uppercase): Section eyebrows inside the FAQ rail, table headers, stage lines, composer labels, source categories.
+- **Mono** (400, 0.75rem, tabular figures): Machine-reported facts only — page numbers, relevance scores, timestamps, citation indices, stream notes.
 
 ### Named Rules
+**The Joined-Script Rule.** Negative letter-spacing shatters Arabic glyph joining. Every tracking token zeroes under `[dir="rtl"]`, a blanket `letter-spacing: normal` catches any hardcoded value, and the leading opens up (body 1.65 → 1.85, tight 1.08 → 1.25, snug 1.3 → 1.45). Uppercasing is also switched off in RTL: Arabic has no case, so the transform does nothing while the tracking that accompanies it breaks joins. Small labels keep their role through weight and colour instead.
 
-**The Arabic Tracking Rule.** Negative letter-spacing breaks Arabic glyph joining
-and renders text as disconnected gibberish. Under `[dir="rtl"]` every tracking
-token goes to zero, `letter-spacing: normal` is force-reset on all descendants, and
-leading opens up (body 1.65 → 1.85, snug 1.3 → 1.45). Never hardcode
-`letter-spacing` in a component; use the tokens so this override reaches it.
+**The Interpolate-Between-Tokens Rule.** Fluid type clamps interpolate between ramp tokens (`clamp(var(--fs-400), 1.5vw, var(--fs-500))`), never between literals. A clamp written with raw rem values is off the scale by construction.
 
-**The Tabular Rule.** Any number that carries meaning gets
-`font-variant-numeric: tabular-nums` — page numbers, relevance scores, timestamps.
-Digits must not jitter between frames while an answer streams.
-
-**The Longer-Script Rule.** A fluid type floor is set by the *longer* script, not
-by English. The Arabic wordmark runs about 1.4× the inline length of the English
-one, so a `clamp()` minimum that looks comfortable in English will wrap Arabic onto
-a second line at the same viewport. Measure both before committing a floor; the
-English rendering will not tell you when it is wrong.
-
-**The Isolation Rule.** Numeric metadata sitting inside Arabic prose is marked
-`dir="ltr"` with `unicode-bidi: isolate`, so bidi reordering cannot scramble a page
-number or a score. Every number the reader might quote back is protected this way.
+**The Mono-Means-Measured Rule.** Azeret Mono marks a value a machine produced. Numbers that carry meaning also get `font-variant-numeric: tabular-nums` so digits do not jitter between streaming frames, and page numbers and scores are held `direction: ltr; unicode-bidi: isolate` so bidi cannot reorder them inside an Arabic answer.
 
 ## Layout
 
-A **reading measure and a rail**, not a chat column. The transcript centres on a
-68ch measure (`--measure`) using
-`padding-inline: max(var(--gutter), calc((100% - var(--measure)) / 2))` rather than
-a wrapper element — JS appends straight into `#messages`, so it must stay the direct
-parent of every message. The composer shares the same 68ch measure so the input
-lines up with the text it produces.
+The landing is a single centred column capped at 1180px (`--page-max`), with a fluid page edge of `clamp(20px, 5vw, 56px)` and a shared `clamp(16px, 4vw, 48px)` gutter for app surfaces. The document scrolls; only the authenticated chat shell pins itself to 100vh so its composer stays put while the transcript scrolls.
 
-The app shell is a fixed-height grid: `.chat-area` is
-`grid-template-rows: minmax(0, 1fr) auto` so the composer stays pinned while the
-transcript scrolls on its own. Above 1200px a second grid column opens
-(`--rail-w: clamp(240px, 20vw, 320px)`) for the mascot and, at 1440px and above,
-the promoted source deck. **The rail is a real grid column**, never a floating
-overlay: the reading column is therefore never padded around a ghost, and the whole
-arrangement mirrors under RTL for free. Below 1200px there is no rail and the
-inline message avatars carry the mascot instead.
+Spacing is a 4px base scale (4/8/12/16/24/32/48/64/96). No raw pixel margins are authored anywhere in the landing; the only literal lengths in the stylesheets are optical constants (hairline widths, dot sizes, blur radii, the mascot's sizing clamps).
 
-Spacing is a 4px scale (`--space-1` … `--space-9`, 4 → 96px). Gutters are fluid:
-`--gutter: clamp(16px, 4vw, 48px)`. Card and surface padding sits at 24px, message
-bubbles at 16px/24px, dense controls at 8px/12px.
+The feature grid is one column by default, two at 640px, three at 1000px — and at three columns the coverage card spans two, because it carries the corpus claim and a row of five identical boxes says nothing about which one matters. The chat shell adds a 240–320px mascot rail as a real grid column at 1200px, and promotes the source deck out of its disclosure at 1440px. Breakpoints are content-driven values, not a framework's named tiers.
 
-Breakpoints follow Bootstrap 5.3: the sidebar becomes an offcanvas drawer below
-`lg` (992px), the rail appears at `xl` (1200px), and the source deck promotes from
-a collapsible summary into the rail at 1440px.
-
-### Named Rules
-
-**The Logical Property Rule.** No physical direction properties. `inline-size`,
-`block-size`, `padding-inline`, `border-inline-end`, `inset-block-start`,
-`border-start-start-radius` — all of them, always. This is enforced:
-`web/tests/test_css_contract.py` fails the build on physical properties that cannot
-mirror. Where CSS has no logical equivalent (there is no logical `translate`), a
-`--flip` multiplier (1 in LTR, -1 in RTL) is applied inside the transform:
-`translateX(calc(-12px * var(--flip)))`.
-
-**The Measure Rule.** Answers are prose. The transcript and the composer share one
-68ch measure, and nothing widens it for the sake of filling a screen. Extra width
-goes to the rail or stays empty.
+**The Logical-Properties Rule.** Physical properties that cannot mirror (`margin-left`, `padding-right`, `left`, `text-align: left`, `border-left`) are banned and `web/tests/test_css_contract.py` fails the build on them; the five shipped stylesheets currently carry zero violations. Where CSS has no logical equivalent — `translateX` inside a keyframe — the direction multiplier `--flip` (1 in LTR, −1 in RTL) goes inside the transform: `translateX(calc(-12px * var(--flip)))`. Overlays are placed in a shared grid cell with `align-self`, not with absolute offsets, so they mirror for free.
 
 ## Elevation & Depth
 
-**This system is flat by doctrine.** Structure is drawn with 1px hairlines and
-separated by whitespace; tonal layering (`paper-100` sunken, `paper-000` raised,
-`paper-050` page) does the rest. The shadow scale exists but is deliberately
-under-used — four tokens, five total usages across the entire stylesheet.
-
-A shadow appears only when an element *genuinely floats above the page* and needs
-to read as detached: the modal, the dropdown menu, the toast, and the jump-to-latest
-pill. Shadows are never used to make a card look important, to imply hierarchy
-among peers, or to soften an edge.
+Hybrid, and deliberately so. Structure at rest is carried by hairlines and tonal layering — porcelain page, white surface, sunken fill, 1px rule — and shadow is spent on things that are genuinely lifted or genuinely responding: modals, dropdown menus, toasts, the floating jump pill, a card under the cursor. The landing's own ground is a cool radial wash from the top edge rather than a flat fill, which gives the page depth before any element casts anything.
 
 ### Shadow Vocabulary
-
-- **`shadow-sm`** (`0 1px 2px rgb(12 26 43 / .06)`): the landing hero's barely-there
-  lift. The lightest sanctioned use.
-- **`shadow-md`** (`0 2px 8px rgb(12 26 43 / .08)`): the jump-to-latest pill, which
-  overlays scrolling text and must separate from it.
-- **`shadow-lg`** (`0 8px 24px rgb(12 26 43 / .10)`): the composer's category
-  dropdown.
-- **`shadow-xl`** (`0 20px 48px rgb(12 26 43 / .14)`): modals and the toast — the
-  only genuinely overlaid surfaces.
-
-In dark mode the shadow ramp switches to pure black at much higher alpha
-(0.40 → 0.55), because a translucent ink shadow is invisible on a dark page.
+- **Resting whisper** (`0 1px 2px rgb(36 31 43 / .05)`): Small floating chrome that must read as detached but not lifted — the mascot's status pill.
+- **Hover lift** (`0 4px 14px rgb(36 31 43 / .07)`): A card responding to the cursor, and the jump-to-latest pill.
+- **Menu** (`0 12px 32px rgb(36 31 43 / .10)`): Dropdown surfaces.
+- **Overlay** (`0 24px 60px rgb(36 31 43 / .16)`): Modals and toasts.
+- **Coloured CTA lift** (`0 6px 18px rgb(var(--signal-rgb) / .22)`, `0 10px 26px / .28` on hover): The primary action only. It is the one element on the landing allowed to look inviting.
+- **Dark mode** replaces the ink tint with black at much higher alpha (.40 / .45 / .50 / .60), because a tinted shadow disappears on a dark ground.
 
 ### Named Rules
-
-**The Hairline-First Rule.** Reach for a 1px rule before reaching for a shadow. If
-a hairline and whitespace cannot express the separation, ask whether the separation
-is real before adding depth.
+**The Earned-Shadow Rule.** Surfaces are flat at rest and lift on state. A shadow on a static element that is not floating over content is decoration; use a hairline and a tonal step instead.
 
 ## Shapes
 
-**Squarer than a chat product, because documents have corners.** The radius scale
-runs 2 / 4 / 6 / 10 / 14px plus a pill, and the small end carries most of the
-weight: 2px on citation markers and source indices, 4px on source cards, form
-fields, and FAQ entries, 6px on buttons, icon controls, and the composer.
+Radii are soft and stepped: 3px on inline chips and dropdown items, 6px on inputs, small cards and quiet buttons, 10px on composer fields and menus, 14px on message bubbles, 16px on feature cards and modals, 24px reserved for the largest surfaces, and a full pill (999px) on every control that reads as a *control* — the primary CTA, the 38px icon buttons, badges, suggested-question chips, the jump pill, the relevance bar. A tool you sit in front of all day does not need to be sharp.
 
-10px is reserved for larger surfaces — feature cards, the hero image, modals,
-message bubbles. 14px appears exactly once, on the landing hero stage. The pill
-radius is used only for genuinely pill-shaped things: the jump-to-latest control,
-suggested-question chips, mascot status labels, the relevance bar, and scrollbar
-thumbs.
+Two silhouettes recur. The **pill** marks anything actionable or status-bearing. The **flagged corner** marks speech: a message bubble is 14px on three corners and 6px on the corner that points back at its speaker, expressed logically (`border-start-start-radius` for the assistant, `border-start-end-radius` for the user) so it follows writing direction instead of a fixed side.
 
-Borders are the primary form-giver. Nearly every surface is a 1px `rule-200` box on
-`paper-000`; hover promotes the border to `rule-300` or `ink-300` rather than
-adding fill or lift.
-
-Border weight is a two-value system and nothing else: **1px means structure**
-(every surface, divider, and cell) and **2px means meaning** — the active tab
-indicator, the blockquote rule, the knowledge-cutoff rule, the toast's severity
-rule, and the focus outline. There is no third weight. A component that wants more
-emphasis than 2px is asking for the wrong tool.
-
-### Named Rules
-
-**The Corner-Points-Home Rule.** A message bubble squares the corner nearest its
-speaker (4px against 10px elsewhere) — and does it with
-`border-start-start-radius` for the assistant and `border-start-end-radius` for the
-user, so the tail follows writing direction instead of a fixed side.
+Borders are 1px hairlines by default. 2px is the system's one *meaningful* rule weight — the active tab indicator, blockquote rules, the cutoff notice, the toast's status edge — and it never appears as decoration.
 
 ## Components
 
-Character line, for every component in this system: **flat at rest, responsive on
-contact.** Components are outlined shapes on paper, not objects floating above it.
-Nothing is pre-emphasized; the visual change is earned by a state.
-
 ### Buttons
-
-- **Shape:** subtly rounded (6px, `rounded.md`); icon controls are square 36px
-  boxes at the same radius.
-- **Primary:** Seal Blue fill, white text, 12px/32px padding, 600 weight. Hover
-  darkens to `seal-700` (and *lightens* in dark mode). Active nudges 1px down.
-  Reserved for the genuine primary action on a surface.
-- **Ghost:** transparent with a `rule-300` hairline and secondary ink. Hover fills
-  with `paper-100` and promotes the border. This is the default for secondary
-  actions — logout, profile, anything that is not *the* action.
-- **Icon (theme / language / utility):** 36px square, `rule-200` hairline, muted
-  ink on `paper-000`. Hover darkens the ink, sinks the background, promotes the
-  border. Three of these live in the page chrome, plus the language toggle, which
-  is deliberately a separate class from the theme toggle.
-- **Focus:** every control takes the global `:focus-visible` treatment — a 2px
-  Seal Blue outline at 2px offset. Never removed, never replaced with a colour
-  change alone.
+- **Shape:** Full pill for the primary landing action and all icon chrome (999px); 6px for quiet list buttons; 10px on the composer's send button, squared on its inner edge so it welds to the input.
+- **Primary (`.unified-button`):** Teal fill, white label, `--fw-display` (700) at 17px, 16px/48px padding, a coloured lift shadow, and a trailing arrow. Hover darkens the fill, raises the button 1px, deepens the shadow, and nudges the arrow 3px *toward the reading direction* (`translateX(calc(3px * var(--flip)))`) so it points onward in both scripts.
+- **Ghost:** Transparent with a `rule-300` hairline; fills to sunken porcelain and darkens its text on hover.
+- **Icon controls:** 38×38 circles, white fill, `rule-200` hairline, muted glyph; the border and glyph both go teal on hover. Language and theme toggles share this base.
+- **Focus:** Global — `2px solid var(--focus-ring)` at 2px offset. Fields instead take a teal border plus a 3px `rgb(15 94 99 / .28)` ring.
 
 ### Chips
-
-- **Suggested question:** pill (999px), `rule-300` hairline, `paper-000`, meta
-  type. Hover darkens the ink and promotes the border; its leading icon turns Seal
-  Blue on hover — the one place the seal appears as pure affordance, because the
-  chip *is* a query about to be traced.
-- **Knowledge badge:** 4px radius, `paper-100` fill, `rule-300` hairline, mono
-  uppercase label type. Reads as a stamp, not a button.
+- **Suggested question:** Pill, white fill, `rule-300` hairline, 13px medium, muted leading glyph; hover fills to sunken porcelain, darkens the text and turns the glyph teal.
+- **Knowledge badge:** Pill, marigold-tint fill with a full-strength marigold hairline and `gold-700` label. It sits beside the CTA as the second half of the hero action row.
 
 ### Cards / Containers
-
-- **Feature card:** 10px radius, `paper-000`, `rule-200` hairline, 24px padding,
-  full-height. The only hover is a border promotion to `rule-300` — no lift, no
-  shadow, no scale.
-- **Source card:** 4px radius, `paper-000`, `rule-200`, 12px padding. Its lit
-  state (`is-lit`, driven by hovering the matching citation marker) swaps the
-  border to Seal Blue and the fill to `seal-100`. That pairing is the mechanism by
-  which a claim connects to its evidence, and it is the most important state
-  transition in the product.
-- **Auth status / knowledge notice:** sunken `paper-100` panels with a hairline,
-  used where a block is informational rather than interactive. The cutoff notice
-  uses a 2px `rule-300` inline-start rule instead of a full border.
+- **Corner Style:** 16px.
+- **Background:** White on the porcelain ground; the lead card takes the marigold tint.
+- **Shadow Strategy:** Flat at rest, hover lift on cursor with a 3px rise and a hairline that strengthens.
+- **Border:** 1px `rule-200`. The lead card keeps the same neutral hairline rather than a gold one — full-strength gold there was the loudest line on the dark page and pulled the eye before the CTA. The fill alone carries the lead.
+- **Internal Padding:** 32px.
+- **Icons:** Set in the card's own colour at 1.5rem, on the card's own ground. No rounded-square icon tile — it is the most template-looking element a card can carry.
 
 ### Inputs / Fields
-
-- **Modal fields:** `paper-000`, 4px radius, `rule-300` border, floating labels in
-  muted ink.
-- **Composer:** the input and send button are a single joined unit — 6px radius on
-  the outer edges, squared where they meet, achieved with logical corner
-  properties so the join mirrors under RTL. The input drops its inline-end border
-  entirely.
-- **Focus:** border shifts to Seal Blue plus a 3px `focus-ring-shadow` halo. The
-  composer input suppresses the halo and raises its z-index instead, so the joined
-  seam stays clean.
-
-### Modal & Tabs
-
-- **Shell:** 10px radius, `paper-000`, `rule-200` hairline, `overflow: hidden` so
-  the header's fill meets the corner cleanly. Carries `shadow-xl` — a modal is one
-  of the few things in this system that genuinely floats.
-- **Header:** a sunken `paper-100` band closed by a hairline, with the title in
-  title type (600, 1.25rem, tight tracking) behind a Seal Blue shield icon. The
-  close button keeps a dark rendering (`filter: none`, 60% opacity) rather than
-  Bootstrap's inverted white variant — on a near-white band, a white glyph would
-  disappear.
-- **Tabs (Login / Signup):** full-width, borderless, muted ink at 500 weight, each
-  carrying a 2px transparent `border-block-end` that turns Seal Blue when active
-  while the label darkens to primary ink. The background never fills. This is the
-  system's only moving-indicator pattern, and it is a hairline — consistent with
-  everything else here being drawn rather than filled.
-
-### Category Dropdown
-
-The composer's scope selector: a custom listbox with a visually hidden `<select>`
-kept in sync beneath it, so the control can be styled without losing form
-semantics.
-
-- **Trigger:** 4px radius, `rule-300` hairline, meta type at 500 weight on
-  `paper-000`, with a leading category glyph and a chevron that rotates 180° on
-  open. Hover promotes the border to `ink-300`.
-- **Known inconsistency:** the category glyphs are emoji (🌐 📋 💊 🐾 🧬) while the
-  rest of the product draws its icons from Bootstrap Icons at a consistent stroke.
-  Emoji render per-platform, ignore `currentColor`, and cannot follow the theme.
-  This is the one place the icon system breaks; a new surface should not copy it.
-- **Menu:** **opens upward** (`inset-block-end: calc(100% + 8px)`), because the
-  composer is pinned to the bottom of the viewport and a downward menu would open
-  off-screen. 6px radius, `rule-200` hairline, `shadow-lg`, 220px minimum width.
-- **Items:** 2px radius, body-small type, secondary ink. Hover sinks to
-  `paper-100`; the selected item takes a full Seal Blue fill — the same licence the
-  active FAQ entry has, because choosing a category is scoping a retrieval.
-- **Transition:** opacity, a 4px translate, and `visibility` together, so a closed
-  menu is genuinely non-interactive rather than transparent and still clickable.
+- **Style:** White fill, 1px `rule-300`, 6px radius (10px on the composer, welded to the send button).
+- **Focus:** Teal border plus a 3px translucent teal ring; the base Bootstrap shadow is cleared first.
+- **Error:** Bootstrap's invalid feedback, with the alert ramp.
 
 ### Navigation
+- **Landing chrome:** A static end-aligned utility row (language toggle, theme toggle) inside the same 1180px measure as the content — deliberately in flow rather than absolutely positioned, because the page scrolls.
+- **Tabs (auth modal):** Borderless links in muted ink; the active tab takes primary ink and a 2px teal underline.
+- **Footer:** A top hairline, the independence notice on a sunken fill at 70ch, then the builder's colophon links in secondary ink going teal on hover.
 
-- **Sidebar:** sticky full-height `paper-000` panel with a `rule-200` inline-end
-  border, entering with a 16px direction-aware slide. Its header is a hairline-
-  separated block: wordmark in title type with a Seal Blue shield icon, tagline in
-  muted meta, language toggle, and a sunken auth-status panel.
-- **FAQ list:** category headers in mono uppercase label type, separated by
-  `border-block-start` hairlines. Entries are transparent 4px boxes that fill with
-  `paper-100` on hover; the active entry takes a full Seal Blue fill — legitimate,
-  because selecting a FAQ *is* initiating a retrieval.
-- **Mobile:** below 992px the sidebar becomes an offcanvas drawer and a `paper-000`
-  navbar appears with a hairline underline and a token-driven toggler icon that
-  recolours per theme.
+### Sunny (signature component)
+The mascot is a generated SVG, not an asset. Every fill in it references a `--sunny-*` variable that resolves to a semantic token: teal shell (`--signal`), aubergine visor, marigold eyes, mouth and antenna (`--confidence`), marigold-tint cheeks, white core. Because of that, **a theme change and a state change are the same operation** — searching reassigns `--sunny-eye` to `--signal`, retrieved returns it to `--confidence`, error reassigns eye and mouth to `--danger`, and dark mode needs no rule at all. Sunny's face is the retrieval progress indicator: the antenna carries the retrieval signal, the eyes carry confidence.
 
-### Citation System (signature)
+On the landing Sunny is the page's only image, sized `clamp(150px, 24vw, 232px)`, floating on a 6s loop above a **warm** blurred glow (marigold, not teal — the glow is atmosphere around a character, and teal is spoken for). He mirrors under RTL (`scaleX(-1)`) so he still faces into the text; he carries no glyph children, so nothing needs un-mirroring. Motion is CSS keyframes rather than SVG SMIL, specifically so the global `prefers-reduced-motion` rule can reach it.
 
-The reason the palette is rationed. An answer's prose carries inline
-`.cite-marker` buttons — mono, 0.7em, 2px radius, Seal Blue on `seal-100`, raised
-on the baseline — which resolve to a `.source-deck` beneath the message. Below
-1440px the deck is a collapsible summary with a rotating chevron; at 1440px and
-above the summary disappears and the list is always open in the rail.
-
-Each source card carries: a mono index box, the document title (`dir="auto"`), a
-page number (`dir="ltr"`, tabular), an uppercase category, a 4px relevance bar
-filled in Verified Green to a `--pct` custom property, the SEM/LEX score split in
-mono, and an expandable snippet behind a hairline. Hovering a marker lights its
-card; hovering the card is not required — the connection is offered from the text,
-where the reader already is.
-
-### Answer Body
-
-The rendered Markdown inside an assistant bubble — the reading surface, styled as a
-document rather than as chat.
-
-- **Tables:** a regulatory answer is often a table, so it gets real structure
-  rather than being an afterthought: collapsed borders, a `rule-300` outer border
-  at 4px radius with `overflow: hidden` so the radius actually clips, `rule-200`
-  cell borders, 8px/12px cells, `text-align: start`, and top-aligned cells. The
-  header row is a sunken band in the label register — uppercase, 0.06em tracking,
-  meta size, 600 weight. Inside a user bubble the cell borders switch to
-  `rgb(255 255 255 / .3)` so they stay visible against the Seal Blue fill.
-- **Headings:** promoted to title size with 24px above and 8px below — more space
-  above than below, so a heading binds to the text it introduces rather than
-  floating between two blocks.
-- **Blockquote:** a 2px `rule-300` inline-start rule at 16px inset, secondary ink.
-  No fill, no italic, no quotation glyph.
-- **Code:** blocks sit on sunken `paper-100` behind a `rule-200` hairline at 4px
-  radius, mono at meta size, scrolling horizontally rather than wrapping. Inline
-  code is the same treatment at 2px radius and 0.875em. This is the one place mono
-  means code; everywhere else it means measurement.
-- **Lists:** 1.25em inline-start padding, 4px between items. The padding is inline,
-  not left, so Arabic lists indent from the correct edge.
-
-### Streaming States
-
-Listed in the order a request passes through them.
-
-- **Typing indicator:** three 6px `ink-300` dots on a 1.2s bounce staggered 0.15s
-  apart. The only pre-token state; the caret takes over the moment text arrives.
-- **Stage line:** mono uppercase label type with a Seal Blue dot, naming the actual
-  stage — searching, N passages found, drafting, finishing. Honest progress, not a
-  generic spinner.
-- **Caret:** a 2px Seal Blue block on the pending tail, blinking on a
-  `steps(2, start)` timer, so a stalled stream reads as "still writing" rather than
-  "finished". It is removed on cancel and on error.
-- **Stream note:** mono uppercase label in faint ink for terminal states the reader
-  must notice without alarm — "Stopped", "Answer incomplete". Turns Alert red on
-  error. It appends below the answer and never replaces it: a partial answer stays
-  on screen, because a partial regulatory answer still has value and the reader
-  decides what it is worth.
-- **Jump-to-latest:** a pill in the same grid cell as the transcript with
-  `align-self: end`, so it overlays without absolute positioning and mirrors under
-  RTL. Its unread dot is Seal Blue, because something traceable arrived below the
-  fold. It enters via keyframe rather than a class toggled on rAF — rAF is
-  throttled in a background tab, which would leave the pill hit-testable but
-  invisible.
-
-### Mascot ("Sunny") — optional expressive layer
-
-**This layer is not mandatory.** No surface is obliged to carry it, no future
-design is blocked on preserving it, and it may be reinterpreted, lightened, or
-replaced. What follows is the discipline it observes *when present* — and any
-successor should inherit that discipline even if it inherits nothing else.
-
-- **It binds to the token system, never to its own palette.** Every fill in the
-  generated SVG references a token: shell = Seal Blue, eyes = Verified Green,
-  visor = ink, chrome = `rule-300`, error = Alert. Theme changes and state changes
-  are therefore the same operation — a token override.
-- **Its face is the progress indicator.** Eyes go Seal Blue while retrieving and
-  Verified Green once passages are in hand; the antenna flashes once per retrieved
-  passage. It reports real work rather than performing activity.
-- **It mirrors under RTL** (`scaleX(-1)`) so it faces into the text it is
-  commenting on, and it carries no glyph-bearing children that would need
-  un-mirroring.
-- **Its animation is CSS keyframes, not SVG SMIL** — SMIL ignores
-  `prefers-reduced-motion`; CSS keyframes are caught by the global reduced-motion
-  reset.
-- **It lives in the rail**, sticky to the bottom, never floating over the
-  transcript. The earlier floating treatment forced a 168px gutter through the
-  reading column; that is the failure mode to avoid.
-
-### Named Rules
-
-**The Motion-Marks-State Rule.** Motion exists to mark a state change: a message
-arriving, a panel revealing, a stream pending, a retrieval landing. Durations are
-short (150 / 250 / 400 / 600ms) on two easings — `ease-out` for entrances,
-`ease-soft` for state transitions. The mascot's idle float and glow are the single
-sanctioned exception, and they are confined to the rail. Everything is caught by a
-global `prefers-reduced-motion` reset that flattens animation and transition
-duration to 0.001ms.
+**The JS-Arms-The-Hidden-State Rule.** The card reveal's hidden state (`.animate-card.is-armed`) is applied by `effects.js` at runtime and is never authored in the HTML or triggered by CSS alone. If the module fails to load or the observer never attaches, the cards are simply visible. Verified with JS disabled and with the app module aborted. Any future scroll-reveal follows the same shape: no content is hidden by a stylesheet on the promise that a script will unhide it.
 
 ## Do's and Don'ts
 
 ### Do:
-
-- **Do** reference Layer 3 semantic names (`--fg-primary`, `--signal`,
-  `--hairline`) in components. If you need a primitive, the semantic layer is
-  missing a name — add the name.
-- **Do** spend Seal Blue only on retrieval and citation state. Everything else gets
-  a hairline, a weight, or a sunken background.
-- **Do** use logical properties for every direction, size, and corner. The build
-  fails on physical ones.
-- **Do** mark meaningful numbers `tabular-nums`, and isolate them with `dir="ltr"`
-  and `unicode-bidi: isolate` when they can appear inside Arabic prose.
-- **Do** give every interactive element the global focus ring — 2px Seal Blue
-  outline at 2px offset.
-- **Do** bump `asset_version` in `web/api/app.py` in any commit that touches CSS or
-  JS. Returning users otherwise get a stale `components.css` against a fresh
-  `tokens.css`.
-- **Do** keep the reading measure at 68ch for both the transcript and the composer.
+- **Do** put every new colour in a Layer 1 ramp, give it a Layer 3 semantic name, and let components reference only the semantic name.
+- **Do** flip primitives — and only primitives — for dark mode; if a component needs a dark branch, the ramp is wrong.
+- **Do** use logical properties for everything, and reach for `calc(x * var(--flip))` when the property has no logical form.
+- **Do** spend teal on the primary action and card icons on the landing, and ration it to retrieval and citation state inside the transcript.
+- **Do** write fluid type as clamps between ramp tokens (`clamp(var(--fs-400), 1.5vw, var(--fs-500))`).
+- **Do** set the display clamp's floor by the longer script — the Arabic wordmark, not the English one.
+- **Do** use Azeret Mono with tabular figures for machine-reported values, and isolate them `direction: ltr` when they sit inside Arabic prose.
+- **Do** tint shadows with the ink hue in light mode and swap to black at high alpha in dark.
+- **Do** arm scroll-reveal hidden states from JS at runtime, so a dead module leaves content visible.
+- **Do** bump `asset_version` in `web/api/app.py` (currently `"warm1"`) in any commit touching CSS or JS.
+- **Do** carry the independence notice on every surface; the landing footer holds it.
 
 ### Don't:
-
-- **Don't** add a decorative layer that animates independently of state.
-  Specifically rejected and removed from this project: spinning conic-gradient
-  rings, blurred orb fields, lens flares, and canvas particle fields. A future
-  ambient idea is not forbidden as a category, but it must earn its place against
-  this rejection — it animated behind every screen at once, so nothing read as the
-  hero.
-- **Don't** write a dark-mode branch inside a component. Fix the primitive ramp
-  instead.
-- **Don't** use `--signal` for a generic button, a decorative accent, or a hover
-  colour on something unrelated to sources.
-- **Don't** hardcode `letter-spacing`; the RTL override must be able to reach it.
-- **Don't** express structure or hierarchy with a shadow. Shadows are only for
-  elements that genuinely float — modal, dropdown, toast, jump pill.
-- **Don't** introduce a third border weight. 1px is structure, 2px is meaning, and
-  there is nothing above 2px anywhere in this system.
-- **Don't** clip a gradient to the wordmark glyphs. The wordmark is set in solid
-  ink with display tracking; the gradient treatment was tried and removed.
-- **Don't** float the mascot over the transcript. If it appears, it belongs in the
-  rail.
-- **Don't** reintroduce a compatibility alias layer over the token ramp. The
-  previous "Clinical Blue" shim is gone; every component references a semantic name
-  directly.
+- **Don't** author a physical property that cannot mirror. `test_css_contract.py` fails the build; the five stylesheets are at zero violations and stay there.
+- **Don't** apply negative letter-spacing or `text-transform: uppercase` under `[dir="rtl"]` — both break Arabic glyph joining or do nothing while breaking it.
+- **Don't** reach for a primitive token inside a component file; add the missing semantic name instead.
+- **Don't** state a guideline count, or any corpus figure, anywhere in copy. The corpus changes; the number goes stale on the next update.
+- **Don't** wrap a card icon in a rounded-square tile, or repeat the same idea as both a mascot and a stock illustration on one page.
+- **Don't** put a neutral grey shadow on the warm ground, or a shadow on anything that is flat and not responding to state.
+- **Don't** use the 2px rule weight decoratively — it is reserved for marks that carry meaning.
+- **Don't** hide content in CSS on the assumption a script will reveal it.
+- **Don't** revive ambient decoration on every surface at once (drifting orbs, conic rings, canvas particle fields, per-element parallax). Motion marks a state change; that is its whole job.

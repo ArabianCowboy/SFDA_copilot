@@ -22,6 +22,11 @@ export const Effects = {
       return;
     }
 
+    /* Hide only now that we know this module is running and an observer is
+       about to be attached. Authoring the hidden state in CSS meant a failed
+       module left every card permanently invisible. */
+    cards.forEach(card => card.classList.add('is-armed'));
+
     const observer = new IntersectionObserver(
       (entries, obs) => {
         entries.forEach((entry) => {

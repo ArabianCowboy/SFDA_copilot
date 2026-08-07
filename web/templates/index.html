@@ -8,7 +8,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description"
         content="{{ t('page.meta.description') }}">
-    <meta name="theme-color" content="#1B4DB1">
+    <meta name="theme-color" content="#0F5E63">
     <title>{{ t('page.meta.title') }}</title>
 
     <!-- Favicon -->
@@ -17,12 +17,15 @@
     <link rel="alternate icon" href="{{ url_for('static', filename='favicon.ico') }}">
     <link rel="apple-touch-icon" href="{{ url_for('static', filename='favicon.png') }}">
 
-    <!-- Fonts: IBM Plex Sans / Sans Arabic / Mono — one family, three scripts.
-         Plex Sans Arabic is the reason for this choice: the corpus is mixed AR/EN
-         and the UI is bilingual, so body and Arabic must come from one design. -->
+    <!-- Fonts.
+         Zain is an Arabic-first display family with a matching Latin — the
+         right way round here, since the corpus is written in the script the
+         display voice is designed for. Readex Pro is one variable family
+         drawn across Latin AND Arabic, so body text does not change designer
+         between languages. Azeret Mono marks machine-reported facts only. -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap"
+    <link href="https://fonts.googleapis.com/css2?family=Azeret+Mono:wght@400;500&family=Readex+Pro:wght@200..700&family=Zain:wght@300;400;700;800;900&display=swap"
         rel="stylesheet">
 
     <!-- Bootstrap 5.3 -->
@@ -31,7 +34,7 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css"
         integrity="sha384-l4UPAMHGzl7zwogLW4nOwaU2XTk6oiM1jhCRQstZEndoIiA2I5bg6fST3wzBSRBD" crossorigin="anonymous">
 
-    <!-- Stylesheets (Dossier — layered). asset_version is a single constant in
+    <!-- Stylesheets (layered). asset_version is a single constant in
          app.py; bump it in any commit that touches CSS or JS, or returning users
          get a stale components.css against a fresh tokens.css. -->
     <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}?v={{ asset_version }}">
@@ -39,9 +42,6 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/components.css') }}?v={{ asset_version }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/robot.css') }}?v={{ asset_version }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/effects.css') }}?v={{ asset_version }}">
-
-    <!-- Preload LCP hero image -->
-    <link rel="preload" as="image" href="{{ url_for('static', filename='images/hero-image.webp') }}">
 
     <!-- Prevent FOUC. Runs before first paint. -->
     <script>
@@ -85,6 +85,30 @@
 </head>
 
 <body class="d-flex flex-column min-vh-100">
+<!--
+DIRECTION CONTRACT — SFDA Copilot landing
+THESIS: A regulatory instrument that is pleasant to sit in front of. Keeps the composition the
+product already had and refuses to be a dense proof-of-mechanism showcase; the page's whole job
+is to say what this is and get the reader signed in.
+OWN-WORLD: Warm porcelain ground under a cool wash, aubergine ink, marigold carrying the warmth
+(mascot, badge, lead card). Deep teal has two jobs split by surface: here it is the brand's action
+colour, carried by the primary action and by the card icons that sit under it; inside the chat
+transcript it is rationed to retrieval and citation state, where it is the one cue that says a
+sentence came from a document. Zain, an
+Arabic-first display family, over Readex Pro drawn across both scripts. Soft radii, warm-tinted
+shadows, pill controls.
+STORY: A professional recognises the tool, sees it works in their language as well as English,
+and signs in.
+FIRST VIEWPORT: Centred, and the wordmark leads it — set with its counterpart in the other script
+between hairlines. Sunny sits above it as the page's only image, carrying the warmth at a scale
+that supports the mark rather than competing with it. Then one lead line, then Get Started beside
+the knowledge-cutoff badge.
+FORM: User-pinned — "the current page is broadly right in shape and tone, make it better executed
+and less generic". A pinned direction beats the roll, so the dealt worlds (seed 1e363a9c, re-roll
+round 1) were superseded rather than built.
+FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
+-->
+
 
     <!-- ═══════════════════════════════════════════
          AUTH MODAL — Login / Signup
@@ -252,13 +276,13 @@
     <!-- ═══════════════════════════════════════════
          UNAUTHENTICATED VIEW — Landing Page
          ═══════════════════════════════════════════ -->
-    <main id="unauthenticated-view" class="container-fluid flex-grow-1">
-        <!-- Utility Links -->
+    {# Deliberately NOT .container-fluid: base.css pins that to block-size 100%
+       for the chat shell, which would trap this long page in a 100vh box. #}
+    <main id="unauthenticated-view" class="landing flex-grow-1">
+        {# Language and theme only. The hub and LinkedIn links are the
+           builder's byline and live in the footer: up here the globe
+           duplicated them and read as a second language switcher. #}
         <div class="landing-header-utility">
-            <a href="https://aifoudahub.com" target="_blank" aria-label="{{ t('page.landing.hubLink') }}"
-                class="utility-icon-link"><i class="bi bi-globe"></i></a>
-            <a href="https://www.linkedin.com/in/mohfouda/" target="_blank" aria-label="{{ t('page.landing.linkedinLink') }}"
-                class="utility-icon-link"><i class="bi bi-linkedin"></i></a>
             <!-- .lang-toggle-btn, NOT .theme-toggle-btn: test_theme_toggle.py
                  asserts exactly three of the latter on the page. -->
             <button class="lang-toggle-btn btn btn-sm" type="button"
@@ -273,97 +297,100 @@
             </button>
         </div>
 
-        <div class="row h-100 align-items-center justify-content-center">
-            <div class="col-md-8 text-center">
+        <div class="landing-inner">
                 <!-- Hero Section -->
                 <div class="landing-hero">
-                    <!-- Landing Robot Companion (Sunny — mounted by robot.js) -->
+                    {# Sunny, mounted by robot.js. He is the page's only image —
+                       it used to carry a small mascot AND a stock illustration,
+                       which said the same thing twice and let neither land. The
+                       wordmark still leads the viewport; Sunny carries the warmth
+                       above it. #}
                     <div class="landing-robot" id="landing-robot">
                         <div class="landing-robot-glow"></div>
                         <div class="landing-robot-body" id="landing-robot-body"></div>
                         <div class="landing-robot-status" id="landing-robot-status">{{ t('page.landing.greeting') }}</div>
                     </div>
 
-                    {# Size and weight come from the scale (--fs-900 / --fw-display)
-                       in components.css. Bootstrap's .display-3 and .fw-bold used to
-                       carry them, which put the largest type on the site outside the
-                       token system. #}
+                    {# The wordmark is set with its counterpart in the other
+                       script. Full EN/AR parity is a binding brand commitment,
+                       so the mark states it rather than the copy claiming it.
+                       Size and weight come from the scale (--fs-900), not from
+                       Bootstrap utilities. #}
                     <div class="hero-title-wrapper">
                         <h1>{{ t('page.brand.name') }}</h1>
-                    </div>
-                    <p class="lead mb-4">
-                        {{ t('page.landing.lead') }}
-                    </p>
-
-                    <!-- Hero Image -->
-                    <div class="hero-visual mb-4">
-                        <img src="{{ url_for('static', filename='images/hero-image.webp') }}"
-                            alt="{{ t('page.landing.heroAlt') }}" fetchpriority="high">
+                        <p class="hero-title-alt" lang="{{ 'en' if lang == 'ar' else 'ar' }}"
+                           dir="{{ 'ltr' if lang == 'ar' else 'rtl' }}">{{ t('page.brand.nameOther') }}</p>
                     </div>
 
-                    <!-- CTA Button -->
-                    <button id="auth-button-main" class="unified-button btn-lg" type="button" data-bs-toggle="modal"
-                        data-bs-target="#authModal">
-                        <i class="bi bi-box-arrow-in-right me-2"></i>{{ t('page.landing.cta') }}
-                    </button>
-                </div>
+                    <p class="lead">{{ t('page.landing.lead') }}</p>
 
-                <!-- Feature Cards Section -->
-                <div class="why-use-platform-section mt-5">
-                    <h2 class="mb-5 text-center">{{ t('page.features.heading') }}</h2>
-                    <div class="row justify-content-center g-4">
-                        <div class="col-md-6 col-lg-5">
-                            <div class="feature-card animate-card" data-delay="100">
-                                <div class="feature-icon-wrapper">
-                                    <i class="bi bi-collection feature-icon"></i>
-                                </div>
-                                <h3 class="h5 fw-bold">{{ t('page.features.coverage.title') }}</h3>
-                                <p>{{ t('page.features.coverage.body') }}</p>
-                                <small class="landing-knowledge-badge d-inline-flex align-items-center mt-2">
-                                    <i class="bi bi-calendar-check me-1"></i>
-                                    {{ t('page.features.coverage.badge') }}
-                                </small>
-                            </div>
-                        </div>
-                        <div class="col-md-6 col-lg-5">
-                            <div class="feature-card animate-card" data-delay="200">
-                                <div class="feature-icon-wrapper">
-                                    <i class="bi bi-shield-fill-check feature-icon"></i>
-                                </div>
-                                <h3 class="h5 fw-bold">{{ t('page.features.authoritative.title') }}</h3>
-                                <p>{{ t('page.features.authoritative.body') }}</p>
-                            </div>
-                        </div>
-                        <div class="col-md-6 col-lg-5">
-                            <div class="feature-card animate-card" data-delay="300">
-                                <div class="feature-icon-wrapper">
-                                    <i class="bi bi-book feature-icon"></i>
-                                </div>
-                                <h3 class="h5 fw-bold">{{ t('page.features.streamlined.title') }}</h3>
-                                <p>{{ t('page.features.streamlined.body') }}</p>
-                            </div>
-                        </div>
-                        <div class="col-md-6 col-lg-5">
-                            <div class="feature-card animate-card" data-delay="400">
-                                <div class="feature-icon-wrapper">
-                                    <i class="bi bi-check-circle feature-icon"></i>
-                                </div>
-                                <h3 class="h5 fw-bold">{{ t('page.features.accuracy.title') }}</h3>
-                                <p>{{ t('page.features.accuracy.body') }}</p>
-                            </div>
-                        </div>
-                        <div class="col-md-6 col-lg-5">
-                            <div class="feature-card animate-card" data-delay="500">
-                                <div class="feature-icon-wrapper">
-                                    <i class="bi bi-cpu feature-icon"></i>
-                                </div>
-                                <h3 class="h5 fw-bold">{{ t('page.features.search.title') }}</h3>
-                                <p>{{ t('page.features.search.body') }}</p>
-                            </div>
-                        </div>
+                    <div class="hero-actions">
+                        <button id="auth-button-main" class="unified-button btn-lg" type="button"
+                            data-bs-toggle="modal" data-bs-target="#authModal">
+                            {{ t('page.landing.cta') }}
+                            <i class="bi bi-arrow-right" aria-hidden="true"></i>
+                        </button>
+                        <span class="landing-knowledge-badge">
+                            <i class="bi bi-calendar-check" aria-hidden="true"></i>
+                            {{ t('page.features.coverage.badge') }}
+                        </span>
                     </div>
                 </div>
-            </div>
+
+
+                <!-- ── Why use it ──────────────────────────────────────
+                     A grid, but not five identical icon-tile boxes: the
+                     coverage card leads at double width because it carries
+                     the corpus claim, and the icons sit in the card's own
+                     colour rather than in a rounded-square tile. -->
+                <section class="why-use-platform-section" aria-labelledby="why-heading">
+                    <h2 id="why-heading">{{ t('page.features.heading') }}</h2>
+
+                    <div class="feature-grid">
+                        <article class="feature-card feature-card--lead animate-card" data-delay="60">
+                            <i class="bi bi-collection feature-icon" aria-hidden="true"></i>
+                            <h3>{{ t('page.features.coverage.title') }}</h3>
+                            <p>{{ t('page.features.coverage.body') }}</p>
+                        </article>
+
+                        <article class="feature-card animate-card" data-delay="120">
+                            <i class="bi bi-shield-check feature-icon" aria-hidden="true"></i>
+                            <h3>{{ t('page.features.authoritative.title') }}</h3>
+                            <p>{{ t('page.features.authoritative.body') }}</p>
+                        </article>
+
+                        <article class="feature-card animate-card" data-delay="180">
+                            <i class="bi bi-journal-text feature-icon" aria-hidden="true"></i>
+                            <h3>{{ t('page.features.streamlined.title') }}</h3>
+                            <p>{{ t('page.features.streamlined.body') }}</p>
+                        </article>
+
+                        <article class="feature-card animate-card" data-delay="240">
+                            <i class="bi bi-translate feature-icon" aria-hidden="true"></i>
+                            <h3>{{ t('page.features.accuracy.title') }}</h3>
+                            <p>{{ t('page.features.accuracy.body') }}</p>
+                        </article>
+
+                        <article class="feature-card animate-card" data-delay="300">
+                            <i class="bi bi-search feature-icon" aria-hidden="true"></i>
+                            <h3>{{ t('page.features.search.title') }}</h3>
+                            <p>{{ t('page.features.search.body') }}</p>
+                        </article>
+                    </div>
+                </section>
+
+                {# PRODUCT.md Principle 2: the name contains "SFDA", so every
+                   surface carries the burden of saying this is not the SFDA.
+                   The page shipped without it; that is a product-truth gap,
+                   not a style choice. #}
+                <footer class="landing-footer">
+                    <p class="landing-notice">{{ t('page.landing.notice') | safe }}</p>
+                    <div class="landing-colophon">
+                        <span>{{ t('page.landing.builtBy') }}</span>
+                        <a href="https://aifoudahub.com" target="_blank" rel="noopener">AI Fouda Hub</a>
+                        <a href="https://www.linkedin.com/in/mohfouda/" target="_blank" rel="noopener">LinkedIn</a>
+                    </div>
+                </footer>
         </div>
     </main>
 

@@ -33,25 +33,35 @@
   font-weight: var(--fw-medium);
 }
 
+/* The primary action. A pill in the signal colour with a soft coloured
+   lift — the one place on the landing allowed to look inviting. */
 .unified-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: var(--space-2);
-  padding: var(--space-3) var(--space-6);
+  padding: var(--space-4) var(--space-7);
   border: none;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-pill);
   font-family: var(--font-sans);
   font-weight: var(--fw-display);
   font-size: var(--fs-400);
-  letter-spacing: var(--track-tight);
   color: var(--fg-on-signal);
   background: var(--signal);
   cursor: pointer;
+  box-shadow: 0 6px 18px rgb(var(--signal-rgb) / .22);
   transition: var(--btn-transition);
 }
-.unified-button:hover { background: var(--signal-hover); }
-.unified-button:active { transform: translateY(1px); }
+.unified-button:hover {
+  background: var(--signal-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 10px 26px rgb(var(--signal-rgb) / .28);
+}
+.unified-button:active { transform: translateY(0); }
+/* The arrow leans toward the reading direction, so it points "onward" in
+   both scripts rather than always to the right. */
+.unified-button .bi { transition: transform var(--duration-s) var(--ease-soft); }
+.unified-button:hover .bi { transform: translateX(calc(3px * var(--flip))); }
 
 /* Shared base for the small icon controls in the page chrome.
    .lang-toggle-btn is deliberately a separate class from .theme-toggle-btn:
@@ -60,9 +70,9 @@
 .lang-toggle-btn,
 .utility-icon-link {
   display: inline-flex; align-items: center; justify-content: center;
-  inline-size: 36px; block-size: 36px; padding: 0;
+  inline-size: 38px; block-size: 38px; padding: 0;
   border: 1px solid var(--hairline);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-pill);
   color: var(--fg-muted);
   background: var(--bg-surface);
   transition: var(--btn-transition);
@@ -70,9 +80,8 @@
 .theme-toggle-btn:hover,
 .lang-toggle-btn:hover,
 .utility-icon-link:hover {
-  color: var(--fg-primary);
-  background: var(--bg-sunken);
-  border-color: var(--hairline-strong);
+  color: var(--signal);
+  border-color: var(--signal);
 }
 .lang-code {
   font-family: var(--font-sans);
@@ -88,84 +97,217 @@
   margin-block-end: var(--space-4);
 }
 
+/* ——————————————— Landing shell ——————————————— */
+.landing {
+  --edge: clamp(20px, 5vw, 56px);
+  display: flex;
+  flex-direction: column;
+  padding-inline: var(--edge);
+  padding-block-end: var(--space-8);
+  /* A soft wash from the top so the page has a ground rather than a flat
+     fill. Cool, not warm: a marigold wash over warm porcelain read as the
+     cream-and-terracotta default this palette exists to avoid. */
+  background:
+    radial-gradient(120% 70% at 50% -18%, var(--signal-tint) 0%, transparent 62%),
+    var(--bg-page);
+}
+.landing-inner {
+  inline-size: 100%;
+  max-inline-size: var(--page-max);
+  margin-inline: auto;
+}
+
+/* Static row, not absolutely positioned: the page scrolls now, and an
+   absolute header would sit over the content and mirror unpredictably. */
 .landing-header-utility {
-  position: absolute;
-  inset-block-start: var(--space-4); inset-inline-end: var(--space-5);
-  z-index: var(--z-rail);
-  display: flex; align-items: center; gap: var(--space-2);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  inline-size: 100%;
+  max-inline-size: var(--page-max);
+  margin-inline: auto;
+  padding-block: var(--space-4);
 }
 
 /* ——————————————— Landing hero ——————————————— */
-/* Sized from the scale, not from Bootstrap's .display-3. The utility carried
-   its own font-size (and .fw-bold forced 700 past --fw-display), so the two
-   largest headings on the site were the only type on the page not answering
-   to tokens.css. */
-.hero-title-wrapper h1 {
-  font-size: var(--fs-900);
-  font-weight: var(--fw-display);
-  animation: titleReveal var(--duration-xl) var(--ease-out) both;
-}
-.landing-hero .lead {
-  max-inline-size: 58ch; margin-inline: auto;
-  color: var(--fg-secondary);
-  font-size: var(--fs-400);
-  line-height: var(--lh-body);
-}
-.hero-visual img {
-  max-inline-size: min(520px, 90%);
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-lg);
-}
-.landing-knowledge-badge {
-  display: inline-flex; align-items: center; gap: var(--space-2);
-  padding: var(--space-1) var(--space-3);
-  border: 1px solid var(--hairline-strong);
-  border-radius: var(--radius-sm);
-  font-family: var(--font-mono);
-  font-size: var(--fs-100);
-  font-weight: var(--fw-medium);
-  letter-spacing: var(--track-caps);
-  text-transform: uppercase;
-  color: var(--fg-muted);
-  background: var(--bg-sunken);
+.landing-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding-block: clamp(var(--space-4), 4vh, var(--space-7)) var(--space-6);
 }
 
-/* ——————————————— Feature cards ——————————————— */
-.why-use-platform-section h2 {
-  font-size: var(--fs-700);
+/* The wordmark, set with its counterpart in the other script. Full EN/AR
+   parity is a binding brand commitment, so the mark states it instead of the
+   copy claiming it. Sized from the scale, never from a Bootstrap utility. */
+.hero-title-wrapper { margin-block: var(--space-5) var(--space-4); }
+.hero-title-wrapper h1 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--fs-900);
+  font-weight: var(--fw-bold);
+  line-height: var(--lh-tight);
+  letter-spacing: var(--track-display);
   color: var(--fg-primary);
-  letter-spacing: var(--track-tight);
 }
+.hero-title-alt {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-4);
+  margin: var(--space-3) 0 0;
+  font-family: var(--font-display);
+  font-size: clamp(var(--fs-500), 2.4vw, var(--fs-700));
+  font-weight: var(--fw-display);
+  line-height: 1.3;
+  color: var(--fg-muted);
+}
+/* Hairlines either side, so the second script reads as a paired mark rather
+   than as a subtitle nobody asked for. */
+.hero-title-alt::before,
+.hero-title-alt::after {
+  content: '';
+  inline-size: clamp(20px, 6vw, 64px);
+  block-size: 1px;
+  background: var(--hairline-strong);
+  flex: none;
+}
+
+.landing-hero .lead {
+  max-inline-size: 54ch;
+  margin: 0 auto var(--space-6);
+  font-size: clamp(var(--fs-400), 1.5vw, var(--fs-500));
+  line-height: 1.6;
+  color: var(--fg-secondary);
+}
+
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-4);
+}
+
+.landing-knowledge-badge {
+  display: inline-flex; align-items: center; gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--confidence);
+  border-radius: var(--radius-pill);
+  font-size: var(--fs-200);
+  font-weight: var(--fw-medium);
+  color: var(--confidence-strong);
+  background: var(--confidence-tint);
+}
+
+/* ——————————————— Feature grid ——————————————— */
+.why-use-platform-section { padding-block: var(--space-6) var(--space-8); }
+.why-use-platform-section h2 {
+  margin: 0 0 var(--space-7);
+  text-align: center;
+  font-family: var(--font-display);
+  font-size: clamp(var(--fs-700), 3.2vw, var(--fs-800));
+  font-weight: var(--fw-bold);
+  letter-spacing: var(--track-display);
+  color: var(--fg-primary);
+}
+
+.feature-grid {
+  display: grid;
+  gap: var(--space-4);
+  grid-template-columns: minmax(0, 1fr);
+}
+@media (min-width: 640px) { .feature-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 1000px) {
+  .feature-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  /* The coverage card carries the corpus claim, so it leads at double width
+     rather than sitting in a row of five identical boxes. */
+  .feature-card--lead { grid-column: span 2; }
+}
+
 .feature-card {
   block-size: 100%;
-  padding: var(--space-5);
+  padding: var(--space-6);
   border: 1px solid var(--hairline);
   border-radius: var(--radius-lg);
   background: var(--bg-surface);
   text-align: start;
-  transition: border-color var(--duration-m) var(--ease-soft);
+  transition: transform var(--duration-m) var(--ease-soft),
+              border-color var(--duration-m) var(--ease-soft),
+              box-shadow var(--duration-m) var(--ease-soft);
 }
-.feature-card:hover { border-color: var(--hairline-strong); }
+.feature-card:hover {
+  transform: translateY(-3px);
+  border-color: var(--hairline-strong);
+  box-shadow: var(--shadow-md);
+}
 .feature-card h3 {
+  margin: 0 0 var(--space-3);
+  font-family: var(--font-display);
   font-size: var(--fs-500);
+  font-weight: var(--fw-display);
   color: var(--fg-primary);
 }
 .feature-card p {
-  margin-block-end: 0;
+  max-inline-size: 68ch;
+  margin: 0;
   font-size: var(--fs-300);
+  line-height: 1.6;
   color: var(--fg-secondary);
 }
-.feature-icon-wrapper {
-  display: inline-flex; align-items: center; justify-content: center;
-  inline-size: 44px; block-size: 44px;
+/* The icon sits in the card's own colour at a readable size — no rounded
+   square tile, which is the most template-looking element a card can carry. */
+.feature-icon {
+  display: block;
   margin-block-end: var(--space-4);
-  border: 1px solid var(--hairline);
+  font-size: var(--fs-600);
+  line-height: 1;
+  color: var(--signal);
+}
+.feature-card--lead {
+  background: var(--confidence-tint);
+  /* Full-strength gold here was the loudest hairline on the dark page and
+     pulled the eye before the CTA. The fill alone carries the lead. */
+  border-color: var(--hairline);
+}
+.feature-card--lead p { max-inline-size: none; }
+.feature-card--lead .feature-icon { color: var(--confidence-strong); }
+.feature-card--lead h3 { font-size: var(--fs-600); }
+
+/* ——————————————— Landing footer ——————————————— */
+.landing-footer {
+  padding-block: var(--space-7) 0;
+  border-block-start: 1px solid var(--hairline);
+}
+/* PRODUCT.md Principle 2: the name contains "SFDA", so the page has to say
+   it is not the SFDA. Required copy, not decoration. */
+.landing-notice {
+  max-inline-size: 70ch;
+  margin: 0 auto var(--space-5);
+  padding: var(--space-4) var(--space-5);
   border-radius: var(--radius-md);
   background: var(--bg-sunken);
+  font-size: var(--fs-300);
+  line-height: 1.6;
+  color: var(--fg-muted);
+  text-align: center;
 }
-.feature-icon { font-size: var(--fs-500); color: var(--signal); }
+.landing-notice strong { color: var(--fg-secondary); font-weight: var(--fw-display); }
+.landing-colophon {
+  display: flex; flex-wrap: wrap; justify-content: center;
+  gap: var(--space-2) var(--space-5);
+  font-size: var(--fs-200);
+  color: var(--fg-muted);
+}
+.landing-colophon a { color: var(--fg-secondary); }
+.landing-colophon a:hover { color: var(--signal); }
 
-.animate-card { opacity: 0; transform: translateY(20px); }
+/* Armed by effects.js at runtime, never in the authored HTML: if the module
+   fails to load, the cards must still be visible rather than stuck at
+   opacity 0 with no observer coming to reveal them. */
+.animate-card.is-armed { opacity: 0; transform: translateY(16px); }
 .animate-card.revealed { animation: cardReveal var(--duration-l) var(--ease-out) forwards; }
 
 /* ——————————————— Modals & forms ——————————————— */

@@ -6,7 +6,10 @@
 
 html { block-size: 100%; }
 body {
-  block-size: 100vh;
+  /* min, not a fixed 100vh: the landing is a long document and must scroll
+     the page itself. The chat shell pins its own height below, so the
+     composer still stays put while only the transcript scrolls. */
+  min-block-size: 100vh;
   margin: 0;
   padding: 0;
   font-family: var(--font-sans);
@@ -19,7 +22,7 @@ body {
 }
 
 h1, h2, h3, h4, h5, h6 {
-  font-family: var(--font-sans);
+  font-family: var(--font-display);
   font-weight: var(--fw-display);
   line-height: var(--lh-tight);
   letter-spacing: var(--track-tight);
@@ -36,19 +39,22 @@ a:hover { color: var(--signal-hover); text-decoration: underline; }
 
 .container-fluid, .row { block-size: 100%; margin: 0; padding: 0; }
 
-/* Landing scrolls within the viewport; chat is a fixed-height shell so the
-   composer stays pinned and the transcript scrolls on its own. */
-#unauthenticated-view { overflow-y: auto; }
-#authenticated-view { display: flex; flex-direction: column; block-size: 100%; }
+/* The landing scrolls the document. The chat is the opposite: a fixed
+   viewport-height shell so the composer stays pinned and only the
+   transcript scrolls. */
+#authenticated-view {
+  display: flex;
+  flex-direction: column;
+  block-size: 100vh;
+  overflow: hidden;
+}
 #authenticated-view > .row { flex: 1; min-block-size: 0; }
 
-/* Brand wordmark. Dossier sets it in solid ink with tight display tracking
-   rather than clipping a gradient to the glyphs. */
-.text-gradient,
-.hero-title-wrapper h1 {
-  color: var(--fg-primary);
-  letter-spacing: var(--track-display);
-}
+/* The surfaces we did not draw. Selection, the caret and the scrollbar ship
+   with browser defaults that belong to no design system; theming them from
+   the palette is the cheapest signal that a page was built, not assembled. */
+::selection { color: var(--fg-on-signal); background: var(--signal); }
+:root { caret-color: var(--signal); }
 
 /* Scrollbars */
 ::-webkit-scrollbar { inline-size: 8px; block-size: 8px; }

@@ -10,61 +10,54 @@
    Direction-dependent transforms multiply by --flip so they mirror in RTL.
    =================================================================== */
 
-/* ——————————————— Landing hero stage ——————————————— */
-.landing-hero {
-  position: relative;
-  padding: clamp(40px, 8vh, 90px) var(--space-5) var(--space-6);
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-xl);
-  background: var(--bg-surface);
-  box-shadow: var(--shadow-sm);
-}
-
-.hero-title-wrapper,
-.landing-hero .lead,
-.hero-visual,
-#auth-button-main,
-.landing-robot { position: relative; z-index: var(--z-raised); }
-
-/* ——————————————— Landing mascot ——————————————— */
+/* ——————————————— Landing mascot ———————————————
+   Sunny is the hero visual now, at real scale. The hero itself is no longer
+   a bordered card floating on the page (components.css owns its layout) —
+   a hero inside a box was the weakest thing on the old landing. */
 .landing-robot {
   position: relative;
   z-index: var(--z-raised);
   display: inline-flex;
   flex-direction: column;
   align-items: center;
-  margin-block-end: var(--space-2);
 }
 .landing-robot-body {
   cursor: pointer;
-  animation: robotFloat 5s ease-in-out infinite;
+  animation: robotFloat 6s ease-in-out infinite;
   will-change: transform;
 }
+.landing-robot-body .sunny-svg {
+  inline-size: clamp(150px, 24vw, 232px);
+  block-size: auto;
+}
 /* Centred via auto inline margins rather than left:50% + translateX(-50%),
-   so the mascot's stage mirrors cleanly under dir="rtl". */
+   so the mascot's stage mirrors cleanly under dir="rtl". The glow is warm,
+   not signal-coloured: the signal is reserved for retrieval state, and this
+   is atmosphere around a character. */
 .landing-robot-glow {
   position: absolute;
-  inset-block-start: 40%;
+  inset-block-start: 46%;
   inset-inline: 0;
-  inline-size: 140px;
-  block-size: 60px;
+  inline-size: 200px;
+  block-size: 86px;
   margin-inline: auto;
   transform: translateY(-50%);
   border-radius: 50%;
-  filter: blur(26px);
-  background: radial-gradient(circle, rgb(var(--signal-rgb) / .28), transparent 70%);
-  animation: glowPulse 4s ease-in-out infinite;
+  filter: blur(34px);
+  background: radial-gradient(circle, rgb(var(--confidence-rgb) / .26), transparent 70%);
+  animation: glowPulse 5s ease-in-out infinite;
   z-index: -1;
 }
 .landing-robot-status {
-  margin-block-start: var(--space-2);
-  padding: var(--space-1) var(--space-3);
+  margin-block-start: var(--space-4);
+  padding: var(--space-2) var(--space-4);
   border: 1px solid var(--hairline);
   border-radius: var(--radius-pill);
   font-size: var(--fs-200);
   font-weight: var(--fw-medium);
   color: var(--fg-secondary);
   background: var(--bg-surface);
+  box-shadow: var(--shadow-sm);
 }
 .landing-robot.robot-exit { animation: robotExit 1s var(--ease-out) forwards; }
 

@@ -45,7 +45,7 @@ runtime:
     finalizingStatus: "Finishing up..."
     foundPassages: "Found {count} passages"
     foundPassage: "Found {count} passage"
-    farewell: "See you in the chat! 🚀"
+    farewell: "See you in the chat"
 
   auth:
     loggedInAs: "Logged in as: {email}"                  # frozen
@@ -93,36 +93,44 @@ page:
 
   brand:
     name: "SFDA Copilot"
+    # The wordmark's counterpart in the other script. The hero sets the two
+    # together, because full EN/AR parity is a binding brand commitment and
+    # the mark should state it rather than the copy claiming it.
+    nameOther: "مساعد الغذاء والدواء"
     tagline: "Your AI Regulatory Assistant"
 
   landing:
-    greeting: "Hello! 👋"
+    greeting: "Ready when you are"
     lead: "Streamline regulatory compliance with your AI‑powered assistant for pharmaceutical regulations in Saudi Arabia"
     heroAlt: "AI Regulatory Guidance"
     cta: "Get Started"
     hubLink: "AI Fouda Hub Website"
     linkedinLink: "Mohamed Fouda's LinkedIn"
+    # PRODUCT.md, Principle 2: the name contains "SFDA", so every surface
+    # carries the burden of saying this is not the SFDA. Not optional copy.
+    notice: "<strong>SFDA Copilot is an independent tool.</strong> It is not affiliated with, endorsed by, or operated by the Saudi Food and Drug Authority. It reads the SFDA's published guidelines and shows you where each answer comes from, so you can verify it against the official source."
+    builtBy: "Built by Mohamed Fouda"
 
   features:
-    heading: "Why Use Our Platform?"
+    heading: "What it does"
     coverage:
-      title: "Extensive Guideline Coverage"
+      title: "The Guideline Corpus"
       # No guideline count, deliberately: the corpus changes on every ingest and
       # any hard number goes stale in place. See PRODUCT.md, Evidence on Hand.
-      body: "Access regulatory insights drawn from the official SFDA guideline corpus, spanning regulatory, pharmacovigilance, veterinary and biological products."
+      body: "Regulatory, pharmacovigilance, veterinary medicines and biological products — the official SFDA guidelines, indexed and searchable in one place."
       badge: "Guidelines current through August 2026"
     authoritative:
-      title: "Authoritative Guidance"
-      body: "Gain confidence with every answer, backed by precise page and paragraph citations from official SFDA guidelines, ensuring unparalleled accuracy and traceability."
+      title: "Sourced to the Page"
+      body: "Every answer carries numbered citations that resolve to the source guideline and its page, so you can check the original before you rely on it."
     streamlined:
-      title: "Streamlined Regulatory Access"
-      body: "Navigate complex drug registration procedures and requirements effortlessly with comprehensive, easy-to-access guidelines."
+      title: "Straight to the Requirement"
+      body: "Find the registration procedures and requirements you need without reading the guidelines end to end."
     accuracy:
-      title: "Unwavering Accuracy"
-      body: "Rely on consistently updated and verified information, providing the most current insights into Saudi Arabian pharmaceutical regulations."
+      title: "Arabic and English"
+      body: "Ask in either language and the answer comes back in that language, from the same corpus. Arabic is not a translation layer."
     search:
-      title: "Intelligent Search"
-      body: "Leverage cutting-edge AI to swiftly comprehend intricate regulatory queries and deliver highly precise, actionable answers."
+      title: "Ask in Plain Language"
+      body: "Put the question the way you would ask a colleague, and scope it to regulatory, pharmacovigilance, veterinary or biological products."
 
   nav:
     menu: "Menu"

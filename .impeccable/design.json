@@ -1,395 +1,215 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-08-05T22:41:00Z",
+  "generatedAt": "2026-08-07T00:00:00Z",
   "title": "Design System: SFDA Copilot",
   "extensions": {
     "colorMeta": {
-      "seal-600": {
-        "role": "primary",
-        "displayName": "Seal Blue",
-        "canonical": "#1B4DB1",
-        "dark": "#6E9BF0",
-        "note": "The signal. Retrieval and citation state only. The dark value is not a dim of the light one: #1B4DB1 on the dark page measures ~1.7:1, so the ramp lifts rather than fades.",
-        "tonalRamp": ["oklch(20% 0.09 265)", "oklch(29% 0.13 265)", "oklch(37% 0.16 265)", "oklch(45% 0.17 265)", "oklch(56% 0.15 265)", "oklch(68% 0.12 265)", "oklch(81% 0.07 265)", "oklch(93% 0.03 265)"]
-      },
-      "seal-700": {
-        "role": "primary",
-        "displayName": "Seal Blue Deep",
-        "canonical": "#153C8C",
-        "dark": "#9CBCF7",
-        "note": "Hover for Seal Blue. Darkens in light mode, LIGHTENS in dark mode — the semantic name holds, the primitive flips."
-      },
-      "seal-100": {
-        "role": "primary",
-        "displayName": "Seal Tint",
-        "canonical": "#E7EDFA",
-        "dark": "#16294A",
-        "note": "Fill behind a citation marker at rest and behind a lit source card."
-      },
-      "verify-600": {
-        "role": "secondary",
-        "displayName": "Verified Green",
-        "canonical": "#0E7C66",
-        "dark": "#35C3A3",
-        "note": "Confidence and relevance. The relevance bar, the mascot's eyes once passages are retrieved, the toast success rule.",
-        "tonalRamp": ["oklch(20% 0.05 168)", "oklch(29% 0.07 168)", "oklch(38% 0.09 168)", "oklch(50% 0.10 168)", "oklch(62% 0.11 168)", "oklch(74% 0.10 168)", "oklch(85% 0.06 168)", "oklch(94% 0.03 168)"]
-      },
-      "verify-700": {
-        "role": "secondary",
-        "displayName": "Verified Green Deep",
-        "canonical": "#0B6654",
-        "dark": "#5FD7BC",
-        "note": "Use when white text sits on the fill."
-      },
-      "verify-100": {
-        "role": "secondary",
-        "displayName": "Verified Tint",
-        "canonical": "#E2F1ED",
-        "dark": "#0F2B26"
-      },
       "ink-900": {
         "role": "neutral",
-        "displayName": "Ink",
-        "canonical": "#0C1A2B",
-        "dark": "#E9EEF4",
-        "note": "Primary text. Also the inverted toast surface, so a system message reads as system rather than as another card.",
-        "tonalRamp": ["oklch(19% 0.03 250)", "oklch(29% 0.03 250)", "oklch(41% 0.03 250)", "oklch(52% 0.03 250)", "oklch(64% 0.03 250)", "oklch(75% 0.02 250)", "oklch(86% 0.015 250)", "oklch(95% 0.008 250)"]
+        "displayName": "Aubergine Ink",
+        "canonical": "#241F2B",
+        "darkValue": "#F1ECF4",
+        "tonalRamp": ["#100D13", "#1A161F", "#241F2B", "#463E52", "#675D75", "#857A94", "#B3ABBD", "#E8E4EC"]
       },
-      "ink-700": {
-        "role": "neutral",
-        "displayName": "Ink Secondary",
-        "canonical": "#22364B",
-        "dark": "#C3CEDB",
-        "note": "Secondary prose — feature card copy, FAQ entries, source snippets."
-      },
-      "ink-500": {
-        "role": "neutral",
-        "displayName": "Ink Muted",
-        "canonical": "#4A5D74",
-        "dark": "#93A3B6",
-        "note": "Muted labels, category headers, icon controls at rest."
-      },
-      "ink-300": {
-        "role": "neutral",
-        "displayName": "Ink Faint",
-        "canonical": "#8195A9",
-        "dark": "#63748A",
-        "note": "Metadata that must recede — timestamps, score labels, placeholder text."
-      },
-      "paper-000": {
-        "role": "neutral",
-        "displayName": "Paper Raised",
-        "canonical": "#FFFFFF",
-        "dark": "#111D2C",
-        "note": "Every card, sidebar, modal, and composer surface."
-      },
+      "ink-700": { "role": "neutral", "displayName": "Aubergine Secondary", "canonical": "#463E52", "darkValue": "#D2CAD9" },
+      "ink-500": { "role": "neutral", "displayName": "Aubergine Muted", "canonical": "#675D75", "darkValue": "#A79DB1" },
+      "ink-300": { "role": "neutral", "displayName": "Aubergine Faint", "canonical": "#857A94", "darkValue": "#837A8D" },
       "paper-050": {
         "role": "neutral",
-        "displayName": "Paper",
-        "canonical": "#FAFBFC",
-        "dark": "#0B1420",
-        "note": "The page. Cool and archival — never cream.",
-        "tonalRamp": ["oklch(18% 0.012 250)", "oklch(28% 0.012 250)", "oklch(40% 0.010 250)", "oklch(52% 0.010 250)", "oklch(65% 0.008 250)", "oklch(78% 0.006 250)", "oklch(90% 0.004 250)", "oklch(98% 0.002 250)"]
+        "displayName": "Warm Porcelain",
+        "canonical": "#F4F2F0",
+        "darkValue": "#191420",
+        "tonalRamp": ["#2A2622", "#453F39", "#635B52", "#877E73", "#ABA298", "#CDC6BE", "#E9E5E1", "#F4F2F0"]
       },
-      "paper-100": {
-        "role": "neutral",
-        "displayName": "Paper Sunken",
-        "canonical": "#F2F5F8",
-        "dark": "#16232F",
-        "note": "Recessed panels, hover fills, table headers, icon wells."
+      "paper-000": { "role": "neutral", "displayName": "Card White", "canonical": "#FFFFFF", "darkValue": "#241E2C" },
+      "paper-100": { "role": "neutral", "displayName": "Sunken Porcelain", "canonical": "#E9E5E1", "darkValue": "#2F2839" },
+      "rule-200": { "role": "neutral", "displayName": "Hairline", "canonical": "#DCD7D1", "darkValue": "#362E42" },
+      "rule-300": { "role": "neutral", "displayName": "Hairline Strong", "canonical": "#BFB8B0", "darkValue": "#4A4058" },
+      "teal-600": {
+        "role": "primary",
+        "displayName": "Deep Teal",
+        "canonical": "#0F5E63",
+        "darkValue": "#4FC2C8",
+        "tonalRamp": ["#042628", "#073B3E", "#0B4A4E", "#0F5E63", "#177F85", "#2BA5AC", "#4FC2C8", "#DCECEC"]
       },
-      "rule-200": {
-        "role": "neutral",
-        "displayName": "Rule",
-        "canonical": "#DDE3EA",
-        "dark": "#22303F",
-        "note": "The default hairline. This token does the structural work shadows do in other systems.",
-        "tonalRamp": ["oklch(22% 0.015 250)", "oklch(32% 0.015 250)", "oklch(44% 0.014 250)", "oklch(56% 0.013 250)", "oklch(68% 0.011 250)", "oklch(80% 0.009 250)", "oklch(90% 0.012 250)", "oklch(96% 0.006 250)"]
+      "teal-700": { "role": "primary", "displayName": "Deep Teal Pressed", "canonical": "#0B4A4E", "darkValue": "#7FD9DD" },
+      "teal-100": { "role": "primary", "displayName": "Teal Wash", "canonical": "#DCECEC", "darkValue": "#0D3437" },
+      "gold-600": {
+        "role": "secondary",
+        "displayName": "Marigold",
+        "canonical": "#B87310",
+        "darkValue": "#E9A84B",
+        "tonalRamp": ["#3B2404", "#5C3806", "#7A4A08", "#94590A", "#B87310", "#D89430", "#E9A84B", "#FAEEDA"]
       },
-      "rule-300": {
-        "role": "neutral",
-        "displayName": "Rule Strong",
-        "canonical": "#C4CDD8",
-        "dark": "#2E3F52",
-        "note": "The emphasized hairline — input borders, blockquote rules, hover promotion."
-      },
-      "alert-600": {
-        "role": "tertiary",
-        "displayName": "Alert",
-        "canonical": "#B3261E",
-        "dark": "#F08279",
-        "note": "Errors, the toast error rule, the mascot's error face.",
-        "tonalRamp": ["oklch(22% 0.09 27)", "oklch(31% 0.13 27)", "oklch(40% 0.17 27)", "oklch(49% 0.19 27)", "oklch(60% 0.17 27)", "oklch(72% 0.13 27)", "oklch(84% 0.08 27)", "oklch(94% 0.03 27)"]
-      },
-      "warn-600": {
-        "role": "tertiary",
-        "displayName": "Warn",
-        "canonical": "#8A5A00",
-        "dark": "#E0A94D",
-        "note": "Cautions. Declared and reserved; not yet claimed by a component.",
-        "tonalRamp": ["oklch(22% 0.05 75)", "oklch(31% 0.07 75)", "oklch(40% 0.09 75)", "oklch(49% 0.11 75)", "oklch(61% 0.11 75)", "oklch(73% 0.10 75)", "oklch(85% 0.07 75)", "oklch(94% 0.03 75)"]
-      }
+      "gold-700": { "role": "secondary", "displayName": "Marigold Deep", "canonical": "#94590A", "darkValue": "#F3C176" },
+      "gold-100": { "role": "secondary", "displayName": "Marigold Tint", "canonical": "#FAEEDA", "darkValue": "#332A26" },
+      "alert-600": { "role": "tertiary", "displayName": "Alert Clay", "canonical": "#A8301F", "darkValue": "#F0857A" },
+      "warn-600": { "role": "tertiary", "displayName": "Warn Amber", "canonical": "#8A5A00", "darkValue": "#E0A94D" }
     },
     "typographyMeta": {
-      "display": { "displayName": "Display", "purpose": "The landing wordmark. One per page, at most." },
-      "headline": { "displayName": "Headline", "purpose": "Section headings on marketing surfaces." },
-      "title": { "displayName": "Title", "purpose": "Card titles, modal titles, the sidebar wordmark. The workhorse heading." },
-      "body": { "displayName": "Body", "purpose": "Answers and sustained prose. 17px at 1.65 leading, set for reading rather than UI density." },
-      "body-small": { "displayName": "Body Small", "purpose": "Secondary prose — feature card copy, FAQ entries, composer input, table cells." },
-      "meta": { "displayName": "Meta", "purpose": "Source titles, taglines, chips, form help." },
-      "label": { "displayName": "Label", "purpose": "The machine register, always mono and uppercase — category headers, stage lines, scores, page numbers, timestamps, the cutoff badge. Mono here does not mean code; it means machine-reported fact." }
+      "display": { "displayName": "Display / Zain", "purpose": "The wordmark only. Clamp floor is tuned to the Arabic mark, which runs ~1.4x the inline length of the English one." },
+      "headline": { "displayName": "Headline / Zain", "purpose": "Landing section headings." },
+      "title": { "displayName": "Title / Zain", "purpose": "Card headings, modal titles, sidebar title." },
+      "body": { "displayName": "Body / Readex Pro", "purpose": "All prose. One variable family across Latin and Arabic. Measure 68ch; hero lead 54ch." },
+      "label": { "displayName": "Label / Readex Pro caps", "purpose": "Small uppercase meta labels. Uppercasing and tracking are switched off under RTL." },
+      "mono": { "displayName": "Mono / Azeret Mono", "purpose": "Machine-reported facts only: page numbers, relevance scores, timestamps, citation indices." }
     },
-    "fonts": [
-      { "family": "IBM Plex Sans", "role": "Latin display and body", "weights": [400, 500, 600, 700] },
-      { "family": "IBM Plex Sans Arabic", "role": "Arabic display and body; substituted wholesale for --font-sans under [dir=rtl]", "weights": [400, 500, 600, 700] },
-      { "family": "IBM Plex Mono", "role": "Machine-reported facts — page numbers, scores, timestamps, stage labels", "weights": [400, 500] }
-    ],
     "shadows": [
-      { "name": "shadow-sm", "value": "0 1px 2px rgb(12 26 43 / .06)", "purpose": "The landing hero stage's barely-there lift. The lightest sanctioned use.", "dark": "0 1px 2px rgb(0 0 0 / .40)" },
-      { "name": "shadow-md", "value": "0 2px 8px rgb(12 26 43 / .08)", "purpose": "The jump-to-latest pill, which overlays scrolling text and must separate from it.", "dark": "0 2px 8px rgb(0 0 0 / .45)" },
-      { "name": "shadow-lg", "value": "0 8px 24px rgb(12 26 43 / .10)", "purpose": "The composer's category dropdown.", "dark": "0 8px 24px rgb(0 0 0 / .50)" },
-      { "name": "shadow-xl", "value": "0 20px 48px rgb(12 26 43 / .14)", "purpose": "Modals and the toast — the only genuinely overlaid surfaces.", "dark": "0 20px 48px rgb(0 0 0 / .55)" }
+      { "name": "shadow-sm", "value": "0 1px 2px rgb(36 31 43 / .05)", "purpose": "Small detached chrome, e.g. the mascot status pill." },
+      { "name": "shadow-md", "value": "0 4px 14px rgb(36 31 43 / .07)", "purpose": "Card hover lift and the jump-to-latest pill." },
+      { "name": "shadow-lg", "value": "0 12px 32px rgb(36 31 43 / .10)", "purpose": "Dropdown menu surfaces." },
+      { "name": "shadow-xl", "value": "0 24px 60px rgb(36 31 43 / .16)", "purpose": "Modals and toasts." },
+      { "name": "cta-lift", "value": "0 6px 18px rgb(var(--signal-rgb) / .22)", "purpose": "The primary action's coloured lift; deepens to 0 10px 26px / .28 on hover." },
+      { "name": "focus-ring-shadow", "value": "0 0 0 3px rgb(15 94 99 / .28)", "purpose": "Field focus ring, alongside a teal border." },
+      { "name": "shadow-dark-set", "value": "0 1px 2px rgb(0 0 0 / .40) | 0 4px 14px rgb(0 0 0 / .45) | 0 12px 32px rgb(0 0 0 / .50) | 0 24px 60px rgb(0 0 0 / .60)", "purpose": "Dark-mode replacements: the ink tint disappears on a dark ground, so alpha rises sharply." }
     ],
     "motion": [
-      { "name": "duration-s", "value": "0.15s", "purpose": "Hover and state transitions on controls." },
-      { "name": "duration-m", "value": "0.25s", "purpose": "Panel and pill transitions." },
-      { "name": "duration-l", "value": "0.4s", "purpose": "Reveal animations — sidebar, cards." },
-      { "name": "duration-xl", "value": "0.6s", "purpose": "The landing title reveal." },
-      { "name": "ease-out", "value": "cubic-bezier(.2, .8, .3, 1)", "purpose": "Entrances." },
-      { "name": "ease-soft", "value": "cubic-bezier(.4, 0, .2, 1)", "purpose": "State transitions." },
-      { "name": "flip", "value": "1 in LTR, -1 in RTL", "purpose": "Direction multiplier for transforms that carry meaning. CSS has no logical translate, so keyframes write translateX(calc(-12px * var(--flip)))." }
+      { "name": "duration-s", "value": "0.15s", "purpose": "Colour, border and small transform state changes." },
+      { "name": "duration-m", "value": "0.25s", "purpose": "Card hover, menu open, toast." },
+      { "name": "duration-l", "value": "0.4s", "purpose": "Card reveal and sidebar entrance." },
+      { "name": "duration-xl", "value": "0.7s", "purpose": "Longest scripted entrance." },
+      { "name": "ease-out", "value": "cubic-bezier(.16, 1, .3, 1)", "purpose": "Entrances and reveals." },
+      { "name": "ease-soft", "value": "cubic-bezier(.4, 0, .2, 1)", "purpose": "Default easing for state transitions." },
+      { "name": "flip", "value": "1 in LTR, -1 in RTL", "purpose": "Direction multiplier inside transforms, since CSS has no logical translate: translateX(calc(-12px * var(--flip)))." },
+      { "name": "reduced-motion", "value": "@media (prefers-reduced-motion: reduce) collapses all animation and transition to .001ms", "purpose": "Why mascot motion is CSS keyframes rather than SVG SMIL, which ignores the query." }
     ],
     "breakpoints": [
-      { "name": "lg", "value": "992px", "note": "Sidebar becomes an offcanvas drawer below this." },
-      { "name": "xl", "value": "1200px", "note": "The mascot/source rail column opens." },
-      { "name": "deck-promote", "value": "1440px", "note": "The source deck loses its collapsible summary and stays open in the rail." }
-    ],
-    "layout": [
-      { "name": "measure", "value": "68ch", "purpose": "The reading column. Shared by the transcript and the composer." },
-      { "name": "gutter", "value": "clamp(16px, 4vw, 48px)", "purpose": "Fluid page gutter." },
-      { "name": "rail-w", "value": "clamp(240px, 20vw, 320px)", "purpose": "The rail grid column." }
+      { "name": "feature-grid-2col", "value": "640px" },
+      { "name": "feature-grid-3col", "value": "1000px" },
+      { "name": "sidebar-static (lg)", "value": "992px" },
+      { "name": "mascot-rail (xl)", "value": "1200px" },
+      { "name": "source-deck-promoted", "value": "1440px" }
     ]
   },
   "components": [
     {
-      "name": "Primary Button",
+      "name": "Primary Action",
       "kind": "button",
       "refersTo": "button-primary",
-      "description": "The genuine primary action on a surface. Seal Blue fill; hover darkens in light mode and lightens in dark.",
-      "html": "<button class=\"ds-btn-primary\" type=\"button\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 16 16\" fill=\"currentColor\" aria-hidden=\"true\"><path d=\"M2 14 14 8 2 2v4.6l7 1.4-7 1.4z\"/></svg>Get Started</button>",
-      "css": ".ds-btn-primary { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 12px 32px; border: none; border-radius: var(--radius-md, 6px); font-family: var(--font-sans, 'IBM Plex Sans', sans-serif); font-size: var(--fs-400, 1.0625rem); font-weight: 600; letter-spacing: var(--track-tight, -.01em); color: var(--fg-on-signal, #fff); background: var(--signal, #1B4DB1); cursor: pointer; transition: background .15s cubic-bezier(.4,0,.2,1), transform .15s cubic-bezier(.4,0,.2,1); } .ds-btn-primary:hover { background: var(--signal-hover, #153C8C); } .ds-btn-primary:active { transform: translateY(1px); } .ds-btn-primary:focus-visible { outline: 2px solid var(--focus-ring, #1B4DB1); outline-offset: 2px; }"
+      "description": "The landing's single primary action. A teal pill with a coloured lift and an arrow that leans toward the reading direction.",
+      "html": "<button class=\"ds-btn-primary\" type=\"button\">Get Started <svg class=\"ds-btn-arrow\" width=\"18\" height=\"18\" viewBox=\"0 0 16 16\" fill=\"none\" aria-hidden=\"true\"><path d=\"M1 8h13M9 3l5 5-5 5\" stroke=\"currentColor\" stroke-width=\"1.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></svg></button>",
+      "css": ".ds-btn-primary { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 16px 48px; border: none; border-radius: 999px; font-family: 'Readex Pro', -apple-system, sans-serif; font-weight: 700; font-size: 1.0625rem; color: #fff; background: var(--signal, #0F5E63); cursor: pointer; box-shadow: 0 6px 18px rgb(15 94 99 / .22); transition: background .15s cubic-bezier(.4,0,.2,1), box-shadow .15s cubic-bezier(.4,0,.2,1), transform .15s cubic-bezier(.4,0,.2,1); } .ds-btn-primary .ds-btn-arrow { transition: transform .15s cubic-bezier(.4,0,.2,1); } .ds-btn-primary:hover { background: var(--signal-hover, #0B4A4E); transform: translateY(-1px); box-shadow: 0 10px 26px rgb(15 94 99 / .28); } .ds-btn-primary:hover .ds-btn-arrow { transform: translateX(3px); } .ds-btn-primary:focus-visible { outline: 2px solid var(--focus-ring, #0F5E63); outline-offset: 2px; } .ds-btn-primary:active { transform: translateY(0); }"
     },
     {
       "name": "Ghost Button",
       "kind": "button",
       "refersTo": "button-ghost",
-      "description": "The default for secondary actions. A hairline box that fills on hover — never a second fill competing with the primary.",
-      "html": "<button class=\"ds-btn-ghost\" type=\"button\">Logout</button>",
-      "css": ".ds-btn-ghost { display: inline-flex; align-items: center; gap: 8px; padding: 4px 12px; border: 1px solid var(--hairline-strong, #C4CDD8); border-radius: var(--radius-md, 6px); font-family: var(--font-sans, 'IBM Plex Sans', sans-serif); font-size: var(--fs-200, .8125rem); font-weight: 500; color: var(--fg-secondary, #22364B); background: transparent; cursor: pointer; transition: background .15s cubic-bezier(.4,0,.2,1), color .15s cubic-bezier(.4,0,.2,1), border-color .15s cubic-bezier(.4,0,.2,1); } .ds-btn-ghost:hover { color: var(--fg-primary, #0C1A2B); background: var(--bg-sunken, #F2F5F8); border-color: var(--fg-faint, #8195A9); } .ds-btn-ghost:focus-visible { outline: 2px solid var(--focus-ring, #1B4DB1); outline-offset: 2px; }"
+      "description": "Quiet secondary action: a hairline box that fills on hover.",
+      "html": "<button class=\"ds-btn-ghost\" type=\"button\">Cancel</button>",
+      "css": ".ds-btn-ghost { padding: 8px 16px; border: 1px solid var(--hairline-strong, #BFB8B0); border-radius: 6px; background: transparent; font-family: 'Readex Pro', sans-serif; font-weight: 500; font-size: .9375rem; color: var(--fg-secondary, #463E52); cursor: pointer; transition: background .15s cubic-bezier(.4,0,.2,1), color .15s cubic-bezier(.4,0,.2,1), border-color .15s cubic-bezier(.4,0,.2,1); } .ds-btn-ghost:hover { color: var(--fg-primary, #241F2B); background: var(--bg-sunken, #E9E5E1); border-color: var(--fg-faint, #857A94); } .ds-btn-ghost:focus-visible { outline: 2px solid var(--focus-ring, #0F5E63); outline-offset: 2px; }"
     },
     {
       "name": "Icon Control",
       "kind": "button",
-      "refersTo": "button-icon",
-      "description": "Theme, language, and utility controls in the page chrome. A 36px square hairline box; hover darkens ink, sinks the background, promotes the border.",
-      "html": "<button class=\"ds-btn-icon\" type=\"button\" aria-label=\"Toggle theme\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 16 16\" fill=\"currentColor\" aria-hidden=\"true\"><path d=\"M6.2 1.4a6.6 6.6 0 1 0 8.4 8.4A5.4 5.4 0 0 1 6.2 1.4z\"/></svg></button>",
-      "css": ".ds-btn-icon { display: inline-flex; align-items: center; justify-content: center; inline-size: 36px; block-size: 36px; padding: 0; border: 1px solid var(--hairline, #DDE3EA); border-radius: var(--radius-md, 6px); color: var(--fg-muted, #4A5D74); background: var(--bg-surface, #fff); cursor: pointer; transition: background .15s cubic-bezier(.4,0,.2,1), color .15s cubic-bezier(.4,0,.2,1), border-color .15s cubic-bezier(.4,0,.2,1); } .ds-btn-icon:hover { color: var(--fg-primary, #0C1A2B); background: var(--bg-sunken, #F2F5F8); border-color: var(--hairline-strong, #C4CDD8); } .ds-btn-icon:focus-visible { outline: 2px solid var(--focus-ring, #1B4DB1); outline-offset: 2px; }"
-    },
-    {
-      "name": "Composer",
-      "kind": "input",
-      "refersTo": "input-composer",
-      "description": "Signature. The input and send button are one joined unit — outer corners rounded, the seam squared, all via logical corner properties so it mirrors under RTL. The input drops its inline-end border entirely.",
-      "html": "<div class=\"ds-composer\"><input class=\"ds-composer-input\" type=\"text\" placeholder=\"Ask about SFDA regulations...\" aria-label=\"Chat message input\"><button class=\"ds-composer-send\" type=\"button\"><svg width=\"15\" height=\"15\" viewBox=\"0 0 16 16\" fill=\"currentColor\" aria-hidden=\"true\"><path d=\"M2 14 14 8 2 2v4.6l7 1.4-7 1.4z\"/></svg>Send</button></div>",
-      "css": ".ds-composer { display: flex; max-inline-size: 520px; } .ds-composer-input { flex: 1; min-inline-size: 0; padding: 12px 16px; border: 1px solid var(--hairline-strong, #C4CDD8); border-inline-end: none; border-start-start-radius: var(--radius-md, 6px); border-end-start-radius: var(--radius-md, 6px); border-start-end-radius: 0; border-end-end-radius: 0; font-family: var(--font-sans, 'IBM Plex Sans', sans-serif); font-size: var(--fs-300, .9375rem); color: var(--fg-primary, #0C1A2B); background: var(--bg-surface, #fff); } .ds-composer-input::placeholder { color: var(--fg-faint, #8195A9); } .ds-composer-input:focus { outline: none; box-shadow: none; border-color: var(--signal, #1B4DB1); position: relative; z-index: 10; } .ds-composer-send { display: inline-flex; align-items: center; gap: 8px; padding: 12px 24px; border: 1px solid var(--signal, #1B4DB1); border-start-start-radius: 0; border-end-start-radius: 0; border-start-end-radius: var(--radius-md, 6px); border-end-end-radius: var(--radius-md, 6px); font-family: var(--font-sans, 'IBM Plex Sans', sans-serif); font-size: var(--fs-300, .9375rem); font-weight: 500; color: var(--fg-on-signal, #fff); background: var(--signal, #1B4DB1); cursor: pointer; transition: background .15s cubic-bezier(.4,0,.2,1); } .ds-composer-send:hover { background: var(--signal-hover, #153C8C); border-color: var(--signal-hover, #153C8C); } .ds-composer-send:focus-visible { outline: 2px solid var(--focus-ring, #1B4DB1); outline-offset: 2px; }"
-    },
-    {
-      "name": "Citation Marker",
-      "kind": "custom",
-      "refersTo": "cite-marker",
-      "description": "Signature. The inline numbered mark inside answer prose. Seal Blue appears here and essentially nowhere else, so a blue mark in the transcript always means 'this is traceable to a document'. Hovering it lights the matching source card.",
-      "html": "<p class=\"ds-cite-demo\">Marketing authorisation applications must include a complete quality dossier<button class=\"ds-cite-marker\" type=\"button\">1</button> and a risk management plan<button class=\"ds-cite-marker ds-cite-marker--active\" type=\"button\">2</button>.</p>",
-      "css": ".ds-cite-demo { margin: 0; max-inline-size: 46ch; font-family: var(--font-sans, 'IBM Plex Sans', sans-serif); font-size: var(--fs-400, 1.0625rem); line-height: var(--lh-body, 1.65); color: var(--fg-primary, #0C1A2B); } .ds-cite-marker { display: inline-flex; align-items: center; justify-content: center; min-inline-size: 1.15em; padding: 0 .3em; margin-inline-start: .15em; border: 1px solid var(--signal, #1B4DB1); border-radius: var(--radius-xs, 2px); background: var(--signal-tint, #E7EDFA); color: var(--signal, #1B4DB1); font-family: var(--font-mono, 'IBM Plex Mono', monospace); font-size: .7em; font-weight: 500; line-height: 1.5; vertical-align: .35em; cursor: pointer; transition: background .15s cubic-bezier(.4,0,.2,1), color .15s cubic-bezier(.4,0,.2,1); } .ds-cite-marker:hover, .ds-cite-marker:focus-visible, .ds-cite-marker--active { background: var(--signal, #1B4DB1); color: var(--fg-on-signal, #fff); }"
-    },
-    {
-      "name": "Source Card",
-      "kind": "card",
-      "refersTo": "card-source",
-      "description": "Signature. The evidence filed beside the claim: mono index, document title, LTR-isolated page number, category, a Verified Green relevance bar, the semantic/lexical score split, and an expandable snippet. Its lit state is shown here — the state a matching citation marker triggers on hover.",
-      "html": "<ol class=\"ds-source-list\"><li class=\"ds-source-card ds-source-card--lit\"><button class=\"ds-source-head\" type=\"button\"><span class=\"ds-source-index\">1</span><span class=\"ds-source-doc\">Guidelines on Marketing Authorisation of Pharmaceutical Products</span><span class=\"ds-source-page\" dir=\"ltr\">p. 42</span></button><span class=\"ds-source-cat\">Regulatory</span><div class=\"ds-relevance\" role=\"img\" aria-label=\"Relevance 87 percent\"><div class=\"ds-relevance-bar\" style=\"inline-size:87%\"></div></div><div class=\"ds-score-split\"><span class=\"ds-score\" dir=\"ltr\"><b>SEM</b> 0.91</span><span class=\"ds-score\" dir=\"ltr\"><b>LEX</b> 0.78</span></div></li></ol>",
-      "css": ".ds-source-list { display: flex; flex-direction: column; gap: 8px; inline-size: 100%; max-inline-size: 340px; margin: 0; padding: 0; list-style: none; } .ds-source-card { padding: 12px; border: 1px solid var(--hairline, #DDE3EA); border-radius: var(--radius-sm, 4px); background: var(--bg-surface, #fff); transition: border-color .15s cubic-bezier(.4,0,.2,1), background .15s cubic-bezier(.4,0,.2,1); } .ds-source-card--lit { border-color: var(--signal, #1B4DB1); background: var(--signal-tint, #E7EDFA); } .ds-source-head { display: flex; align-items: baseline; gap: 8px; inline-size: 100%; padding: 0; border: none; background: none; text-align: start; cursor: pointer; color: inherit; } .ds-source-index { flex: none; min-inline-size: 1.4em; padding: 0 .3em; border: 1px solid var(--signal, #1B4DB1); border-radius: var(--radius-xs, 2px); color: var(--signal, #1B4DB1); font-family: var(--font-mono, 'IBM Plex Mono', monospace); font-size: var(--fs-100, .75rem); text-align: center; } .ds-source-doc { flex: 1; min-inline-size: 0; font-family: var(--font-sans, 'IBM Plex Sans', sans-serif); font-size: var(--fs-200, .8125rem); font-weight: 500; color: var(--fg-primary, #0C1A2B); overflow-wrap: anywhere; } .ds-source-page { flex: none; direction: ltr; unicode-bidi: isolate; font-family: var(--font-mono, 'IBM Plex Mono', monospace); font-size: var(--fs-100, .75rem); font-variant-numeric: tabular-nums; color: var(--fg-muted, #4A5D74); } .ds-source-cat { display: inline-block; margin-block-start: 8px; font-family: var(--font-sans, 'IBM Plex Sans', sans-serif); font-size: var(--fs-100, .75rem); letter-spacing: .06em; text-transform: uppercase; color: var(--fg-faint, #8195A9); } .ds-relevance { block-size: 4px; margin-block-start: 8px; border-radius: 999px; background: var(--bg-sunken, #F2F5F8); overflow: hidden; } .ds-relevance-bar { block-size: 100%; border-radius: inherit; background: var(--confidence, #0E7C66); } .ds-score-split { display: flex; gap: 12px; margin-block-start: 8px; } .ds-score { direction: ltr; unicode-bidi: isolate; font-family: var(--font-mono, 'IBM Plex Mono', monospace); font-size: var(--fs-100, .75rem); font-variant-numeric: tabular-nums; color: var(--fg-muted, #4A5D74); } .ds-score b { font-weight: 500; color: var(--fg-faint, #8195A9); letter-spacing: .06em; }"
-    },
-    {
-      "name": "Feature Card",
-      "kind": "card",
-      "refersTo": "card-feature",
-      "description": "The marketing-surface card. Its only hover is a border promotion — no lift, no shadow, no scale. Depth is not how this system expresses importance.",
-      "html": "<div class=\"ds-feature-card\"><span class=\"ds-feature-icon-well\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.3\" aria-hidden=\"true\"><rect x=\"2\" y=\"4.5\" width=\"12\" height=\"9\" rx=\"1.2\"/><path d=\"M3.5 2.5h9M4.5 .8h7\" stroke-linecap=\"round\"/></svg></span><h3 class=\"ds-feature-title\">Extensive Guideline Coverage</h3><p class=\"ds-feature-body\">Regulatory insights drawn from the official SFDA guideline corpus, with every claim traceable to its source document and page.</p></div>",
-      "css": ".ds-feature-card { max-inline-size: 320px; padding: 24px; border: 1px solid var(--hairline, #DDE3EA); border-radius: var(--radius-lg, 10px); background: var(--bg-surface, #fff); text-align: start; transition: border-color .25s cubic-bezier(.4,0,.2,1); } .ds-feature-card:hover { border-color: var(--hairline-strong, #C4CDD8); } .ds-feature-icon-well { display: inline-flex; align-items: center; justify-content: center; inline-size: 44px; block-size: 44px; margin-block-end: 16px; border: 1px solid var(--hairline, #DDE3EA); border-radius: var(--radius-md, 6px); background: var(--bg-sunken, #F2F5F8); color: var(--signal, #1B4DB1); } .ds-feature-title { margin: 0 0 8px; font-family: var(--font-sans, 'IBM Plex Sans', sans-serif); font-size: var(--fs-500, 1.25rem); font-weight: 600; line-height: 1.3; letter-spacing: var(--track-tight, -.01em); color: var(--fg-primary, #0C1A2B); } .ds-feature-body { margin: 0; font-family: var(--font-sans, 'IBM Plex Sans', sans-serif); font-size: var(--fs-300, .9375rem); line-height: 1.5; color: var(--fg-secondary, #22364B); }"
-    },
-    {
-      "name": "Suggested Question Chip",
-      "kind": "chip",
-      "refersTo": "chip-suggested",
-      "description": "A query about to be traced. The one place Seal Blue appears as pure affordance — its leading icon turns signal-blue on hover.",
-      "html": "<button class=\"ds-chip\" type=\"button\"><svg class=\"ds-chip-icon\" width=\"13\" height=\"13\" viewBox=\"0 0 16 16\" fill=\"currentColor\" aria-hidden=\"true\"><path d=\"M9.2 1 3.4 9.2H7l-.9 5.8 6.5-8.4H9z\"/></svg>What are the requirements for drug registration?</button>",
-      "css": ".ds-chip { display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; border: 1px solid var(--hairline-strong, #C4CDD8); border-radius: 999px; font-family: var(--font-sans, 'IBM Plex Sans', sans-serif); font-size: var(--fs-200, .8125rem); font-weight: 500; color: var(--fg-secondary, #22364B); background: var(--bg-surface, #fff); cursor: pointer; transition: background .15s cubic-bezier(.4,0,.2,1), color .15s cubic-bezier(.4,0,.2,1), border-color .15s cubic-bezier(.4,0,.2,1); } .ds-chip:hover { color: var(--fg-primary, #0C1A2B); background: var(--bg-sunken, #F2F5F8); border-color: var(--fg-faint, #8195A9); } .ds-chip-icon { color: var(--fg-faint, #8195A9); transition: color .15s cubic-bezier(.4,0,.2,1); } .ds-chip:hover .ds-chip-icon { color: var(--signal, #1B4DB1); } .ds-chip:focus-visible { outline: 2px solid var(--focus-ring, #1B4DB1); outline-offset: 2px; }"
-    },
-    {
-      "name": "FAQ Navigation",
-      "kind": "nav",
-      "refersTo": "faq-button",
-      "description": "The sidebar's category list. Headers are mono uppercase separated by hairlines; entries are transparent boxes that fill on hover. The active entry takes a full Seal Blue fill — legitimate, because selecting a FAQ is initiating a retrieval.",
-      "html": "<nav class=\"ds-faq\"><h4 class=\"ds-faq-head\"><svg width=\"12\" height=\"12\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.4\" aria-hidden=\"true\"><path d=\"M8 1.4 13.6 3.6v4.2c0 3.2-2.3 5.7-5.6 6.8-3.3-1.1-5.6-3.6-5.6-6.8V3.6z\" stroke-linejoin=\"round\"/></svg>Regulatory</h4><ul class=\"ds-faq-list\"><li><button class=\"ds-faq-item ds-faq-item--active\" type=\"button\">Drug Registration</button></li><li><button class=\"ds-faq-item\" type=\"button\">Variation Applications</button></li><li><button class=\"ds-faq-item\" type=\"button\">GMP Requirements</button></li></ul></nav>",
-      "css": ".ds-faq { max-inline-size: 260px; } .ds-faq-head { display: flex; align-items: center; gap: 8px; padding-block-start: 16px; margin: 0 0 12px; border-block-start: 1px solid var(--hairline, #DDE3EA); font-family: var(--font-sans, 'IBM Plex Sans', sans-serif); font-size: var(--fs-100, .75rem); font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--fg-muted, #4A5D74); } .ds-faq-head svg { color: var(--fg-faint, #8195A9); } .ds-faq-list { display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 0; list-style: none; } .ds-faq-item { inline-size: 100%; padding: 8px 12px; border: 1px solid transparent; border-radius: var(--radius-sm, 4px); font-family: var(--font-sans, 'IBM Plex Sans', sans-serif); font-size: var(--fs-300, .9375rem); font-weight: 400; line-height: 1.3; color: var(--fg-secondary, #22364B); text-align: start; background: transparent; cursor: pointer; transition: background .15s cubic-bezier(.4,0,.2,1), color .15s cubic-bezier(.4,0,.2,1), border-color .15s cubic-bezier(.4,0,.2,1); } .ds-faq-item:hover, .ds-faq-item:focus-visible { color: var(--fg-primary, #0C1A2B); background: var(--bg-sunken, #F2F5F8); border-color: var(--hairline, #DDE3EA); } .ds-faq-item--active { color: var(--fg-on-signal, #fff); font-weight: 500; background: var(--signal, #1B4DB1); border-color: var(--signal, #1B4DB1); }"
+      "refersTo": "icon-control",
+      "description": "38px circular chrome control used for the language and theme toggles. Border and glyph both go teal on hover.",
+      "html": "<button class=\"ds-icon-control\" type=\"button\" aria-label=\"Toggle theme\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 16 16\" fill=\"currentColor\" aria-hidden=\"true\"><path d=\"M6 .278a.77.77 0 0 1 .08.858 7.2 7.2 0 0 0-.878 3.46c0 4.021 3.278 7.277 7.318 7.277.527 0 1.04-.055 1.533-.16a.79.79 0 0 1 .81.316.73.73 0 0 1-.031.893A8.35 8.35 0 0 1 8.344 16C3.734 16 0 12.286 0 7.71 0 4.266 2.114 1.312 5.124.06A.75.75 0 0 1 6 .278\"/></svg></button>",
+      "css": ".ds-icon-control { display: inline-flex; align-items: center; justify-content: center; inline-size: 38px; block-size: 38px; padding: 0; border: 1px solid var(--hairline, #DCD7D1); border-radius: 999px; color: var(--fg-muted, #675D75); background: var(--bg-surface, #fff); cursor: pointer; transition: color .15s cubic-bezier(.4,0,.2,1), border-color .15s cubic-bezier(.4,0,.2,1); } .ds-icon-control:hover { color: var(--signal, #0F5E63); border-color: var(--signal, #0F5E63); } .ds-icon-control:focus-visible { outline: 2px solid var(--focus-ring, #0F5E63); outline-offset: 2px; }"
     },
     {
       "name": "Knowledge Badge",
       "kind": "chip",
       "refersTo": "badge-knowledge",
-      "description": "Reads as a stamp, not a button. Mono uppercase label type on a sunken well with a strong hairline — the visual register this system reserves for machine-reported fact.",
-      "html": "<span class=\"ds-badge\"><svg width=\"12\" height=\"12\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.3\" aria-hidden=\"true\"><rect x=\"1.6\" y=\"2.6\" width=\"12.8\" height=\"11.8\" rx=\"1.4\"/><path d=\"M1.6 6.2h12.8M5 1.4v2.2M11 1.4v2.2\" stroke-linecap=\"round\"/><path d=\"M5.4 10.2 7.2 12l3.4-3.6\" stroke-width=\"1.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></svg>Guidelines current through August 2026</span>",
-      "css": ".ds-badge { display: inline-flex; align-items: center; gap: 8px; padding: 4px 12px; border: 1px solid var(--hairline-strong, #C4CDD8); border-radius: var(--radius-sm, 4px); font-family: var(--font-mono, 'IBM Plex Mono', monospace); font-size: var(--fs-100, .75rem); font-weight: 500; letter-spacing: .06em; text-transform: uppercase; color: var(--fg-muted, #4A5D74); background: var(--bg-sunken, #F2F5F8); }"
+      "description": "Marigold-tint pill that sits beside the primary action carrying the knowledge-cutoff statement.",
+      "html": "<span class=\"ds-badge-knowledge\"><svg width=\"14\" height=\"14\" viewBox=\"0 0 16 16\" fill=\"currentColor\" aria-hidden=\"true\"><path d=\"M10.854 7.146a.5.5 0 0 1 0 .708l-3 3a.5.5 0 0 1-.708 0l-1.5-1.5a.5.5 0 1 1 .708-.708L7.5 9.793l2.646-2.647a.5.5 0 0 1 .708 0\"/><path d=\"M3.5 0a.5.5 0 0 1 .5.5V1h8V.5a.5.5 0 0 1 1 0V1h1a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V3a2 2 0 0 1 2-2h1V.5a.5.5 0 0 1 .5-.5M1 4v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V4z\"/></svg> Guidelines current through August 2026</span>",
+      "css": ".ds-badge-knowledge { display: inline-flex; align-items: center; gap: 8px; padding: 8px 16px; border: 1px solid var(--confidence, #B87310); border-radius: 999px; font-family: 'Readex Pro', sans-serif; font-size: .8125rem; font-weight: 500; color: var(--confidence-strong, #94590A); background: var(--confidence-tint, #FAEEDA); }"
     },
     {
-      "name": "Toast",
-      "kind": "custom",
-      "refersTo": "toast",
-      "description": "Inverted on purpose — ink surface, paper text — so a system message reads as system rather than as another card. A 2px inline-start rule carries the severity, at the same weight as every other meaningful rule in the system.",
-      "html": "<div class=\"ds-toast ds-toast--error\" role=\"alert\">Failed to send message.</div>",
-      "css": ".ds-toast { display: inline-block; inline-size: fit-content; max-inline-size: 420px; padding: 12px 24px; border-radius: var(--radius-md, 6px); font-family: var(--font-sans, 'IBM Plex Sans', sans-serif); font-size: var(--fs-300, .9375rem); color: var(--fg-inverse, #FAFBFC); background: var(--bg-inverse, #0C1A2B); box-shadow: var(--shadow-xl, 0 20px 48px rgb(12 26 43 / .14)); } .ds-toast--error { border-inline-start: 2px solid var(--danger, #B3261E); } .ds-toast--success { border-inline-start: 2px solid var(--confidence, #0E7C66); }"
+      "name": "Feature Card",
+      "kind": "card",
+      "refersTo": "card-feature",
+      "description": "White 16px card with the icon set in the card's own colour. Flat at rest, lifts 3px with a warm shadow on hover.",
+      "html": "<article class=\"ds-card-feature\"><svg class=\"ds-card-icon\" width=\"24\" height=\"24\" viewBox=\"0 0 16 16\" fill=\"currentColor\" aria-hidden=\"true\"><path d=\"M8 .5a.5.5 0 0 1 .28.086l6 4A.5.5 0 0 1 14.5 5v6a.5.5 0 0 1-.22.414l-6 4a.5.5 0 0 1-.56 0l-6-4A.5.5 0 0 1 1.5 11V5a.5.5 0 0 1 .22-.414l6-4A.5.5 0 0 1 8 .5\"/></svg><h3>Authoritative sources</h3><p>Every answer resolves to the guideline it came from, with page and relevance score.</p></article>",
+      "css": ".ds-card-feature { display: block; block-size: 100%; padding: 32px; border: 1px solid var(--hairline, #DCD7D1); border-radius: 16px; background: var(--bg-surface, #fff); text-align: start; transition: transform .25s cubic-bezier(.4,0,.2,1), border-color .25s cubic-bezier(.4,0,.2,1), box-shadow .25s cubic-bezier(.4,0,.2,1); } .ds-card-feature:hover { transform: translateY(-3px); border-color: var(--hairline-strong, #BFB8B0); box-shadow: 0 4px 14px rgb(36 31 43 / .07); } .ds-card-icon { display: block; margin-block-end: 16px; color: var(--signal, #0F5E63); } .ds-card-feature h3 { margin: 0 0 12px; font-family: 'Zain', 'Readex Pro', sans-serif; font-size: 1.25rem; font-weight: 700; letter-spacing: -.012em; color: var(--fg-primary, #241F2B); } .ds-card-feature p { max-inline-size: 68ch; margin: 0; font-family: 'Readex Pro', sans-serif; font-size: .9375rem; line-height: 1.6; color: var(--fg-secondary, #463E52); }"
     },
     {
-      "name": "Modal & Tabs",
-      "kind": "custom",
-      "refersTo": "modal-shell",
-      "description": "The auth/profile shell. A sunken header band closed by a hairline, and the system's only moving-indicator pattern: a 2px border-block-end that turns Seal Blue on the active tab. The background never fills.",
-      "html": "<div class=\"ds-modal\"><div class=\"ds-modal-header\"><h2 class=\"ds-modal-title\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.4\" aria-hidden=\"true\"><path d=\"M8 1.4 13.6 3.6v4.2c0 3.2-2.3 5.7-5.6 6.8-3.3-1.1-5.6-3.6-5.6-6.8V3.6z\" stroke-linejoin=\"round\"/></svg>Welcome to SFDA Copilot</h2><button class=\"ds-modal-close\" type=\"button\" aria-label=\"Close\"><svg width=\"12\" height=\"12\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" aria-hidden=\"true\"><path d=\"M3 3l10 10M13 3 3 13\"/></svg></button></div><div class=\"ds-modal-tabs\"><button class=\"ds-modal-tab ds-modal-tab--active\" type=\"button\">Login</button><button class=\"ds-modal-tab\" type=\"button\">Signup</button></div><div class=\"ds-modal-body\"><label class=\"ds-modal-field\"><span>Email address</span><input type=\"email\" placeholder=\"you@company.com\"></label></div></div>",
-      "css": ".ds-modal { max-inline-size: 400px; border: 1px solid var(--hairline, #DDE3EA); border-radius: var(--radius-lg, 10px); background: var(--bg-surface, #fff); box-shadow: var(--shadow-xl, 0 20px 48px rgb(12 26 43 / .14)); overflow: hidden; } .ds-modal-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 24px; background: var(--bg-sunken, #F2F5F8); border-block-end: 1px solid var(--hairline, #DDE3EA); } .ds-modal-title { display: flex; align-items: center; gap: 8px; margin: 0; font-family: var(--font-sans, 'IBM Plex Sans', sans-serif); font-size: var(--fs-500, 1.25rem); font-weight: 600; letter-spacing: var(--track-tight, -.01em); line-height: 1.3; color: var(--fg-primary, #0C1A2B); } .ds-modal-title svg { color: var(--signal, #1B4DB1); } .ds-modal-close { display: inline-flex; padding: 4px; border: none; background: none; color: var(--fg-primary, #0C1A2B); opacity: .6; cursor: pointer; } .ds-modal-close:hover { opacity: 1; } .ds-modal-tabs { display: flex; border-block-end: 1px solid var(--hairline, #DDE3EA); } .ds-modal-tab { flex: 1; padding: 16px 8px; border: none; border-block-end: 2px solid transparent; background: transparent; font-family: var(--font-sans, 'IBM Plex Sans', sans-serif); font-size: var(--fs-300, .9375rem); font-weight: 500; color: var(--fg-muted, #4A5D74); cursor: pointer; transition: color .15s cubic-bezier(.4,0,.2,1), border-color .15s cubic-bezier(.4,0,.2,1); } .ds-modal-tab:hover { color: var(--fg-primary, #0C1A2B); } .ds-modal-tab--active { color: var(--fg-primary, #0C1A2B); border-block-end-color: var(--signal, #1B4DB1); } .ds-modal-body { padding: 24px; } .ds-modal-field { display: flex; flex-direction: column; gap: 6px; font-family: var(--font-sans, 'IBM Plex Sans', sans-serif); font-size: var(--fs-200, .8125rem); color: var(--fg-muted, #4A5D74); } .ds-modal-field input { padding: 10px 12px; border: 1px solid var(--hairline-strong, #C4CDD8); border-radius: var(--radius-sm, 4px); background: var(--bg-surface, #fff); color: var(--fg-primary, #0C1A2B); font-family: inherit; font-size: var(--fs-300, .9375rem); } .ds-modal-field input:focus { outline: none; border-color: var(--signal, #1B4DB1); box-shadow: 0 0 0 3px var(--focus-ring-shadow, rgb(27 77 177 / .28)); }"
+      "name": "Lead Feature Card",
+      "kind": "card",
+      "refersTo": "card-feature-lead",
+      "description": "The double-width card carrying the corpus claim. Marigold-tint fill, marigold icon, one type rung up on the heading, and a deliberately neutral hairline.",
+      "html": "<article class=\"ds-card-lead\"><svg class=\"ds-card-lead-icon\" width=\"24\" height=\"24\" viewBox=\"0 0 16 16\" fill=\"currentColor\" aria-hidden=\"true\"><path d=\"M2.5 3.5a.5.5 0 0 1 .5-.5h10a.5.5 0 0 1 0 1H3a.5.5 0 0 1-.5-.5m0 3a.5.5 0 0 1 .5-.5h10a.5.5 0 0 1 0 1H3a.5.5 0 0 1-.5-.5m0 3a.5.5 0 0 1 .5-.5h10a.5.5 0 0 1 0 1H3a.5.5 0 0 1-.5-.5m0 3a.5.5 0 0 1 .5-.5h10a.5.5 0 0 1 0 1H3a.5.5 0 0 1-.5-.5\"/></svg><h3>The official SFDA guideline corpus</h3><p>Regulatory, pharmacovigilance, veterinary medicines and biological products, searched together or one at a time.</p></article>",
+      "css": ".ds-card-lead { display: block; block-size: 100%; padding: 32px; border: 1px solid var(--hairline, #DCD7D1); border-radius: 16px; background: var(--confidence-tint, #FAEEDA); text-align: start; transition: transform .25s cubic-bezier(.4,0,.2,1), box-shadow .25s cubic-bezier(.4,0,.2,1); } .ds-card-lead:hover { transform: translateY(-3px); box-shadow: 0 4px 14px rgb(36 31 43 / .07); } .ds-card-lead-icon { display: block; margin-block-end: 16px; color: var(--confidence-strong, #94590A); } .ds-card-lead h3 { margin: 0 0 12px; font-family: 'Zain', 'Readex Pro', sans-serif; font-size: 1.5rem; font-weight: 700; letter-spacing: -.012em; color: var(--fg-primary, #241F2B); } .ds-card-lead p { margin: 0; font-family: 'Readex Pro', sans-serif; font-size: .9375rem; line-height: 1.6; color: var(--fg-secondary, #463E52); }"
     },
     {
-      "name": "Category Dropdown",
-      "kind": "custom",
-      "refersTo": "dropdown-category",
-      "description": "The composer's scope selector, shown open. It opens UPWARD because the composer is pinned to the bottom of the viewport. The selected item takes a Seal Blue fill under the same licence as the active FAQ entry — choosing a category is scoping a retrieval. Note: the incumbent uses emoji glyphs here, the one place this product's icon system breaks.",
-      "html": "<div class=\"ds-dropdown-stage\"><div class=\"ds-dropdown ds-dropdown--open\"><ul class=\"ds-dropdown-menu\"><li class=\"ds-dropdown-item ds-dropdown-item--active\"><span>🌐</span>All Categories</li><li class=\"ds-dropdown-item\"><span>📋</span>Regulatory</li><li class=\"ds-dropdown-item\"><span>💊</span>Pharmacovigilance</li><li class=\"ds-dropdown-item\"><span>🐾</span>Veterinary Medicines</li><li class=\"ds-dropdown-item\"><span>🧬</span>Biological Products</li></ul><button class=\"ds-dropdown-trigger\" type=\"button\" aria-expanded=\"true\"><span>🌐</span><span>All Categories</span><svg class=\"ds-dropdown-arrow\" width=\"9\" height=\"9\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M3 6l5 5 5-5\"/></svg></button></div></div>",
-      "css": ".ds-dropdown-stage { padding-block-start: 200px; } .ds-dropdown { position: relative; display: inline-block; } .ds-dropdown-trigger { display: inline-flex; align-items: center; gap: 8px; padding: 4px 12px; border: 1px solid var(--hairline-strong, #C4CDD8); border-radius: var(--radius-sm, 4px); font-family: var(--font-sans, 'IBM Plex Sans', sans-serif); font-size: var(--fs-200, .8125rem); font-weight: 500; color: var(--fg-secondary, #22364B); background: var(--bg-surface, #fff); cursor: pointer; transition: color .15s cubic-bezier(.4,0,.2,1), border-color .15s cubic-bezier(.4,0,.2,1); } .ds-dropdown-trigger:hover { border-color: var(--fg-faint, #8195A9); color: var(--fg-primary, #0C1A2B); } .ds-dropdown-arrow { transition: transform .15s cubic-bezier(.4,0,.2,1); } .ds-dropdown--open .ds-dropdown-arrow { transform: rotate(180deg); } .ds-dropdown-menu { position: absolute; inset-block-end: calc(100% + 8px); inset-inline-start: 0; min-inline-size: 220px; margin: 0; padding: 4px; list-style: none; border: 1px solid var(--hairline, #DDE3EA); border-radius: var(--radius-md, 6px); background: var(--bg-surface, #fff); box-shadow: var(--shadow-lg, 0 8px 24px rgb(12 26 43 / .10)); opacity: 0; visibility: hidden; transform: translateY(4px); transition: opacity .15s cubic-bezier(.4,0,.2,1), transform .15s cubic-bezier(.4,0,.2,1), visibility .15s; } .ds-dropdown--open .ds-dropdown-menu { opacity: 1; visibility: visible; transform: translateY(0); } .ds-dropdown-item { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: var(--radius-xs, 2px); font-family: var(--font-sans, 'IBM Plex Sans', sans-serif); font-size: var(--fs-300, .9375rem); color: var(--fg-secondary, #22364B); cursor: pointer; transition: background .15s cubic-bezier(.4,0,.2,1), color .15s cubic-bezier(.4,0,.2,1); } .ds-dropdown-item:hover { background: var(--bg-sunken, #F2F5F8); color: var(--fg-primary, #0C1A2B); } .ds-dropdown-item--active { color: var(--fg-on-signal, #fff); background: var(--signal, #1B4DB1); }"
+      "name": "Text Field",
+      "kind": "input",
+      "refersTo": "input-text",
+      "description": "White field on a strong hairline; focus takes a teal border plus a translucent teal ring.",
+      "html": "<input class=\"ds-input-text\" type=\"email\" placeholder=\"you@example.com\" aria-label=\"Email\">",
+      "css": ".ds-input-text { inline-size: 100%; padding: 12px 16px; border: 1px solid var(--hairline-strong, #BFB8B0); border-radius: 6px; background: var(--bg-surface, #fff); font-family: 'Readex Pro', sans-serif; font-size: .9375rem; color: var(--fg-primary, #241F2B); } .ds-input-text::placeholder { color: var(--fg-faint, #857A94); } .ds-input-text:focus { outline: none; border-color: var(--signal, #0F5E63); box-shadow: 0 0 0 3px rgb(15 94 99 / .28); }"
     },
     {
-      "name": "Streaming States",
-      "kind": "custom",
-      "refersTo": "stage-line",
-      "description": "The four states a request passes through, in order: typing dots before the first token, the stage line naming real retrieval work, the caret on the pending tail, and the stream note for terminal states. Honest progress rather than a generic spinner.",
-      "html": "<div class=\"ds-stream\"><span class=\"ds-typing\"><i></i><i></i><i></i></span><span class=\"ds-stage\"><span class=\"ds-stage-dot\"></span>Found 8 passages</span><p class=\"ds-stream-text\">Applications must include a complete quality dossier<span class=\"ds-caret\"></span></p><span class=\"ds-stream-note\">Answer incomplete — something went wrong</span></div>",
-      "css": ".ds-stream { display: flex; flex-direction: column; align-items: flex-start; gap: 16px; max-inline-size: 44ch; } .ds-typing { display: inline-flex; gap: 4px; padding: 4px 0; } .ds-typing i { inline-size: 6px; block-size: 6px; border-radius: 50%; background: var(--fg-faint, #8195A9); animation: dsTypingBounce 1.2s infinite ease-in-out; } .ds-typing i:nth-child(2) { animation-delay: .15s; } .ds-typing i:nth-child(3) { animation-delay: .3s; } @keyframes dsTypingBounce { 0%, 60%, 100% { transform: translateY(0); opacity: .6; } 30% { transform: translateY(-8px); opacity: 1; } } .ds-stage { display: flex; align-items: center; gap: 8px; font-family: var(--font-mono, 'IBM Plex Mono', monospace); font-size: var(--fs-100, .75rem); letter-spacing: .06em; text-transform: uppercase; color: var(--fg-muted, #4A5D74); } .ds-stage-dot { inline-size: 5px; block-size: 5px; border-radius: 50%; background: var(--signal, #1B4DB1); } .ds-stream-text { margin: 0; font-family: var(--font-sans, 'IBM Plex Sans', sans-serif); font-size: var(--fs-400, 1.0625rem); line-height: var(--lh-body, 1.65); color: var(--fg-primary, #0C1A2B); } .ds-caret { display: inline-block; inline-size: 2px; block-size: 1em; margin-inline-start: 2px; vertical-align: text-bottom; background: var(--signal, #1B4DB1); animation: dsCaretBlink 1s steps(2, start) infinite; } @keyframes dsCaretBlink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } } .ds-stream-note { display: inline-flex; align-items: center; gap: 8px; font-family: var(--font-mono, 'IBM Plex Mono', monospace); font-size: var(--fs-100, .75rem); letter-spacing: .06em; text-transform: uppercase; color: var(--danger, #B3261E); }"
+      "name": "Suggested Question Chip",
+      "kind": "chip",
+      "refersTo": "chip-suggested",
+      "description": "Pill chip seeding a first question. Fills to sunken porcelain on hover and turns its glyph teal.",
+      "html": "<button class=\"ds-chip-suggested\" type=\"button\"><svg class=\"ds-chip-icon\" width=\"13\" height=\"13\" viewBox=\"0 0 16 16\" fill=\"currentColor\" aria-hidden=\"true\"><path d=\"M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14m0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16\"/><path d=\"M5.255 5.786a.24.24 0 0 0 .241.247h.825c.138 0 .248-.113.266-.25.09-.656.54-1.134 1.342-1.134.686 0 1.314.343 1.314 1.168 0 .635-.374.927-.965 1.371-.673.489-1.206 1.06-1.168 1.987l.003.217a.25.25 0 0 0 .25.246h.811a.25.25 0 0 0 .25-.25v-.105c0-.718.273-.927 1.01-1.486.609-.463 1.244-.977 1.244-2.056 0-1.511-1.276-2.241-2.673-2.241-1.267 0-2.655.59-2.75 2.286m1.557 5.763c0 .533.425.927 1.01.927.609 0 1.028-.394 1.028-.927 0-.552-.42-.94-1.029-.94-.584 0-1.009.388-1.009.94\"/></svg> What are the pharmacovigilance reporting timelines?</button>",
+      "css": ".ds-chip-suggested { display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; border: 1px solid var(--hairline-strong, #BFB8B0); border-radius: 999px; font-family: 'Readex Pro', sans-serif; font-size: .8125rem; font-weight: 500; color: var(--fg-secondary, #463E52); background: var(--bg-surface, #fff); cursor: pointer; transition: background .15s cubic-bezier(.4,0,.2,1), color .15s cubic-bezier(.4,0,.2,1), border-color .15s cubic-bezier(.4,0,.2,1); } .ds-chip-icon { color: var(--fg-faint, #857A94); transition: color .15s cubic-bezier(.4,0,.2,1); } .ds-chip-suggested:hover { color: var(--fg-primary, #241F2B); background: var(--bg-sunken, #E9E5E1); border-color: var(--fg-faint, #857A94); } .ds-chip-suggested:hover .ds-chip-icon { color: var(--signal, #0F5E63); } .ds-chip-suggested:focus-visible { outline: 2px solid var(--focus-ring, #0F5E63); outline-offset: 2px; }"
     },
     {
-      "name": "Answer Table",
+      "name": "Citation Marker",
       "kind": "custom",
-      "refersTo": "answer-table",
-      "description": "Markdown tables inside an answer. A regulatory answer is often a table, so it gets real structure: a clipped 4px-radius outer border, hairline cells, and a sunken header row in the uppercase label register.",
-      "html": "<table class=\"ds-answer-table\"><thead><tr><th>Submission type</th><th>Review clock</th></tr></thead><tbody><tr><td>New chemical entity</td><td>210 days</td></tr><tr><td>Generic</td><td>150 days</td></tr><tr><td>Minor variation</td><td>30 days</td></tr></tbody></table>",
-      "css": ".ds-answer-table { inline-size: 100%; max-inline-size: 440px; border-collapse: collapse; border: 1px solid var(--hairline-strong, #C4CDD8); border-radius: var(--radius-sm, 4px); overflow: hidden; font-family: var(--font-sans, 'IBM Plex Sans', sans-serif); font-size: var(--fs-300, .9375rem); color: var(--fg-primary, #0C1A2B); } .ds-answer-table th, .ds-answer-table td { padding: 8px 12px; border: 1px solid var(--hairline, #DDE3EA); text-align: start; vertical-align: top; } .ds-answer-table thead th { background: var(--bg-sunken, #F2F5F8); color: var(--fg-primary, #0C1A2B); font-size: var(--fs-200, .8125rem); font-weight: 600; letter-spacing: .06em; text-transform: uppercase; } .ds-answer-table td { font-variant-numeric: tabular-nums; }"
+      "refersTo": "cite-marker",
+      "description": "The signature element: a numbered mono marker in the answer text that resolves to a source card. Teal here means traceable.",
+      "html": "<p class=\"ds-cite-host\">Marketing authorisation holders must report within the stated window<button class=\"ds-cite-marker\" type=\"button\">1</button></p>",
+      "css": ".ds-cite-host { font-family: 'Readex Pro', sans-serif; font-size: 1.0625rem; line-height: 1.65; color: var(--fg-primary, #241F2B); margin: 0; } .ds-cite-marker { display: inline-flex; align-items: center; justify-content: center; min-inline-size: 1.15em; padding: 0 .3em; margin-inline-start: .15em; border: 1px solid var(--signal, #0F5E63); border-radius: 3px; background: var(--signal-tint, #DCECEC); color: var(--signal, #0F5E63); font-family: 'Azeret Mono', ui-monospace, monospace; font-size: .7em; font-weight: 500; line-height: 1.5; vertical-align: .35em; cursor: pointer; transition: background .15s cubic-bezier(.4,0,.2,1), color .15s cubic-bezier(.4,0,.2,1); } .ds-cite-marker:hover, .ds-cite-marker:focus-visible { background: var(--signal, #0F5E63); color: #fff; }"
+    },
+    {
+      "name": "Source Card",
+      "kind": "card",
+      "refersTo": "cite-marker",
+      "description": "What a citation resolves to: document, page, relevance bar and score in mono. Lights teal when its marker is active.",
+      "html": "<div class=\"ds-source-card is-lit\"><div class=\"ds-source-head\"><span class=\"ds-source-index\">1</span><span class=\"ds-source-doc\">Guideline on Good Pharmacovigilance Practices</span><span class=\"ds-source-page\">p. 42</span></div><div class=\"ds-relevance\"><div class=\"ds-relevance-bar\" style=\"inline-size:78%\"></div></div><div class=\"ds-source-scores\"><span class=\"ds-score\"><b>SEM</b> 0.81</span><span class=\"ds-score\"><b>LEX</b> 0.74</span></div></div>",
+      "css": ".ds-source-card { padding: 12px; border: 1px solid var(--hairline, #DCD7D1); border-radius: 6px; background: var(--bg-surface, #fff); transition: border-color .15s cubic-bezier(.4,0,.2,1), background .15s cubic-bezier(.4,0,.2,1); } .ds-source-card:hover { border-color: var(--hairline-strong, #BFB8B0); } .ds-source-card.is-lit { border-color: var(--signal, #0F5E63); background: var(--signal-tint, #DCECEC); } .ds-source-head { display: flex; align-items: baseline; gap: 8px; } .ds-source-index { flex: none; min-inline-size: 1.4em; padding: 0 .3em; border: 1px solid var(--signal, #0F5E63); border-radius: 3px; color: var(--signal, #0F5E63); font-family: 'Azeret Mono', monospace; font-size: .75rem; text-align: center; } .ds-source-doc { flex: 1; min-inline-size: 0; font-family: 'Readex Pro', sans-serif; font-size: .8125rem; font-weight: 500; color: var(--fg-primary, #241F2B); } .ds-source-page { flex: none; direction: ltr; unicode-bidi: isolate; font-family: 'Azeret Mono', monospace; font-size: .75rem; font-variant-numeric: tabular-nums; color: var(--fg-muted, #675D75); } .ds-relevance { block-size: 4px; margin-block-start: 8px; border-radius: 999px; background: var(--bg-sunken, #E9E5E1); overflow: hidden; } .ds-relevance-bar { block-size: 100%; border-radius: inherit; background: var(--confidence, #B87310); } .ds-source-scores { display: flex; gap: 12px; margin-block-start: 8px; } .ds-score { direction: ltr; unicode-bidi: isolate; font-family: 'Azeret Mono', monospace; font-size: .75rem; font-variant-numeric: tabular-nums; color: var(--fg-muted, #675D75); } .ds-score b { font-weight: 500; color: var(--fg-faint, #857A94); letter-spacing: .08em; }"
     }
   ],
   "narrative": {
-    "northStar": "The Dossier",
-    "overview": "A dossier is a case file: paper, hairline rules, tabbed sources, and a seal that means a specific thing. This system builds a regulatory answer the way a dossier is built — the structure is drawn, not stacked; the evidence is filed beside the claim; and exactly one colour is reserved for the mark that says this came from a document. The product's whole promise is traceability, so the visual system spends its scarcest resource on making provenance visible and spends almost nothing anywhere else.\n\nThe mood is sober, traceable, warm at the edges. The core is disciplined: cool archival paper (never cream), 1px rules doing the structural work shadows would do elsewhere, tabular figures wherever a number carries meaning, and a reading column set at 68ch in 17px type with 1.65 leading because answers are prose that people actually read. The warmth is deliberate and lives at the perimeter — the assistant says \"Ready to help\" rather than \"Awaiting input\", and a mascot may occupy the rail. Neither is allowed to migrate into the answer surface, where sobriety is the point.\n\nThis is a bilingual system by construction, not by translation. IBM Plex Sans, Plex Sans Arabic, and Plex Mono are one family across three scripts, chosen because the corpus is mixed AR/EN and body text must not change designer between languages. Direction is handled structurally: every rule uses logical properties, tracking tokens zero out under RTL because negative letter-spacing shatters Arabic glyph joining, and a --flip multiplier mirrors the transforms that carry meaning.",
+    "northStar": "The Warm Instrument",
+    "overview": "This is a regulatory instrument that is pleasant to sit in front of. The reader arrives mid-task with one question and a deadline, and the surface has to be sober enough to be defended to an auditor while being warm enough to spend an hour inside. The resolution of that tension is material, not decorative: a warm porcelain ground (#F4F2F0) under a cool radial signal-tint wash, aubergine ink instead of neutral grey so even body copy carries warmth, one deep teal that means action on the landing and provenance in the transcript, and a marigold that carries the product's character - the mascot, the lead card, the confidence marks.\n\nThe system is built in three layers and the layering is load-bearing, not organizational hygiene. Layer 1 is raw ramps (ink, paper, rule, teal, gold, status). Layer 2 is scales (spacing, type, radii, z-index, motion). Layer 3 is semantics - the only names a component is allowed to say. Dark mode overrides primitives only: there is not one dark-mode branch in any component file, and every Layer 3 name resolves correctly on both themes because the ramps beneath it flipped. The same discipline governs direction: the corpus is bilingual, so RTL is structural rather than a stylesheet variant, and a build test fails on any physical property that cannot mirror.\n\nBilingualism also chooses the type. Zain is an Arabic-first display family with a matching Latin - the right way round for a product whose corpus is written in Arabic - and Readex Pro is one variable family drawn across both scripts, so body text does not change designer between languages. Azeret Mono appears only where a machine reports a fact: page numbers, relevance scores, timestamps, citation indices. It is never a costume for \"technical\".\n\nThis pass redesigned the landing surface only. The authenticated chat app inherits the token ramp unchanged and renders correctly on it, but its composition has not been re-examined against this world; treat the chat components as recorded as shipped, not as designed to this world.",
     "keyCharacteristics": [
-      "Hairlines, not shadows, carry structure",
-      "One signal colour, spent only on retrieval and citation",
-      "Cool archival paper; squarer corners than a chat product",
-      "68ch reading measure, 17px body, 1.65 leading",
-      "Bilingual by construction — logical properties throughout, RTL-aware tracking",
-      "Motion marks a state change; nothing animates for atmosphere",
-      "Dark mode flips primitives only; no component contains a theme branch"
+      "Warm porcelain ground under a cool teal wash; warmth and coolness both present, neither dominant",
+      "Aubergine ink ramp - no neutral grey anywhere in the text stack",
+      "Soft radii (3/6/10/14/16/24px + pill) and warm-tinted shadows; the archival hairline-only world is retired",
+      "One teal, two jobs split by surface: brand action on the landing, provenance inside the transcript",
+      "Arabic-first display voice; one variable body family across both scripts",
+      "Three token layers; dark mode touches only the bottom one",
+      "Logical properties are enforced by a test, not by preference"
     ],
     "rules": [
-      {
-        "name": "The One Seal Rule",
-        "body": "Seal Blue appears only where retrieval or citation state is being reported. Using it for a generic button is a bug, not a preference: it dilutes the single cue that tells a reader a sentence is traceable to a document. When a new component wants emphasis, it gets a hairline, a weight change, or a sunken background — not the seal.",
-        "section": "colors"
-      },
-      {
-        "name": "The Flip-the-Ramp Rule",
-        "body": "Dark mode overrides primitives only. Every semantic name resolves correctly without a single dark-mode branch anywhere in a component. If you find yourself writing [data-bs-theme=\"dark\"] .my-component, the primitive ramp is wrong, not the component. The ramp genuinely inverts rather than dimming: Seal Blue lifts to #6E9BF0 in dark and its hover goes lighter (#9CBCF7), because #1B4DB1 on the dark page measures roughly 1.7:1 and is unreadable. Verified Green lifts the same way, to #35C3A3.",
-        "section": "colors"
-      },
-      {
-        "name": "The Three-Layer Rule",
-        "body": "Primitives → scales → semantics, and components reference semantics only. Reaching for a primitive inside a component means the semantic layer is missing a name; add the name rather than the exception.",
-        "section": "colors"
-      },
-      {
-        "name": "The Arabic Tracking Rule",
-        "body": "Negative letter-spacing breaks Arabic glyph joining and renders text as disconnected gibberish. Under [dir=\"rtl\"] every tracking token goes to zero, letter-spacing: normal is force-reset on all descendants, and leading opens up (body 1.65 → 1.85, snug 1.3 → 1.45). Never hardcode letter-spacing in a component; use the tokens so this override reaches it.",
-        "section": "typography"
-      },
-      {
-        "name": "The Longer-Script Rule",
-        "body": "A fluid type floor is set by the longer script, not by English. The Arabic wordmark runs about 1.4x the inline length of the English one, so a clamp() minimum that looks comfortable in English will wrap Arabic onto a second line at the same viewport. Measure both before committing a floor; the English rendering will not tell you when it is wrong.",
-        "section": "typography"
-      },
-      {
-        "name": "The Tabular Rule",
-        "body": "Any number that carries meaning gets font-variant-numeric: tabular-nums — page numbers, relevance scores, timestamps. Digits must not jitter between frames while an answer streams.",
-        "section": "typography"
-      },
-      {
-        "name": "The Isolation Rule",
-        "body": "Numeric metadata sitting inside Arabic prose is marked dir=\"ltr\" with unicode-bidi: isolate, so bidi reordering cannot scramble a page number or a score. Every number the reader might quote back is protected this way.",
-        "section": "typography"
-      },
-      {
-        "name": "The Logical Property Rule",
-        "body": "No physical direction properties. inline-size, block-size, padding-inline, border-inline-end, inset-block-start, border-start-start-radius — all of them, always. This is enforced: web/tests/test_css_contract.py fails the build on physical properties that cannot mirror. Where CSS has no logical equivalent (there is no logical translate), a --flip multiplier (1 in LTR, -1 in RTL) is applied inside the transform.",
-        "section": "layout"
-      },
-      {
-        "name": "The Measure Rule",
-        "body": "Answers are prose. The transcript and the composer share one 68ch measure, and nothing widens it for the sake of filling a screen. Extra width goes to the rail or stays empty.",
-        "section": "layout"
-      },
-      {
-        "name": "The Hairline-First Rule",
-        "body": "Reach for a 1px rule before reaching for a shadow. If a hairline and whitespace cannot express the separation, ask whether the separation is real before adding depth.",
-        "section": "elevation"
-      },
-      {
-        "name": "The Two-Weight Rule",
-        "body": "Border weight is a two-value system and nothing else: 1px means structure (every surface, divider, and cell) and 2px means meaning — the active tab indicator, the blockquote rule, the knowledge-cutoff rule, the toast's severity rule, and the focus outline. There is no third weight. A component that wants more emphasis than 2px is asking for the wrong tool.",
-        "section": "shapes"
-      },
-      {
-        "name": "The Corner-Points-Home Rule",
-        "body": "A message bubble squares the corner nearest its speaker (4px against 10px elsewhere) — and does it with border-start-start-radius for the assistant and border-start-end-radius for the user, so the tail follows writing direction instead of a fixed side.",
-        "section": "shapes"
-      },
-      {
-        "name": "The Motion-Marks-State Rule",
-        "body": "Motion exists to mark a state change: a message arriving, a panel revealing, a stream pending, a retrieval landing. Durations are short (150 / 250 / 400 / 600ms) on two easings — ease-out for entrances, ease-soft for state transitions. The mascot's idle float and glow are the single sanctioned exception, and they are confined to the rail. Everything is caught by a global prefers-reduced-motion reset that flattens animation and transition duration to 0.001ms.",
-        "section": "components"
-      }
+      { "name": "The Two Jobs Rule", "body": "Teal is the brand's action colour on the landing (CTA and card icons) and is rationed to retrieval and citation state inside the chat transcript. A decorative teal in the transcript dilutes the one cue that says \"this sentence came from a document\"; a rationed teal on the landing leaves the page with no action colour. Which job applies is decided by surface, never by taste.", "section": "colors" },
+      { "name": "The Primitives-Only Dark Rule", "body": "Dark mode overrides Layer 1 primitives and nothing else. A [data-bs-theme=\"dark\"] branch inside a component means the primitive ramp is wrong - fix the ramp. The teal ramp lifts to #4FC2C8 in dark because #0F5E63 on #191420 is roughly 2.1:1 and unreadable; that is a ramp decision, not a component decision.", "section": "colors" },
+      { "name": "The Semantic-Names-Only Rule", "body": "Components reference Layer 3 names (--bg-surface, --fg-muted, --signal, --confidence, --hairline). Reaching for a primitive in a component file means the semantic layer is missing a name; add the name.", "section": "colors" },
+      { "name": "The Warm Shadow Rule", "body": "Shadows are tinted with the ink hue (rgb(36 31 43 / ...)), never neutral grey. A grey shadow on a warm ground reads as dirt.", "section": "colors" },
+      { "name": "The Joined-Script Rule", "body": "Negative letter-spacing shatters Arabic glyph joining. Every tracking token zeroes under [dir=\"rtl\"], a blanket letter-spacing: normal catches any hardcoded value, and the leading opens up (body 1.65 to 1.85, tight 1.08 to 1.25, snug 1.3 to 1.45). Uppercasing is also switched off in RTL: Arabic has no case, so the transform does nothing while the tracking that accompanies it breaks joins. Small labels keep their role through weight and colour instead.", "section": "typography" },
+      { "name": "The Interpolate-Between-Tokens Rule", "body": "Fluid type clamps interpolate between ramp tokens (clamp(var(--fs-400), 1.5vw, var(--fs-500))), never between literals. A clamp written with raw rem values is off the scale by construction.", "section": "typography" },
+      { "name": "The Mono-Means-Measured Rule", "body": "Azeret Mono marks a value a machine produced. Numbers that carry meaning also get font-variant-numeric: tabular-nums so digits do not jitter between streaming frames, and page numbers and scores are held direction: ltr; unicode-bidi: isolate so bidi cannot reorder them inside an Arabic answer.", "section": "typography" },
+      { "name": "The Logical-Properties Rule", "body": "Physical properties that cannot mirror (margin-left, padding-right, left, text-align: left, border-left) are banned and web/tests/test_css_contract.py fails the build on them; the five shipped stylesheets currently carry zero violations. Where CSS has no logical equivalent - translateX inside a keyframe - the direction multiplier --flip (1 in LTR, -1 in RTL) goes inside the transform: translateX(calc(-12px * var(--flip))). Overlays are placed in a shared grid cell with align-self, not with absolute offsets, so they mirror for free.", "section": "layout" },
+      { "name": "The Earned-Shadow Rule", "body": "Surfaces are flat at rest and lift on state. A shadow on a static element that is not floating over content is decoration; use a hairline and a tonal step instead.", "section": "elevation" },
+      { "name": "The JS-Arms-The-Hidden-State Rule", "body": "The card reveal's hidden state (.animate-card.is-armed) is applied by effects.js at runtime and is never authored in the HTML or triggered by CSS alone. If the module fails to load or the observer never attaches, the cards are simply visible. Verified with JS disabled and with the app module aborted. Any future scroll-reveal follows the same shape: no content is hidden by a stylesheet on the promise that a script will unhide it.", "section": "components" }
     ],
     "dos": [
-      "Do reference Layer 3 semantic names (--fg-primary, --signal, --hairline) in components. If you need a primitive, the semantic layer is missing a name — add the name.",
-      "Do spend Seal Blue only on retrieval and citation state. Everything else gets a hairline, a weight, or a sunken background.",
-      "Do use logical properties for every direction, size, and corner. The build fails on physical ones.",
-      "Do mark meaningful numbers tabular-nums, and isolate them with dir=\"ltr\" and unicode-bidi: isolate when they can appear inside Arabic prose.",
-      "Do give every interactive element the global focus ring — 2px Seal Blue outline at 2px offset.",
-      "Do bump asset_version in web/api/app.py in any commit that touches CSS or JS. Returning users otherwise get a stale components.css against a fresh tokens.css.",
-      "Do keep the reading measure at 68ch for both the transcript and the composer."
+      "Do put every new colour in a Layer 1 ramp, give it a Layer 3 semantic name, and let components reference only the semantic name.",
+      "Do flip primitives - and only primitives - for dark mode; if a component needs a dark branch, the ramp is wrong.",
+      "Do use logical properties for everything, and reach for calc(x * var(--flip)) when the property has no logical form.",
+      "Do spend teal on the primary action and card icons on the landing, and ration it to retrieval and citation state inside the transcript.",
+      "Do write fluid type as clamps between ramp tokens (clamp(var(--fs-400), 1.5vw, var(--fs-500))).",
+      "Do set the display clamp's floor by the longer script - the Arabic wordmark, not the English one.",
+      "Do use Azeret Mono with tabular figures for machine-reported values, and isolate them direction: ltr when they sit inside Arabic prose.",
+      "Do tint shadows with the ink hue in light mode and swap to black at high alpha in dark.",
+      "Do arm scroll-reveal hidden states from JS at runtime, so a dead module leaves content visible.",
+      "Do bump asset_version in web/api/app.py (currently \"warm1\") in any commit touching CSS or JS.",
+      "Do carry the independence notice on every surface; the landing footer holds it."
     ],
     "donts": [
-      "Don't add a decorative layer that animates independently of state. Specifically rejected and removed from this project: spinning conic-gradient rings, blurred orb fields, lens flares, and canvas particle fields. A future ambient idea is not forbidden as a category, but it must earn its place against this rejection — it animated behind every screen at once, so nothing read as the hero.",
-      "Don't write a dark-mode branch inside a component. Fix the primitive ramp instead.",
-      "Don't use --signal for a generic button, a decorative accent, or a hover colour on something unrelated to sources.",
-      "Don't hardcode letter-spacing; the RTL override must be able to reach it.",
-      "Don't express structure or hierarchy with a shadow. Shadows are only for elements that genuinely float — modal, dropdown, toast, jump pill.",
-      "Don't introduce a third border weight. 1px is structure, 2px is meaning, and there is nothing above 2px anywhere in this system.",
-      "Don't clip a gradient to the wordmark glyphs. The wordmark is set in solid ink with display tracking; the gradient treatment was tried and removed.",
-      "Don't float the mascot over the transcript. If it appears, it belongs in the rail.",
-      "Don't reintroduce a compatibility alias layer over the token ramp. The previous \"Clinical Blue\" shim is gone; every component references a semantic name directly."
+      "Don't author a physical property that cannot mirror. test_css_contract.py fails the build; the five stylesheets are at zero violations and stay there.",
+      "Don't apply negative letter-spacing or text-transform: uppercase under [dir=\"rtl\"] - both break Arabic glyph joining or do nothing while breaking it.",
+      "Don't reach for a primitive token inside a component file; add the missing semantic name instead.",
+      "Don't state a guideline count, or any corpus figure, anywhere in copy. The corpus changes; the number goes stale on the next update.",
+      "Don't wrap a card icon in a rounded-square tile, or repeat the same idea as both a mascot and a stock illustration on one page.",
+      "Don't put a neutral grey shadow on the warm ground, or a shadow on anything that is flat and not responding to state.",
+      "Don't use the 2px rule weight decoratively - it is reserved for marks that carry meaning.",
+      "Don't hide content in CSS on the assumption a script will reveal it.",
+      "Don't revive ambient decoration on every surface at once (drifting orbs, conic rings, canvas particle fields, per-element parallax). Motion marks a state change; that is its whole job."
     ]
   }
 }
