@@ -101,8 +101,7 @@ page:
 
   landing:
     greeting: "Ready when you are"
-    lead: "Streamline regulatory compliance with your AI‑powered assistant for pharmaceutical regulations in Saudi Arabia"
-    heroAlt: "AI Regulatory Guidance"
+    lead: "Ask a question instead of searching the guidelines — and see exactly which official SFDA document each answer came from."
     cta: "Get Started"
     hubLink: "AI Fouda Hub Website"
     linkedinLink: "Mohamed Fouda's LinkedIn"

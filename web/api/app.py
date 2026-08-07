@@ -120,11 +120,11 @@ SUPPORTED_FAQ_LANGS = ("en", "ar")
 # Cache-buster appended to every static CSS/JS URL. Bump this in any commit that
 # changes a stylesheet or module, otherwise returning users get a stale
 # components.css against a fresh tokens.css and see a half-styled app.
-ASSET_VERSION = "warm2"
+ASSET_VERSION = "warm3"
 
 # Product release, rendered in the landing footer. Kept as one constant so
 # the number cannot drift between the page and the module headers.
-APP_VERSION = "3.0"
+APP_VERSION = "3.0.0"
 
 # ──────────────────────────────────────────────────────────
 # Helper Functions

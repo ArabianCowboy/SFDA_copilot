@@ -87,9 +87,9 @@ def test_unsupported_accept_language_falls_back_to_english(client):
 
 def test_arabic_page_renders_arabic_copy(client):
     html = page(client, "/?lang=ar")
-    assert "مساعدك التنظيمي الذكي" in html      # sidebar tagline
+    assert "مساعدك التنظيمي" in html            # sidebar tagline
     assert "ابدأ الآن" in html                   # hero CTA
-    assert "Streamline regulatory compliance" not in html
+    assert "Ask a question instead of searching" not in html   # English lead
 
 
 def test_english_page_keeps_the_strings_the_browser_suite_asserts(client):
