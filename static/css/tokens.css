@@ -196,8 +196,6 @@
   --signal-rgb: 15 94 99;
   --confidence-rgb: 184 115 16;
 
-  --icon-navbar-toggler: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3e%3cpath stroke='rgba%28103,93,117,.9%29' stroke-linecap='round' stroke-width='2' d='M4 7h22M4 15h22M4 23h22'/%3e%3c/svg%3e");
-
   /* Shadows are warm-tinted, never neutral grey: a grey shadow on a warm
      ground reads as dirt. */
   --shadow-sm: 0 1px 2px rgb(36 31 43 / .05);
@@ -241,7 +239,6 @@
   --focus-ring-shadow: rgb(79 194 200 / .32);
   --signal-rgb: 79 194 200;
   --confidence-rgb: 233 168 75;
-  --icon-navbar-toggler: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3e%3cpath stroke='rgba%28210,202,217,.9%29' stroke-linecap='round' stroke-width='2' d='M4 7h22M4 15h22M4 23h22'/%3e%3c/svg%3e");
 
   --shadow-sm: 0 1px 2px rgb(0 0 0 / .40);
   --shadow-md: 0 4px 14px rgb(0 0 0 / .45);

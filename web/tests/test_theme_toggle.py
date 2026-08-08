@@ -22,9 +22,13 @@ def test_theme_toggle_click_and_persistence(browser_page: Page):
 
     browser_page.reload()
     expect(browser_page.locator("html")).to_have_attribute("data-bs-theme", "dark")
-    expect(browser_page.locator("#landing-theme-toggle i")).to_have_class(
-        "bi bi-sun-fill"
-    )
+    # The glyph is inline SVG now, not a bootstrap-icons font class, so the
+    # contract is the accessible state rather than a class name: in dark mode
+    # the control offers the light theme and reports itself pressed.
+    toggle = browser_page.locator("#landing-theme-toggle")
+    expect(toggle).to_have_attribute("aria-label", "Switch to light theme")
+    expect(toggle).to_have_attribute("aria-pressed", "true")
+    expect(toggle.locator("svg.icon")).to_have_count(1)
 
 
 def test_theme_toggle_keyboard_accessibility(browser_page: Page):

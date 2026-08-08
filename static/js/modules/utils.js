@@ -5,6 +5,7 @@
 import { CONFIG } from './config.js';
 import { DOMCache } from './dom.js';
 import { I18n } from './i18n.js';
+import { iconElement } from './icons.js';
 
 export const Utils = {
   renderSuggestedQuestions(container, questions) {
@@ -12,10 +13,9 @@ export const Utils = {
 
     questions.forEach((question, index) => {
       const button = DOMCache.createElement('button', CONFIG.CLASSES.SUGGESTED_BUTTON);
-      const icon = DOMCache.createElement('i', 'bi', 'bi-lightbulb-fill', CONFIG.CLASSES.SUGGESTED_ICON);
+      const icon = iconElement('lightbulb', 13, CONFIG.CLASSES.SUGGESTED_ICON);
 
-      icon.setAttribute('aria-hidden', 'true');
-      button.appendChild(icon);
+      if (icon) button.appendChild(icon);
       button.appendChild(document.createTextNode(question));
 
       DOMCache.setAttributes(button, {

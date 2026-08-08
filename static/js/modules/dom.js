@@ -5,6 +5,7 @@
 
 import { CONFIG } from './config.js';
 import { I18n } from './i18n.js';
+import { iconMarkup } from './icons.js';
 
 /* ——————————————— DOM CACHE ——————————————— */
 
@@ -69,7 +70,12 @@ export const ErrorHandler = {
     const errorEl = DOMCache.get(CONFIG.SELECTORS.AUTH_ERROR);
     if (!errorEl) return;
 
-    errorEl.innerHTML = `<i class="bi bi-exclamation-triangle-fill me-2"></i><strong>${message}</strong>`;
+    /* The glyph is ours, so it goes in as markup; the message is a provider
+       error string, so it goes in as text. */
+    errorEl.innerHTML = iconMarkup('alert', 16, 'alert-icon');
+    const label = document.createElement('strong');
+    label.textContent = message;
+    errorEl.appendChild(label);
     errorEl.classList.remove(CONFIG.CLASSES.D_NONE);
   },
 

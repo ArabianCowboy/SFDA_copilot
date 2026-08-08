@@ -140,7 +140,9 @@ The system is built in three layers and the layering is load-bearing, not organi
 
 Bilingualism also chooses the type. Zain is an Arabic-first display family with a matching Latin — the right way round for a product whose corpus is written in Arabic — and Readex Pro is one variable family drawn across both scripts, so body text does not change designer between languages. Azeret Mono appears only where a machine reports a fact: page numbers, relevance scores, timestamps, citation indices. It is never a costume for "technical".
 
-This pass redesigned the **landing surface only**. The authenticated chat app inherits the token ramp unchanged and renders correctly on it, but its composition has not been re-examined against this world; treat the chat sections below as *recorded as shipped*, not as designed to this world.
+Both surfaces are now composed to this world. The landing was redesigned first; the authenticated chat app was composed against the same ramp in a following pass that did not touch the landing's composition. Two things changed in the chat that are worth stating here because they are rules, not details: an **answer is not a bubble** — a bordered card around a thousand words of prose containing its own tables and blockquotes is a box inside a box, so assistant messages sit on the page ground and only the reader's own short question stays a bubble; and the **source deck opens by default**, because provenance is the product and an answer whose sources are one click away reads as "trust me".
+
+Iconography is inline SVG on a 16-unit grid, filled with `currentColor`, from a single registry in `web/utils/icons.py` that serves Jinja directly and the browser modules through an inlined `window.__ICONS` subset. There is no icon webfont and no emoji anywhere: a font glyph cannot be sized independently of its text and arrives as an empty box when a CDN is slow, and an emoji renders per-platform, ignores `currentColor` and cannot follow the theme. The five corpus categories each own one glyph, used by both the sidebar's FAQ headings and the composer's scope selector, so a mark means the same slice of the corpus wherever it appears.
 
 **Key Characteristics:**
 - Warm porcelain ground under a cool teal wash; warmth and coolness both present, neither dominant
@@ -288,7 +290,8 @@ On the landing Sunny is the page's only image, sized `clamp(150px, 24vw, 232px)`
 - **Do** use Azeret Mono with tabular figures for machine-reported values, and isolate them `direction: ltr` when they sit inside Arabic prose.
 - **Do** tint shadows with the ink hue in light mode and swap to black at high alpha in dark.
 - **Do** arm scroll-reveal hidden states from JS at runtime, so a dead module leaves content visible.
-- **Do** bump `asset_version` in `web/api/app.py` (currently `"warm1"`) in any commit touching CSS or JS.
+- **Do** bump `asset_version` in `web/api/app.py` (currently `"warm4"`) in any commit touching CSS or JS.
+- **Do** add a new glyph to `web/utils/icons.py` once, and to `RUNTIME_ICON_NAMES` as well if a browser module draws it.
 - **Do** carry the independence notice on every surface; the landing footer holds it.
 
 ### Don't:
@@ -300,4 +303,6 @@ On the landing Sunny is the page's only image, sized `clamp(150px, 24vw, 232px)`
 - **Don't** put a neutral grey shadow on the warm ground, or a shadow on anything that is flat and not responding to state.
 - **Don't** use the 2px rule weight decoratively — it is reserved for marks that carry meaning.
 - **Don't** hide content in CSS on the assumption a script will reveal it.
+- **Don't** reach for an emoji, a webfont glyph, or a second icon style. Every glyph is a filled 16-unit path in `icons.py`, and a set that mixes stroke weights or sources reads as assembled rather than drawn.
+- **Don't** put a bordered card around an assistant answer, or give a shrink-to-fit flex parent a `inline-size: 100%` child — a percentage width contributes nothing to intrinsic sizing, which is exactly how the source deck once resolved to zero by zero on wide screens.
 - **Don't** revive ambient decoration on every surface at once (drifting orbs, conic rings, canvas particle fields, per-element parallax). Motion marks a state change; that is its whole job.

@@ -11,7 +11,7 @@
 en:
   regulatory:
     title: "Regulatory FAQs"
-    icon: "bi-journal-text"
+    icon: "clipboard"
     questions:
       - text: "What are the requirements for drug registration in Saudi Arabia?"
         short: "Drug Registration"
@@ -26,7 +26,7 @@ en:
 
   pharmacovigilance:
     title: "Pharmacovigilance FAQs"
-    icon: "bi-shield-check"
+    icon: "capsule"
     questions:
       - text: "Could you provide a detailed outline, preferably in a bullet-point list, of the essential information that should be included in the national pharmacovigilance sub-system file (PSSF)? Please highlight the key components and any relevant regulatory requirements"
         short: "PV Sub-System file (PSSF)"
@@ -43,7 +43,7 @@ en:
 
   veterinary:
     title: "Veterinary Medicines FAQs"
-    icon: "bi-box-seam"
+    icon: "paw"
     questions:
       - text: "What are the data requirements for veterinary products?"
         short: "Veterinary Data Requirements"
@@ -54,7 +54,7 @@ en:
 
   biological:
     title: "Biological Products FAQs"
-    icon: "bi-droplet"
+    icon: "droplet"
     questions:
       - text: "What are the guidelines for biosimilar products?"
         short: "Biosimilar Guidelines"
@@ -66,7 +66,7 @@ en:
 ar:
   regulatory:
     title: "الأسئلة الشائعة — التنظيمية"
-    icon: "bi-journal-text"
+    icon: "clipboard"
     questions:
       - text: "ما هي متطلبات تسجيل الأدوية في المملكة العربية السعودية؟"
         short: "تسجيل الأدوية"
@@ -81,7 +81,7 @@ ar:
 
   pharmacovigilance:
     title: "الأسئلة الشائعة — التيقظ الدوائي"
-    icon: "bi-shield-check"
+    icon: "capsule"
     questions:
       - text: "هل يمكنك تقديم بيان تفصيلي، على شكل قائمة نقطية، للمعلومات الأساسية التي يجب تضمينها في ملف النظام الفرعي الوطني للتيقظ الدوائي (PSSF)؟ يرجى إبراز المكوّنات الرئيسية وأي متطلبات تنظيمية ذات صلة"
         short: "ملف النظام الفرعي (PSSF)"
@@ -98,7 +98,7 @@ ar:
 
   veterinary:
     title: "الأسئلة الشائعة — الأدوية البيطرية"
-    icon: "bi-box-seam"
+    icon: "paw"
     questions:
       - text: "ما هي متطلبات البيانات الخاصة بالمستحضرات البيطرية؟"
         short: "متطلبات البيانات البيطرية"
@@ -109,7 +109,7 @@ ar:
 
   biological:
     title: "الأسئلة الشائعة — المنتجات الحيوية"
-    icon: "bi-droplet"
+    icon: "droplet"
     questions:
       - text: "ما هي الاشتراطات الخاصة بالمستحضرات الحيوية المماثلة؟"
         short: "المستحضرات الحيوية المماثلة"

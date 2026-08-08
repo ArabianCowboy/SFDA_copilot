@@ -99,6 +99,7 @@ from web.services.sse import sse, sse_headers
 from web.services.search_engine import ImprovedSearchEngine, SearchResult
 from web.services.search_exceptions import ManifestValidationError
 from web.utils.config_loader import config
+from web.utils.icons import CATEGORY_ICONS, icon, runtime_icons
 from web.utils.i18n import (
     load_catalog,
     make_translator,
@@ -120,7 +121,7 @@ SUPPORTED_FAQ_LANGS = ("en", "ar")
 # Cache-buster appended to every static CSS/JS URL. Bump this in any commit that
 # changes a stylesheet or module, otherwise returning users get a stale
 # components.css against a fresh tokens.css and see a half-styled app.
-ASSET_VERSION = "warm3"
+ASSET_VERSION = "warm4"
 
 # Product release, rendered in the landing footer. Kept as one constant so
 # the number cannot drift between the page and the module headers.
@@ -464,7 +465,14 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
 
     @app.context_processor
     def inject_template_globals() -> Dict[str, Any]:
-        return {"asset_version": ASSET_VERSION, "app_version": APP_VERSION}
+        # `icon` and `category_icon` are globals rather than a Jinja import so
+        # partials get them without every caller remembering `with context`.
+        return {
+            "asset_version": ASSET_VERSION,
+            "app_version": APP_VERSION,
+            "icon": icon,
+            "category_icon": lambda key: CATEGORY_ICONS.get(key, "globe"),
+        }
 
     @app.route("/")
     def index():
@@ -494,6 +502,7 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
             text_dir=text_direction(lang),
             t=make_translator(catalog),
             i18n_runtime=runtime_subset(catalog),
+            icons_runtime=runtime_icons(),
         ))
         # Persist an explicit ?lang= so the choice survives the next visit.
         if request.args.get("lang"):

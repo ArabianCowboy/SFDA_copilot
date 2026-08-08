@@ -63,7 +63,15 @@ export const Transcript = {
   save() {
     try {
       const messages = document.getElementById('messages');
-      if (messages) sessionStorage.setItem(TRANSCRIPT_KEY, messages.innerHTML);
+      if (!messages) return;
+      /* The opening state is server-rendered in the CURRENT language. Saving
+         it would restore English copy onto an Arabic page after a switch —
+         which is the one thing this module exists to prevent. */
+      const turns = [...messages.children]
+        .filter(el => !el.hasAttribute('data-chat-intro'))
+        .map(el => el.outerHTML)
+        .join('');
+      sessionStorage.setItem(TRANSCRIPT_KEY, turns);
     } catch { /* quota or private mode */ }
   },
 
@@ -74,7 +82,8 @@ export const Transcript = {
       sessionStorage.removeItem(TRANSCRIPT_KEY);
       const messages = document.getElementById('messages');
       if (!messages) return false;
-      messages.innerHTML = saved;
+      // Appended after the freshly rendered intro, not over it.
+      messages.insertAdjacentHTML('beforeend', saved);
       messages.scrollTop = messages.scrollHeight;
       return true;
     } catch {

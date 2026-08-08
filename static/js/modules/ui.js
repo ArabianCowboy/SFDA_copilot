@@ -16,6 +16,7 @@ import { RobotStateManager } from './robot.js';
 import { bindCitations, renderSourceDeck, nextMessageId } from './citations.js';
 import { MarkdownStream } from './stream-render.js';
 import { I18n } from './i18n.js';
+import { iconMarkup } from './icons.js';
 
 function createMessageContent(text, isBot) {
   const contentDiv = DOMCache.createElement('div', 'message-content');
@@ -50,8 +51,13 @@ function createMessageElement(text, sender, msgId) {
 
   const timestampEl = DOMCache.createElement('time', 'timestamp');
   const now = new Date();
-  timestampEl.textContent = now.toLocaleTimeString();
+  /* Locale-aware, and dir="auto" so bidi cannot reorder it: an en-US time
+     dropped into an Arabic transcript rendered as "AM 3:17:18" because the
+     RTL context reversed the run. The same string in `ar` is Arabic and must
+     stay RTL, so the direction is detected rather than forced. */
+  timestampEl.textContent = now.toLocaleTimeString(I18n.lang);
   timestampEl.dateTime = now.toISOString();
+  timestampEl.setAttribute('dir', 'auto');
   messageBubble.appendChild(timestampEl);
 
   messageWrapper.appendChild(messageBubble);
@@ -83,6 +89,7 @@ export const UI = {
     document.querySelectorAll('[data-ts-now]').forEach(el => {
       el.textContent = now.toLocaleTimeString(I18n.lang);
       el.dateTime = now.toISOString();
+      el.setAttribute('dir', 'auto');
     });
   },
 
@@ -360,8 +367,8 @@ export const UI = {
     if (sendBtn) {
       const originalText = AppState.get('originalSendButtonText') || I18n.t('chat.send');
       sendBtn.innerHTML = isSending
-        ? `<i class="bi bi-stop-circle"></i> ${I18n.t('chat.cancel')}`
-        : `<i class="bi bi-send"></i> ${originalText}`;
+        ? `${iconMarkup('stop', 16)}<span>${I18n.t('chat.cancel')}</span>`
+        : `${iconMarkup('send', 16)}<span>${originalText}</span>`;
       sendBtn.setAttribute(
         'aria-label',
         isSending ? I18n.t('chat.cancelAria') : I18n.t('chat.sendAria')
@@ -381,8 +388,14 @@ export const UI = {
         for (const [category, data] of Object.entries(faqData || {})) {
           if (!data?.questions?.length) continue;
 
-          const header = DOMCache.createElement('h4', 'ps-2', 'mt-3');
-          header.innerHTML = `<i class="bi ${data.icon || 'bi-question-circle'}"></i>${data.title || category}`;
+          /* The glyph is the category's own — the same mark the composer's
+             selector shows for it — so the two places a category appears
+             never drift apart. */
+          const header = DOMCache.createElement('h4');
+          const label = DOMCache.createElement('span');
+          label.textContent = data.title || category;
+          header.innerHTML = iconMarkup(data.icon || 'question', 14);
+          header.appendChild(label);
 
           const nav = DOMCache.createElement('nav', 'nav', 'nav-pills', 'flex-column');
 
@@ -411,9 +424,11 @@ export const UI = {
         const content = createFaqContent();
         if (content.childElementCount > 0) {
           section.appendChild(index === 0 ? content : content.cloneNode(true));
-          section.querySelector('h4:first-of-type')?.classList.remove('mt-3');
+          /* The first group heads the rail, so it drops the separating rule
+             and the space above it that every later group needs. */
+          section.querySelector('h4:first-of-type')?.classList.add('is-first');
         } else {
-          section.innerHTML = `<div class="text-secondary small text-center py-3">${I18n.t('faq.empty')}</div>`;
+          section.innerHTML = `<p class="faq-empty">${I18n.t('faq.empty')}</p>`;
         }
       });
     },

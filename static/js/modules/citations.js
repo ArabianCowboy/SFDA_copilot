@@ -12,6 +12,8 @@
  */
 
 import { DOMCache } from './dom.js';
+import { iconMarkup } from './icons.js';
+import { I18n } from './i18n.js';
 
 /* Two regexes, deliberately. Sharing one /g regex between .test() in
    acceptNode and .exec() in the replace loop corrupts lastIndex and silently
@@ -31,7 +33,7 @@ function makeMarker(index, msgId) {
   button.dataset.cite = String(index);
   button.dataset.msg = msgId;
   button.textContent = String(index);
-  button.setAttribute('aria-label', `Source ${index}`);
+  button.setAttribute('aria-label', I18n.t('cite.marker', { n: index }));
   button.setAttribute('aria-controls', `src-${msgId}-${index}`);
   return button;
 }
@@ -97,16 +99,21 @@ export function renderSourceDeck(sources, msgId) {
   deck.id = `deck-${msgId}`;
   if (!Array.isArray(sources) || !sources.length) return deck;
 
+  /* The deck opens by default. Provenance is the product: an answer whose
+     sources are one click away by default reads as "trust me", and the whole
+     point of this surface is that it does not have to be trusted. */
+  deck.classList.add('is-open');
+
+  const label = I18n.plural(sources.length, 'cite.sourcesOne', 'cite.sourcesMany');
   const summary = DOMCache.createElement('button', 'source-deck-summary');
   summary.type = 'button';
-  summary.setAttribute('aria-expanded', 'false');
+  summary.setAttribute('aria-expanded', 'true');
   summary.innerHTML =
-    `<i class="bi bi-chevron-right chev" aria-hidden="true"></i>` +
-    `<span>${sources.length} source${sources.length === 1 ? '' : 's'}</span>`;
+    iconMarkup('chevron-right', 12, 'chev') + `<span>${label}</span>`;
   deck.appendChild(summary);
 
   const list = DOMCache.createElement('ol', 'source-list');
-  list.setAttribute('aria-label', 'Sources');
+  list.setAttribute('aria-label', label);
 
   for (const source of sources) {
     const card = DOMCache.createElement('li', 'source-card');
@@ -116,21 +123,30 @@ export function renderSourceDeck(sources, msgId) {
     const relevance = pct(source.score);
     const snippetId = `snip-${msgId}-${source.index}`;
 
+    /* The head is the resting state: index, document, page and how strongly it
+       matched. The passage itself and the retrieval split sit behind the
+       disclosure — eight cards showing everything at once buries the answer
+       they belong to. */
     card.innerHTML = `
       <button class="source-card-head" type="button" aria-expanded="false" aria-controls="${snippetId}">
         <span class="source-index">${source.index}</span>
         <span class="source-doc" dir="auto"></span>
         <span class="source-page" dir="ltr"></span>
+        ${iconMarkup('chevron-right', 12, 'source-chev')}
       </button>
-      <span class="source-cat"></span>
-      <div class="relevance" role="img" aria-label="Relevance ${relevance} percent">
+      <div class="relevance" role="img" aria-label="${I18n.t('cite.relevance', { pct: relevance })}">
         <div class="relevance-bar" style="--pct:${relevance}%"></div>
       </div>
-      <div class="score-split">
-        <span class="score" dir="ltr"><b>SEM</b> ${fmt(source.semantic_score)}</span>
-        <span class="score" dir="ltr"><b>LEX</b> ${fmt(source.lexical_score)}</span>
-      </div>
-      <div class="source-snippet" id="${snippetId}" dir="auto" hidden></div>`;
+      <div class="source-detail" id="${snippetId}" hidden>
+        <p class="source-snippet" dir="auto"></p>
+        <div class="source-meta">
+          <span class="source-cat"></span>
+          <span class="score-split">
+            <span class="score" dir="ltr"><b>SEM</b> ${fmt(source.semantic_score)}</span>
+            <span class="score" dir="ltr"><b>LEX</b> ${fmt(source.lexical_score)}</span>
+          </span>
+        </div>
+      </div>`;
 
     /* Document names, categories and snippets are model- and corpus-derived,
        so they go in as text, never as markup. */

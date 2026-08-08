@@ -7,6 +7,7 @@
 import { CONFIG } from './config.js';
 import { DOMCache, logError } from './dom.js';
 import { I18n } from './i18n.js';
+import { iconMarkup } from './icons.js';
 
 export const ThemeManager = {
   init() {
@@ -48,11 +49,11 @@ export const ThemeManager = {
 
   updateToggleIcons() {
     const isDark = this.getCurrent() === CONFIG.CLASSES.DARK;
-    const iconClass = isDark ? 'bi-sun-fill' : 'bi-moon-fill';
+    const glyph = isDark ? 'sun' : 'moon';
     const newTitle = isDark ? 'Switch to light theme' : 'Switch to dark theme';
 
     DOMCache.getAll(`.${CONFIG.CLASSES.THEME_TOGGLE}`).forEach(btn => {
-      btn.innerHTML = `<i class="bi ${iconClass}"></i>`;
+      btn.innerHTML = iconMarkup(glyph, 16);
       DOMCache.setAttributes(btn, {
         title: newTitle,
         'aria-label': newTitle,
@@ -84,7 +85,7 @@ export const ThemeManager = {
 
   animateToggleButtons() {
     DOMCache.getAll(`.${CONFIG.CLASSES.THEME_TOGGLE}`).forEach(btn => {
-      const icon = btn.querySelector('.bi');
+      const icon = btn.querySelector('.icon');
       if (icon) {
         icon.style.animation = 'none';
         icon.offsetHeight; /* force reflow */

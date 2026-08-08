@@ -37,6 +37,16 @@ a:hover { color: var(--signal-hover); text-decoration: underline; }
    relevance scores, timestamps. Digits must not jitter between frames. */
 .tabular, .timestamp, .source-page, .score { font-variant-numeric: tabular-nums; }
 
+/* Every glyph in the build is inline SVG on a 16-unit grid filled with
+   currentColor, so an icon inherits the colour of whatever names it and needs
+   no dark-mode rule of its own. `flex: none` stops one being squeezed to a
+   sliver inside a tight flex row; the baseline nudge sits it optically on the
+   text line rather than on its own box edge. */
+.icon {
+  flex: none;
+  vertical-align: -.125em;
+}
+
 .container-fluid, .row { block-size: 100%; margin: 0; padding: 0; }
 
 /* The landing scrolls the document. The chat is the opposite: a fixed
@@ -76,55 +86,117 @@ a:hover { color: var(--signal-hover); text-decoration: underline; }
 
 .hidden { display: none !important; }
 
-/* ——————————————— Mobile navbar ——————————————— */
-.navbar.d-lg-none {
+/* ——————————————— Mobile top bar ——————————————— */
+.app-topbar {
+  padding-block: var(--space-2);
   color: var(--fg-primary);
   background: var(--bg-surface);
   border-block-end: 1px solid var(--hairline);
 }
-.navbar.d-lg-none .navbar-brand {
+.app-topbar .navbar-brand {
+  font-family: var(--font-display);
   font-weight: var(--fw-display);
   font-size: var(--fs-400);
   letter-spacing: var(--track-tight);
   color: var(--fg-primary);
 }
-.navbar.d-lg-none .navbar-toggler {
-  border-color: var(--hairline);
+/* Bootstrap's toggler draws its bars with a background-image, which meant a
+   themed data-URI token per mode. Ours is an inline SVG on currentColor, so
+   the button only has to be a button. */
+.app-topbar .navbar-toggler {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 38px;
+  block-size: 38px;
+  padding: 0;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
   color: var(--fg-secondary);
+  transition: var(--btn-transition);
 }
-.navbar.d-lg-none .navbar-toggler-icon { background-image: var(--icon-navbar-toggler); }
+.app-topbar .navbar-toggler:hover { color: var(--signal); border-color: var(--signal); }
+.app-topbar .navbar-toggler:focus { box-shadow: none; }
 
-/* ——————————————— Sidebar ——————————————— */
-.sidebar, .offcanvas.offcanvas-start {
-  position: sticky;
-  inset-block-start: 0;
+/* ——————————————— Sidebar ———————————————
+   A column in three parts: who this is, what you can ask, and who you are.
+   The FAQ takes the height between the other two because it is the only part
+   the reader actually works in — the account block used to sit third from the
+   top in a filled box, which made the least-used control the loudest thing
+   here. */
+/* The look both instances share. */
+.sidebar {
   display: flex;
   flex-direction: column;
-  block-size: 100vh;
   padding: var(--space-5);
-  overflow-y: auto;
+  overflow: hidden;
   color: var(--fg-primary);
   background: var(--bg-surface);
+}
+
+/* The desktop aside, and ONLY the desktop aside: a pinned viewport-tall
+   column with a trailing rule.
+
+   These two declarations used to be shared with `.offcanvas.offcanvas-start`,
+   which overrode Bootstrap's `position: fixed` on the drawer. That put a
+   400px-wide, 100vh-tall panel — invisible, but very much in flow — into the
+   mobile row ahead of the chat, wrapping the entire transcript and composer
+   one full screen below the fold. The mobile app had no visible content at
+   all below the top bar. */
+aside.sidebar {
+  position: sticky;
+  inset-block-start: 0;
+  block-size: 100vh;
   border-inline-end: 1px solid var(--hairline);
 }
-.offcanvas.offcanvas-start { border-inline-end: none; }
+
+.offcanvas.offcanvas-start {
+  display: flex;
+  flex-direction: column;
+  color: var(--fg-primary);
+  background: var(--bg-surface);
+}
 .offcanvas.offcanvas-start .offcanvas-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
   border-block-end: 1px solid var(--hairline);
   background: var(--bg-surface);
 }
-.offcanvas.offcanvas-start .offcanvas-body.sidebar { padding: var(--space-5); }
+.offcanvas-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--fs-400);
+  font-weight: var(--fw-display);
+  letter-spacing: var(--track-tight);
+}
+.offcanvas-title .icon { color: var(--fg-muted); }
+.offcanvas-actions { display: flex; align-items: center; gap: var(--space-3); }
+/* Bootstrap already gives .offcanvas-body flex-grow and its own scroll; the
+   sidebar layout inside it just needs a real height to flex against so the
+   FAQ list scrolls and the account block stays pinned to the bottom. */
+.offcanvas.offcanvas-start .offcanvas-body.sidebar {
+  flex: 1;
+  min-block-size: 0;
+  padding: var(--space-5);
+}
 
 /* The theme toggle sits on its own row so the wordmark can be a plain heading
    rather than a flex container fighting a button for baseline. */
 .sidebar-brandbar {
   display: flex;
   justify-content: flex-end;
+  flex: none;
   margin-block-end: var(--space-2);
 }
 
 .sidebar-header {
+  flex: none;
   padding-block-end: var(--space-4);
-  margin-block-end: var(--space-5);
+  margin-block-end: var(--space-2);
   border-block-end: 1px solid var(--hairline);
   animation: sidebarReveal var(--duration-l) var(--ease-soft) forwards;
 }
@@ -137,27 +209,35 @@ a:hover { color: var(--signal-hover); text-decoration: underline; }
   font-weight: var(--fw-display);
   letter-spacing: var(--track-tight);
 }
-.sidebar-title i { font-size: var(--fs-400); color: var(--signal); }
+.sidebar-title .icon { color: var(--signal); }
 .sidebar-tagline {
-  margin-block-end: var(--space-4);
+  margin: 0;
   font-size: var(--fs-200);
   color: var(--fg-muted);
 }
 
-.auth-status-container {
-  padding: var(--space-3);
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-md);
-  background: var(--bg-sunken);
+/* Account, pinned to the bottom of the column: a hairline and a line of text,
+   not a filled card. `margin-block-start: auto` does the pinning, so a short
+   FAQ list does not leave it floating mid-column. */
+.sidebar-account {
+  flex: none;
+  margin-block-start: auto;
+  padding-block-start: var(--space-4);
+  border-block-start: 1px solid var(--hairline);
 }
 .auth-status-text {
   display: block;
-  margin-block-end: var(--space-2);
-  font-size: var(--fs-200);
-  color: var(--fg-secondary);
+  margin-block-end: var(--space-3);
+  font-size: var(--fs-100);
+  color: var(--fg-muted);
   overflow-wrap: anywhere;
 }
-.auth-status-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.auth-status-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
 
 /* ——————————————— Chat shell ——————————————— */
 .chat-area {

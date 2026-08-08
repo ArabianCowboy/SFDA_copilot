@@ -59,9 +59,15 @@
 }
 .unified-button:active { transform: translateY(0); }
 /* The arrow leans toward the reading direction, so it points "onward" in
-   both scripts rather than always to the right. */
-.unified-button .bi { transition: transform var(--duration-s) var(--ease-soft); }
-.unified-button:hover .bi { transform: translateX(calc(3px * var(--flip))); }
+   both scripts rather than always to the right. It also mirrors under RTL —
+   an arrow is a directional glyph, unlike the rest of the set. */
+.unified-button .button-arrow {
+  transform: scaleX(var(--flip));
+  transition: transform var(--duration-s) var(--ease-soft);
+}
+.unified-button:hover .button-arrow {
+  transform: scaleX(var(--flip)) translateX(3px);
+}
 
 /* Shared base for the small icon controls in the page chrome.
    .lang-toggle-btn is deliberately a separate class from .theme-toggle-btn:
@@ -89,12 +95,26 @@
   font-weight: var(--fw-display);
   line-height: 1;
 }
-/* In the sidebar the switcher sits inline under the tagline rather than in a
-   row of circular chrome buttons. */
-.sidebar-header .lang-toggle-btn {
+/* In the account footer the switcher is one control among several, so it
+   matches their height instead of being a 38px circle beside 31px buttons. */
+.sidebar-account .lang-toggle-btn {
   inline-size: auto;
-  padding-inline: var(--space-3);
-  margin-block-end: var(--space-4);
+  min-inline-size: 34px;
+  block-size: 31px;
+  padding-inline: var(--space-2);
+  border-radius: var(--radius-sm);
+  margin-inline-start: auto;
+}
+
+/* Buttons that carry a glyph beside a word. Bootstrap's own `.btn` is a
+   text-align box, so an inline SVG sits on the text baseline unevenly. The
+   radius is stated rather than inherited from `.btn-sm`, which uses its own
+   4px and left the small controls in a row disagreeing by 2px. */
+.btn-ghost, .btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  border-radius: var(--radius-sm);
 }
 
 /* ——————————————— Landing shell ——————————————— */
@@ -324,13 +344,22 @@
   color: var(--fg-primary);
 }
 .modal-header .modal-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   font-weight: var(--fw-display);
   font-size: var(--fs-500);
   letter-spacing: var(--track-tight);
 }
+.modal-header .modal-title .icon { color: var(--signal); }
 .modal-header .btn-close { filter: none; opacity: .6; }
 .nav-tabs { border-block-end: 1px solid var(--hairline); }
 .nav-tabs .nav-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  inline-size: 100%;
   color: var(--fg-muted);
   font-weight: var(--fw-medium);
   border: none;
@@ -341,6 +370,17 @@
   background: transparent;
   border-block-end-color: var(--signal);
 }
+/* Floating labels carry a glyph, so they lay out as a row rather than letting
+   the SVG drop the label's own baseline. */
+.form-floating > label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.form-floating > label .icon { color: var(--fg-faint); }
+.form-label { display: inline-flex; align-items: center; gap: var(--space-2); }
+.form-label .icon { color: var(--fg-faint); }
+#auth-error { display: flex; align-items: center; gap: var(--space-2); }
 .form-control, .form-select {
   background: var(--bg-surface);
   border: 1px solid var(--hairline-strong);
@@ -354,25 +394,49 @@
 .form-floating > label { color: var(--fg-muted); }
 .form-text { color: var(--fg-muted); font-size: var(--fs-200); }
 
-/* ——————————————— FAQ ——————————————— */
-.faq-section { flex: 1; min-block-size: 0; overflow-y: auto; }
+/* ——————————————— FAQ rail ———————————————
+   The reason the sidebar exists: a first session usually starts by clicking a
+   question rather than typing one. It takes the height between the identity
+   block and the account footer, and scrolls on its own.
+
+   Group headings carry the category's glyph — the same mark the composer's
+   scope selector shows — so the two places a category appears agree. */
+.faq-section {
+  flex: 1;
+  min-block-size: 0;
+  overflow-y: auto;
+  padding-block: var(--space-3);
+  /* Room for the scrollbar so a thumb never sits on top of the labels. */
+  padding-inline-end: var(--space-2);
+  margin-inline-end: calc(var(--space-2) * -1);
+}
 .faq-section h4 {
-  display: flex; align-items: center;
-  padding-block-start: var(--space-4);
-  margin-block: var(--space-5) var(--space-3);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding-block-start: var(--space-5);
+  margin-block: var(--space-4) var(--space-2);
   border-block-start: 1px solid var(--hairline);
+  font-family: var(--font-sans);
   font-size: var(--fs-100);
-  font-weight: var(--fw-display);
+  font-weight: var(--fw-medium);
   letter-spacing: var(--track-caps);
   text-transform: uppercase;
   color: var(--fg-muted);
 }
-.faq-section h4 i { margin-inline-end: var(--space-2); color: var(--fg-faint); }
-.faq-section .nav-pills { display: flex; flex-direction: column; gap: var(--space-1); }
+/* The first group heads the column; a rule above it would only separate it
+   from the identity block, which already has one. */
+.faq-section h4.is-first {
+  padding-block-start: 0;
+  margin-block-start: 0;
+  border-block-start: none;
+}
+.faq-section h4 .icon { color: var(--signal); }
+.faq-section .nav-pills { display: flex; flex-direction: column; gap: 1px; }
 .faq-section .nav-link.faq-button {
   position: relative;
   padding: var(--space-2) var(--space-3);
-  border: 1px solid transparent;
+  border: none;
   border-radius: var(--radius-sm);
   font-size: var(--fs-300);
   font-weight: var(--fw-body);
@@ -382,70 +446,114 @@
   background: transparent;
   cursor: pointer;
   transition: background var(--duration-s) var(--ease-soft),
-              color var(--duration-s) var(--ease-soft),
-              border-color var(--duration-s) var(--ease-soft);
+              color var(--duration-s) var(--ease-soft);
 }
 .faq-section .nav-link.faq-button:hover,
 .faq-section .nav-link.faq-button:focus-visible {
   color: var(--fg-primary);
   background: var(--bg-sunken);
-  border-color: var(--hairline);
 }
+/* The selected question is marked by a rule on the reading edge and the signal
+   colour, not by a filled teal slab. Eight of those in a scrolling column read
+   as a navigation bar rather than as one active item — and teal in this app
+   means retrieval, so a solid block of it here competes with the citations. */
 .faq-section .nav-link.faq-button.active {
-  color: var(--fg-on-signal);
+  color: var(--signal);
   font-weight: var(--fw-medium);
+  background: var(--signal-tint);
+}
+.faq-section .nav-link.faq-button.active::before {
+  content: '';
+  position: absolute;
+  inset-block: var(--space-1);
+  inset-inline-start: 0;
+  inline-size: 2px;
+  border-radius: var(--radius-pill);
   background: var(--signal);
-  border-color: var(--signal);
 }
 .faq-section .nav-link.faq-button:disabled {
   color: var(--fg-faint);
   background: transparent;
   cursor: not-allowed;
 }
+.faq-empty {
+  margin: 0;
+  padding-block: var(--space-5);
+  font-size: var(--fs-200);
+  color: var(--fg-muted);
+  text-align: center;
+}
 
-/* ——————————————— Chat messages ——————————————— */
+/* ——————————————— Chat messages ———————————————
+   The two speakers are composed differently on purpose. A question is short
+   and belongs to the person who asked it, so it stays a bubble: a tinted slab
+   with the flagged corner pointing back at its speaker.
+
+   An ANSWER is a regulatory document — a thousand words of prose carrying
+   tables, blockquotes and code. It used to be wrapped in the same bordered
+   white card, which put a box inside a box around every table and fenced the
+   reading column at exactly the width the reader is trying to read across.
+   The answer now sits on the page ground, marked by its speaker and its
+   sources rather than by a container. */
 .message {
   display: flex;
   flex-direction: column;
   max-inline-size: 100%;
 }
-.chatbot-message { align-self: flex-start; align-items: flex-start; }
+.chatbot-message { align-self: stretch; align-items: stretch; }
 .user-message { align-self: flex-end; align-items: flex-end; max-inline-size: min(56ch, 100%); }
 
-.message-bubble {
-  position: relative;
-  padding: var(--space-4) var(--space-5);
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-msg);
-  background: var(--bg-surface);
+.message-bubble { position: relative; }
+.chatbot-message .message-bubble {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
 }
-/* The squared corner points back at its speaker, so it follows writing
-   direction rather than a fixed side. */
-.chatbot-message .message-bubble { border-start-start-radius: var(--radius-sm); }
 .user-message .message-bubble {
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--signal);
+  border-radius: var(--radius-msg);
+  /* The squared corner points back at its speaker, so it follows writing
+     direction rather than a fixed side. */
+  border-start-end-radius: var(--radius-sm);
   color: var(--fg-on-signal);
   background: var(--signal);
-  border-color: var(--signal);
-  border-start-end-radius: var(--radius-sm);
 }
 .user-message .timestamp { color: var(--fg-on-signal); opacity: .75; }
+/* An answer's timestamp is meta, not part of the prose: it sits on the same
+   line as nothing else and stays out of the reading rhythm. */
+.chatbot-message .timestamp { margin-block-start: 0; }
 
-.avatar { display: flex; align-items: center; margin-block-end: var(--space-2); }
+/* The stage line is prepended into the bubble by UI.setStage, which would put
+   "DRAFTING THE ANSWER" above the speaker it belongs to. Ordering the avatar
+   first here keeps the reading order speaker → progress → answer without the
+   JS needing to know where in the bubble anything else lives. */
+.avatar { display: flex; align-items: center; order: -1; }
 
 .message-content {
+  inline-size: 100%;
   color: var(--fg-primary);
   font-size: var(--fs-400);
   line-height: var(--lh-body);
   overflow-wrap: break-word;
 }
-.user-message .message-content { color: var(--fg-on-signal); }
+.user-message .message-content {
+  inline-size: auto;
+  font-size: var(--fs-300);
+  color: var(--fg-on-signal);
+}
 .message-content > :last-child { margin-block-end: 0; }
+.message-content > :first-child { margin-block-start: 0; }
 .message-content h1, .message-content h2, .message-content h3, .message-content h4 {
-  margin-block: var(--space-5) var(--space-2);
+  /* More air above a heading than below it, so it binds to what it introduces
+     rather than floating between two paragraphs. */
+  margin-block: var(--space-6) var(--space-2);
   font-size: var(--fs-500);
 }
 .message-list { padding-inline-start: 1.25em; }
-.message-list li { margin-block-end: var(--space-1); }
+.message-list li { margin-block-end: var(--space-2); }
+.message-list li::marker { color: var(--fg-faint); }
 .message-content blockquote {
   margin: var(--space-4) 0;
   padding-inline-start: var(--space-4);
@@ -511,11 +619,67 @@
   font-size: .875em;
 }
 .knowledge-cutoff-notice {
-  padding: var(--space-3);
-  margin-block: var(--space-4);
-  border-inline-start: 2px solid var(--hairline-strong);
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  margin-block: 0;
+  border-radius: var(--radius-sm);
   background: var(--bg-sunken);
+  font-size: var(--fs-200);
+  line-height: 1.6;
+  color: var(--fg-muted);
+}
+.knowledge-cutoff-notice .icon { margin-block-start: .2em; }
+
+/* ——————————————— Opening state ———————————————
+   Not a message: nothing was sent, so there is no bubble, no avatar row and
+   no timestamp. It names the three things the reader can do and then gets out
+   of the way. */
+.chat-intro {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-4);
+  max-inline-size: var(--measure);
+  padding-block: var(--space-4);
+}
+.chat-intro-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--fs-600);
+  font-weight: var(--fw-display);
+  line-height: var(--lh-snug);
+  letter-spacing: var(--track-tight);
+  color: var(--fg-primary);
+}
+/* Deliberately NOT teal. Inside the transcript teal means "this came from a
+   document"; spending it on the product's own name in the greeting would
+   spend the one cue the citations depend on. The heading is already the
+   loudest thing here — the emphasis stays semantic. */
+.chat-intro-title strong { font-weight: inherit; color: inherit; }
+.chat-intro-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.chat-intro-list li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
   font-size: var(--fs-300);
+  color: var(--fg-secondary);
+}
+/* One muted colour for all three. They used to be Bootstrap's blue, green and
+   cyan utilities — three colours from outside this system, on a surface whose
+   whole discipline is that teal means retrieval. */
+.chat-intro-list .icon { color: var(--fg-faint); }
+.chat-intro-prompt {
+  margin: 0;
+  font-size: var(--fs-400);
   color: var(--fg-secondary);
 }
 
@@ -553,19 +717,25 @@
   color: var(--fg-on-signal);
 }
 
+/* The deck is a block, NOT a shrink-to-fit flex column. It used to be the
+   latter, with a `inline-size: 100%` list inside it — and a percentage width
+   contributes nothing to intrinsic sizing, so the deck was only ever as wide
+   as its summary button. Above 1440px, where a media query hid that button,
+   the whole deck resolved to zero by zero: every source card was in the DOM,
+   measured 0x0, and no reader on a wide screen could see a single one. On the
+   surface whose entire premise is traceable answers. */
 .source-deck {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--space-2);
-  margin-block-start: var(--space-3);
+  inline-size: 100%;
+  margin-block-start: var(--space-4);
+  padding-block-start: var(--space-4);
+  border-block-start: 1px solid var(--hairline);
 }
 .source-list {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
   inline-size: 100%;
-  margin: 0;
+  margin: var(--space-3) 0 0;
   padding: 0;
   list-style: none;
 }
@@ -573,18 +743,29 @@
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-sm);
-  background: var(--bg-surface);
+  padding: 0;
+  border: none;
+  background: none;
   color: var(--fg-muted);
-  font-size: var(--fs-200);
+  font-family: var(--font-sans);
+  font-size: var(--fs-100);
   font-weight: var(--fw-medium);
+  letter-spacing: var(--track-caps);
+  text-transform: uppercase;
   cursor: pointer;
+  transition: color var(--duration-s) var(--ease-soft);
 }
-.source-deck-summary:hover { color: var(--fg-primary); border-color: var(--hairline-strong); }
-.source-deck-summary .chev { transition: transform var(--duration-s) var(--ease-soft); }
-.source-deck.is-open .source-deck-summary .chev { transform: rotate(90deg); }
+.source-deck-summary:hover { color: var(--fg-primary); }
+.source-deck-summary .chev {
+  color: var(--fg-faint);
+  /* An arrow points along the reading direction, so it mirrors; then the open
+     state rotates it a further quarter turn to point down at the list. */
+  transform: scaleX(var(--flip));
+  transition: transform var(--duration-s) var(--ease-soft);
+}
+.source-deck.is-open .source-deck-summary .chev {
+  transform: scaleX(var(--flip)) rotate(90deg);
+}
 
 .source-card {
   padding: var(--space-3);
@@ -594,14 +775,15 @@
   transition: border-color var(--duration-s) var(--ease-soft),
               background var(--duration-s) var(--ease-soft);
 }
+.source-card:hover { border-color: var(--hairline-strong); }
 .source-card.is-lit {
   border-color: var(--signal);
   background: var(--signal-tint);
 }
 .source-card-head {
   display: flex;
-  align-items: baseline;
-  gap: var(--space-2);
+  align-items: center;
+  gap: var(--space-3);
   inline-size: 100%;
   padding: 0;
   border: none;
@@ -612,8 +794,8 @@
 }
 .source-index {
   flex: none;
-  min-inline-size: 1.4em;
-  padding: 0 .3em;
+  min-inline-size: 1.5em;
+  padding: 1px .3em;
   border: 1px solid var(--signal);
   border-radius: var(--radius-xs);
   color: var(--signal);
@@ -626,6 +808,7 @@
   min-inline-size: 0;
   font-size: var(--fs-200);
   font-weight: var(--fw-medium);
+  line-height: var(--lh-snug);
   color: var(--fg-primary);
   overflow-wrap: anywhere;
 }
@@ -640,17 +823,18 @@
   font-variant-numeric: tabular-nums;
   color: var(--fg-muted);
 }
-.source-cat {
-  display: inline-block;
-  margin-block-start: var(--space-2);
-  font-size: var(--fs-100);
-  letter-spacing: var(--track-caps);
-  text-transform: uppercase;
+.source-chev {
+  flex: none;
   color: var(--fg-faint);
+  transform: scaleX(var(--flip));
+  transition: transform var(--duration-s) var(--ease-soft);
+}
+.source-card-head[aria-expanded="true"] .source-chev {
+  transform: scaleX(var(--flip)) rotate(90deg);
 }
 
 .relevance {
-  block-size: 4px;
+  block-size: 3px;
   margin-block-start: var(--space-2);
   border-radius: var(--radius-pill);
   background: var(--bg-sunken);
@@ -662,32 +846,45 @@
   border-radius: inherit;
   background: var(--confidence);
 }
-.score-split {
-  display: flex;
-  gap: var(--space-3);
-  margin-block-start: var(--space-2);
+
+/* The passage and the retrieval split live behind the disclosure. Eight cards
+   each showing a snippet, a category and two scores at rest buries the answer
+   they belong to; the card at rest answers "which document, which page, how
+   strongly" and opening one answers "and what did it actually say". */
+.source-detail {
+  margin-block-start: var(--space-3);
+  padding-block-start: var(--space-3);
+  border-block-start: 1px solid var(--hairline);
 }
+.source-detail[hidden] { display: none; }
+.source-snippet {
+  margin: 0;
+  font-size: var(--fs-200);
+  line-height: var(--lh-body);
+  color: var(--fg-secondary);
+}
+.source-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-4);
+  margin-block-start: var(--space-3);
+}
+.source-cat {
+  font-size: var(--fs-100);
+  letter-spacing: var(--track-caps);
+  text-transform: uppercase;
+  color: var(--fg-faint);
+}
+.score-split { display: flex; gap: var(--space-3); }
 .score b {
   font-weight: var(--fw-medium);
   color: var(--fg-faint);
   letter-spacing: var(--track-caps);
 }
-.source-snippet {
-  margin-block-start: var(--space-3);
-  padding-block-start: var(--space-3);
-  border-block-start: 1px solid var(--hairline);
-  font-size: var(--fs-200);
-  line-height: var(--lh-body);
-  color: var(--fg-secondary);
-}
 
-/* Wide screens: the deck promotes into the rail beside the answer. Grid areas
-   follow writing mode, so RTL puts it on the other side with no override. */
 .source-deck:not(.is-open) .source-list { display: none; }
-@media (min-width: 1440px) {
-  .source-deck-summary { display: none; }
-  .source-deck .source-list { display: flex; }
-}
 
 /* ——————————————— Suggested questions ——————————————— */
 .suggested-questions-container {
@@ -713,7 +910,9 @@
   background: var(--bg-sunken);
   border-color: var(--fg-faint);
 }
-.suggested-question-icon { color: var(--fg-faint); font-size: .9em; }
+/* The glyph is an SVG sized in the markup now, so font-size no longer reaches
+   it — only the colour is the stylesheet's business. */
+.suggested-question-icon { color: var(--fg-faint); }
 .suggested-question-enhanced:hover .suggested-question-icon { color: var(--signal); }
 
 /* ——————————————— Progress ——————————————— */
@@ -816,7 +1015,12 @@
   background: var(--signal);
 }
 
-/* ——————————————— Composer ——————————————— */
+/* ——————————————— Composer ———————————————
+   Scope, question and send are ONE instrument. They used to be a shouty
+   "SEARCH IN:" label and a small dropdown floating on a line of their own
+   above an unrelated input group — three objects for one action. The surface
+   below is a single field that happens to have a scope segment welded to its
+   leading edge, and it takes the focus ring as a whole. */
 .input-area {
   position: relative;
   z-index: var(--z-raised);
@@ -824,103 +1028,149 @@
   background: var(--bg-surface);
   border-block-start: 1px solid var(--hairline);
 }
-.composer-inner {
+.composer {
+  display: flex;
+  align-items: stretch;
   max-inline-size: var(--measure);
   margin-inline: auto;
-}
-.category-selector {
-  display: flex; align-items: center; gap: var(--space-2);
-  margin-block-end: var(--space-2);
-}
-.category-selector .form-label {
-  margin: 0;
-  font-size: var(--fs-100);
-  font-weight: var(--fw-medium);
-  letter-spacing: var(--track-caps);
-  text-transform: uppercase;
-  color: var(--fg-faint);
-}
-
-.input-group #query-input {
   border: 1px solid var(--hairline-strong);
-  border-inline-end: none;
-  border-start-start-radius: var(--radius-md);
-  border-end-start-radius: var(--radius-md);
-  border-start-end-radius: 0;
-  border-end-end-radius: 0;
-  padding: var(--space-3) var(--space-4);
-  font-size: var(--fs-300);
+  border-radius: var(--radius-md);
   background: var(--bg-surface);
+  transition: border-color var(--duration-s) var(--ease-soft),
+              box-shadow var(--duration-s) var(--ease-soft);
+}
+/* The ring goes on the composer, not on the input, so focusing the field
+   lights the whole instrument rather than a box inside a box. */
+.composer:focus-within {
+  border-color: var(--signal);
+  box-shadow: 0 0 0 3px var(--focus-ring-shadow);
+}
+.composer #query-input {
+  flex: 1;
+  min-inline-size: 0;
+  padding: var(--space-3) var(--space-4);
+  border: none;
+  border-radius: 0;
+  font-size: var(--fs-300);
+  background: transparent;
   color: var(--fg-primary);
 }
-.input-group #query-input::placeholder { color: var(--fg-faint); }
-.input-group #query-input:focus {
-  box-shadow: none;
-  border-color: var(--signal);
-  z-index: var(--z-raised);
-}
+.composer #query-input::placeholder { color: var(--fg-faint); }
+.composer #query-input:focus { box-shadow: none; background: transparent; }
+
 #send-button {
-  display: inline-flex; align-items: center; gap: var(--space-2);
-  padding: var(--space-3) var(--space-5);
-  border: 1px solid var(--signal);
-  border-start-start-radius: 0;
-  border-end-start-radius: 0;
-  border-start-end-radius: var(--radius-md);
-  border-end-end-radius: var(--radius-md);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: none;
+  margin: var(--space-1);
+  padding: var(--space-2) var(--space-4);
+  border: none;
+  border-radius: var(--radius-sm);
   font-size: var(--fs-300);
   font-weight: var(--fw-medium);
   color: var(--fg-on-signal);
   background: var(--signal);
   transition: var(--btn-transition);
 }
-#send-button:hover { background: var(--signal-hover); border-color: var(--signal-hover); }
-#send-button:disabled { opacity: .5; }
+#send-button:hover:not(:disabled) { background: var(--signal-hover); }
+#send-button:disabled { opacity: .5; cursor: not-allowed; }
 
-/* ——————————————— Custom dropdown ——————————————— */
-.custom-dropdown { position: relative; }
+/* ——————————————— Scope selector ——————————————— */
+.custom-dropdown { position: relative; display: flex; flex: none; }
 .custom-dropdown-trigger {
-  display: inline-flex; align-items: center; gap: var(--space-2);
-  padding: var(--space-1) var(--space-3);
-  border: 1px solid var(--hairline-strong);
-  border-radius: var(--radius-sm);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  max-inline-size: 190px;
+  padding: var(--space-3) var(--space-3);
+  border: none;
+  border-inline-end: 1px solid var(--hairline);
+  border-start-start-radius: var(--radius-md);
+  border-end-start-radius: var(--radius-md);
   font-size: var(--fs-200);
   font-weight: var(--fw-medium);
   color: var(--fg-secondary);
-  background: var(--bg-surface);
+  background: transparent;
   cursor: pointer;
   transition: var(--btn-transition);
 }
-.custom-dropdown-trigger:hover { border-color: var(--fg-faint); color: var(--fg-primary); }
-.dropdown-arrow { transition: transform var(--duration-s) var(--ease-soft); font-size: .7em; }
+.custom-dropdown-trigger:hover { color: var(--fg-primary); background: var(--bg-sunken); }
+.custom-dropdown-trigger .dropdown-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dropdown-icon { display: inline-flex; color: var(--signal); }
+.dropdown-arrow {
+  color: var(--fg-faint);
+  transition: transform var(--duration-s) var(--ease-soft);
+}
 .custom-dropdown.open .dropdown-arrow { transform: rotate(180deg); }
+
+/* Opens upward: the composer is pinned to the bottom of the shell, so a menu
+   dropping down would land off-screen. */
 .custom-dropdown-menu {
   position: absolute;
-  inset-block-end: calc(100% + var(--space-2)); inset-inline-start: 0;
+  inset-block-end: calc(100% + var(--space-3));
+  inset-inline-start: 0;
   z-index: var(--z-dropdown);
-  min-inline-size: 220px; margin: 0; padding: var(--space-1);
+  min-inline-size: 240px;
+  margin: 0;
+  padding: var(--space-1);
   list-style: none;
   border: 1px solid var(--hairline);
   border-radius: var(--radius-md);
   background: var(--bg-surface);
   box-shadow: var(--shadow-lg);
-  opacity: 0; visibility: hidden; transform: translateY(4px);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(4px);
   transition: opacity var(--duration-s) var(--ease-soft),
               transform var(--duration-s) var(--ease-soft),
               visibility var(--duration-s);
 }
 .custom-dropdown.open .custom-dropdown-menu { opacity: 1; visibility: visible; transform: translateY(0); }
 .custom-dropdown-item {
-  display: flex; align-items: center; gap: var(--space-2);
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
   padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-sm);
   font-size: var(--fs-300);
   color: var(--fg-secondary);
   cursor: pointer;
   transition: background var(--duration-s) var(--ease-soft), color var(--duration-s) var(--ease-soft);
 }
-.custom-dropdown-item:hover { background: var(--bg-sunken); color: var(--fg-primary); }
-.custom-dropdown-item.active { color: var(--fg-on-signal); background: var(--signal); }
-.dropdown-icon { font-size: 1em; }
+.custom-dropdown-item .dropdown-icon { color: var(--fg-faint); }
+.custom-dropdown-item:hover,
+.custom-dropdown-item:focus-visible { background: var(--bg-sunken); color: var(--fg-primary); }
+.custom-dropdown-item:hover .dropdown-icon,
+.custom-dropdown-item:focus-visible .dropdown-icon { color: var(--signal); }
+/* The selected option is marked, not filled: a teal slab in a five-item menu
+   is louder than the citation markers it would be competing with. */
+.custom-dropdown-item.active { color: var(--fg-primary); font-weight: var(--fw-medium); }
+.custom-dropdown-item.active .dropdown-icon { color: var(--signal); }
+
+/* Narrow: the scope segment takes the row above the field, because three
+   segments across a 390px screen leaves no room to read the question. */
+@media (max-width: 560px) {
+  .composer { flex-wrap: wrap; }
+  .custom-dropdown { inline-size: 100%; }
+  .custom-dropdown-trigger {
+    inline-size: 100%;
+    max-inline-size: none;
+    border-inline-end: none;
+    border-block-end: 1px solid var(--hairline);
+    border-start-end-radius: var(--radius-md);
+    border-end-start-radius: 0;
+  }
+  .custom-dropdown-menu { inline-size: 100%; min-inline-size: 0; }
+  /* The label is the one thing a send button can lose without losing its
+     meaning — the glyph and the accessible name both survive. */
+  #send-button span { position: absolute; inline-size: 1px; block-size: 1px; overflow: hidden; clip-path: inset(50%); }
+  #send-button { padding: var(--space-2) var(--space-3); }
+}
 
 /* ——————————————— Toast ——————————————— */
 .toast-notification {
