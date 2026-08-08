@@ -200,11 +200,6 @@ export const UI = {
     messageEl.setAttribute('aria-live', 'off');
     messageEl.setAttribute('aria-busy', 'true');
 
-    /* A new question makes whatever the panel is showing stale — it would sit
-       beside an answer it has nothing to do with, in the one column the reader
-       is watching for the new one. */
-    SourcePanel.close();
-
     container.appendChild(messageEl);
 
     /* `bound` records which markers the last parse actually turned into

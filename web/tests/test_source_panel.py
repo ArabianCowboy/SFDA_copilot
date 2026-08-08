@@ -45,6 +45,26 @@ def _ask(page: Page, text: str = "What must the PSSF contain?") -> None:
     ).to_be_visible()
 
 
+def _settle_scroll(page: Page) -> None:
+    """Wait for the closing smooth scroll to finish.
+
+    Completing an answer scrolls the transcript with `behavior: 'smooth'`.
+    Anything that reads or changes scroll position before that animation ends
+    is racing it — a test scroll issued mid-flight gets overridden as the
+    animation continues, which is what made the follow tests intermittent.
+    """
+    page.wait_for_function(
+        """() => {
+          const c = document.getElementById('messages');
+          if (window.__settleTop === c.scrollTop) return true;
+          window.__settleTop = c.scrollTop;
+          return false;
+        }""",
+        timeout=5000,
+    )
+    page.evaluate("() => { delete window.__settleTop; }")
+
+
 # ── What the transcript shows ───────────────────────────────────────────────
 
 def test_a_cited_answer_gets_one_line_naming_its_documents(sourced_page: Page):
@@ -170,15 +190,7 @@ def test_opening_sources_does_not_move_the_answer(sourced_page: Page):
 
     # The closing scroll is smooth. Sampling before it settles measures that
     # animation rather than anything the panel did.
-    sourced_page.wait_for_function(
-        """() => {
-          const c = document.getElementById('messages');
-          if (window.__lastTop === c.scrollTop) return true;
-          window.__lastTop = c.scrollTop;
-          return false;
-        }""",
-        timeout=5000,
-    )
+    _settle_scroll(sourced_page)
 
     before = sourced_page.evaluate("() => document.getElementById('messages').scrollTop")
     sourced_page.locator(".source-trigger").click()
@@ -318,6 +330,7 @@ def test_scrolling_up_hands_control_back_to_the_reader(sourced_page: Page):
     """The other direction: a real upward scroll must still stop the follow."""
     sourced_page.set_viewport_size({"width": 1280, "height": 700})
     _ask(sourced_page)
+    _settle_scroll(sourced_page)
 
     # 'auto', not the CSS smooth default: this is standing in for the reader's
     # own scroll, and the assertion should not race an animation.
@@ -547,7 +560,60 @@ def test_logging_out_leaves_nothing_of_the_previous_reader(sourced_page: Page):
     assert page.evaluate("() => sessionStorage.getItem('sfda-transcript')") is None
 
 
+def test_cancelling_after_final_keeps_the_canonical_answer(streaming_page: Page):
+    """Pressing Stop a moment too late must not cost the answer.
+
+    If `final` already arrived the answer is whole and normalized — the reader
+    stopped a stream that had, unknown to them, already finished. Falling back
+    to the raw deltas would discard a complete answer and un-resolve its
+    citations as a penalty for the timing.
+    """
+    page = streaming_page
+    _open_stream(page)
+    page.evaluate(
+        "f => window.__chat.push(f)",
+        sse_delta("Registration requires a dossier [Source: Doc_1.pdf, Page: 1]. "),
+    )
+    page.evaluate("f => window.__chat.push(f)", SSE_FINAL_FRAME)
+    # The reader hits Stop, which aborts the fetch.
+    page.evaluate("() => window.__chat.controller.error(Object.assign("
+                  "new Error('aborted'), {name: 'AbortError'}))")
+
+    answer = page.locator(".chatbot-message").last
+    expect(answer).to_contain_text("Sentence number 1")
+    expect(answer).not_to_contain_text("[Source:")
+    expect(page.locator(".chatbot-message.is-cancelled")).to_have_count(1)
+    expect(page.locator(".source-trigger")).to_have_count(1)
+
+
 # ── Restored transcripts ────────────────────────────────────────────────────
+
+def test_a_transcript_is_not_restored_when_startup_finds_no_reader(sourced_page: Page):
+    """The transcript belongs to whoever saved it.
+
+    It used to be restored during init(), before authentication resolved — so
+    when startup found no valid session the previous reader's conversation sat
+    in the DOM behind the landing view, hidden rather than removed, waiting to
+    be revealed to whoever signed in next.
+    """
+    page = sourced_page
+    page.set_viewport_size(WIDE)
+    _ask(page)
+    expect(page.locator(".chatbot-message")).to_have_count(1)
+
+    # Save the transcript the way a language switch does, then reload into a
+    # tab whose session does not come back.
+    page.evaluate("() => sessionStorage.setItem('sfda-transcript', JSON.stringify("
+                  "{owner: 'someone-else', turns: '<div class=\"message chatbot-message\">"
+                  "Previous reader\\'s answer</div>'}))")
+    page.reload()
+    page.wait_for_function("() => window.APP_INITIALIZED")
+
+    # Nothing of theirs is on the page, and nothing is left waiting either.
+    expect(page.locator(".chatbot-message")).to_have_count(0)
+    assert page.evaluate("() => sessionStorage.getItem('sfda-transcript')") is None
+
+
 
 def test_a_restored_answer_cannot_open_another_answers_sources(sourced_page: Page):
     """The wrong-evidence bug.

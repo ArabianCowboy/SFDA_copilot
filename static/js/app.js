@@ -23,6 +23,9 @@ import { initCitationInteractions, neutraliseRestoredCitations } from './modules
 import { I18n, Transcript, initLanguageToggle } from './modules/i18n.js';
 
 const App = {
+  /* Set once settleTranscript has decided; see there. */
+  _transcriptSettled: false,
+
   async loadProfileWithTimeout(userId, timeoutMs = CONFIG.API_TIMEOUT, retries = CONFIG.RETRY_MAX_ATTEMPTS) {
     let delay = CONFIG.RETRY_DELAY_INITIAL;
 
@@ -45,9 +48,47 @@ const App = {
     return null;
   },
 
+  /**
+   * Decide, once, what happens to the transcript saved by a language switch.
+   *
+   * Deliberately NOT done during init(). Restoring before authentication
+   * resolves means restoring for nobody in particular: if startup then found
+   * no valid session, the previous reader's transcript sat in the DOM behind
+   * the landing view — hidden, not removed, because AuthView only toggles
+   * `d-none` and the app lives at "/" so nothing reloads — and the next
+   * person to sign in had it revealed to them.
+   *
+   * So the transcript waits for an answer to "who is here?", and is either
+   * restored to the reader who saved it or dropped.
+   */
+  settleTranscript(user) {
+    const identity = user?.id || user?.email || null;
+
+    /* Ownership tracks the current reader ALWAYS, outside the once-guard. A
+       tab that opens signed out settles immediately (nothing to restore), and
+       the sign-in that follows still has to have its transcript tagged — or
+       the next language switch saves one owned by nobody, which then fails
+       its own ownership check on the way back. */
+    if (identity) Transcript.setOwner(identity);
+
+    if (this._transcriptSettled) return;
+    this._transcriptSettled = true;
+
+    if (!identity) {
+      Transcript.discard();
+      return;
+    }
+
+    /* Markup only — a restored answer's source passages did not survive the
+       reload, so its controls are stripped rather than left resolving to
+       nothing. */
+    Transcript.restore(identity, neutraliseRestoredCitations);
+  },
+
   async handleTestingModeInit() {
     console.log('[App] Testing mode enabled - bypassing authentication.');
     AuthView.render({ email: 'test@example.com' });
+    this.settleTranscript({ email: 'test@example.com' });
 
     try {
       UI.Faq.renderButtons(await Services.getFaqData());
@@ -68,11 +109,6 @@ const App = {
     initCitationInteractions(DOMCache.get(CONFIG.SELECTORS.MESSAGES));
     UI.initJumpToLatest();
     initLanguageToggle();
-    /* A language switch reloads the page; this puts the transcript back —
-       markup only. A restored answer's source passages did not survive the
-       reload, so its controls are stripped rather than left resolving to
-       nothing. */
-    Transcript.restore(neutraliseRestoredCitations);
 
     /* Mount the mascot and the card reveal. These run regardless of whether
        auth services are configured below. */
@@ -130,19 +166,27 @@ const App = {
       if (sessionError) {
         logError(sessionError, 'App.init.initialSessionCheck');
         AuthView.render(null);
+        this.settleTranscript(null);
       } else if (initialSession?.user) {
         AuthView.render(initialSession.user);
+        this.settleTranscript(initialSession.user);
       } else {
         AuthView.render(null);
+        this.settleTranscript(null);
       }
     } catch (error) {
       logError(error, 'App.init.checkInitialSession');
       AuthView.render(null);
+      this.settleTranscript(null);
     }
 
     Services.supabase.auth.onAuthStateChange(async (event, session) => {
       const user = session?.user ?? null;
       AuthView.render(user);
+      /* No-op after startup has already settled it. Present so a session that
+         resolves through this path rather than getSession() — a sign-in on a
+         tab that opened signed out — still gets an ownership decision. */
+      this.settleTranscript(user);
 
       if (user) {
         try {

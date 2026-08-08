@@ -15,7 +15,7 @@ from typing import Protocol
 import numpy as np
 
 from web.services.pharma_constants import PHARMA_TERMS_EXPANSION
-from web.services.search_exceptions import EmbeddingError
+from web.services.search_exceptions import EmbeddingError, QueryTranslationError
 
 logger = logging.getLogger(__name__)
 
@@ -144,8 +144,16 @@ class QueryProcessor:
             logger.info("Translated query: '%s' → '%s'", query, translated)
             return translated
         except Exception as exc:
+            # Not a fallback to the untranslated query. The index is English,
+            # so an Arabic query embedded as-is retrieves near-noise; with no
+            # relevance floor configured that still returns k passages, the
+            # model finds nothing usable in them and refuses. The reader is
+            # then told the corpus has no guidance on their question, when
+            # what actually happened is that the translation service was down.
             logger.error("Translation failed for query '%s': %s", query, exc)
-            return query  # fall back to the original
+            raise QueryTranslationError(
+                f"Could not translate the query: {exc}"
+            ) from exc
 
     # ------------------------------------------------------------------
     # Expansion

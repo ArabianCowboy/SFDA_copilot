@@ -182,7 +182,31 @@ export const SourcePanel = {
     });
   },
 
-  close() {
+  /**
+   * Close and empty.
+   *
+   * `close()` only hides — the passages stay in the DOM, which is fine for an
+   * ordinary close and wrong on logout: one reader's evidence would sit in
+   * the document while the next one signs in. Anything ending a session uses
+   * this instead.
+   */
+  reset() {
+    this.close({ restoreFocus: false });
+    if (this._panel) {
+      this._panel.querySelector('.source-panel-body').textContent = '';
+      this._panel.querySelector('.source-panel-title').textContent = '';
+    }
+  },
+
+  /**
+   * @param {{restoreFocus?: boolean}} [options]
+   *
+   * Focus returns to whatever opened the panel — right when the reader closed
+   * it, wrong when something else did. An automatic close (a new question, a
+   * logout) would otherwise throw the caret back to an old answer's trigger
+   * while the reader is looking somewhere else entirely.
+   */
+  close({ restoreFocus = true } = {}) {
     if (!this._panel || this._panel.hidden) return;
 
     this._panel.hidden = true;
@@ -204,7 +228,7 @@ export const SourcePanel = {
     // transcript, so the trigger that opened this may be gone.
     const target = this._returnFocus;
     this._returnFocus = null;
-    if (target && document.contains(target)) target.focus();
+    if (restoreFocus && target && document.contains(target)) target.focus();
   },
 
   /** Scroll one passage into view and mark it, e.g. after a marker click. */

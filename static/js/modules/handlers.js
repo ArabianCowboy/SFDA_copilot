@@ -103,6 +103,14 @@ export const Handlers = {
   },
 
   async processChatRequestInternal(queryText, category = '') {
+    /* A new question makes whatever the panel is showing stale — it would sit
+       beside an answer it has nothing to do with, in the one column the reader
+       is watching for the new one. Here rather than in beginStreamingMessage,
+       so the blocking path and a failed token check close it too. Focus is
+       left where the reader put it: they asked a question, they are not
+       looking at the previous answer's trigger. */
+    SourcePanel.close({ restoreFocus: false });
+
     UI.addMessage(queryText, 'user');
     UI.setSendingState(true);
     RobotStateManager.reactToUser();
@@ -183,12 +191,27 @@ export const Handlers = {
       });
     } catch (error) {
       if (error?.name === 'AbortError') {
-        // Keep whatever arrived rather than leaving an empty bubble.
-        UI.markStreamIncomplete(handle, 'cancelled');
+        /* Cancelled. If `final` already arrived the answer is whole and
+           normalized — the reader stopped a stream that had, unknown to them,
+           already finished — so render it properly and mark it stopped.
+           Falling back to raw deltas here would discard a complete answer and
+           un-resolve its citations for pressing Stop a moment too late. */
+        if (handle.final) {
+          UI.finishStreamingMessage(handle, handle.suggested || [], handle.final);
+          UI.flagIncomplete(handle, 'cancelled');
+        } else {
+          // Keep whatever arrived rather than leaving an empty bubble.
+          UI.markStreamIncomplete(handle, 'cancelled');
+        }
         RobotStateManager.resetToIdle();
         return;
       }
-      UI.markStreamIncomplete(handle, 'error');
+      if (handle.final) {
+        UI.finishStreamingMessage(handle, handle.suggested || [], handle.final);
+        UI.flagIncomplete(handle, 'error');
+      } else {
+        UI.markStreamIncomplete(handle, 'error');
+      }
       throw error;
     }
 
@@ -442,7 +465,9 @@ export const Handlers = {
        inside Services.logout(); the endpoint is idempotent. */
     Services.endServerSession();
     UI.clearTranscript();
-    SourcePanel.close();
+    // reset, not close: closing leaves the previous reader's passages sitting
+    // in the panel's DOM for the next one.
+    SourcePanel.reset();
     resetCitationState();
     UI.Faq.clearButtons();
     try {

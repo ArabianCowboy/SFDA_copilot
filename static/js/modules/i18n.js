@@ -60,6 +60,18 @@ export const I18n = {
  * outlive the browsing session.
  */
 export const Transcript = {
+  /* Which reader the saved transcript belongs to.
+     sessionStorage is scoped to the TAB, not to the account, and the tab is
+     never reloaded between one reader signing out and the next signing in.
+     Without an owner, a transcript saved by one person is restored for
+     whoever arrives next — which is how a conversation could cross accounts
+     on a shared machine. */
+  _owner: null,
+
+  setOwner(identity) {
+    this._owner = identity || null;
+  },
+
   save() {
     try {
       const messages = document.getElementById('messages');
@@ -71,27 +83,51 @@ export const Transcript = {
         .filter(el => !el.hasAttribute('data-chat-intro'))
         .map(el => el.outerHTML)
         .join('');
-      sessionStorage.setItem(TRANSCRIPT_KEY, turns);
+      sessionStorage.setItem(
+        TRANSCRIPT_KEY,
+        JSON.stringify({ owner: this._owner, turns })
+      );
     } catch { /* quota or private mode */ }
   },
 
+  /** Drop the saved transcript without reading it. */
+  discard() {
+    try { sessionStorage.removeItem(TRANSCRIPT_KEY); } catch { /* private mode */ }
+  },
+
   /**
-   * @param {(el: Element) => void} [onRestored] runs on each restored turn.
+   * Put the transcript back, but only for the reader who saved it.
    *
-   * Taken as a callback rather than imported: citations.js already imports
-   * I18n from this module, and reaching back into it would make the two
-   * mutually dependent for the sake of one DOM sweep.
+   * @param {string|null} identity the signed-in reader, or null if none
+   * @param {(el: Element) => void} [onRestored] runs on each restored turn
+   *
+   * `onRestored` is a callback rather than an import: citations.js already
+   * imports I18n from this module, and reaching back into it would make the
+   * two mutually dependent for the sake of one DOM sweep.
    */
-  restore(onRestored) {
+  restore(identity, onRestored) {
     try {
       const saved = sessionStorage.getItem(TRANSCRIPT_KEY);
       if (!saved) return false;
+
+      /* Consumed whatever happens next. A transcript that fails the ownership
+         check must not be left sitting for the sign-in after this one. */
       sessionStorage.removeItem(TRANSCRIPT_KEY);
+
+      let payload;
+      try {
+        payload = JSON.parse(saved);
+      } catch {
+        return false;   // an untagged entry from before this existed
+      }
+      if (!payload || typeof payload.turns !== 'string') return false;
+      if (!identity || payload.owner !== identity) return false;
+
       const messages = document.getElementById('messages');
       if (!messages) return false;
       // Appended after the freshly rendered intro, not over it.
       const start = messages.childElementCount;
-      messages.insertAdjacentHTML('beforeend', saved);
+      messages.insertAdjacentHTML('beforeend', payload.turns);
 
       /* Only the MARKUP came back. Anything behind it — an answer's source
          passages, say — lives in module memory the reload cleared. Scoped to

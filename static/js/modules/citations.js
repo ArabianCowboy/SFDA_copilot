@@ -50,8 +50,25 @@ export function nextMessageId() {
 /* Every answer's source state, keyed by message id. The panel is global and
    shows one answer at a time, so it cannot hold this itself — a reader
    clicking a marker in an older answer has to be able to swap the panel back
-   to that answer's passages. */
+   to that answer's passages.
+
+   Bounded because it is otherwise a slow leak: each entry holds up to eight
+   passages with their snippets, nothing removed an entry, and a long session
+   on one tab accumulates all of them. The cap is generous — far beyond the
+   transcript anyone scrolls back through — and eviction is oldest-first,
+   which matches the direction people read. An evicted answer's controls stop
+   resolving rather than resolving wrongly: the click handler bails when the
+   id is unknown. */
+const MAX_TRACKED_ANSWERS = 100;
 const stateByMessage = new Map();
+
+function rememberSources(msgId, state) {
+  stateByMessage.set(msgId, state);
+  while (stateByMessage.size > MAX_TRACKED_ANSWERS) {
+    // Map iterates in insertion order, so this is the oldest answer.
+    stateByMessage.delete(stateByMessage.keys().next().value);
+  }
+}
 
 function makeMarker(index, msgId) {
   const button = DOMCache.createElement('button', 'cite-marker');
@@ -161,7 +178,7 @@ export function renderSourceTrigger(state, msgId) {
   const sources = state?.sources || [];
   if (!sources.length) return null;
 
-  stateByMessage.set(msgId, state);
+  rememberSources(msgId, state);
 
   const button = DOMCache.createElement('button', 'source-trigger');
   button.type = 'button';

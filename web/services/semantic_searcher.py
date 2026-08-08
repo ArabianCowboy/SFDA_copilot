@@ -14,6 +14,8 @@ import faiss
 import numpy as np
 import pandas as pd
 
+from web.services.search_exceptions import SearchEngineError
+
 logger = logging.getLogger(__name__)
 
 
@@ -76,8 +78,13 @@ class SemanticSearcher:
         try:
             distances, indices = self._index.search(query_embedding, k=search_k)
         except Exception as exc:
+            # Raised, not swallowed into an empty candidate list. An empty
+            # list is indistinguishable from "this query matched nothing",
+            # which downstream turns into "no relevant information" and a
+            # confident refusal — so a broken or unreadable index would be
+            # reported to the reader as an absence of guidance.
             logger.exception("FAISS search failed: %s", exc)
-            return results
+            raise SearchEngineError(f"Semantic search failed: {exc}") from exc
 
         for position, row_idx in enumerate(indices[0]):
             # FAISS returns -1 when fewer than *search_k* results are available.

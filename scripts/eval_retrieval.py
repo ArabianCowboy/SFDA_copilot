@@ -124,8 +124,17 @@ def sweep(probes):
     in_domain = [p for p in probes if p["group"] == "in_domain" and "error" not in p]
     others = [p for p in probes if p["group"] in SHOULD_BE_EMPTY and "error" not in p]
 
+    # A probe whose retrieval raised was silently dropped from both lists
+    # above, so a run where half the probes failed still looked complete and
+    # could certify a threshold on whatever happened to succeed. Failures are
+    # exactly when the numbers mean least, so they void the run.
+    errored = [p for p in probes if "error" in p]
+
     print("\n" + "=" * 72)
     print("THRESHOLD SWEEP")
+    if errored:
+        print(f"  ** {len(errored)} probe(s) failed to retrieve — this run is "
+              f"inconclusive **")
     print(f"  {'min_score':>9}  {'false refusals':>14}  {'OOD accepted':>13}  {'doc recall':>10}")
 
     # Recall is only meaningful over the WHOLE in-domain set. Measuring it on
@@ -133,7 +142,9 @@ def sweep(probes):
     # while the other seven were never checked — the sweep would report
     # "1/1 recall" and mark a value safe on the strength of a single question.
     labelled = [p for p in in_domain if p.get("expected_documents")]
-    fully_labelled = bool(in_domain) and len(labelled) == len(in_domain)
+    fully_labelled = (
+        bool(in_domain) and not errored and len(labelled) == len(in_domain)
+    )
     safe = []
     # Thresholds that pass the two label-free checks. Reportable as context
     # even without labels, but never as a recommendation.
@@ -172,6 +183,18 @@ def sweep(probes):
         # for the questions someone happened to annotate. A threshold adopted
         # on that basis could refuse nothing while quietly dropping the one
         # document that answers an unannotated question.
+        if errored:
+            print("RECOMMENDATION — none. Probes failed to retrieve.\n")
+            print(f"  {len(errored)} probe(s) raised during retrieval, so the columns")
+            print("  above describe only the queries that happened to work. Fix the")
+            print("  failures and re-run before reading anything into them:\n")
+            for probe in errored[:5]:
+                print(f"    {probe['query'][:56]}  —  {probe['error'][:60]}")
+            if len(errored) > 5:
+                print(f"    … and {len(errored) - 5} more")
+            print("\n  Keep min_score at 0.00.")
+            return
+
         missing = len(in_domain) - len(labelled)
         print("RECOMMENDATION — none. The probe set is not fully labelled.\n")
         print(f"  {missing} of {len(in_domain)} in_domain probes in")

@@ -15,6 +15,8 @@ import pandas as pd
 from sklearn.metrics.pairwise import cosine_similarity
 from scipy.sparse import csr_matrix
 
+from web.services.search_exceptions import SearchEngineError
+
 logger = logging.getLogger(__name__)
 
 
@@ -71,8 +73,13 @@ class LexicalSearcher:
                 query_vec, self._matrix
             ).flatten()
         except Exception as exc:
+            # Raised rather than returned as an empty candidate list — see the
+            # matching note in semantic_searcher. Note the difference from the
+            # category filter below, which returns empty legitimately: no
+            # document in that category is a real answer, a broken vectorizer
+            # is not.
             logger.exception("TF-IDF transformation failed: %s", exc)
-            return results
+            raise SearchEngineError(f"Lexical search failed: {exc}") from exc
 
         # --- Category filtering ---
         if category.lower() != "all":
