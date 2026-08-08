@@ -93,21 +93,30 @@ function fmt(score) {
   return typeof score === 'number' ? score.toFixed(2) : '—';
 }
 
-/** Build the source deck for one answer. */
-export function renderSourceDeck(sources, msgId) {
+/**
+ * Build the source deck for one answer.
+ *
+ * `open` is false while an answer is still streaming and true once it is
+ * complete. The deck sits BELOW the answer, so an open deck during streaming
+ * puts eight cards between the text being written and the bottom of the
+ * transcript the reader is following — they would watch the sources while the
+ * answer scrolled past above them. Collapsed, it costs one line until there
+ * is a finished answer to check.
+ */
+export function renderSourceDeck(sources, msgId, { open = true } = {}) {
   const deck = DOMCache.createElement('div', 'source-deck');
   deck.id = `deck-${msgId}`;
   if (!Array.isArray(sources) || !sources.length) return deck;
 
-  /* The deck opens by default. Provenance is the product: an answer whose
-     sources are one click away by default reads as "trust me", and the whole
+  /* Once the answer is done the deck is open. Provenance is the product: an
+     answer whose sources are one click away reads as "trust me", and the whole
      point of this surface is that it does not have to be trusted. */
-  deck.classList.add('is-open');
+  if (open) deck.classList.add('is-open');
 
   const label = I18n.plural(sources.length, 'cite.sourcesOne', 'cite.sourcesMany');
   const summary = DOMCache.createElement('button', 'source-deck-summary');
   summary.type = 'button';
-  summary.setAttribute('aria-expanded', 'true');
+  summary.setAttribute('aria-expanded', String(open));
   summary.innerHTML =
     iconMarkup('chevron-right', 12, 'chev') + `<span>${label}</span>`;
   deck.appendChild(summary);
@@ -206,6 +215,9 @@ export function initCitationInteractions(container) {
     const summary = event.target.closest('.source-deck-summary');
     if (summary) {
       const deck = summary.closest('.source-deck');
+      // Remember that this was the reader's call, so completing the answer
+      // does not reopen a deck they just closed.
+      deck.dataset.userToggled = '1';
       deck.classList.contains('is-open') ? closeDeck(deck) : openDeck(deck);
       return;
     }
@@ -219,6 +231,23 @@ function openDeck(deck) {
   if (!deck) return;
   deck.classList.add('is-open');
   deck.querySelector('.source-deck-summary')?.setAttribute('aria-expanded', 'true');
+}
+
+/**
+ * Open a finished answer's deck — unless the reader already made that choice
+ * themselves. Reopening a deck someone deliberately collapsed mid-stream would
+ * be the interface overruling them.
+ *
+ * Scoped to the message element the caller already holds, rather than looked
+ * up by id on `document`. The lookup form was how this broke once: the message
+ * was being appended inside a view transition, so a stream that arrived in one
+ * chunk finished while its own message was still detached and getElementById
+ * found nothing. That append is synchronous now, but a function that only ever
+ * needs one subtree has no business searching the whole document for it.
+ */
+export function openSourceDeckOnComplete(messageEl) {
+  const deck = messageEl?.querySelector('.source-deck');
+  if (deck && !deck.dataset.userToggled) openDeck(deck);
 }
 
 function closeDeck(deck) {

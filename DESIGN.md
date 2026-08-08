@@ -142,7 +142,9 @@ Bilingualism also chooses the type. Zain is an Arabic-first display family with 
 
 Both surfaces are now composed to this world. The landing was redesigned first; the authenticated chat app was composed against the same ramp in a following pass that did not touch the landing's composition. Two things changed in the chat that are worth stating here because they are rules, not details: an **answer is not a bubble** — a bordered card around a thousand words of prose containing its own tables and blockquotes is a box inside a box, so assistant messages sit on the page ground and only the reader's own short question stays a bubble; and the **source deck opens by default**, because provenance is the product and an answer whose sources are one click away reads as "trust me".
 
-Iconography is inline SVG on a 16-unit grid, filled with `currentColor`, from a single registry in `web/utils/icons.py` that serves Jinja directly and the browser modules through an inlined `window.__ICONS` subset. There is no icon webfont and no emoji anywhere: a font glyph cannot be sized independently of its text and arrives as an empty box when a CDN is slow, and an emoji renders per-platform, ignores `currentColor` and cannot follow the theme. The five corpus categories each own one glyph, used by both the sidebar's FAQ headings and the composer's scope selector, so a mark means the same slice of the corpus wherever it appears.
+Iconography is inline SVG on a 16-unit grid, filled with `currentColor`, from a single registry in `web/utils/icons.py` that serves Jinja directly and the browser modules through an inlined `window.__ICONS` subset. There is no icon webfont and no emoji anywhere: a font glyph cannot be sized independently of its text and arrives as an empty box when a CDN is slow, and an emoji renders per-platform, ignores `currentColor` and cannot follow the theme.
+
+`CATEGORY_ICONS` is the one mapping from a corpus category to its glyph. The four real categories — regulatory, pharmacovigilance, veterinary medicines, biological products — carry theirs in both places a category is named: the sidebar's FAQ headings and the composer's scope selector. The fifth entry, `all`, is a scope rather than a category and appears only in the selector, since there is no "All" FAQ group. `faq.yaml` deliberately carries **no** `icon:` field; the API derives it from the category key, because the same mapping written down twice is the same mapping drifting eventually.
 
 **Key Characteristics:**
 - Warm porcelain ground under a cool teal wash; warmth and coolness both present, neither dominant
@@ -290,7 +292,7 @@ On the landing Sunny is the page's only image, sized `clamp(150px, 24vw, 232px)`
 - **Do** use Azeret Mono with tabular figures for machine-reported values, and isolate them `direction: ltr` when they sit inside Arabic prose.
 - **Do** tint shadows with the ink hue in light mode and swap to black at high alpha in dark.
 - **Do** arm scroll-reveal hidden states from JS at runtime, so a dead module leaves content visible.
-- **Do** bump `asset_version` in `web/api/app.py` (currently `"warm4"`) in any commit touching CSS or JS.
+- **Do** bump `asset_version` in `web/api/app.py` (currently `"warm5"`) in any commit touching CSS or JS.
 - **Do** add a new glyph to `web/utils/icons.py` once, and to `RUNTIME_ICON_NAMES` as well if a browser module draws it.
 - **Do** carry the independence notice on every surface; the landing footer holds it.
 

@@ -321,18 +321,21 @@ Edit `faq.yaml` to customize the FAQ categories and questions:
 en:
   regulatory:
     title: "Regulatory Guidelines"
-    icon: "bi-shield-check"
     questions:
       - short: "Drug Registration"
         text: "What are the requirements for drug registration in Saudi Arabia?"
 ar:
   regulatory:
     title: "الأسئلة الشائعة — التنظيمية"
-    icon: "bi-shield-check"
     questions:
       - short: "تسجيل الأدوية"
         text: "ما هي متطلبات تسجيل الأدوية في المملكة العربية السعودية؟"
 ```
+
+There is no `icon:` field. Each category's glyph is derived from its key by
+`CATEGORY_ICONS` in `web/utils/icons.py`, which is also what the composer's
+scope selector reads — so a category cannot wear one mark in the sidebar and a
+different one in the composer. Adding a category means adding it there too.
 
 ## 📚 Documentation
 

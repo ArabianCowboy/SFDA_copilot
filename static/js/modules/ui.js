@@ -13,7 +13,7 @@ import { AppState } from './state.js';
 import { Utils } from './utils.js';
 import { ThemeManager } from './theme.js';
 import { RobotStateManager } from './robot.js';
-import { bindCitations, renderSourceDeck, nextMessageId } from './citations.js';
+import { bindCitations, renderSourceDeck, openSourceDeckOnComplete, nextMessageId } from './citations.js';
 import { MarkdownStream } from './stream-render.js';
 import { I18n } from './i18n.js';
 import { iconMarkup } from './icons.js';
@@ -80,6 +80,23 @@ function decorateMarkdown(scope) {
 
 export const UI = {
   /**
+   * Whether the transcript should keep following new content.
+   *
+   * This is intent, not geometry. It used to be recomputed from
+   * `isPinnedToBottom()` at the moment content arrived, which cannot tell
+   * "the reader scrolled up" apart from "we just inserted 560px of source
+   * cards under them" — and the source deck lands BEFORE the first token.
+   * The result was an answer that streamed entirely below the fold while the
+   * reader looked at a jump pill.
+   *
+   * Content growth raises scrollHeight but never scrollTop, so tracking the
+   * scrollTop delta separates the two cases exactly: only a scroll that moves
+   * the reader UP stops the transcript following.
+   */
+  _follow: true,
+  _lastScrollTop: 0,
+
+  /**
    * Fill any server-rendered `<time data-ts-now>` with the reader's local time.
    * The welcome bubble's timestamp used to be a `{{ now }}` Jinja variable that
    * was never provided, so it always shipped empty.
@@ -95,10 +112,12 @@ export const UI = {
 
   scrollMessagesToBottom() {
     const container = DOMCache.get(CONFIG.SELECTORS.MESSAGES);
+    // Going to the bottom always clears the pill and resumes following —
+    // including when the reader sends a message, which should bring them back
+    // regardless of where they had scrolled to.
+    this._follow = true;
+    if (container) this._lastScrollTop = container.scrollTop;
     container?.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
-    // Going to the bottom always clears the pill — including when the reader
-    // sends a message, which should bring them back regardless of where they
-    // had scrolled to.
     this.setJumpToLatest(false);
   },
 
@@ -108,6 +127,14 @@ export const UI = {
     const container = DOMCache.get(CONFIG.SELECTORS.MESSAGES);
     if (!container) return;
 
+    /* Appended synchronously. This used to run inside document.startViewTransition,
+       whose callback is deferred a frame — so anything downstream that measured
+       or queried the transcript ran against a DOM the message was not in yet.
+       That is not theoretical: it silently broke the closing scroll and the
+       source deck whenever a whole answer arrived in one chunk. The entrance is
+       already an authored CSS keyframe (botMessageIn / userMessageIn), so the
+       transition was buying a full-page snapshot per message and no motion that
+       was not already there. */
     const render = () => {
       container.appendChild(messageEl);
 
@@ -129,7 +156,7 @@ export const UI = {
       this.scrollMessagesToBottom();
     };
 
-    AppState.get('viewTransitionEnabled') ? document.startViewTransition(render) : render();
+    render();
   },
 
   /** True when the reader is at (or near) the bottom of the transcript. */
@@ -142,9 +169,10 @@ export const UI = {
   /**
    * Insert an empty bot bubble and return a MarkdownStream that fills it.
    *
-   * This is the ONLY view-transition-wrapped call in the streaming path. A
-   * view transition snapshots the whole page; running one per token would
-   * freeze the tab.
+   * The bubble is attached synchronously and deliberately: everything after
+   * this — the source deck, the stage line, the closing scroll — measures or
+   * queries the transcript, and all of it is wrong if the message is still
+   * detached. See the note in addMessage.
    */
   beginStreamingMessage() {
     const container = DOMCache.get(CONFIG.SELECTORS.MESSAGES);
@@ -161,8 +189,7 @@ export const UI = {
     messageEl.setAttribute('aria-live', 'off');
     messageEl.setAttribute('aria-busy', 'true');
 
-    const render = () => container.appendChild(messageEl);
-    AppState.get('viewTransitionEnabled') ? document.startViewTransition(render) : render();
+    container.appendChild(messageEl);
 
     const state = { sources: [] };
     const stream = new MarkdownStream(content, (scope) => {
@@ -175,15 +202,17 @@ export const UI = {
 
   /** Auto-scroll only when the reader hasn't scrolled away. */
   followStream() {
-    if (!this.isPinnedToBottom()) {
+    if (!this._follow) {
       // Content is arriving below the fold; flag it rather than yanking them back.
       this.setJumpToLatest(true, true);
       return;
     }
     const c = DOMCache.get(CONFIG.SELECTORS.MESSAGES);
+    if (!c) return;
     /* 'auto', not 'smooth': a smooth scroll target retargeted at 60Hz is
        visibly janky. The CSS smooth behaviour resumes once streaming ends. */
-    c?.scrollTo({ top: c.scrollHeight, behavior: 'auto' });
+    c.scrollTo({ top: c.scrollHeight, behavior: 'auto' });
+    this._lastScrollTop = c.scrollTop;
   },
 
   /**
@@ -214,14 +243,38 @@ export const UI = {
     const pill = document.getElementById('jump-to-latest');
     if (!container || !pill) return;
 
+    this._lastScrollTop = container.scrollTop;
+
     let queued = false;
     const sync = () => {
       queued = false;
-      this.setJumpToLatest(!this.isPinnedToBottom());
+      /* Being at the bottom always means following, and it is checked AFTER
+         the intent decision below rather than as its `else` branch. Shrinking
+         the transcript — collapsing an expanded deck — makes the browser clamp
+         scrollTop downward, which looks exactly like an upward scroll; without
+         this the reader got a jump pill telling them to jump to where they
+         already were. This check reads layout, so it stays coalesced. */
+      if (this.isPinnedToBottom()) this._follow = true;
+      this.setJumpToLatest(!this._follow);
     };
 
-    // rAF-coalesced: scroll fires far more often than once per frame.
     container.addEventListener('scroll', () => {
+      /* Intent is recorded HERE, synchronously, not in the coalesced frame.
+         A token arriving inside the ~16ms rAF window would otherwise call
+         followStream() against stale intent, scroll to the bottom, and leave
+         _lastScrollTop at the bottom — so the frame that finally ran saw no
+         decrease and re-latched following. The reader's scroll was erased
+         mid-gesture. Only scrollTop is read, which is already committed by the
+         time a scroll event fires and costs no layout.
+
+         Content growth moves scrollHeight, never scrollTop, so inserting a
+         source deck still cannot be mistaken for the reader walking away. The
+         1px slack absorbs sub-pixel jitter on fractional-DPI displays. */
+      const top = container.scrollTop;
+      if (top < this._lastScrollTop - 1) this._follow = false;
+      this._lastScrollTop = top;
+
+      // rAF-coalesced: scroll fires far more often than once per frame.
       if (queued) return;
       queued = true;
       requestAnimationFrame(sync);
@@ -242,10 +295,15 @@ export const UI = {
   attachSourceDeck(handle, sources) {
     if (!handle || !Array.isArray(sources) || !sources.length) return;
     handle.state.sources = sources;
+    // Collapsed: the answer has not been written yet, and an open deck would
+    // sit between the streaming text and the bottom the reader is following.
     handle.messageEl.insertBefore(
-      renderSourceDeck(sources, handle.msgId),
+      renderSourceDeck(sources, handle.msgId, { open: false }),
       handle.messageEl.querySelector(`.${CONFIG.CLASSES.SUGGESTED_CONTAINER}`)
     );
+    // Sources land before the first token. Keep a following reader at the tail
+    // rather than letting the inserted height read as "they scrolled away".
+    if (this._follow) this.followStream();
   },
 
   finishStreamingMessage(handle, suggestedQuestions = []) {
@@ -262,7 +320,17 @@ export const UI = {
     this.announce(count
       ? I18n.t('cite.answerCompleteWithSources', { n: count })
       : I18n.t('cite.answerComplete'));
-    this.scrollMessagesToBottom();
+
+    /* Land the reader at the end of the answer FIRST, then let the sources
+       open below them. Opening eight cards and then scrolling to the bottom
+       would jump them past the last thing they were reading.
+
+       Only if they were still following. A reader who scrolled up mid-answer
+       has taken control, and reaching the end of the stream is not a reason to
+       take it back — an unconditional jump here undid their scroll at the one
+       moment they were most likely reading something specific. */
+    if (this._follow) this.scrollMessagesToBottom();
+    openSourceDeckOnComplete(handle.messageEl);
   },
 
   /** Mark a stream that failed or was cancelled, keeping whatever arrived. */

@@ -121,11 +121,34 @@ SUPPORTED_FAQ_LANGS = ("en", "ar")
 # Cache-buster appended to every static CSS/JS URL. Bump this in any commit that
 # changes a stylesheet or module, otherwise returning users get a stale
 # components.css against a fresh tokens.css and see a half-styled app.
-ASSET_VERSION = "warm4"
+#
+# "every" is load-bearing and was not always true: the <script> tag carries the
+# version for app.js, but a static `import './modules/ui.js'` inside it resolves
+# to a bare, unversioned URL, so the modules were never busted at all. A page
+# that mixes a fresh template with a stale module is worse than a stale page —
+# post-icon-migration it would render an <i class="bi"> with no icon font behind
+# it, or print a glyph NAME as text. MODULE_IMPORT_MAP below closes that.
+ASSET_VERSION = "warm5"
 
 # Product release, rendered in the landing footer. Kept as one constant so
 # the number cannot drift between the page and the module headers.
 APP_VERSION = "3.0.0"
+
+# Every ES module under static/js/modules, mapped to its versioned URL. A
+# browser-native import map is the only way to version static imports without a
+# bundler, which this project deliberately does not have: the map rewrites the
+# resolved URL of `./modules/ui.js` (and of the imports those modules make of
+# each other) before the request goes out.
+#
+# Enumerated once at import: the set of modules is fixed at deploy time, so a
+# per-request directory scan would buy nothing. Adding a module needs a restart,
+# which shipping one needs anyway.
+#
+# A browser without import-map support simply loads the unversioned URLs — the
+# behaviour before this existed — so this degrades rather than breaks.
+MODULE_FILENAMES: Tuple[str, ...] = tuple(
+    sorted(p.name for p in (PROJECT_ROOT / "static" / "js" / "modules").glob("*.js"))
+)
 
 # ──────────────────────────────────────────────────────────
 # Helper Functions
@@ -503,6 +526,13 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
             t=make_translator(catalog),
             i18n_runtime=runtime_subset(catalog),
             icons_runtime=runtime_icons(),
+            module_import_map={
+                "imports": {
+                    url_for("static", filename=f"js/modules/{name}"):
+                    url_for("static", filename=f"js/modules/{name}", v=ASSET_VERSION)
+                    for name in MODULE_FILENAMES
+                }
+            },
         ))
         # Persist an explicit ?lang= so the choice survives the next visit.
         if request.args.get("lang"):
@@ -529,6 +559,18 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
         # Per-category fallback: a category missing from Arabic still renders,
         # in English, rather than vanishing from the sidebar.
         selected.update(catalogs.get(lang, {}))
+
+        # The glyph is derived from the category key, not carried in faq.yaml.
+        # It used to be spelled out there once per category per language — four
+        # categories x two languages x one more place the composer's selector
+        # also names, which is five chances for the same category to end up with
+        # two different marks. One mapping, in web/utils/icons.py, now feeds
+        # both the selector and these headings.
+        selected = {
+            key: {**block, "icon": CATEGORY_ICONS.get(key, "question")}
+            for key, block in selected.items()
+            if isinstance(block, dict)
+        }
         return jsonify(selected)
 
     # Shared across both chat routes so a client cannot double its allowance by

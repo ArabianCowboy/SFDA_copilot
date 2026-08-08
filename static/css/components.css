@@ -1126,11 +1126,24 @@
   opacity: 0;
   visibility: hidden;
   transform: translateY(4px);
+  /* visibility is stepped, not faded. Transitioning it over the same duration
+     meant its computed value was still `hidden` for the whole tick in which
+     the menu opened — and `focus()` inside a hidden subtree is a no-op, so
+     opening with the keyboard silently left focus on the trigger and the first
+     arrow key was swallowed. Delaying the step to the END of the close, and to
+     0s on open, gives an immediately focusable menu that still fades out. */
   transition: opacity var(--duration-s) var(--ease-soft),
               transform var(--duration-s) var(--ease-soft),
-              visibility var(--duration-s);
+              visibility 0s linear var(--duration-s);
 }
-.custom-dropdown.open .custom-dropdown-menu { opacity: 1; visibility: visible; transform: translateY(0); }
+.custom-dropdown.open .custom-dropdown-menu {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+  transition: opacity var(--duration-s) var(--ease-soft),
+              transform var(--duration-s) var(--ease-soft),
+              visibility 0s;
+}
 .custom-dropdown-item {
   display: flex;
   align-items: center;

@@ -27,7 +27,7 @@ silently blank icon is the failure mode this whole file exists to remove.
 
 from __future__ import annotations
 
-from markupsafe import Markup
+from markupsafe import Markup, escape
 
 __all__ = ["ICONS", "CATEGORY_ICONS", "RUNTIME_ICON_NAMES", "icon", "runtime_icons"]
 
@@ -365,14 +365,19 @@ def icon(name: str, size: int = 16, cls: str = "", title: str = "") -> Markup:
             f"unknown icon {name!r}; add it to web/utils/icons.py"
         ) from None
 
-    classes = f"icon {cls}".strip()
+    # The path data is ours and goes in raw; everything a caller supplies is
+    # escaped. Callers pass literals today, but `title` is the one that will
+    # eventually be a translated string, and a quote in a catalogue entry
+    # should produce a wrong tooltip, never an extra attribute.
+    classes = escape(f"icon {cls}".strip())
+    px = int(size)
     if title:
-        label = f'role="img" aria-label="{title}"'
+        label = Markup('role="img" aria-label="{}"').format(title)
     else:
-        label = 'aria-hidden="true" focusable="false"'
+        label = Markup('aria-hidden="true" focusable="false"')
 
     return Markup(
-        f'<svg class="{classes}" width="{size}" height="{size}" '
+        f'<svg class="{classes}" width="{px}" height="{px}" '
         f'viewBox="0 0 16 16" fill="currentColor" {label}>{paths}</svg>'
     )
 

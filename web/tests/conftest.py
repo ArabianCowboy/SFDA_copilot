@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 from threading import Thread
 
@@ -108,6 +109,80 @@ SSE_CHAT_MOCK = (
 )
 
 
+# The exchange above ships `sources: []`, so nothing in the suite ever rendered
+# a source card — which is how a deck that resolved to zero by zero on wide
+# screens, and a deck whose arrival stopped the transcript following the
+# stream, both went unnoticed. This one carries eight sources (the app's
+# configured k) and a long answer, so the transcript actually overflows.
+_SSE_SOURCES = [
+    {
+        "index": i,
+        "document": f"SFDA Guideline Document Number {i} — Long Official Title",
+        "page": i * 10,
+        "category": "Regulatory",
+        "score": round(0.95 - i * 0.05, 2),
+        "semantic_score": 0.88,
+        "lexical_score": 0.9,
+        "snippet": f"Passage {i} as retrieved from the guideline corpus.",
+    }
+    for i in range(1, 9)
+]
+
+_SSE_DELTAS = "".join(
+    'event: delta\ndata: {"t":"Sentence number %d of the streamed regulatory '
+    'answer, long enough to add real height. "}\n\n' % i
+    for i in range(1, 26)
+)
+
+SSE_CHAT_MOCK_WITH_SOURCES = (
+    'event: meta\ndata: {"conversation_id":"test","category":"all","lang":"en","model":"mock"}\n\n'
+    'event: stage\ndata: {"stage":"searching"}\n\n'
+    f"event: sources\ndata: {json.dumps({'sources': _SSE_SOURCES})}\n\n"
+    'event: stage\ndata: {"stage":"retrieved","count":8}\n\n'
+    'event: stage\ndata: {"stage":"drafting"}\n\n'
+    f"{_SSE_DELTAS}"
+    'event: suggestions\ndata: {"suggested_questions":["Next question?"]}\n\n'
+    'event: done\ndata: {"finish_reason":"stop","chars":2000}\n\n'
+)
+
+
+# Individual frames, for tests that release them one at a time.
+SSE_SOURCES_FRAME = f"event: sources\ndata: {json.dumps({'sources': _SSE_SOURCES})}\n\n"
+SSE_DONE_FRAME = 'event: done\ndata: {"finish_reason":"stop"}\n\n'
+
+
+def sse_delta(text: str) -> str:
+    """One `delta` frame carrying `text`."""
+    return f"event: delta\ndata: {json.dumps({'t': text})}\n\n"
+
+
+# route.fulfill() hands Playwright a complete body, which it delivers as a
+# SINGLE chunk — so every fixture above is drained by the client before a test
+# can touch the page. That is fine for asserting an end state and useless for
+# asserting anything about the reader acting WHILE tokens arrive, which is
+# exactly where "who controls scrolling" is decided.
+#
+# This replaces window.fetch with a stream whose controller the test holds, so
+# frames are released explicitly and the page can be driven in between. No
+# timing, no sleeps: the test is the clock.
+CONTROLLABLE_CHAT_STREAM = """
+window.__chat = {
+  controller: null,
+  push(frame) { this.controller.enqueue(new TextEncoder().encode(frame)); },
+  close() { this.controller.close(); },
+};
+const passthrough = window.fetch;
+window.fetch = (url, options = {}) => {
+  if (!String(url).includes('/api/chat/stream')) return passthrough(url, options);
+  const body = new ReadableStream({ start(c) { window.__chat.controller = c; } });
+  return Promise.resolve(new Response(body, {
+    status: 200,
+    headers: { 'Content-Type': 'text/event-stream' },
+  }));
+};
+"""
+
+
 @pytest.fixture(autouse=True)
 def test_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     """Provide deterministic application settings without real credentials."""
@@ -200,6 +275,35 @@ def authenticated_page(browser_page):
     return browser_page
 
 
+@pytest.fixture
+def sourced_page(authenticated_page):
+    """Signed in, with a chat stream that returns eight real sources.
+
+    Registered after login so it wins over the empty-sources route in
+    ``browser_page`` — Playwright matches the most recently added handler first.
+    """
+    authenticated_page.route(
+        "**/api/chat/stream",
+        lambda route: route.fulfill(
+            status=200,
+            content_type="text/event-stream",
+            body=SSE_CHAT_MOCK_WITH_SOURCES,
+        ),
+    )
+    return authenticated_page
+
+
+@pytest.fixture
+def streaming_page(authenticated_page):
+    """Signed in, with a chat stream the TEST releases frame by frame.
+
+    Patched after load rather than via add_init_script: `fetch` is looked up
+    at request time, so replacing it once the page is up is enough.
+    """
+    authenticated_page.evaluate(CONTROLLABLE_CHAT_STREAM)
+    return authenticated_page
+
+
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
     """Classify browser and artifact-dependent tests for selective runs."""
     for item in items:
@@ -209,6 +313,8 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
                 "test_frontend.py",
                 "test_theme_toggle.py",
                 "test_profile_theme_integration.py",
+                "test_source_deck.py",
+                "test_composer.py",
             )
         ):
             item.add_marker(pytest.mark.browser)

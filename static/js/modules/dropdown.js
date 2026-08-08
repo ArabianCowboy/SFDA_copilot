@@ -26,11 +26,34 @@ export const CustomDropdown = {
 
     const isOpen = () => dropdown.classList.contains('open');
 
-    const setOpen = (open) => {
+    /**
+     * @param {boolean} open
+     * @param {boolean} [restoreFocus] move focus back to the trigger when the
+     *   menu closes while focus is still inside it. Default true; Tab passes
+     *   false so the browser's own focus move is not fought.
+     */
+    const setOpen = (open, restoreFocus = true) => {
+      const wasOpen = dropdown.classList.contains('open');
       dropdown.classList.toggle('open', open);
       trigger.setAttribute('aria-expanded', String(open));
+
       if (open) {
+        /* Style is recalculated lazily, and `focus()` is a NO-OP inside a
+           `visibility: hidden` subtree — so focusing straight after toggling
+           the class silently failed and left focus on the trigger. The first
+           ArrowDown was then spent moving to the option that was already
+           selected, and Enter re-picked the current value. Reading a layout
+           property forces the flush. */
+        void menu.offsetHeight;
         (items.find(i => i.classList.contains('active')) || items[0]).focus();
+        return;
+      }
+      /* Closing hides the menu with `visibility: hidden`, which does NOT move
+         focus. Without this, clicking anywhere outside left keyboard and
+         screen-reader users focused on an option inside an invisible menu,
+         with no way back except Tab. */
+      if (wasOpen && restoreFocus && menu.contains(document.activeElement)) {
+        trigger.focus();
       }
     };
 
@@ -60,9 +83,7 @@ export const CustomDropdown = {
 
     trigger.addEventListener('click', (e) => {
       e.stopPropagation();
-      const next = !isOpen();
-      document.querySelectorAll('.custom-dropdown.open').forEach(d => d.classList.remove('open'));
-      setOpen(next);
+      setOpen(!isOpen());
     });
 
     items.forEach(item => {
@@ -70,7 +91,6 @@ export const CustomDropdown = {
         e.stopPropagation();
         select(item);
         setOpen(false);
-        trigger.focus();
       });
     });
 
@@ -89,13 +109,15 @@ export const CustomDropdown = {
         case ' ':
           if (current > -1) select(items[current]);
           setOpen(false);
-          trigger.focus();
           e.preventDefault();
           return;
         case 'Escape':
-        case 'Tab':
           setOpen(false);
-          if (e.key === 'Escape') { trigger.focus(); e.preventDefault(); }
+          e.preventDefault();
+          return;
+        case 'Tab':
+          // Close, but let the browser move focus onward from here.
+          setOpen(false, false);
           return;
         default:
           return;
@@ -109,8 +131,13 @@ export const CustomDropdown = {
       if (isOpen()) setOpen(false);
     });
 
+    /* Enter and Space are deliberately NOT handled here. The trigger is a
+       <button>, so the browser already turns both into a click, and the click
+       handler above already toggles — opening on keydown as well meant the
+       menu opened and the synthesized click immediately shut it again. Arrow
+       keys have no native behaviour on a button, so they are ours. */
     trigger.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown') {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
         e.preventDefault();
         setOpen(true);
       } else if (e.key === 'Escape') {

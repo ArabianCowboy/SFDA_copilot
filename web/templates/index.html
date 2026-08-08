@@ -87,6 +87,14 @@
            JS actually builds ships here; the rest render server-side. */
         window.__ICONS = {{ icons_runtime | tojson }};
     </script>
+
+    <!-- Versions the ES modules themselves. The <script> tag below carries
+         ?v= for app.js, but a static `import './modules/ui.js'` resolves to a
+         bare URL that no cache-buster ever reached — so a returning user could
+         pair a fresh template with modules from a previous deploy. This map
+         rewrites those resolved URLs, including the imports modules make of
+         each other. It MUST precede the module script. -->
+    <script type="importmap">{{ module_import_map | tojson }}</script>
 </head>
 
 <body class="d-flex flex-column min-vh-100">

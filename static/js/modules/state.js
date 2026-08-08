@@ -13,8 +13,6 @@ export const AppState = {
     authModal: null,
     profileModal: null,
     userProfile: null,
-    viewTransitionEnabled: !!document.startViewTransition,
-    particleBackground: null,
   },
 
   get(key) {

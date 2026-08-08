@@ -89,9 +89,13 @@ OpenAI key or a built index.
 **Durable technical constraints:**
 
 - **No bundler, no `node_modules`.** Browser-native ES modules; Bootstrap 5.3,
-  bootstrap-icons, DOMPurify, marked, and supabase-js load from jsDelivr at pinned
-  versions. `package.json` exists so `npm audit` covers what users actually run, and
-  its versions must stay in sync with the CDN URLs in the templates and JS modules.
+  DOMPurify, marked, and supabase-js load from jsDelivr at pinned versions.
+  `package.json` exists so `npm audit` covers what users actually run, and its
+  versions must stay in sync with the CDN URLs in the templates and JS modules.
+  Icons are **not** a dependency: every glyph is inline SVG from
+  `web/utils/icons.py`, so there is no icon webfont to download or to fail.
+  Because static imports cannot carry a cache-buster, the page emits an
+  `importmap` that versions every module URL from the same `ASSET_VERSION`.
 - **Single worker in production.** Conversation history lives in a process-local
   store because Flask writes `Set-Cookie` before a streaming body iterates. More
   than one worker splits conversations.
