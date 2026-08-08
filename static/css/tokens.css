@@ -202,6 +202,13 @@
   --shadow-md: 0 4px 14px rgb(36 31 43 / .07);
   --shadow-lg: 0 12px 32px rgb(36 31 43 / .10);
   --shadow-xl: 0 24px 60px rgb(36 31 43 / .16);
+
+  /* A bottom sheet is lit from the page, so its shadow points up — the only
+     one in the set that does, which is why it is a name and not --shadow-xl
+     used sideways. */
+  --shadow-sheet: 0 -12px 32px rgb(36 31 43 / .16);
+  /* The dimming behind a modal surface. Same warm ink, for the same reason. */
+  --scrim: rgb(36 31 43 / .38);
 }
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -244,6 +251,9 @@
   --shadow-md: 0 4px 14px rgb(0 0 0 / .45);
   --shadow-lg: 0 12px 32px rgb(0 0 0 / .50);
   --shadow-xl: 0 24px 60px rgb(0 0 0 / .60);
+
+  --shadow-sheet: 0 -12px 32px rgb(0 0 0 / .60);
+  --scrim: rgb(0 0 0 / .66);
 }
 
 /* ═══════════════════════════════════════════════════════════════════

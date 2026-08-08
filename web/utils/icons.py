@@ -346,6 +346,10 @@ RUNTIME_ICON_NAMES: tuple[str, ...] = (
     "chevron-right",
     "alert",
     "question",
+    # The source panel's dismiss control. Built in JS, so it has to be in the
+    # runtime subset — iconMarkup returns '' for a name that is not, which
+    # would cost a close button its glyph and nothing would say why.
+    "close",
     *CATEGORY_ICONS.values(),
 )
 

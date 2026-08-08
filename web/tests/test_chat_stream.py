@@ -1,8 +1,9 @@
 """Tests for POST /api/chat/stream and the conversation store.
 
-The frame-order test is the important one: sources must be emitted BEFORE the
-first token, so the reader can see what was retrieved while the answer is
-still being written. That ordering is the whole point of streaming here.
+The frame-order test is the important one. Sources used to be emitted BEFORE
+the first token, which meant they could not reflect what the answer did with
+them — a refusal shipped with eight source cards attached. They now ride on a
+terminal `final` frame carrying the canonical, normalized answer.
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ import pytest
 from web.api.app import create_app
 from web.services.conversation_store import ConversationStore
 from web.services.result_combiner import SearchResult
+from web.services.search_exceptions import SearchEngineError
 
 
 AUTH = {"Authorization": "Bearer fake_token"}
@@ -129,6 +131,23 @@ def test_search_unavailable_returns_503_not_a_stream(app, client):
     assert post(client).status_code == 503
 
 
+def test_a_retrieval_failure_is_reported_as_an_error_not_a_refusal(app, client):
+    """The 200 status line is already sent, so this can only arrive in-band.
+
+    It carries its own code rather than folding into "internal": the
+    alternative — treating a failure as an empty result set — produces a
+    fluent, sourceless "I cannot answer based on the given information",
+    which is indistinguishable from the corpus genuinely having nothing.
+    """
+    app.config["search_engine"].search.side_effect = SearchEngineError("index unreadable")
+    frames = dict(read_frames(post(client)))
+
+    assert frames["error"]["code"] == "search_unavailable"
+    # No answer was drafted, so nothing can be mistaken for one.
+    assert "final" not in frames
+    assert "done" not in frames
+
+
 # ── Frame ordering ──────────────────────────────────────────────────────────
 
 def test_frame_sequence(client):
@@ -136,19 +155,25 @@ def test_frame_sequence(client):
     assert events == [
         "meta",
         "stage",        # searching
-        "sources",
         "stage",        # retrieved
         "stage",        # drafting
         *["delta"] * len(ANSWER_TOKENS),
         "stage",        # finalizing
+        "final",
         "suggestions",
         "done",
     ]
 
 
-def test_sources_arrive_before_the_first_token(client):
+def test_no_sources_frame_precedes_the_answer(client):
+    """Retrieval count mid-stream, passages only at the end.
+
+    There is no honest way to present passages as an answer's sources before
+    the answer exists, and doing so is what put a full deck under refusals.
+    """
     events = [event for event, _ in read_frames(post(client))]
-    assert events.index("sources") < events.index("delta")
+    assert "sources" not in events
+    assert events.index("final") > events.index("delta")
 
 
 def test_stage_events_report_real_retrieval_counts(client):
@@ -168,10 +193,60 @@ def test_done_reports_the_final_length(client):
     assert frames["done"]["chars"] == len("".join(ANSWER_TOKENS).strip())
 
 
-def test_sources_payload_is_json_native(client):
+def test_final_payload_is_json_native(client):
+    """Guards against numpy scalars leaking out of the search layer."""
     frames = dict(read_frames(post(client)))
-    json.dumps(frames["sources"])
-    assert len(frames["sources"]["sources"]) == 8
+    json.dumps(frames["final"])
+
+
+def test_final_reports_only_the_cited_passages(client):
+    """ANSWER_TOKENS cite [1] only; the other seven were retrieved, not used."""
+    final = dict(read_frames(post(client)))["final"]
+    assert final["cited"] == [1]
+    assert [s["index"] for s in final["sources"]] == [1]
+    assert final["retrieved"] == 8
+
+
+def test_an_answer_citing_nothing_reports_an_empty_cited(app, client):
+    """The reported bug: a refusal must not arrive looking sourced."""
+    app.config["openai_handler"].stream_response.side_effect = (
+        lambda *a, **k: iter(["I cannot answer ", "based on the given information."])
+    )
+    final = dict(read_frames(post(client)))["final"]
+    assert final["cited"] == []
+    # Nothing to render: sources means evidence, and this answer has none.
+    assert final["sources"] == []
+    # The count survives for the stage line and the logs.
+    assert final["retrieved"] == 8
+
+
+def test_out_of_range_citations_are_not_reported(app, client):
+    app.config["openai_handler"].stream_response.side_effect = (
+        lambda *a, **k: iter(["Supported ", "[9]."])
+    )
+    assert dict(read_frames(post(client)))["final"]["cited"] == []
+
+
+def test_final_response_is_normalized_not_the_raw_deltas(app, client):
+    """The defect this restructure exists to close.
+
+    Deltas carry raw model tokens. The server rewrites legacy
+    "[Source: Doc, Page: N]" citations into "[n]" before deciding anything
+    about them, so a client that kept the delta text would show prose while
+    the API reported a citation of source 1 — a marker the reader is told
+    exists and cannot click. `final.response` is what the client re-renders.
+    """
+    app.config["openai_handler"].stream_response.side_effect = (
+        lambda *a, **k: iter(["Submit within 15 days ", "[Source: Doc_1.pdf, Page: 1]."])
+    )
+    frames = read_frames(post(client))
+    deltas = "".join(d["t"] for e, d in frames if e == "delta")
+    final = dict(frames)["final"]
+
+    assert "[Source:" in deltas
+    assert "[Source:" not in final["response"]
+    assert final["response"] == "Submit within 15 days [1]."
+    assert final["cited"] == [1]
 
 
 def test_language_is_echoed_and_validated(client):

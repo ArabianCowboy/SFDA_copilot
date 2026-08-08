@@ -12,6 +12,8 @@ import { Services } from './services.js';
 import { ThemeManager } from './theme.js';
 import { RobotStateManager } from './robot.js';
 import { I18n } from './i18n.js';
+import { SourcePanel } from './source-panel.js';
+import { resetCitationState } from './citations.js';
 
 /* Sent with every chat request so the model answers in the reader's language. */
 const I18N_LANG = I18n.lang;
@@ -147,22 +149,25 @@ export const Handlers = {
     }
   },
 
-  /** SSE path: sources land before the first token, so the reader can see
-   *  what was retrieved while the answer is still being written. */
+  /** SSE path. The stage line reports the retrieval count mid-stream, but the
+   *  passages themselves arrive on the terminal `final` frame — there is no
+   *  honest way to present them as an answer's sources before the answer
+   *  exists, and doing so is what put eight cards under a refusal. */
   async streamChat(queryText, category, token) {
     const handle = UI.beginStreamingMessage();
     let sawToken = false;
     let failed = null;
 
+    let result = null;
     try {
-      await Services.streamChatRequest(queryText, category, token, I18N_LANG, {
+      result = await Services.streamChatRequest(queryText, category, token, I18N_LANG, {
         stage: (d) => {
           RobotStateManager.onStage?.(d.stage, d);
           UI.setStage(handle, STAGE_LABELS[d.stage]
             ? STAGE_LABELS[d.stage](d)
             : null);
         },
-        sources: (d) => UI.attachSourceDeck(handle, d.sources || []),
+        final: (d) => { handle.final = d; },
         delta: (d) => {
           if (!sawToken) {
             sawToken = true;
@@ -188,15 +193,57 @@ export const Handlers = {
     }
 
     if (failed) {
-      // A failure after streaming began cannot change the 200 status line, so
-      // it arrives in-band. Keep the partial answer and flag it.
-      UI.markStreamIncomplete(handle, 'error');
+      /* A failure after streaming began cannot change the 200 status line, so
+         it arrives in-band. Where it lands matters:
+
+         BEFORE `final` — there is no canonical answer, so keep the partial
+         text and flag it.
+
+         AFTER `final` — the answer is complete and normalized; what failed is
+         auxiliary (suggestion generation, history persistence). Discarding it
+         to show a raw, unnormalized partial would throw away the good answer
+         the reader already has, along with its citations, over a failure that
+         did not touch it. Render it properly and toast the failure. */
+      if (handle.final) {
+        UI.finishStreamingMessage(handle, handle.suggested || [], handle.final);
+      } else {
+        UI.markStreamIncomplete(handle, 'error');
+      }
       ErrorHandler.showToast(I18n.t('chat.sendFailed'), true);
       RobotStateManager.showError();
       return;
     }
 
-    UI.finishStreamingMessage(handle, handle.suggested || []);
+    if (result && !result.complete) {
+      /* The socket closed without both `final` and `done`.
+
+         No `final` — what arrived is a truncated answer that never went
+         through citation normalization, so showing it as finished would
+         present a half-answer as authoritative.
+
+         `final` but no `done` — the answer itself is whole and normalized;
+         only the close-out is missing, which most likely means the turn was
+         never persisted to history. Falling back to the raw deltas here would
+         throw away the canonical text and un-resolve its citations to punish
+         a failure that happened after the answer was complete. Render it
+         properly, then say the exchange did not finish.
+
+         The inline note is kept here but not in the `failed` branch above,
+         deliberately: there the server told us what went wrong and a toast
+         carries it, whereas a dead socket says nothing at all, so the reader
+         gets a marking that outlives the toast. */
+      if (handle.final) {
+        UI.finishStreamingMessage(handle, handle.suggested || [], handle.final);
+        UI.flagIncomplete(handle, 'error');
+      } else {
+        UI.markStreamIncomplete(handle, 'error');
+      }
+      ErrorHandler.showToast(I18n.t('chat.sendFailed'), true);
+      RobotStateManager.showError();
+      return;
+    }
+
+    UI.finishStreamingMessage(handle, handle.suggested || [], handle.final || null);
     RobotStateManager.returnToIdle(4000);
   },
 
@@ -208,12 +255,15 @@ export const Handlers = {
     }, 800);
 
     try {
-      const data = await Services.sendChatRequest(queryText, category, token);
+      const data = await Services.sendChatRequest(queryText, category, token, I18N_LANG);
       UI.toggleTypingIndicator(false);
       RobotStateManager.startTalking();
 
       if (!data?.response) throw new Error(I18n.t('chat.invalidResponse'));
-      UI.addMessage(data.response, 'bot', data.suggested_questions || [], data.sources || []);
+      UI.addMessage(data.response, 'bot', data.suggested_questions || [], data.sources || [], {
+        cited: data.cited ?? null,
+        retrieved: data.retrieved ?? (data.sources || []).length,
+      });
       RobotStateManager.returnToIdle(4000);
     } finally {
       clearTimeout(thinkingTimer);
@@ -346,7 +396,7 @@ export const Handlers = {
       this.clearLocalAuthData();
       AuthView.render(null);
       AppState.set('userProfile', null);
-      UI.Faq.clearButtons();
+      this.clearSessionState();
       ErrorHandler.showToast(
         result?.testing ? 'Logged out successfully (testing mode)' : 'Logged out successfully'
       );
@@ -356,9 +406,49 @@ export const Handlers = {
       this.clearLocalAuthData();
       AuthView.render(null);
       AppState.set('userProfile', null);
-      UI.Faq.clearButtons();
+      this.clearSessionState();
       ErrorHandler.showToast('Logged out (session cleared)', false);
       this.redirectToHomeIfNeeded();
+    }
+  },
+
+  /**
+   * Drop everything in this tab that belonged to the signed-out reader.
+   *
+   * One function because there are two ways out — the logout button and a
+   * session that expires or is revoked elsewhere (app.js routes
+   * onAuthStateChange here) — and only one of them used to clean up. The tab
+   * is not reloaded on the way out: the app lives at "/", so
+   * redirectToHomeIfNeeded is a no-op, and AuthView only toggles `d-none` on
+   * the authenticated view. Everything below therefore survives into the next
+   * sign-in unless it is explicitly cleared, which on a regulatory product
+   * means a second reader on a shared machine sees the first one's questions,
+   * answers and evidence.
+   *
+   * Does NOT clear the server's conversation history or the Flask conv_id
+   * cookie, so a second sign-in in this tab can still continue the previous
+   * conversation server-side. That needs a change in the logout route
+   * (session.clear() plus ConversationStore.clear) and is tracked separately.
+   */
+  clearSessionState() {
+    // An in-flight answer would otherwise keep streaming into the hidden
+    // transcript and repopulate the citation map after logout.
+    Services.cancelChatRequest();
+    /* Also reached when a session expires or is revoked rather than being
+       signed out here, in which case Services.logout() never ran and the
+       Flask cookie still holds conv_id. Not awaited — this function is the
+       synchronous teardown, and the server rotates on an identity change
+       regardless. On the logout-button path this is a duplicate of the call
+       inside Services.logout(); the endpoint is idempotent. */
+    Services.endServerSession();
+    UI.clearTranscript();
+    SourcePanel.close();
+    resetCitationState();
+    UI.Faq.clearButtons();
+    try {
+      sessionStorage.removeItem('sfda-transcript');
+    } catch (error) {
+      logError(error, 'clearSessionState: sessionStorage');
     }
   },
 

@@ -75,7 +75,14 @@ export const Transcript = {
     } catch { /* quota or private mode */ }
   },
 
-  restore() {
+  /**
+   * @param {(el: Element) => void} [onRestored] runs on each restored turn.
+   *
+   * Taken as a callback rather than imported: citations.js already imports
+   * I18n from this module, and reaching back into it would make the two
+   * mutually dependent for the sake of one DOM sweep.
+   */
+  restore(onRestored) {
     try {
       const saved = sessionStorage.getItem(TRANSCRIPT_KEY);
       if (!saved) return false;
@@ -83,7 +90,18 @@ export const Transcript = {
       const messages = document.getElementById('messages');
       if (!messages) return false;
       // Appended after the freshly rendered intro, not over it.
+      const start = messages.childElementCount;
       messages.insertAdjacentHTML('beforeend', saved);
+
+      /* Only the MARKUP came back. Anything behind it — an answer's source
+         passages, say — lives in module memory the reload cleared. Scoped to
+         what was just inserted, so restoring cannot touch a live answer. */
+      if (onRestored) {
+        for (let i = start; i < messages.childElementCount; i++) {
+          onRestored(messages.children[i]);
+        }
+      }
+
       messages.scrollTop = messages.scrollHeight;
       return true;
     } catch {

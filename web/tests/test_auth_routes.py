@@ -103,8 +103,10 @@ def test_chat_success(client, app):
         page=2,
     )
     app.config["search_engine"].search.return_value = [search_result]
+    # The marker is load-bearing: `sources` is what the answer CITED, so an
+    # answer with no markers ships an empty list by design.
     app.config["openai_handler"].generate_response.return_value = (
-        "Mock answer",
+        "Mock answer [1]",
         ["Follow up?"],
     )
 
@@ -116,7 +118,7 @@ def test_chat_success(client, app):
 
     assert response.status_code == 200
     body = response.get_json()
-    assert body["response"] == "Mock answer"
+    assert body["response"] == "Mock answer [1]"
     assert body["suggested_questions"] == ["Follow up?"]
     # The response also carries the retrieval sources; their content is covered
     # by test_citations.py, so this only pins the contract.

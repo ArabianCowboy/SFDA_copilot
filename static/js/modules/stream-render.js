@@ -109,10 +109,31 @@ export class MarkdownStream {
     }
   }
 
-  /** Final full re-parse; returns the complete raw markdown. */
-  finish() {
+  /**
+   * Final full re-parse; returns the complete markdown that was rendered.
+   *
+   * @param {string|null} [canonicalText] the server's authoritative answer.
+   *
+   * The delta frames carry RAW model tokens, but the server post-processes the
+   * answer before it decides anything about it — a model that reverts to
+   * "[Source: Guide.pdf, Page: 14]" has that rewritten to "[1]" server-side.
+   * Without this parameter the browser keeps the raw prose while the API
+   * reports a citation of source 1, so the reader is told an answer cites a
+   * passage and given no marker to click.
+   *
+   * Passing the canonical text here means the final re-parse — which this
+   * method already performs as its correctness escape hatch — renders exactly
+   * the string the citation indices were computed from.
+   */
+  finish(canonicalText = null) {
     if (this.frame) cancelAnimationFrame(this.frame);
     this.frame = 0;
+
+    /* Any string replaces the buffer, including ''. Requiring truthiness meant
+       a canonical EMPTY answer left the raw deltas on screen — the one case
+       where the server is saying "there is no answer here" and the reader was
+       shown fabricated text instead. */
+    if (typeof canonicalText === 'string') this.buffer = canonicalText;
 
     this.committed.innerHTML = sanitize(marked.parse(this.buffer));
     this.pending.remove();

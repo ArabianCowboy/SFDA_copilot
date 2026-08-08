@@ -78,8 +78,28 @@ runtime:
     sourcesOne: "{n} source"
     sourcesMany: "{n} sources"
     answerComplete: "Answer complete."
+    # Counts the CITED passages. It used to be read out with the RETRIEVED
+    # count, so it told a screen reader that a refusal had cited eight sources.
     answerCompleteWithSources: "Answer complete. {n} sources cited."
-    relevance: "Relevance {pct} percent"
+    # The trigger. "document" is a file, "passage" is a chunk of one — never
+    # use them interchangeably, and never report a passage count as documents.
+    sourcesLabel: "Sources"
+    docsOne: "1 document"
+    docsMany: "{n} documents"
+    passagesOne: "1 passage"
+    passagesMany: "{n} passages"
+    # The panel.
+    panelTitle: "Sources for this answer"
+    page: "Page {n}"
+    unknownDocument: "Unknown document"
+    close: "Close sources"
+    # Raw retrieval figures. Named as diagnostics, not confidence, because that
+    # is what they are — no percentages, no bars.
+    diagnostics: "Retrieval diagnostics"
+    diagnosticsNote: "Ranking figures used to order these passages. They are not a measure of accuracy or of how well a passage supports the answer."
+    combinedMatch: "Combined"
+    semanticMatch: "Semantic"
+    keywordMatch: "Keyword"
 
   lang:
     switchAria: "Switch language"

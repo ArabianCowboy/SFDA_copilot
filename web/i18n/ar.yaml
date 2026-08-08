@@ -72,13 +72,32 @@ runtime:
     light: "الفاتح"
     dark: "الداكن"
 
+  # NOTE for review: Arabic has a dual form for exactly two, which the binary
+  # I18n.plural helper (one / many) cannot express — "مصدران" is correct for 2
+  # and these strings will say "2 مصادر" instead. The existing entries already
+  # accept that; flagging it here because this block grew. Two passages from
+  # two documents is a common shape for a cited answer, so the trigger hits the
+  # dual case often. All strings below want a native pass.
   cite:
     marker: "المصدر {n}"
     sourcesOne: "مصدر واحد"
     sourcesMany: "{n} مصادر"
     answerComplete: "اكتملت الإجابة."
     answerCompleteWithSources: "اكتملت الإجابة. تم الاستشهاد بـ {n} مصادر."
-    relevance: "الصلة {pct} بالمئة"
+    sourcesLabel: "المصادر"
+    docsOne: "مستند واحد"
+    docsMany: "{n} مستندات"
+    passagesOne: "مقطع واحد"
+    passagesMany: "{n} مقاطع"
+    panelTitle: "مصادر هذه الإجابة"
+    page: "صفحة {n}"
+    unknownDocument: "مستند غير معروف"
+    close: "إغلاق المصادر"
+    diagnostics: "تشخيصات الاسترجاع"
+    diagnosticsNote: "أرقام الترتيب المستخدمة لترتيب هذه المقاطع. وهي ليست مقياسًا للدقة ولا لمدى دعم المقطع للإجابة."
+    combinedMatch: "المجموع"
+    semanticMatch: "دلالي"
+    keywordMatch: "لفظي"
 
   lang:
     switchAria: "تغيير اللغة"

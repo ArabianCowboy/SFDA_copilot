@@ -1,9 +1,39 @@
 import logging
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, current_app, jsonify, request, session
 from web.utils.supabase_client import get_supabase
 
 auth_bp = Blueprint('auth', __name__)
 logger = logging.getLogger(__name__)
+
+
+# Session keys holding one reader's conversation. Named once so the purge below
+# and the identity check in app.py cannot drift apart.
+CONVERSATION_SESSION_KEYS = ("conv_id", "chat_history")
+
+
+def purge_conversation_state():
+    """Drop this browser session's conversation, server side included.
+
+    The Flask session cookie outlives a Supabase sign-out — nothing in the
+    logout path used to touch it — so `conv_id` and `chat_history` survived
+    into the next sign-in **in the same browser**. The streaming route keys the
+    ConversationStore off that same `conv_id` and feeds whatever it finds to
+    the model as context, so the next reader's first question arrived carrying
+    the previous reader's conversation. On a regulatory assistant that is one
+    person's queries becoming part of another person's prompt.
+
+    Clearing the cookie key alone is not enough: the store entry is held
+    server-side and would be re-reachable by anyone who still had the old
+    cookie, so the entry itself goes too.
+    """
+    conversation_id = session.get("conv_id")
+    if conversation_id:
+        store = current_app.config.get("conversations")
+        if store is not None:
+            store.clear(conversation_id)
+
+    for key in CONVERSATION_SESSION_KEYS:
+        session.pop(key, None)
 
 @auth_bp.route('/signup', methods=['POST'])
 def signup():
@@ -141,11 +171,23 @@ def login():
 
 @auth_bp.route('/logout', methods=['POST'])
 def logout():
+    # Before anything that can fail. Whether Supabase is reachable, whether the
+    # token was already expired, whether sign_out raises — none of it may leave
+    # this browser session still holding the previous reader's conversation.
+    purge_conversation_state()
+    session.clear()
+
+    if current_app.config.get("TESTING"):
+        return jsonify({'message': 'Logged out successfully'})
+
     try:
         supabase = get_supabase()
         if not supabase:
-            return jsonify({'error': 'Supabase client not available'}), 500
-        
+            # The server-side state is already gone, which is the part that
+            # matters; the client drops its own token regardless.
+            logger.warning("Logout: Supabase unavailable, session cleared anyway.")
+            return jsonify({'message': 'Logged out (session cleared)'})
+
         response = supabase.auth.sign_out()
         
         # Check for error in response

@@ -275,10 +275,16 @@ aside.sidebar {
   padding-inline: max(var(--gutter), calc((100% - var(--measure)) / 2));
 }
 
-/* The rail belongs to the mascot (and, from Phase 4, the source deck). It is a
-   real grid column, so the transcript is never padded around a floating ghost
-   and the whole thing mirrors under RTL for free. */
+/* The rail belongs to the mascot and the source panel. It is a real grid
+   column, so the transcript is never padded around a floating ghost and the
+   whole thing mirrors under RTL for free. */
 .chat-rail { display: none; }
+
+/* The two share the column, one at a time. Toggling a class here rather than
+   hiding the companion directly keeps RobotStateManager out of it — the robot
+   goes on animating behind a display:none, harmlessly, and needs no knowledge
+   that the panel exists. */
+.chat-rail.rail-shows-sources .robot-companion { display: none; }
 
 @media (min-width: 1200px) {
   .chat-container {
@@ -292,6 +298,14 @@ aside.sidebar {
     position: relative;
     padding-inline-end: var(--gutter);
     padding-block: var(--space-6);
+    overflow: hidden;
+  }
+  /* With the panel up the rail has to be a scroll container rather than a
+     clipping one, or a long source list is simply cut off at the fold. */
+  .chat-rail.rail-shows-sources {
+    display: flex;
+    flex-direction: column;
+    min-block-size: 0;
     overflow: hidden;
   }
 }

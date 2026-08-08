@@ -17,6 +17,7 @@ import pytest
 
 from web.api.app import create_app
 from web.services.result_combiner import SearchResult
+from web.services.search_exceptions import SearchEngineError
 
 
 AUTH = {"Authorization": "Bearer fake_token"}
@@ -57,16 +58,21 @@ def app():
     # mock.call_args would hand back the *mutated* list. Snapshot at call time.
     calls: list[dict] = []
 
-    def record(query, llm_context, category, chat_history):
+    # Tests that need a different answer set config["llm_answer"] rather than
+    # replacing this side_effect, so the recording above survives the override.
+    application.config["llm_answer"] = (ANSWER, SUGGESTIONS)
+
+    def record(query, llm_context, category, chat_history, lang="en"):
         calls.append(
             {
                 "query": query,
                 "llm_context": copy.deepcopy(llm_context),
                 "category": category,
                 "history": copy.deepcopy(chat_history),
+                "lang": lang,
             }
         )
-        return ANSWER, SUGGESTIONS
+        return application.config["llm_answer"]
 
     application.config["openai_handler"].generate_response.side_effect = record
     application.config["llm_calls"] = calls
@@ -109,6 +115,26 @@ def test_search_engine_down_returns_503(app, client):
     assert response.status_code == 503
 
 
+def test_a_retrieval_failure_is_an_error_not_a_refusal(app, client):
+    """An outage must not be served as a confident "I cannot answer".
+
+    `search()` used to swallow embedding, translation and index failures into
+    the same empty list a successful no-match search returns. Empty is
+    load-bearing now — it makes `_prepare_context` tell the model no relevant
+    information was found, so the model refuses — which meant an OpenAI
+    translation outage would have rendered as a clean, sourceless refusal
+    rather than as a fault. The reader could not tell "the corpus has no
+    guidance on this" from "the retriever fell over".
+    """
+    app.config["search_engine"].search.side_effect = SearchEngineError("index unreadable")
+    response = client.post("/api/chat", json={"query": "hello"}, headers=AUTH)
+
+    assert response.status_code == 503
+    assert "unavailable" in response.get_json()["error"].lower()
+    # The model must never have been asked in the first place.
+    assert app.config["llm_calls"] == []
+
+
 # ── Happy path ──────────────────────────────────────────────────────────────
 
 def test_chat_returns_answer_and_suggestions(client):
@@ -137,25 +163,75 @@ def test_response_is_json_serialisable_end_to_end(client):
 
 # ── Sources ─────────────────────────────────────────────────────────────────
 
-def test_chat_returns_a_sources_array(client):
+def test_sources_are_only_what_the_answer_cited(client):
+    """The contract: `sources` is evidence, not retrieval output.
+
+    Eight passages are retrieved and eight reach the prompt, but ANSWER cites
+    only [1]. Shipping the other seven is what put a full deck of cards under
+    answers that never used them.
+    """
     body = client.post("/api/chat", json={"query": "hello"}, headers=AUTH).get_json()
-    assert len(body["sources"]) == 8
+    assert body["cited"] == [1]
+    assert [s["index"] for s in body["sources"]] == [1]
+    assert body["retrieved"] == 8
     assert set(body["sources"][0]) == {
         "index", "document", "page", "category",
         "score", "semantic_score", "lexical_score", "chunk_id", "snippet",
     }
 
 
+def test_an_answer_citing_nothing_ships_no_sources(app, client):
+    """A refusal must not look sourced.
+
+    Eight passages were retrieved and reached the prompt, but the answer used
+    none of them, so none of them are its evidence and NOTHING is shipped for
+    the client to render. `retrieved` survives as a count for the stage line
+    and the logs; the passages stay server-side.
+    """
+    app.config["llm_answer"] = ("I cannot answer based on the given information.", [])
+    body = client.post("/api/chat", json={"query": "who is claude?"}, headers=AUTH).get_json()
+
+    assert body["cited"] == []
+    assert body["sources"] == []
+    assert body["retrieved"] == 8
+
+
 def test_source_indices_align_with_the_prompt_context(app, client):
-    """sources[i] must be the passage the model saw as block [i]."""
-    client.post("/api/chat", json={"query": "hello"}, headers=AUTH)
+    """A source's index must be the block number the model saw it as.
+
+    Filtering to cited passages makes the indices sparse, so this is the
+    invariant that keeps [3] pointing at the passage the model labelled 3
+    rather than at the third surviving card.
+    """
+    app.config["llm_answer"] = ("First [1]. Third [3]. Last [8].", [])
     body = client.post("/api/chat", json={"query": "hello"}, headers=AUTH).get_json()
     llm_context = app.config["llm_calls"][-1]["llm_context"]
 
-    assert len(body["sources"]) == len(llm_context)
-    for source, context in zip(body["sources"], llm_context):
+    assert body["cited"] == [1, 3, 8]
+    assert [s["index"] for s in body["sources"]] == [1, 3, 8]
+    for source in body["sources"]:
+        context = llm_context[source["index"] - 1]
         assert source["document"] == context["document"]
         assert source["page"] == context["page"]
+
+
+def test_out_of_range_citations_are_not_reported(app, client):
+    """[9] against 8 passages is a hallucination, not a citation."""
+    app.config["llm_answer"] = ("Supported [9].", [])
+    body = client.post("/api/chat", json={"query": "hello"}, headers=AUTH).get_json()
+    assert body["cited"] == []
+
+
+def test_lang_is_forwarded_to_the_model(app, client):
+    """The blocking route used to drop `lang`, so a reader on a browser
+    without streaming bodies asked in Arabic and was answered in English."""
+    client.post("/api/chat", json={"query": "مرحبا", "lang": "ar"}, headers=AUTH)
+    assert app.config["llm_calls"][-1]["lang"] == "ar"
+
+
+def test_an_unknown_lang_falls_back_to_english(app, client):
+    client.post("/api/chat", json={"query": "hello", "lang": "fr"}, headers=AUTH)
+    assert app.config["llm_calls"][-1]["lang"] == "en"
 
 
 def test_sources_survive_numpy_scalars_from_the_search_layer(app, client):

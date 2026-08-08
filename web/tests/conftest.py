@@ -98,26 +98,30 @@ export function createClient() {
 SSE_CHAT_MOCK = (
     'event: meta\ndata: {"conversation_id":"test","category":"all","lang":"en","model":"mock"}\n\n'
     'event: stage\ndata: {"stage":"searching"}\n\n'
-    'event: sources\ndata: {"sources":[]}\n\n'
     'event: stage\ndata: {"stage":"retrieved","count":0}\n\n'
     'event: stage\ndata: {"stage":"drafting"}\n\n'
     'event: delta\ndata: {"t":"Mock regulatory "}\n\n'
     'event: delta\ndata: {"t":"answer"}\n\n'
     'event: stage\ndata: {"stage":"finalizing"}\n\n'
+    'event: final\ndata: {"response":"Mock regulatory answer","sources":[],"cited":[],"retrieved":0}\n\n'
     'event: suggestions\ndata: {"suggested_questions":["Next question?"]}\n\n'
     'event: done\ndata: {"finish_reason":"stop","chars":22}\n\n'
 )
 
 
-# The exchange above ships `sources: []`, so nothing in the suite ever rendered
-# a source card — which is how a deck that resolved to zero by zero on wide
-# screens, and a deck whose arrival stopped the transcript following the
-# stream, both went unnoticed. This one carries eight sources (the app's
-# configured k) and a long answer, so the transcript actually overflows.
+# The exchange above ships no sources at all, so nothing in the suite ever
+# rendered a source card — which is how a deck that resolved to zero by zero on
+# wide screens, and a deck whose arrival stopped the transcript following the
+# stream, both went unnoticed. These carry eight passages (the app's configured
+# k) and a long answer, so the transcript actually overflows.
+#
+# Two of the eight share a document (1 and 5, 2 and 6, …), because the panel
+# groups passages under their file and a fixture where every passage came from
+# a different document would never exercise that.
 _SSE_SOURCES = [
     {
         "index": i,
-        "document": f"SFDA Guideline Document Number {i} — Long Official Title",
+        "document": f"SFDA Guideline Document Number {(i - 1) % 4 + 1} — Long Official Title",
         "page": i * 10,
         "category": "Regulatory",
         "score": round(0.95 - i * 0.05, 2),
@@ -128,26 +132,94 @@ _SSE_SOURCES = [
     for i in range(1, 9)
 ]
 
+# What the answer cites. Sparse on purpose: the payload the server ships is
+# filtered to these, so the indices are 1 and 3 rather than 1 and 2, and
+# anything assuming `1..len(sources)` breaks against it.
+# 1 and 5 both map to "Document Number 1" under the formula above, so the
+# cited set spans two documents across three passages — which is what makes
+# grouping observable. A cited set of one passage per document would render
+# identically whether grouping worked or not.
+_SSE_CITED = [1, 3, 5]
+_SSE_CITED_SOURCES = [s for s in _SSE_SOURCES if s["index"] in _SSE_CITED]
+
+
+def _delta_sentence(i: int) -> str:
+    """One sentence of the streamed answer; two of them carry markers.
+
+    A bare "[1]" is safe from `marked`'s reference-link parsing, which needs
+    "[label][1]" plus a link definition to consume the brackets.
+    """
+    marker = {2: " [1]", 4: " [3]", 6: " [5]"}.get(i, "")
+    return (
+        f"Sentence number {i} of the streamed regulatory answer, long enough "
+        f"to add real height{marker}. "
+    )
+
+
+_SSE_ANSWER = "".join(_delta_sentence(i) for i in range(1, 26)).strip()
+
+# The same length of answer with no citation markers at all — a refusal, or an
+# answer the model simply did not cite. The previous "uncited" fixture reused
+# the cited text, so it carried [1] and [3] and never actually exercised the
+# marker-free path.
+_SSE_UNCITED_ANSWER = (
+    "I cannot answer based on the given information. " * 3
+).strip()
 _SSE_DELTAS = "".join(
-    'event: delta\ndata: {"t":"Sentence number %d of the streamed regulatory '
-    'answer, long enough to add real height. "}\n\n' % i
+    "event: delta\ndata: %s\n\n" % json.dumps({"t": _delta_sentence(i)})
     for i in range(1, 26)
 )
 
-SSE_CHAT_MOCK_WITH_SOURCES = (
-    'event: meta\ndata: {"conversation_id":"test","category":"all","lang":"en","model":"mock"}\n\n'
-    'event: stage\ndata: {"stage":"searching"}\n\n'
-    f"event: sources\ndata: {json.dumps({'sources': _SSE_SOURCES})}\n\n"
-    'event: stage\ndata: {"stage":"retrieved","count":8}\n\n'
-    'event: stage\ndata: {"stage":"drafting"}\n\n'
-    f"{_SSE_DELTAS}"
-    'event: suggestions\ndata: {"suggested_questions":["Next question?"]}\n\n'
-    'event: done\ndata: {"finish_reason":"stop","chars":2000}\n\n'
+
+def _sse_final(response: str, sources: list, cited: list, retrieved: int) -> str:
+    """The terminal frame carrying the canonical answer and its evidence.
+
+    Sources ride here rather than ahead of the first token. Before the answer
+    exists there is no way to know which passages it used, and shipping all of
+    them anyway is what put a full deck of cards under refusals.
+    """
+    return "event: final\ndata: %s\n\n" % json.dumps(
+        {
+            "response": response,
+            "sources": sources,
+            "cited": cited,
+            "retrieved": retrieved,
+        }
+    )
+
+
+def _sse_exchange(response: str, sources: list, cited: list, retrieved: int) -> str:
+    return (
+        'event: meta\ndata: {"conversation_id":"test","category":"all","lang":"en","model":"mock"}\n\n'
+        'event: stage\ndata: {"stage":"searching"}\n\n'
+        f'event: stage\ndata: {{"stage":"retrieved","count":{retrieved}}}\n\n'
+        'event: stage\ndata: {"stage":"drafting"}\n\n'
+        f"{_SSE_DELTAS}"
+        'event: stage\ndata: {"stage":"finalizing"}\n\n'
+        f"{_sse_final(response, sources, cited, retrieved)}"
+        'event: suggestions\ndata: {"suggested_questions":["Next question?"]}\n\n'
+        'event: done\ndata: {"finish_reason":"stop","chars":2000}\n\n'
+    )
+
+
+# An answer citing two of the eight retrieved passages.
+SSE_CHAT_MOCK_WITH_SOURCES = _sse_exchange(
+    _SSE_ANSWER, _SSE_CITED_SOURCES, _SSE_CITED, 8
 )
+
+# An answer that cites none of the eight passages retrieved for it. `sources`
+# is empty because sources means evidence, and an answer that cited nothing has
+# none — `retrieved: 8` is the only trace, and it drives the stage line, not a
+# source control. This is the production shape of "who is claude?" while the
+# relevance floor ships disabled.
+SSE_CHAT_MOCK_UNCITED = _sse_exchange(_SSE_UNCITED_ANSWER, [], [], 8)
+
+# Nothing cleared retrieval at all — the "who is claude?" case.
+SSE_CHAT_MOCK_NO_SOURCES = _sse_exchange(_SSE_ANSWER, [], [], 0)
 
 
 # Individual frames, for tests that release them one at a time.
-SSE_SOURCES_FRAME = f"event: sources\ndata: {json.dumps({'sources': _SSE_SOURCES})}\n\n"
+SSE_FINAL_FRAME = _sse_final(_SSE_ANSWER, _SSE_CITED_SOURCES, _SSE_CITED, 8)
 SSE_DONE_FRAME = 'event: done\ndata: {"finish_reason":"stop"}\n\n'
 
 
@@ -293,6 +365,37 @@ def sourced_page(authenticated_page):
     return authenticated_page
 
 
+def _stream_route(page, body: str):
+    """Point the chat stream at a canned exchange.
+
+    Registered after login so it wins over the empty-sources route in
+    ``browser_page`` — Playwright matches the most recently added handler first.
+    """
+    page.route(
+        "**/api/chat/stream",
+        lambda route: route.fulfill(
+            status=200, content_type="text/event-stream", body=body,
+        ),
+    )
+    return page
+
+
+@pytest.fixture
+def uncited_page(authenticated_page):
+    """Signed in, with an answer that cites none of what was retrieved."""
+    return _stream_route(authenticated_page, SSE_CHAT_MOCK_UNCITED)
+
+
+@pytest.fixture
+def no_sources_page(authenticated_page):
+    """Signed in, with a query nothing was retrieved for.
+
+    The "who is claude?" reproduction: the model is told no relevant
+    information was found, refuses, and there is no evidence to offer.
+    """
+    return _stream_route(authenticated_page, SSE_CHAT_MOCK_NO_SOURCES)
+
+
 @pytest.fixture
 def streaming_page(authenticated_page):
     """Signed in, with a chat stream the TEST releases frame by frame.
@@ -313,7 +416,7 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
                 "test_frontend.py",
                 "test_theme_toggle.py",
                 "test_profile_theme_integration.py",
-                "test_source_deck.py",
+                "test_source_panel.py",
                 "test_composer.py",
             )
         ):

@@ -81,7 +81,14 @@ export const Services = {
     return response.json();
   },
 
-  async sendChatRequest(query, category, token) {
+  /** Blocking fallback for browsers without streaming bodies.
+   *
+   *  `lang` is not optional: the route answers in whatever language it is
+   *  given, so omitting it here answered an Arabic reader in English on every
+   *  browser that lands on this path. The server accepting `lang` is only half
+   *  the fix — nothing was sending it.
+   */
+  async sendChatRequest(query, category, token, lang = 'en') {
     this.cancelChatRequest();
     this.chatAbortController = new AbortController();
 
@@ -92,7 +99,7 @@ export const Services = {
       method: 'POST',
       headers,
       signal: this.chatAbortController.signal,
-      body: JSON.stringify({ query, category }),
+      body: JSON.stringify({ query, category, lang }),
     });
 
     if (!response.ok) {
@@ -141,6 +148,10 @@ export const Services = {
     const decoder = new TextDecoder('utf-8');
     let buffer = '';
 
+    // Both are required for the exchange to count as complete; see the note
+    // at the end of this function.
+    const seen = { final: false, done: false };
+
     /* A chunk is not a frame: one read may deliver half a frame or twelve of
        them. Drain whatever complete frames the buffer currently holds. */
     const drain = () => {
@@ -149,7 +160,10 @@ export const Services = {
         const raw = buffer.slice(0, boundary.index);
         buffer = buffer.slice(boundary.index + boundary[0].length);
         const frame = parseSseFrame(raw);
-        if (frame) on[frame.event]?.(frame.data);
+        if (!frame) continue;
+        if (frame.event === 'final') seen.final = true;
+        if (frame.event === 'done') seen.done = true;
+        on[frame.event]?.(frame.data);
       }
     };
 
@@ -165,6 +179,19 @@ export const Services = {
     } finally {
       try { reader.releaseLock(); } catch { /* already released */ }
     }
+
+    /* A closed socket is not a finished answer. A proxy timeout, a dropped
+       connection or a killed worker all end the body cleanly, and without this
+       the caller treated the tokens it happened to receive as the whole
+       answer: rendered, announced complete, and — because `final` never
+       arrived — never normalized, so legacy "[Source: Doc, Page: N]" citations
+       stayed as prose and the reader was shown a truncated answer with no
+       indication it was truncated. On a regulatory surface a half-answer
+       presented as authoritative is the worst thing this module can do.
+
+       Reported to the caller rather than thrown, so whatever DID arrive is
+       still shown — flagged as incomplete instead of discarded. */
+    return { complete: seen.final && seen.done };
   },
 
   cancelChatRequest() {
@@ -195,7 +222,35 @@ export const Services = {
     return data;
   },
 
+  /**
+   * End the session on BOTH sides.
+   *
+   * Signing out of Supabase drops the access token; it does nothing to the
+   * Flask session cookie, which carries `conv_id` and `chat_history`. Without
+   * the call below that cookie survived logout intact, and the next reader to
+   * sign in on this browser had the previous reader's conversation fed to the
+   * model as context.
+   *
+   * The server call goes FIRST and its failure is not fatal: a network error
+   * must not leave the reader signed in, and the server rotates conversation
+   * state on an identity change anyway. `credentials: 'same-origin'` is
+   * explicit because the whole point is to send the cookie.
+   */
+  async endServerSession() {
+    try {
+      await fetch('/auth/logout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+      });
+    } catch (error) {
+      console.warn('[SFDA Copilot] Server session teardown failed:', error);
+    }
+  },
+
   async logout() {
+    await this.endServerSession();
+
     if (window.location.search.includes('testing=true')) return { testing: true };
     if (!this.supabase) throw new Error('Authentication service not available.');
 

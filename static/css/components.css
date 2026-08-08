@@ -717,65 +717,144 @@
   color: var(--fg-on-signal);
 }
 
-/* The deck is a block, NOT a shrink-to-fit flex column. It used to be the
-   latter, with a `inline-size: 100%` list inside it — and a percentage width
-   contributes nothing to intrinsic sizing, so the deck was only ever as wide
-   as its summary button. Above 1440px, where a media query hid that button,
-   the whole deck resolved to zero by zero: every source card was in the DOM,
-   measured 0x0, and no reader on a wide screen could see a single one. On the
-   surface whose entire premise is traceable answers. */
-.source-deck {
-  inline-size: 100%;
-  margin-block-start: var(--space-4);
-  padding-block-start: var(--space-4);
-  border-block-start: 1px solid var(--hairline);
-}
-.source-list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  inline-size: 100%;
-  margin: var(--space-3) 0 0;
-  padding: 0;
-  list-style: none;
-}
-.source-deck-summary {
+/* ——————————————— The trigger ———————————————
+   One line in the reading column. What used to sit here was a deck of source
+   cards, one per retrieved passage — eight of them under a two-line answer,
+   opened by default. The passages moved to .source-panel; this is all the
+   transcript keeps. */
+.source-trigger {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
+  margin-block-start: var(--space-4);
   padding: 0;
   border: none;
   background: none;
-  color: var(--fg-muted);
+  color: var(--signal);
   font-family: var(--font-sans);
   font-size: var(--fs-100);
   font-weight: var(--fw-medium);
   letter-spacing: var(--track-caps);
   text-transform: uppercase;
+  text-align: start;
   cursor: pointer;
   transition: color var(--duration-s) var(--ease-soft);
 }
-.source-deck-summary:hover { color: var(--fg-primary); }
-.source-deck-summary .chev {
-  color: var(--fg-faint);
-  /* An arrow points along the reading direction, so it mirrors; then the open
-     state rotates it a further quarter turn to point down at the list. */
+.source-trigger:hover { color: var(--fg-primary); }
+.source-trigger .chev {
+  color: currentColor;
+  /* An arrow points along the reading direction, so it mirrors. */
   transform: scaleX(var(--flip));
   transition: transform var(--duration-s) var(--ease-soft);
 }
-.source-deck.is-open .source-deck-summary .chev {
+.source-trigger[aria-expanded="true"] .chev {
   transform: scaleX(var(--flip)) rotate(90deg);
 }
 
+/* ——————————————— The panel ———————————————
+   Two presentations of one element: a rail column at 1200px and up, a modal
+   bottom sheet below that. See source-panel.js.
+
+   A block, NOT a shrink-to-fit flex column. Its predecessor was the latter,
+   with an `inline-size: 100%` list inside it — and a percentage width
+   contributes nothing to intrinsic sizing, so on wide screens the whole thing
+   resolved to zero by zero: every card in the DOM, measuring 0x0, on the
+   surface whose entire premise is traceable answers. The nested groups below
+   size intrinsically for that reason. */
+.source-panel {
+  display: flex;
+  flex-direction: column;
+  min-block-size: 0;
+  background: var(--bg-surface);
+}
+.source-panel[hidden] { display: none; }
+
+.source-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex: none;
+  padding-block-end: var(--space-3);
+  border-block-end: 1px solid var(--hairline);
+}
+.source-panel-title {
+  margin: 0;
+  font-size: var(--fs-100);
+  font-weight: var(--fw-medium);
+  letter-spacing: var(--track-caps);
+  text-transform: uppercase;
+  color: var(--fg-muted);
+}
+.source-panel-close {
+  flex: none;
+  display: inline-flex;
+  padding: var(--space-1);
+  border: none;
+  border-radius: var(--radius-xs);
+  background: none;
+  color: var(--fg-faint);
+  cursor: pointer;
+  transition: color var(--duration-s) var(--ease-soft),
+              background var(--duration-s) var(--ease-soft);
+}
+.source-panel-close:hover {
+  color: var(--fg-primary);
+  background: var(--bg-sunken);
+}
+
+.source-panel-body {
+  flex: 1 1 auto;
+  min-block-size: 0;
+  /* The panel scrolls on its own, so opening sources never moves the answer. */
+  overflow-y: auto;
+  padding-block: var(--space-4);
+}
+.source-panel-note {
+  margin: 0 0 var(--space-4);
+  font-size: var(--fs-100);
+  line-height: var(--lh-body);
+  color: var(--fg-faint);
+}
+
+/* ——————————————— Groups and passages ———————————————
+   Grouping is where the density comes from: eight passages are typically
+   three documents, and the filename is printed once per document instead of
+   once per passage. */
+.source-group { margin-block-end: var(--space-5); }
+.source-group:last-of-type { margin-block-end: 0; }
+.source-group-doc {
+  margin: 0 0 var(--space-3);
+  font-size: var(--fs-200);
+  font-weight: var(--fw-medium);
+  line-height: var(--lh-snug);
+  color: var(--fg-primary);
+  overflow-wrap: anywhere;
+}
+.source-passages {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
 .source-card {
   padding: var(--space-3);
   border: 1px solid var(--hairline);
+  border-inline-start: 2px solid var(--hairline);
   border-radius: var(--radius-sm);
-  background: var(--bg-surface);
+  /* --bg-base does not exist; the semantic names are page/surface/sunken. The
+     invalid declaration was simply dropped, so a card sat at exactly the
+     panel's own colour with only its border to separate it. Sunken is the
+     right one: a card recedes INTO the surface it sits on. */
+  background: var(--bg-sunken);
   transition: border-color var(--duration-s) var(--ease-soft),
               background var(--duration-s) var(--ease-soft);
 }
-.source-card:hover { border-color: var(--hairline-strong); }
+/* A passage the answer actually cited, versus one retrieval merely offered. */
+.source-card.is-cited { border-inline-start-color: var(--signal); }
+/* Transient, while its marker is hovered or it was just jumped to. */
 .source-card.is-lit {
   border-color: var(--signal);
   background: var(--signal-tint);
@@ -784,13 +863,7 @@
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  inline-size: 100%;
-  padding: 0;
-  border: none;
-  background: none;
-  text-align: start;
-  cursor: pointer;
-  color: inherit;
+  margin-block-end: var(--space-2);
 }
 .source-index {
   flex: none;
@@ -803,19 +876,9 @@
   font-size: var(--fs-100);
   text-align: center;
 }
-.source-doc {
-  flex: 1;
-  min-inline-size: 0;
-  font-size: var(--fs-200);
-  font-weight: var(--fw-medium);
-  line-height: var(--lh-snug);
-  color: var(--fg-primary);
-  overflow-wrap: anywhere;
-}
 /* Page numbers and scores stay LTR and isolated so bidi cannot reorder them
-   when they sit inside an Arabic answer. */
-.source-page, .score {
-  flex: none;
+   when they sit inside an Arabic answer's sources. */
+.source-page, .source-diag-score {
   direction: ltr;
   unicode-bidi: isolate;
   font-family: var(--font-mono);
@@ -823,68 +886,93 @@
   font-variant-numeric: tabular-nums;
   color: var(--fg-muted);
 }
-.source-chev {
-  flex: none;
-  color: var(--fg-faint);
-  transform: scaleX(var(--flip));
-  transition: transform var(--duration-s) var(--ease-soft);
-}
-.source-card-head[aria-expanded="true"] .source-chev {
-  transform: scaleX(var(--flip)) rotate(90deg);
-}
-
-.relevance {
-  block-size: 3px;
-  margin-block-start: var(--space-2);
-  border-radius: var(--radius-pill);
-  background: var(--bg-sunken);
-  overflow: hidden;
-}
-.relevance-bar {
-  block-size: 100%;
-  inline-size: var(--pct, 0%);
-  border-radius: inherit;
-  background: var(--confidence);
-}
-
-/* The passage and the retrieval split live behind the disclosure. Eight cards
-   each showing a snippet, a category and two scores at rest buries the answer
-   they belong to; the card at rest answers "which document, which page, how
-   strongly" and opening one answers "and what did it actually say". */
-.source-detail {
-  margin-block-start: var(--space-3);
-  padding-block-start: var(--space-3);
-  border-block-start: 1px solid var(--hairline);
-}
-.source-detail[hidden] { display: none; }
 .source-snippet {
   margin: 0;
   font-size: var(--fs-200);
   line-height: var(--lh-body);
   color: var(--fg-secondary);
 }
-.source-meta {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2) var(--space-4);
-  margin-block-start: var(--space-3);
-}
 .source-cat {
+  display: block;
+  margin-block-start: var(--space-2);
   font-size: var(--fs-100);
   letter-spacing: var(--track-caps);
   text-transform: uppercase;
   color: var(--fg-faint);
 }
-.score-split { display: flex; gap: var(--space-3); }
-.score b {
-  font-weight: var(--fw-medium);
+
+/* ——————————————— Diagnostics ———————————————
+   These were a bar on every card, width = score * 100. That read as calibrated
+   confidence in the answer, which it is not — it is a weighted blend of two
+   cosine similarities with a heuristic penalty applied. No bars, no
+   percentages, no colour: figures, collapsed, labelled as ranking
+   diagnostics. */
+.source-diagnostics {
+  margin-block-start: var(--space-5);
+  padding-block-start: var(--space-4);
+  border-block-start: 1px solid var(--hairline);
+}
+.source-diag-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0;
+  border: none;
+  background: none;
   color: var(--fg-faint);
-  letter-spacing: var(--track-caps);
+  font-family: var(--font-sans);
+  font-size: var(--fs-100);
+  text-align: start;
+  cursor: pointer;
+}
+.source-diag-toggle:hover { color: var(--fg-muted); }
+.source-diag-toggle .chev {
+  transform: scaleX(var(--flip));
+  transition: transform var(--duration-s) var(--ease-soft);
+}
+.source-diag-toggle[aria-expanded="true"] .chev {
+  transform: scaleX(var(--flip)) rotate(90deg);
+}
+.source-diag-list { margin-block-start: var(--space-3); }
+.source-diag-list[hidden] { display: none; }
+.source-diag-note {
+  margin: 0 0 var(--space-3);
+  font-size: var(--fs-100);
+  line-height: var(--lh-body);
+  color: var(--fg-faint);
+}
+.source-diag-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding-block: var(--space-1);
 }
 
-.source-deck:not(.is-open) .source-list { display: none; }
+/* ——————————————— Sheet presentation ———————————————
+   Below the rail breakpoint the panel covers the reading column, so there it
+   really is modal — backdrop, focus containment, the lot. */
+/* On the token scale, not raw numbers. These were 60 and 61 — below
+   --z-sticky (100), --z-dropdown (1000) and --z-modal (1055) — so a surface
+   claiming aria-modal="true" rendered UNDER the sticky header and any open
+   dropdown. A modal that things float over is not modal. */
+.source-panel-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  background: var(--scrim);
+}
+.source-panel-backdrop[hidden] { display: none; }
+.source-panel.is-sheet {
+  position: fixed;
+  inset-block-end: 0;
+  inset-inline: 0;
+  z-index: calc(var(--z-modal) + 1);
+  max-block-size: 70dvh;
+  padding: var(--space-5) var(--gutter);
+  border-start-start-radius: var(--radius-lg);
+  border-start-end-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sheet);
+}
 
 /* ——————————————— Suggested questions ——————————————— */
 .suggested-questions-container {

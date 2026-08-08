@@ -30,6 +30,15 @@ os.environ.setdefault("OMP_NUM_THREADS", "1")
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+# A Windows console defaults to cp1252, which cannot encode Arabic — so this
+# script died on `print` before reaching any of the pipeline it exists to
+# check, and the Arabic half of the product had no smoke test at all.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):  # pragma: no cover - non-standard stream
+        pass
+
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -86,14 +95,28 @@ print(answer[:1400])
 print("-" * 70)
 
 import re
-cited = sorted({int(n) for n in re.findall(r"\[(\d{1,2})\]", answer)})
-valid = [n for n in cited if 1 <= n <= len(sources)]
-bad = [n for n in cited if n not in valid]
-print(f"\nCITATIONS: {cited or 'NONE'}")
-print(f"  in range 1..{len(sources)}: {valid}")
+# The same function the route uses, rather than a second copy of the marker
+# grammar — two copies in one repo is how the JS and Python sides drift.
+from web.services.citations import CITATION_MARKER, extract_cited_indices
+
+valid = extract_cited_indices(answer, sources)
+seen = sorted({int(n) for n in CITATION_MARKER.findall(answer)})
+bad = [n for n in seen if n not in valid]
+print(f"\nCITATIONS: {seen or 'NONE'}")
+print(f"  valid (these become the answer's sources): {valid}")
 print(f"  hallucinated (left as literal text by the UI): {bad or 'none'}")
 legacy = len(re.findall(r"\[Source:", answer))
 print(f"  legacy prose citations remaining: {legacy}")
+
+# The whole point of the change: no citations means no source panel.
+if valid:
+    docs = {s["document"] for s in sources if s["index"] in valid}
+    print(f"\n  → panel shows {len(valid)} passage(s) from {len(docs)} document(s)")
+elif sources:
+    print(f"\n  → no citations: NO source control rendered "
+          f"({len(sources)} passage(s) retrieved, none offered as evidence)")
+else:
+    print("\n  → nothing retrieved: NO source control rendered at all")
 
 print("\nSUGGESTIONS")
 for q in handler.generate_suggestions(QUERY, answer, lang=LANG):

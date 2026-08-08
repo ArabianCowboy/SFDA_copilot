@@ -19,7 +19,7 @@ import { Services } from './modules/services.js';
 import { Handlers } from './modules/handlers.js';
 import { CustomDropdown } from './modules/dropdown.js';
 import { mountRobots, initLandingRobot, RobotCompanion } from './modules/robot.js';
-import { initCitationInteractions } from './modules/citations.js';
+import { initCitationInteractions, neutraliseRestoredCitations } from './modules/citations.js';
 import { I18n, Transcript, initLanguageToggle } from './modules/i18n.js';
 
 const App = {
@@ -68,8 +68,11 @@ const App = {
     initCitationInteractions(DOMCache.get(CONFIG.SELECTORS.MESSAGES));
     UI.initJumpToLatest();
     initLanguageToggle();
-    /* A language switch reloads the page; this puts the transcript back. */
-    Transcript.restore();
+    /* A language switch reloads the page; this puts the transcript back —
+       markup only. A restored answer's source passages did not survive the
+       reload, so its controls are stripped rather than left resolving to
+       nothing. */
+    Transcript.restore(neutraliseRestoredCitations);
 
     /* Mount the mascot and the card reveal. These run regardless of whether
        auth services are configured below. */
@@ -137,7 +140,7 @@ const App = {
       AuthView.render(null);
     }
 
-    Services.supabase.auth.onAuthStateChange(async (_event, session) => {
+    Services.supabase.auth.onAuthStateChange(async (event, session) => {
       const user = session?.user ?? null;
       AuthView.render(user);
 
@@ -157,7 +160,21 @@ const App = {
           .catch(err => logError(err, 'loadProfileWithTimeout'));
       } else {
         AppState.set('userProfile', null);
-        UI.Faq.clearButtons();
+        /* Only on an actual sign-out — revoked, expired, or the logout button
+           — never on the INITIAL_SESSION event this fires on subscribe. That
+           event reports "no session yet" during startup, and clearing on it
+           would wipe the transcript Transcript.restore() had just put back
+           after a language switch.
+
+           Without the cleanup here a session that ends anywhere other than the
+           logout button leaves the previous reader's transcript, source panel
+           and citation state live behind the landing view, because the tab is
+           never reloaded on the way out. */
+        if (event === 'SIGNED_OUT' || event === 'USER_DELETED') {
+          Handlers.clearSessionState();
+        } else {
+          UI.Faq.clearButtons();
+        }
       }
     });
 

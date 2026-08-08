@@ -91,13 +91,17 @@ for module, default_level in [
 # ──────────────────────────────────────────────────────────
 # Application-Specific Imports (after logger setup)
 # ──────────────────────────────────────────────────────────
-from web.api.auth import auth_bp
-from web.services.citations import build_source_payload, normalize_legacy_citations
+from web.api.auth import auth_bp, purge_conversation_state
+from web.services.citations import (
+    build_source_payload,
+    extract_cited_indices,
+    normalize_legacy_citations,
+)
 from web.services.conversation_store import ConversationStore
 from web.services.openai_app import OpenAIHandler
 from web.services.sse import sse, sse_headers
 from web.services.search_engine import ImprovedSearchEngine, SearchResult
-from web.services.search_exceptions import ManifestValidationError
+from web.services.search_exceptions import ManifestValidationError, SearchEngineError
 from web.utils.config_loader import config
 from web.utils.icons import CATEGORY_ICONS, icon, runtime_icons
 from web.utils.i18n import (
@@ -128,7 +132,7 @@ SUPPORTED_FAQ_LANGS = ("en", "ar")
 # that mixes a fresh template with a stale module is worse than a stale page —
 # post-icon-migration it would render an <i class="bi"> with no icon font behind
 # it, or print a glyph NAME as text. MODULE_IMPORT_MAP below closes that.
-ASSET_VERSION = "warm5"
+ASSET_VERSION = "warm6"
 
 # Product release, rendered in the landing footer. Kept as one constant so
 # the number cannot drift between the page and the module headers.
@@ -176,6 +180,26 @@ def clear_auth_session() -> None:
     session.pop("user_email", None)
 
 
+def _bind_session_to_identity(identity: str) -> None:
+    """Tie the conversation in this cookie to one authenticated reader.
+
+    The belt to the logout route's braces. Logout is the *cooperative* path and
+    plenty of real endings skip it: a closed tab, an expired refresh token, a
+    revoked session, a client that never called it. Any of those leaves a valid
+    Flask cookie carrying the previous reader's `conv_id`, and the next person
+    to sign in on that browser would have inherited their history.
+
+    So identity is checked on every authenticated request rather than trusted
+    to have been cleaned up on the way out. A change means a different person
+    is holding this cookie, and their conversation starts empty.
+    """
+    previous = session.get("auth_identity")
+    if previous is not None and previous != identity:
+        purge_conversation_state()
+        logging.info("Authenticated identity changed for this session; conversation purged.")
+    session["auth_identity"] = identity
+
+
 def auth_required(view_func):
     """Decorator that enforces Supabase authentication for a route."""
 
@@ -183,6 +207,7 @@ def auth_required(view_func):
     def wrapper(*args, **kwargs):
         if current_app.config["TESTING"]:
             if "fake_token" in request.headers.get("Authorization", ""):
+                _bind_session_to_identity("test@example.com")
                 session["user_email"] = "test@example.com"
                 return view_func(*args, **kwargs)
             return jsonify({"error": "Invalid or missing test token"}), 401
@@ -203,6 +228,10 @@ def auth_required(view_func):
                 logging.warning("Token validation failed for %s – no user found.", request.endpoint)
                 return _handle_unauthorized(is_page_request)
 
+            # The user id is the stable identity; email can be changed by the
+            # account holder and is only a fallback for a provider that
+            # omits it.
+            _bind_session_to_identity(str(getattr(user, "id", None) or user.email))
             session.update({"supabase_access_token": token, "user_email": user.email})
             return view_func(*args, **kwargs)
 
@@ -359,7 +388,8 @@ def _register_testing_doubles(app: Flask) -> None:
         "| Stage | Timeline |\n| --- | --- |\n| Screening | 20 working days |\n"
         "| Scientific review | 180 working days |\n\n"
         "Marketing authorisation holders must additionally nominate a qualified person "
-        "resident in the Kingdom [3]."
+        "resident in the Kingdom [3]. Variations to an approved registration follow the "
+        "same electronic route [4]."
     )
 
     def fake_stream(*_args, **_kwargs):
@@ -379,10 +409,16 @@ def _register_testing_doubles(app: Flask) -> None:
     handler.generate_response.return_value = (demo_answer, demo_suggestions)
     handler.generate_suggestions.return_value = demo_suggestions
 
+    # Entries 1 and 4 share a document deliberately: the panel groups passages
+    # under their file, and a demo where every passage came from a different
+    # document would never show that. The scores are illustrative — if a
+    # relevance floor is ever configured above 0.34, revisit them, or the demo
+    # will show passages production would have dropped.
     documents = [
         ("2022-10-19_Guidance_for_Submission.pdf", 14, "regulatory", 0.71, 0.63, 0.80),
         ("2021-03-02_GMP_Requirements.pdf", 7, "regulatory", 0.52, 0.59, 0.41),
         ("2023-01-11_Pharmacovigilance_Guideline.pdf", 31, "pharmacovigilance", 0.34, 0.30, 0.37),
+        ("2022-10-19_Guidance_for_Submission.pdf", 61, "regulatory", 0.48, 0.44, 0.51),
     ]
     demo_results = [
         SearchResult(
@@ -643,10 +679,16 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
                 yield sse("stage", {"stage": "searching"})
 
                 results = engine.search(query, category)
-                sources = build_source_payload(results, limit=handler.max_context_results)
-                yield sse("sources", {"sources": sources})
-                yield sse("stage", {"stage": "retrieved", "count": len(sources)})
+                retrieved = build_source_payload(results, limit=handler.max_context_results)
+                yield sse("stage", {"stage": "retrieved", "count": len(retrieved)})
 
+                # No "sources" frame here any more. It used to be emitted at
+                # this point — before the model had been called — so the deck
+                # could not reflect what the answer did with the passages, and
+                # a refusal arrived with eight source cards attached. What the
+                # reader gets mid-stream is the count above; the passages
+                # themselves ride on "final", once there is an answer to judge
+                # them against.
                 llm_context = [
                     {"text": r.text, "document": r.document, "category": r.category, "page": r.page}
                     for r in results
@@ -658,9 +700,39 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
                     parts.append(token)
                     yield sse("delta", {"t": token})
 
-                answer = normalize_legacy_citations("".join(parts).strip(), sources)
+                answer = normalize_legacy_citations("".join(parts).strip(), retrieved)
+                cited = extract_cited_indices(answer, retrieved)
+                sources = [s for s in retrieved if s["index"] in cited]
 
                 yield sse("stage", {"stage": "finalizing"})
+
+                # `sources` is what the answer CITED, and nothing else. An
+                # answer that cited nothing ships an empty list, so no source
+                # control renders at all.
+                #
+                # This used to ship the retrieval candidates in that case,
+                # behind a muted "8 passages retrieved, not cited" control, on
+                # the theory that a reader auditing the answer still wants to
+                # see what search offered. In practice it read as a
+                # contradiction — the label disclaims the passages in the same
+                # breath as advertising eight of them — and on a refusal it is
+                # still the surface putting evidence under an answer that has
+                # none. `retrieved` below carries the count for the stage line
+                # and the logs; the passages themselves stay server-side.
+                #
+                # The canonical result. `response` is the normalized answer,
+                # which is NOT what the delta frames carried: those are raw
+                # model tokens, so a model that reverts to "[Source: Guide.pdf,
+                # Page: 14]" leaves the browser rendering prose while the
+                # server holds "[1]". The client re-renders from this string,
+                # so the marker the reader sees is the marker `cited` counted.
+                yield sse("final", {
+                    "response": answer,
+                    "sources": sources,
+                    "cited": cited,
+                    "retrieved": len(retrieved),
+                })
+
                 yield sse("suggestions", {
                     "suggested_questions": handler.generate_suggestions(query, answer, lang=lang),
                 })
@@ -675,6 +747,15 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
                 # correctly not recorded in history.
                 logging.info("Client disconnected mid-stream (conv=%s)", conversation_id)
                 raise
+            except SearchEngineError:
+                # Retrieval failed. Reported as its own code rather than folded
+                # into "internal", because the alternative — treating it as an
+                # empty result set — would render as a confident refusal.
+                logging.error("Retrieval failed (conv=%s)", conversation_id, exc_info=True)
+                yield sse("error", {
+                    "error": "Search service is currently unavailable.",
+                    "code": "search_unavailable",
+                })
             except Exception:
                 logging.error("Streaming chat failed (conv=%s)", conversation_id, exc_info=True)
                 # The 200 status line is already sent, so failures after the
@@ -693,6 +774,12 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
             payload = request.get_json(force=True)
             query = payload.get("query", "").strip()
             category = payload.get("category", "all").lower()
+            # Was never read, so an Arabic reader on a browser without
+            # streaming bodies got an English answer while the streaming path
+            # answered in Arabic.
+            lang = (payload.get("lang") or "en").lower()
+            if lang not in ("en", "ar"):
+                lang = "en"
 
             if not query:
                 return jsonify(error="Query cannot be empty"), 400
@@ -708,18 +795,35 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
             llm_context = [{"text": r.text, "document": r.document, "category": r.category, "page": r.page} for r in search_results]
 
             openai_handler: OpenAIHandler = current_app.config["openai_handler"]
-            # sources[i] must be the same passage as prompt block [i], so both
+            # retrieved[i] must be the same passage as prompt block [i], so both
             # are cut to the same limit.
-            sources = build_source_payload(search_results, limit=openai_handler.max_context_results)
+            retrieved = build_source_payload(search_results, limit=openai_handler.max_context_results)
 
             chat_history = session.get("chat_history", [])
-            answer, suggested_questions = openai_handler.generate_response(query, llm_context, category, chat_history)
-            answer = normalize_legacy_citations(answer, sources)
+            answer, suggested_questions = openai_handler.generate_response(
+                query, llm_context, category, chat_history, lang=lang,
+            )
+            answer = normalize_legacy_citations(answer, retrieved)
+
+            # Same contract as the streaming path's "final" frame — see the
+            # comment there. `sources` is strictly what the answer cited.
+            cited = extract_cited_indices(answer, retrieved)
+            sources = [s for s in retrieved if s["index"] in cited]
 
             chat_history.extend([{"role": "user", "content": query}, {"role": "assistant", "content": answer}])
             session["chat_history"] = _truncate_chat_history(chat_history, current_app.config["MAX_CHAT_HISTORY_MESSAGE_PAIRS"], MAX_SESSION_CHAT_HISTORY_CHARS)
 
-            return jsonify(response=answer, suggested_questions=suggested_questions, sources=sources)
+            return jsonify(
+                response=answer,
+                suggested_questions=suggested_questions,
+                sources=sources,
+                cited=cited,
+                retrieved=len(retrieved),
+            )
+
+        except SearchEngineError:
+            logging.error("Retrieval failed in /api/chat", exc_info=True)
+            return jsonify(error="Search service is currently unavailable."), 503
 
         except Exception as exception:
             logging.error("Unhandled error in /api/chat: %s", exception, exc_info=True)

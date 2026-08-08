@@ -17,6 +17,7 @@ import tiktoken
 from openai import OpenAI
 from openai.types.chat import ChatCompletionMessageParam
 
+from web.services.citations import strip_citation_markers
 from web.utils.config_loader import config
 
 logging.basicConfig(level=logging.INFO)
@@ -45,6 +46,15 @@ BASE_SYSTEM_MESSAGE = (
     "Place the marker at the end of the sentence it supports. "
     "Use only numbers that appear in the provided context, and never invent a citation number. "
     "Do not write out document names or page numbers in prose — the numbered marker is sufficient. "
+    # The citation markers are load-bearing: the API decides whether an answer
+    # gets a source panel by counting them, so an uncited claim silently loses
+    # its provenance and a cited refusal falsely gains some. Backend validation
+    # is still authoritative — these rules only reduce how often it has to
+    # correct the model.
+    "Every factual claim you draw from the context must carry a citation marker. "
+    "If you cannot answer from the context, say so and include NO citation markers at all. "
+    "Do not cite a passage merely because it is on a related topic — cite it only if it "
+    "supports the specific statement you just made. "
     "Ensure your responses are professional, objective, and directly address the user's query."
 )
 
@@ -92,6 +102,35 @@ LANGUAGE_INSTRUCTIONS = {
 }
 
 
+def _history_without_stale_markers(
+    chat_history: Optional[List[dict]],
+) -> List[dict]:
+    """Strip citation markers from replayed turns before they reach the model.
+
+    Numbering is per-request: `_prepare_context` labels THIS request's passages
+    [1], [2], [3], and nothing ties those numbers to the ones in an answer from
+    three turns ago. Replaying old answers verbatim hands the model a worked
+    example of citing [1] for a claim whose evidence is no longer source 1, and
+    a model that restates the claim reuses the marker. The result is a citation
+    that resolves — to the wrong document.
+
+    Applied at prompt-assembly rather than when the turn is stored, so the
+    conversation store keeps a faithful record of what was actually shown to
+    the reader. The stripping belongs at the boundary where the numbering
+    changes meaning, which is here.
+
+    Both roles, not just the assistant's: a reader who writes "tell me more
+    about [1]" is describing a number this request does not have either.
+    """
+    if not chat_history:
+        return []
+
+    return [
+        {**message, "content": strip_citation_markers(message.get("content", ""))}
+        for message in chat_history
+    ]
+
+
 class OpenAIHandler:
     """Handles interactions with the OpenAI API for generating responses."""
 
@@ -113,7 +152,11 @@ class OpenAIHandler:
         # the same passage. They are today (both 8), but if someone lowers
         # max_context_results below the search engine's k, the model would cite
         # numbers for passages it never saw.
-        search_k = config.get("search", "k", self.max_context_results)
+        # The section is "search_engine" (config.yaml). This read used to say
+        # "search", which no config file has ever defined — so ConfigLoader.get
+        # returned the default every time and the guard below was a permanent
+        # no-op. It is live now.
+        search_k = config.get("search_engine", "k", self.max_context_results)
         if search_k != self.max_context_results:
             logger.error(
                 "max_context_results (%s) != search k (%s). Citation indices would point at "
@@ -181,11 +224,13 @@ class OpenAIHandler:
         context = self._prepare_context(search_results)
         user_message = f"Query: {query}\n\nContext:\n{context}"
 
+        history = _history_without_stale_markers(chat_history)
+
         messages: List[dict] = [{"role": "system", "content": system_message}]
-        messages.extend(chat_history or [])
+        messages.extend(history)
         messages.append({"role": "user", "content": user_message})
 
-        self._log_token_counts(system_message, chat_history or [], user_message)
+        self._log_token_counts(system_message, history, user_message)
         return messages
 
     def _log_token_counts(self, system_message: str, chat_history: List[dict], user_message: str) -> None:
@@ -273,7 +318,11 @@ class OpenAIHandler:
             "exploration of the topic. "
             f"Provide the questions as a JSON array of strings.{language_note}"
             f"\n\nOriginal Query: {original_query}"
-            f"\nAssistant's Response: {assistant_response}"
+            # Markers stripped: this prompt carries no numbered context, so a
+            # "[1]" here is noise the model can copy into a suggested question,
+            # where it would render as a citation the reader can neither
+            # resolve nor click.
+            f"\nAssistant's Response: {strip_citation_markers(assistant_response)}"
             "\n\nSuggested Questions:"
         )
 

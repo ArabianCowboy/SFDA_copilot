@@ -13,7 +13,8 @@ import { AppState } from './state.js';
 import { Utils } from './utils.js';
 import { ThemeManager } from './theme.js';
 import { RobotStateManager } from './robot.js';
-import { bindCitations, renderSourceDeck, openSourceDeckOnComplete, nextMessageId } from './citations.js';
+import { bindCitations, renderSourceTrigger, nextMessageId } from './citations.js';
+import { SourcePanel } from './source-panel.js';
 import { MarkdownStream } from './stream-render.js';
 import { I18n } from './i18n.js';
 import { iconMarkup } from './icons.js';
@@ -71,9 +72,9 @@ function createMessageElement(text, sender, msgId) {
 
 /** Apply the markdown class hooks the stylesheet expects. */
 function decorateMarkdown(scope) {
-  scope.querySelectorAll('ul, ol').forEach(el => {
-    if (!el.closest('.source-deck')) el.classList.add(CONFIG.CLASSES.MESSAGE_LIST);
-  });
+  /* No .source-deck exclusion any more: the sources are a panel outside the
+     message subtree now, so the only lists in `scope` are the answer's own. */
+  scope.querySelectorAll('ul, ol').forEach(el => el.classList.add(CONFIG.CLASSES.MESSAGE_LIST));
   scope.querySelectorAll('pre code').forEach(el => el.parentElement?.classList.add(CONFIG.CLASSES.MESSAGE_CODE_BLOCK));
   scope.querySelectorAll(':not(pre) > code').forEach(el => el.classList.add(CONFIG.CLASSES.MESSAGE_INLINE_CODE));
 }
@@ -121,7 +122,7 @@ export const UI = {
     this.setJumpToLatest(false);
   },
 
-  addMessage(text, sender, suggestedQuestions = [], sources = []) {
+  addMessage(text, sender, suggestedQuestions = [], sources = [], meta = null) {
     const msgId = sender === 'bot' ? nextMessageId() : null;
     const messageEl = createMessageElement(text, sender, msgId);
     const container = DOMCache.get(CONFIG.SELECTORS.MESSAGES);
@@ -141,11 +142,21 @@ export const UI = {
       if (sender === 'bot') {
         const content = messageEl.querySelector('.message-content');
         decorateMarkdown(messageEl);
-        bindCitations(content, sources, msgId);
+        const bound = bindCitations(content, sources, msgId);
 
-        if (Array.isArray(sources) && sources.length) {
+        // Only passages whose marker the reader can actually click. See the
+        // note on bindCitations: this is what keeps the panel from offering a
+        // source that markdown swallowed into a link or a code span.
+        const reachable = sources.filter(s => bound.has(s.index));
+
+        const trigger = renderSourceTrigger({
+          sources: reachable,
+          cited: meta?.cited ?? null,
+          retrieved: meta?.retrieved ?? sources.length,
+        }, msgId);
+        if (trigger) {
           messageEl.insertBefore(
-            renderSourceDeck(sources, msgId),
+            trigger,
             messageEl.querySelector(`.${CONFIG.CLASSES.SUGGESTED_CONTAINER}`)
           );
         }
@@ -189,12 +200,24 @@ export const UI = {
     messageEl.setAttribute('aria-live', 'off');
     messageEl.setAttribute('aria-busy', 'true');
 
+    /* A new question makes whatever the panel is showing stale — it would sit
+       beside an answer it has nothing to do with, in the one column the reader
+       is watching for the new one. */
+    SourcePanel.close();
+
     container.appendChild(messageEl);
 
-    const state = { sources: [] };
+    /* `bound` records which markers the last parse actually turned into
+       buttons. It stays null until a parse has run against a non-empty
+       payload, so "no parse yet" is distinguishable from "parsed, bound
+       nothing" — the first must not be read as "this answer has no reachable
+       sources". Sources arrive only on the terminal frame, so the per-frame
+       calls during streaming are no-ops and the meaningful one is finish(). */
+    const state = { sources: [], bound: null };
     const stream = new MarkdownStream(content, (scope) => {
       decorateMarkdown(scope);
-      bindCitations(scope, state.sources, msgId);
+      const bound = bindCitations(scope, state.sources, msgId);
+      if (state.sources.length) state.bound = bound;
     });
 
     return { msgId, messageEl, content, stream, state };
@@ -292,45 +315,91 @@ export const UI = {
     });
   },
 
-  attachSourceDeck(handle, sources) {
-    if (!handle || !Array.isArray(sources) || !sources.length) return;
-    handle.state.sources = sources;
-    // Collapsed: the answer has not been written yet, and an open deck would
-    // sit between the streaming text and the bottom the reader is following.
-    handle.messageEl.insertBefore(
-      renderSourceDeck(sources, handle.msgId, { open: false }),
-      handle.messageEl.querySelector(`.${CONFIG.CLASSES.SUGGESTED_CONTAINER}`)
-    );
-    // Sources land before the first token. Keep a following reader at the tail
-    // rather than letting the inserted height read as "they scrolled away".
-    if (this._follow) this.followStream();
-  },
-
-  finishStreamingMessage(handle, suggestedQuestions = []) {
+  /**
+   * Close out a streamed answer.
+   *
+   * @param {object} handle
+   * @param {string[]} suggestedQuestions
+   * @param {{response: string, sources: object[], cited: number[], retrieved: number}|null} final
+   *
+   * `final.response` is the server's canonical answer, and it is deliberately
+   * re-rendered over what the delta frames built. The deltas are raw model
+   * tokens; the server rewrites legacy "[Source: Doc, Page: 14]" citations
+   * into "[1]" before deciding anything about them. Without this the reader
+   * would be left looking at the prose form while the API reported a citation
+   * of source 1 — a marker they were told exists and cannot click.
+   */
+  finishStreamingMessage(handle, suggestedQuestions = [], final = null) {
     if (!handle) return;
-    handle.stream.finish();
+
+    const sources = final?.sources || [];
+    const cited = Array.isArray(final?.cited) ? final.cited : null;
+
+    // Set before finish(), because finish() re-parses and re-runs the decorate
+    // callback — which is what binds the markers, and it needs the payload.
+    handle.state.sources = sources;
+    handle.stream.finish(final?.response ?? null);
+
     this.setStage(handle, null);
     handle.messageEl.removeAttribute('aria-busy');
     handle.messageEl.setAttribute('aria-live', 'polite');
 
+    /* finish() has now re-parsed the canonical answer and recorded which
+       markers became buttons. Show only those: a passage whose marker markdown
+       swallowed into a link or a code span is one the reader cannot reach, so
+       offering it as a source would be a claim with no way to check it. A null
+       `bound` means no parse recorded a result, in which case trust the
+       server's set rather than silently dropping everything. */
+    const reachable = handle.state.bound
+      ? sources.filter(s => handle.state.bound.has(s.index))
+      : sources;
+
+    const trigger = renderSourceTrigger({
+      sources: reachable,
+      cited,
+      retrieved: final?.retrieved ?? sources.length,
+    }, handle.msgId);
+    if (trigger) {
+      handle.messageEl.insertBefore(
+        trigger,
+        handle.messageEl.querySelector(`.${CONFIG.CLASSES.SUGGESTED_CONTAINER}`)
+      );
+    }
+
     const container = handle.messageEl.querySelector(`.${CONFIG.CLASSES.SUGGESTED_CONTAINER}`);
     Utils.renderSuggestedQuestions(container, suggestedQuestions);
 
-    const count = handle.state.sources.length;
-    this.announce(count
-      ? I18n.t('cite.answerCompleteWithSources', { n: count })
+    /* Announce what was CITED. This line used to read "{n} sources cited" off
+       the RETRIEVED count, so it was wrong on every answer — and on a refusal
+       it told a screen reader the answer cited eight sources it had just
+       declined to use. Counted off `reachable`, the same set the trigger and
+       the panel show, so what a screen reader is told and what a sighted
+       reader can open cannot disagree. */
+    this.announce(reachable.length
+      ? I18n.t('cite.answerCompleteWithSources', { n: reachable.length })
       : I18n.t('cite.answerComplete'));
 
-    /* Land the reader at the end of the answer FIRST, then let the sources
-       open below them. Opening eight cards and then scrolling to the bottom
-       would jump them past the last thing they were reading.
-
-       Only if they were still following. A reader who scrolled up mid-answer
+    /* Only if they were still following. A reader who scrolled up mid-answer
        has taken control, and reaching the end of the stream is not a reason to
        take it back — an unconditional jump here undid their scroll at the one
        moment they were most likely reading something specific. */
     if (this._follow) this.scrollMessagesToBottom();
-    openSourceDeckOnComplete(handle.messageEl);
+  },
+
+  /**
+   * Add the visible "this did not finish" marking to a message.
+   *
+   * Split out from markStreamIncomplete so a stream that DID deliver a
+   * canonical answer can be rendered properly first and then flagged, rather
+   * than having to choose between a correct answer and an honest one.
+   */
+  flagIncomplete(handle, kind = 'error') {
+    if (!handle) return;
+    handle.messageEl.classList.add(kind === 'cancelled' ? 'is-cancelled' : 'is-errored');
+
+    const note = DOMCache.createElement('div', 'stream-note', kind);
+    note.textContent = I18n.t(kind === 'cancelled' ? 'chat.stopped' : 'chat.incomplete');
+    handle.messageEl.querySelector('.message-bubble')?.appendChild(note);
   },
 
   /** Mark a stream that failed or was cancelled, keeping whatever arrived. */
@@ -339,11 +408,22 @@ export const UI = {
     handle.stream.finish();
     this.setStage(handle, null);
     handle.messageEl.removeAttribute('aria-busy');
-    handle.messageEl.classList.add(kind === 'cancelled' ? 'is-cancelled' : 'is-errored');
+    this.flagIncomplete(handle, kind);
+  },
 
-    const note = DOMCache.createElement('div', 'stream-note', kind);
-    note.textContent = I18n.t(kind === 'cancelled' ? 'chat.stopped' : 'chat.incomplete');
-    handle.messageEl.querySelector('.message-bubble')?.appendChild(note);
+  /**
+   * Empty the transcript, keeping the server-rendered intro.
+   *
+   * The authenticated view is only hidden on logout, never emptied, and the
+   * app lives at "/" so nothing reloads. Without this, signing in as a second
+   * reader in the same tab reveals the first reader's conversation intact.
+   */
+  clearTranscript() {
+    const container = DOMCache.get(CONFIG.SELECTORS.MESSAGES);
+    if (!container) return;
+    [...container.children]
+      .filter(el => !el.hasAttribute('data-chat-intro'))
+      .forEach(el => el.remove());
   },
 
   /** One-shot screen-reader announcement. */

@@ -3,7 +3,12 @@
  *
  * The answer text arrives carrying numbered markers ([1], [2][5]) that the
  * model wrote against numbered context blocks. This module turns those into
- * interactive markers bound to a deck of source cards.
+ * interactive markers, and renders the one-line trigger that opens the
+ * passages behind them.
+ *
+ * The passages themselves live in source-panel.js. They used to be rendered
+ * here, as a deck of cards under the answer; see that module's header for why
+ * they moved.
  *
  * Load-bearing detail: markers are built with createElement AFTER the markdown
  * has been sanitized, so DOMPurify never sees them. Never string-replace into
@@ -14,6 +19,7 @@
 import { DOMCache } from './dom.js';
 import { iconMarkup } from './icons.js';
 import { I18n } from './i18n.js';
+import { SourcePanel, groupByDocument } from './source-panel.js';
 
 /* Two regexes, deliberately. Sharing one /g regex between .test() in
    acceptNode and .exec() in the replace loop corrupts lastIndex and silently
@@ -21,11 +27,31 @@ import { I18n } from './i18n.js';
 const CITE_TEST = /\[\d{1,2}\]/;
 const CITE_SCAN = /\[(\d{1,2})\]/g;
 
-let deckCounter = 0;
-
+/**
+ * A message id that cannot collide with one from an earlier page load.
+ *
+ * This was a counter — m1, m2, m3 — reset to zero on every load. The transcript
+ * survives a language switch by being re-inserted as saved HTML, so a restored
+ * answer arrived still carrying `data-msg="m1"` while the counter handed the
+ * NEXT answer that same id. Clicking the old answer's [1] then opened the new
+ * answer's sources: a citation resolving to evidence from a different question,
+ * silently, with nothing on screen to suggest anything was wrong. On a
+ * regulatory surface that is the worst failure this module can produce, worse
+ * than showing no sources at all.
+ *
+ * randomUUID needs a secure context, which http:// on a LAN address is not, so
+ * the fallback keeps the guarantee where it is unavailable.
+ */
 export function nextMessageId() {
-  return `m${++deckCounter}`;
+  if (crypto?.randomUUID) return `m${crypto.randomUUID()}`;
+  return `m${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
 }
+
+/* Every answer's source state, keyed by message id. The panel is global and
+   shows one answer at a time, so it cannot hold this itself — a reader
+   clicking a marker in an older answer has to be able to swap the panel back
+   to that answer's passages. */
+const stateByMessage = new Map();
 
 function makeMarker(index, msgId) {
   const button = DOMCache.createElement('button', 'cite-marker');
@@ -34,18 +60,42 @@ function makeMarker(index, msgId) {
   button.dataset.msg = msgId;
   button.textContent = String(index);
   button.setAttribute('aria-label', I18n.t('cite.marker', { n: index }));
-  button.setAttribute('aria-controls', `src-${msgId}-${index}`);
+  button.setAttribute('aria-controls', 'source-panel');
   return button;
 }
 
 /**
  * Replace [n] text with marker elements throughout `scope`.
- * Out-of-range indices are left as literal text rather than linkified — a
- * model that cites [9] against 8 sources is hallucinating, and silently
- * linking it to nothing would hide that.
+ *
+ * Returns the set of indices that actually became buttons. That return value
+ * is what makes this function the authority on which sources an answer can
+ * display: the server decides which indices are ALLOWED (membership), the
+ * browser decides which are REACHABLE, and the panel shows the intersection.
+ *
+ * Without it the two sides had to agree about markdown, and they cannot. The
+ * server matches regexes against the raw source; this walks the tree `marked`
+ * actually produced. Every attempt to close that gap case by case — fenced
+ * blocks, inline spans, link syntax — is a guess about a parser, and one such
+ * guess already misread "[1][2]" as reference-link syntax and silently dropped
+ * a sentence's entire provenance. Intersecting the two answers instead makes
+ * the whole class safe by construction: an index the browser could not bind is
+ * one the reader could not click, so it is not offered as a source.
+ *
+ * An index the payload does not carry is left as literal text rather than
+ * linkified — a model that cites [9] against 8 sources is hallucinating, and
+ * silently linking it to nothing would hide that.
+ *
+ * Membership, not range: once the payload is filtered to the passages the
+ * answer cited, the indices are sparse (1, 3, 7). A `n <= sources.length`
+ * test would accept [2] and point it at nothing. This mirrors
+ * `extract_cited_indices` in web/services/citations.py, which validates the
+ * same way — the two must agree or the server reports a citation the reader
+ * cannot click.
  */
 export function bindCitations(scope, sources, msgId) {
-  if (!scope || !Array.isArray(sources) || !sources.length) return;
+  const bound = new Set();
+  if (!scope || !Array.isArray(sources) || !sources.length) return bound;
+  const valid = new Set(sources.map(s => s.index));
 
   const walker = document.createTreeWalker(scope, NodeFilter.SHOW_TEXT, {
     acceptNode(node) {
@@ -71,9 +121,10 @@ export function bindCitations(scope, sources, msgId) {
     CITE_SCAN.lastIndex = 0;
     while ((match = CITE_SCAN.exec(text))) {
       const index = Number(match[1]);
-      if (index < 1 || index > sources.length) continue;
+      if (!valid.has(index)) continue;
 
       fragment.append(text.slice(last, match.index), makeMarker(index, msgId));
+      bound.add(index);
       last = match.index + match[0].length;
       matched = true;
     }
@@ -82,102 +133,81 @@ export function bindCitations(scope, sources, msgId) {
     fragment.append(text.slice(last));
     node.replaceWith(fragment);
   }
-}
 
-function pct(score) {
-  if (typeof score !== 'number') return 0;
-  return Math.max(0, Math.min(100, Math.round(score * 100)));
-}
-
-function fmt(score) {
-  return typeof score === 'number' ? score.toFixed(2) : '—';
+  return bound;
 }
 
 /**
- * Build the source deck for one answer.
+ * The one line an answer's sources get in the reading column.
  *
- * `open` is false while an answer is still streaming and true once it is
- * complete. The deck sits BELOW the answer, so an open deck during streaming
- * puts eight cards between the text being written and the bottom of the
- * transcript the reader is following — they would watch the sources while the
- * answer scrolled past above them. Collapsed, it costs one line until there
- * is a finished answer to check.
+ * `state.sources` is what the answer CITED **and** the reader can reach —
+ * callers pass the set already intersected with what bindCitations bound. An
+ * answer that cited nothing gets an empty list from the server and therefore
+ * no element here at all, which is the whole fix. A refusal reading "I cannot
+ * answer based on the given information" must not be followed by any source
+ * control: the evidence the surface is offering belongs to no claim the answer
+ * made.
+ *
+ * There was an intermediate design where a citation-free answer kept a muted
+ * "8 passages retrieved, not cited" line, so a reader auditing the answer
+ * could still see what search returned. It reads as a contradiction — the
+ * label disclaims the passages while advertising eight of them — and under a
+ * refusal it is still evidence attached to an answer that has none. Retrieval
+ * candidates are a server-side diagnostic now.
+ *
+ * Returns null when there is nothing to show, so callers can skip appending.
  */
-export function renderSourceDeck(sources, msgId, { open = true } = {}) {
-  const deck = DOMCache.createElement('div', 'source-deck');
-  deck.id = `deck-${msgId}`;
-  if (!Array.isArray(sources) || !sources.length) return deck;
+export function renderSourceTrigger(state, msgId) {
+  const sources = state?.sources || [];
+  if (!sources.length) return null;
 
-  /* Once the answer is done the deck is open. Provenance is the product: an
-     answer whose sources are one click away reads as "trust me", and the whole
-     point of this surface is that it does not have to be trusted. */
-  if (open) deck.classList.add('is-open');
+  stateByMessage.set(msgId, state);
 
-  const label = I18n.plural(sources.length, 'cite.sourcesOne', 'cite.sourcesMany');
-  const summary = DOMCache.createElement('button', 'source-deck-summary');
-  summary.type = 'button';
-  summary.setAttribute('aria-expanded', String(open));
-  summary.innerHTML =
-    iconMarkup('chevron-right', 12, 'chev') + `<span>${label}</span>`;
-  deck.appendChild(summary);
+  const button = DOMCache.createElement('button', 'source-trigger');
+  button.type = 'button';
+  button.dataset.msg = msgId;
+  button.setAttribute('aria-controls', 'source-panel');
+  button.setAttribute('aria-expanded', 'false');
 
-  const list = DOMCache.createElement('ol', 'source-list');
-  list.setAttribute('aria-label', label);
+  // Both numbers count the same (cited) set, so they cannot contradict.
+  const documents = groupByDocument(sources).length;
+  const label = `${I18n.t('cite.sourcesLabel')} · ` +
+    `${I18n.plural(documents, 'cite.docsOne', 'cite.docsMany')} · ` +
+    `${I18n.plural(sources.length, 'cite.passagesOne', 'cite.passagesMany')}`;
 
-  for (const source of sources) {
-    const card = DOMCache.createElement('li', 'source-card');
-    card.id = `src-${msgId}-${source.index}`;
-    card.dataset.index = String(source.index);
-
-    const relevance = pct(source.score);
-    const snippetId = `snip-${msgId}-${source.index}`;
-
-    /* The head is the resting state: index, document, page and how strongly it
-       matched. The passage itself and the retrieval split sit behind the
-       disclosure — eight cards showing everything at once buries the answer
-       they belong to. */
-    card.innerHTML = `
-      <button class="source-card-head" type="button" aria-expanded="false" aria-controls="${snippetId}">
-        <span class="source-index">${source.index}</span>
-        <span class="source-doc" dir="auto"></span>
-        <span class="source-page" dir="ltr"></span>
-        ${iconMarkup('chevron-right', 12, 'source-chev')}
-      </button>
-      <div class="relevance" role="img" aria-label="${I18n.t('cite.relevance', { pct: relevance })}">
-        <div class="relevance-bar" style="--pct:${relevance}%"></div>
-      </div>
-      <div class="source-detail" id="${snippetId}" hidden>
-        <p class="source-snippet" dir="auto"></p>
-        <div class="source-meta">
-          <span class="source-cat"></span>
-          <span class="score-split">
-            <span class="score" dir="ltr"><b>SEM</b> ${fmt(source.semantic_score)}</span>
-            <span class="score" dir="ltr"><b>LEX</b> ${fmt(source.lexical_score)}</span>
-          </span>
-        </div>
-      </div>`;
-
-    /* Document names, categories and snippets are model- and corpus-derived,
-       so they go in as text, never as markup. */
-    card.querySelector('.source-doc').textContent = source.document;
-    card.querySelector('.source-page').textContent = source.page != null ? `p. ${source.page}` : '';
-    card.querySelector('.source-cat').textContent = source.category || '';
-    card.querySelector('.source-snippet').textContent = source.snippet || '';
-
-    list.appendChild(card);
-  }
-
-  deck.appendChild(list);
-  return deck;
+  const text = DOMCache.createElement('span');
+  text.textContent = label;
+  button.append(text);
+  button.insertAdjacentHTML('beforeend', iconMarkup('chevron-right', 12, 'chev'));
+  return button;
 }
 
-function litCards(on) {
-  document.querySelectorAll('.source-card.is-lit').forEach(c => c.classList.remove('is-lit'));
-  document.querySelectorAll('.cite-marker.is-active').forEach(m => m.classList.remove('is-active'));
-  if (!on) return;
-  const card = document.getElementById(`src-${on.dataset.msg}-${on.dataset.cite}`);
-  card?.classList.add('is-lit');
-  on.classList.add('is-active');
+/** Forget every answer's sources, e.g. on logout. */
+export function resetCitationState() {
+  stateByMessage.clear();
+}
+
+/**
+ * Strip the source controls from transcript HTML restored across a reload.
+ *
+ * `stateByMessage` lives in module memory, so a restored answer's passages are
+ * genuinely gone — only its markup came back. Unique message ids already make
+ * it impossible for those controls to resolve to the WRONG answer's sources,
+ * but they would still resolve to nothing: a trigger that opens an empty panel
+ * and markers that highlight nothing.
+ *
+ * A control that does nothing is a worse lie than no control, so the markers
+ * become plain text again and the trigger is removed. The answer keeps its
+ * "[1]" in the prose, which is what it said; it just stops offering to open
+ * something it cannot produce.
+ */
+export function neutraliseRestoredCitations(scope) {
+  if (!scope) return;
+
+  scope.querySelectorAll('.source-trigger').forEach(el => el.remove());
+  scope.querySelectorAll('.cite-marker').forEach((marker) => {
+    marker.replaceWith(document.createTextNode(`[${marker.dataset.cite}]`));
+  });
 }
 
 /**
@@ -187,13 +217,16 @@ function litCards(on) {
 export function initCitationInteractions(container) {
   if (!container || container.dataset.citationsBound) return;
   container.dataset.citationsBound = '1';
+  SourcePanel.init();
 
   const highlight = (event) => {
     const marker = event.target.closest?.('.cite-marker');
-    if (marker) litCards(marker);
+    if (marker) SourcePanel.highlight(marker.dataset.msg, Number(marker.dataset.cite));
   };
   const clear = (event) => {
-    if (event.target.closest?.('.cite-marker')) litCards(null);
+    if (event.target.closest?.('.cite-marker')) {
+      SourcePanel.highlight(event.target.closest('.cite-marker').dataset.msg, null);
+    }
   };
 
   container.addEventListener('pointerover', highlight);
@@ -204,63 +237,29 @@ export function initCitationInteractions(container) {
   container.addEventListener('click', (event) => {
     const marker = event.target.closest('.cite-marker');
     if (marker) {
-      const deck = document.getElementById(`deck-${marker.dataset.msg}`);
-      openDeck(deck);
-      const card = document.getElementById(`src-${marker.dataset.msg}-${marker.dataset.cite}`);
-      card?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-      toggleSnippet(card?.querySelector('.source-card-head'), true);
+      const msgId = marker.dataset.msg;
+      const state = stateByMessage.get(msgId);
+      if (!state) return;
+      SourcePanel.open(msgId, state, {
+        focusIndex: Number(marker.dataset.cite),
+        returnFocus: marker,
+      });
       return;
     }
 
-    const summary = event.target.closest('.source-deck-summary');
-    if (summary) {
-      const deck = summary.closest('.source-deck');
-      // Remember that this was the reader's call, so completing the answer
-      // does not reopen a deck they just closed.
-      deck.dataset.userToggled = '1';
-      deck.classList.contains('is-open') ? closeDeck(deck) : openDeck(deck);
-      return;
+    const trigger = event.target.closest('.source-trigger');
+    if (trigger) {
+      const msgId = trigger.dataset.msg;
+      // A second press on the trigger that opened it closes it again.
+      // aria-expanded is not touched here: SourcePanel owns it, so that every
+      // route in and out leaves exactly one trigger claiming to be open.
+      if (SourcePanel.isOpenFor(msgId)) {
+        SourcePanel.close();
+        return;
+      }
+      const state = stateByMessage.get(msgId);
+      if (!state) return;
+      SourcePanel.open(msgId, state, { returnFocus: trigger });
     }
-
-    const head = event.target.closest('.source-card-head');
-    if (head) toggleSnippet(head);
   });
-}
-
-function openDeck(deck) {
-  if (!deck) return;
-  deck.classList.add('is-open');
-  deck.querySelector('.source-deck-summary')?.setAttribute('aria-expanded', 'true');
-}
-
-/**
- * Open a finished answer's deck — unless the reader already made that choice
- * themselves. Reopening a deck someone deliberately collapsed mid-stream would
- * be the interface overruling them.
- *
- * Scoped to the message element the caller already holds, rather than looked
- * up by id on `document`. The lookup form was how this broke once: the message
- * was being appended inside a view transition, so a stream that arrived in one
- * chunk finished while its own message was still detached and getElementById
- * found nothing. That append is synchronous now, but a function that only ever
- * needs one subtree has no business searching the whole document for it.
- */
-export function openSourceDeckOnComplete(messageEl) {
-  const deck = messageEl?.querySelector('.source-deck');
-  if (deck && !deck.dataset.userToggled) openDeck(deck);
-}
-
-function closeDeck(deck) {
-  if (!deck) return;
-  deck.classList.remove('is-open');
-  deck.querySelector('.source-deck-summary')?.setAttribute('aria-expanded', 'false');
-}
-
-function toggleSnippet(head, forceOpen = false) {
-  if (!head) return;
-  const snippet = document.getElementById(head.getAttribute('aria-controls'));
-  if (!snippet) return;
-  const open = forceOpen || snippet.hidden;
-  snippet.hidden = !open;
-  head.setAttribute('aria-expanded', String(open));
 }
