@@ -1,0 +1,60 @@
+# Labelled probe set for the retrieval relevance floor.
+#
+# `search_engine.min_score` in web/config.yaml ships at 0.00 — DISABLED. Turning
+# it on trades one failure mode for another: too low and an out-of-domain
+# question still gets eight passages of evidence it never used; too high and a
+# question the corpus can answer becomes a confident refusal. The second is far
+# worse for a regulatory assistant, so the threshold moves only on evidence.
+#
+# Run:  python scripts/eval_retrieval.py
+#
+# ── Labelling ────────────────────────────────────────────────────────────────
+# expected_documents: substrings matched case-insensitively against the
+#   retrieved document names. An EMPTY list asserts that nothing should be
+#   considered relevant — which is exactly what makes the out-of-domain probes
+#   below self-labelling and trustworthy without a domain expert.
+#
+# ⚠ The in-domain probes are seeded from web/faq.yaml — the questions users
+#   actually click — but their `expected_documents` are placeholders. A domain
+#   expert must fill them in before the recall numbers mean anything. Until
+#   then the eval still reports false-refusal rate and out-of-domain acceptance
+#   honestly, because those need no document labels; only recall is blocked.
+
+out_of_domain:
+  # Nothing in an SFDA corpus answers these. Any surviving passage is noise,
+  # and the score of the best one is the ceiling a threshold has to clear.
+  - {query: "who is claude?", lang: en, category: all, expected_documents: []}
+  - {query: "من هو كلود؟", lang: ar, category: all, expected_documents: []}
+  - {query: "what is the capital of France?", lang: en, category: all, expected_documents: []}
+  - {query: "write me a python function to sort a list", lang: en, category: all, expected_documents: []}
+
+conversational:
+  # The floor gets these wrong in the OTHER direction: they are not questions
+  # about the corpus, but a refusal is a poor response to "hello".
+  - {query: "hello", lang: en, category: all, expected_documents: []}
+  - {query: "thanks", lang: en, category: all, expected_documents: []}
+  - {query: "what can you do?", lang: en, category: all, expected_documents: []}
+
+near_miss:
+  # The hard case, and the one that decides whether an absolute threshold is
+  # viable at all. Right vocabulary, wrong jurisdiction — high lexical overlap
+  # with the corpus while being exactly what the assistant must not answer
+  # from it. If these score alongside real in-domain questions, say so in the
+  # report rather than splitting the difference.
+  - {query: "what is the FDA 510(k) clearance process?", lang: en, category: regulatory, expected_documents: []}
+  - {query: "how do I register a medical device in the EU?", lang: en, category: regulatory, expected_documents: []}
+  - {query: "what does the EMA require for a marketing authorisation?", lang: en, category: regulatory, expected_documents: []}
+
+in_domain:
+  # TODO(domain expert): fill expected_documents with the document name (or a
+  # distinctive substring) that actually answers each question. Leave the list
+  # absent — not empty — while unknown; an empty list means "nothing is
+  # relevant", which is the opposite claim.
+  - {query: "What are the requirements for drug registration in Saudi Arabia?", lang: en, category: regulatory}
+  - {query: "ما هي متطلبات تسجيل الأدوية؟", lang: ar, category: regulatory}
+  - {query: "What must the Pharmacovigilance System Sub-File contain?", lang: en, category: pharmacovigilance}
+  - {query: "What is the role of the QPPV?", lang: en, category: pharmacovigilance}
+  - {query: "What are the PSUR submission requirements?", lang: en, category: pharmacovigilance}
+  - {query: "What are the GMP requirements for manufacturing sites?", lang: en, category: regulatory}
+  - {query: "What are the batch release requirements for biological products?", lang: en, category: biological}
+  - {query: "What are the withdrawal period requirements for veterinary medicines?", lang: en, category: veterinary}

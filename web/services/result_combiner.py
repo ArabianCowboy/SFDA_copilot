@@ -269,3 +269,61 @@ class ResultCombiner:
         if is_license_doc or is_establishment_doc:
             return hybrid_score * 0.80, "establishment_license_penalty"
         return hybrid_score, None
+
+
+# ---------------------------------------------------------------------------
+# Relevance floor
+# ---------------------------------------------------------------------------
+
+def apply_relevance_floor(
+    results: list[SearchResult],
+    min_score: float = 0.0,
+    min_ratio: float = 0.0,
+) -> list[SearchResult]:
+    """Drop results that are not plausibly about the query.
+
+    ``combine`` returns the top *k* by score unconditionally, so a query the
+    corpus has nothing to say about still yields *k* passages — they are simply
+    the least-bad of a bad set. Retrieval cannot express "nothing here"; this
+    is what lets it.
+
+    The units are what make an absolute cutoff meaningful. ``semantic_score``
+    is exactly cosine similarity (see ``_compute_semantic_score``: the query
+    and chunk vectors are both L2-normalised, so ``1 - dist/2`` reduces to
+    ``cos``), ``lexical_score`` is TF-IDF cosine, and ``score`` is their
+    weighted blend — all in [0, 1].
+
+    Two gates, both of which a result must clear:
+
+    * *min_score* — an absolute floor. This is the load-bearing one: for a
+      genuinely out-of-domain query every candidate is weak, so a floor
+      relative to the best of them lets the whole set through.
+    * *min_ratio* — a floor relative to the top hit, for trimming the tail of
+      an otherwise good result set.
+
+    *results* MUST already be sorted by descending score (``combine`` sorts
+    before returning). Both gates are therefore prefix truncations, and the
+    return value is a prefix of the input — positions never move, which is
+    what keeps ``sources[i]`` aligned with prompt block ``[i]`` downstream.
+
+    Returns:
+        A prefix of *results*. An empty list is a legitimate answer meaning
+        "nothing was relevant", not an error.
+    """
+    if not results:
+        return []
+
+    # Disabled: return the input untouched rather than rebuilding it.
+    if min_score <= 0.0 and min_ratio <= 0.0:
+        return results
+
+    cutoff = max(min_score, min_ratio * results[0].score)
+    kept = [r for r in results if r.score >= cutoff]
+
+    if len(kept) < len(results):
+        logger.debug(
+            "Relevance floor kept %d/%d results (cutoff %.4f, top %.4f).",
+            len(kept), len(results), cutoff, results[0].score,
+        )
+
+    return kept

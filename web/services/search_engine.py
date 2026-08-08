@@ -41,12 +41,13 @@ from web.services.search_exceptions import (
     DataLoadError,
     EmbeddingError,
     SearchEngineError,
+    SearchEngineNotInitializedError,
 )
 from web.services.search_index import SearchIndex, SearchIndexConfig
 from web.services.query_processor import QueryProcessor
 from web.services.semantic_searcher import SemanticSearcher
 from web.services.lexical_searcher import LexicalSearcher
-from web.services.result_combiner import ResultCombiner, SearchResult
+from web.services.result_combiner import ResultCombiner, SearchResult, apply_relevance_floor
 from web.utils.config_loader import config, project_root
 from web.utils.embedding_helpers import get_embedding_client
 
@@ -70,6 +71,10 @@ class SearchEngineConfig:
     semantic_multiplier: int
     lexical_multiplier: int
     embedding_type: str
+    # Default to disabled, so a config that never mentions a floor — and any
+    # construction site that predates it — behaves exactly as before.
+    min_score: float = 0.0
+    min_score_ratio: float = 0.0
 
     @classmethod
     def from_yaml(cls) -> SearchEngineConfig:
@@ -88,6 +93,8 @@ class SearchEngineConfig:
             sem_mult = int(config.get("search_engine", "semantic_multiplier", 3))
             lex_mult = int(config.get("search_engine", "lexical_multiplier", 3))
             emb_type = str(config.get("search_engine", "embedding_type", "local"))
+            min_score = float(config.get("search_engine", "min_score", 0.0))
+            min_ratio = float(config.get("search_engine", "min_score_ratio", 0.0))
         except Exception as exc:
             raise SearchEngineError(
                 f"Failed to read search engine config: {exc}"
@@ -100,6 +107,19 @@ class SearchEngineConfig:
                 lex_w,
             )
 
+        # Out-of-range thresholds are clamped rather than raised on: scores are
+        # in [0,1], so min_score=5 would silently refuse every query in
+        # production. Clamping plus a loud warning fails visibly instead.
+        for name, value in (("min_score", min_score), ("min_score_ratio", min_ratio)):
+            if not 0.0 <= value <= 1.0:
+                logger.warning(
+                    "search_engine.%s = %s is outside [0, 1]; clamping. Scores are "
+                    "cosine blends in [0,1], so this value would have filtered "
+                    "everything or nothing.", name, value,
+                )
+        min_score = min(max(min_score, 0.0), 1.0)
+        min_ratio = min(max(min_ratio, 0.0), 1.0)
+
         return cls(
             semantic_weight=sem_w,
             lexical_weight=lex_w,
@@ -107,6 +127,8 @@ class SearchEngineConfig:
             semantic_multiplier=sem_mult,
             lexical_multiplier=lex_mult,
             embedding_type=emb_type,
+            min_score=min_score,
+            min_score_ratio=min_ratio,
         )
 
 
@@ -223,11 +245,26 @@ class SearchEngine:
 
         Returns:
             A list of :class:`SearchResult` objects sorted by descending
-            hybrid score.  Returns an empty list if the engine could not be
-            initialised or an error occurred.
+            hybrid score.  An empty list means the query genuinely matched
+            nothing — it is a *result*, not an error.
+
+        Raises:
+            SearchEngineError: The index could not be loaded, or embedding,
+                translation or ranking failed.
+
+        A failure used to be swallowed into the same empty list a successful
+        no-match search returns. That is load-bearing now: an empty list makes
+        ``_prepare_context`` tell the model "No relevant information found",
+        so the model refuses — and an OpenAI translation outage would have
+        rendered as a clean, confident "I cannot answer based on the given
+        information" instead of an error. Callers must be able to tell the two
+        apart, so failures propagate.
         """
         if not self._ensure_initialized():
-            return []
+            raise SearchEngineNotInitializedError(
+                "Search index could not be loaded; refusing to report this as "
+                "an empty result set."
+            )
 
         assert (
             self._semantic_searcher is not None
@@ -272,7 +309,7 @@ class SearchEngine:
             )
 
             # 6. Combine, score, rank
-            results = self._combiner.combine(
+            combined = self._combiner.combine(
                 semantic_results=sem_results,
                 lexical_results=lex_results,
                 query_embedding=query_embedding,
@@ -281,21 +318,40 @@ class SearchEngine:
                 final_k=final_k,
             )
 
+            # 7. Relevance floor. Applied HERE rather than in the routes,
+            #    because search() returns the one list that forks into both the
+            #    prompt context and the source payload — filtering upstream of
+            #    that fork keeps them aligned structurally rather than by
+            #    remembering to do it twice.
+            results = apply_relevance_floor(
+                combined, self._cfg.min_score, self._cfg.min_score_ratio,
+            )
+
+            if combined and not results:
+                logger.warning(
+                    "Relevance floor removed all %d results for query='%s…' (top score "
+                    "%.4f < min_score %.4f). The model will be told no relevant "
+                    "information was found and will refuse. If this fires on questions "
+                    "the corpus can answer, min_score is too high.",
+                    len(combined), query[:60], combined[0].score, self._cfg.min_score,
+                )
+
             logger.info("Search complete — %d results returned.", len(results))
             return results
 
-        except EmbeddingError as exc:
+        except EmbeddingError:
             query_preview = query[:200] if len(query) > 200 else query
             logger.exception("Query embedding/translation failed (query='%s')", query_preview)
-            return []
-        except SearchEngineError as exc:
+            raise
+        except SearchEngineError:
             query_preview = query[:200] if len(query) > 200 else query
             logger.exception("Search engine error (query='%s')", query_preview)
-            return []
+            raise
         except Exception as exc:
+            # Wrapped so callers have one type to catch, but never silenced.
             query_preview = query[:200] if len(query) > 200 else query
             logger.exception("Unexpected error during search (query='%s')", query_preview)
-            return []
+            raise SearchEngineError(f"Unexpected search failure: {exc}") from exc
 
     def initialize(self) -> bool:
         """Load the search index eagerly.

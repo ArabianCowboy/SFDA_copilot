@@ -36,6 +36,27 @@ search_engine:
   semantic_multiplier: 10  # Candidate multiplier for semantic search
   lexical_multiplier: 10   # Candidate multiplier for lexical search
 
+  # --- Relevance floor ---
+  # A result must clear BOTH gates to reach the prompt or the source payload.
+  # Without them, retrieval always returns k passages: an out-of-domain query
+  # gets the least-bad eight rather than nothing.
+  #
+  # Units: semantic_score is exactly cosine similarity (query and chunk vectors
+  # are both L2-normalised, so 1 - dist/2 reduces to cos) and lexical_score is
+  # TF-IDF cosine, so `score` is a 50/50 blend of two cosines in [0,1]. That is
+  # what makes an absolute cutoff meaningful at all.
+  #
+  # Both ship at 0.00 (disabled — behaviour identical to no floor). The source
+  # panel's citation contract is what suppresses sources on an ungrounded
+  # answer; this is a retrieval-quality improvement on top of it.
+  #
+  # DO NOT raise these without a held-out eval run: too high and in-domain
+  # questions become false refusals, and the floor assumes AR→EN translation is
+  # live (without OPENAI_API_KEY, Arabic queries embed untranslated and score
+  # low across the board). See scripts/eval_retrieval.py.
+  min_score: 0.00
+  min_score_ratio: 0.00  # relative to the top hit; 0.0 disables
+
 # --- OpenAI Configuration ---
 openai:
   model: gpt-4o-mini
