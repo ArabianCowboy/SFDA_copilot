@@ -132,7 +132,7 @@ SUPPORTED_FAQ_LANGS = ("en", "ar")
 # that mixes a fresh template with a stale module is worse than a stale page —
 # post-icon-migration it would render an <i class="bi"> with no icon font behind
 # it, or print a glyph NAME as text. MODULE_IMPORT_MAP below closes that.
-ASSET_VERSION = "warm6"
+ASSET_VERSION = "warm9"
 
 # Product release, rendered in the landing footer. Kept as one constant so
 # the number cannot drift between the page and the module headers.
@@ -562,6 +562,10 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
             t=make_translator(catalog),
             i18n_runtime=runtime_subset(catalog),
             icons_runtime=runtime_icons(),
+            # The one category->glyph mapping, shared with the browser rather
+            # than restated there. DESIGN.md: the same mapping written down
+            # twice is the same mapping drifting eventually.
+            category_icons=CATEGORY_ICONS,
             module_import_map={
                 "imports": {
                     url_for("static", filename=f"js/modules/{name}"):

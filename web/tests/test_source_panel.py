@@ -138,7 +138,13 @@ def test_no_relevance_bar_is_rendered_anywhere(sourced_page: Page):
 
 # ── The panel ───────────────────────────────────────────────────────────────
 
-def test_the_panel_opens_in_the_rail_and_displaces_the_mascot(sourced_page: Page):
+def test_the_panel_opens_in_the_rail_and_keeps_the_mascot(sourced_page: Page):
+    """Sunny stays at the head of the shelf.
+
+    He used to be hidden outright the moment sources opened — removing the
+    mascot at exactly the moment the product does its most characteristic
+    thing. The rail is one object changing state now, not two swapping places.
+    """
     sourced_page.set_viewport_size(WIDE)
     _ask(sourced_page)
 
@@ -147,8 +153,8 @@ def test_the_panel_opens_in_the_rail_and_displaces_the_mascot(sourced_page: Page
 
     panel = sourced_page.locator("#source-panel")
     expect(panel).to_be_visible()
-    expect(sourced_page.locator("#chat-rail")).to_have_class(re.compile(r"rail-shows-sources"))
-    expect(sourced_page.locator(".robot-companion")).to_be_hidden()
+    expect(sourced_page.locator("#chat-rail")).to_contain_class("rail-shows-sources")
+    expect(sourced_page.locator(".robot-companion")).to_be_visible()
     # A sibling region, not a dialog: the answer stays reachable beside it.
     expect(panel).not_to_have_attribute("aria-modal", "true")
     expect(sourced_page.locator(".source-panel-backdrop")).to_be_hidden()
@@ -160,13 +166,13 @@ def test_panel_passages_render_with_real_size(sourced_page: Page):
     _ask(sourced_page)
     sourced_page.locator(".source-trigger").click()
 
-    cards = sourced_page.locator("#source-panel .source-card")
-    expect(cards).to_have_count(3)
+    tabs = sourced_page.locator("#source-panel .spine-tab")
+    expect(tabs).to_have_count(3)
 
-    box = cards.first.bounding_box()
-    assert box is not None, "source card has no layout box at all"
-    assert box["width"] > 150, f"source card collapsed to {box['width']}px wide"
-    assert box["height"] > 20, f"source card collapsed to {box['height']}px tall"
+    spine = sourced_page.locator("#source-panel .shelf-spine").first.bounding_box()
+    assert spine is not None, "spine has no layout box at all"
+    assert spine["width"] > 40, f"spine collapsed to {spine['width']}px wide"
+    assert spine["height"] > 80, f"spine collapsed to {spine['height']}px tall"
 
 
 def test_passages_from_one_document_share_a_heading(sourced_page: Page):
@@ -179,8 +185,9 @@ def test_passages_from_one_document_share_a_heading(sourced_page: Page):
     _ask(sourced_page)
     sourced_page.locator(".source-trigger").click()
 
-    expect(sourced_page.locator("#source-panel .source-card")).to_have_count(3)
-    expect(sourced_page.locator("#source-panel .source-group-doc")).to_have_count(2)
+    # Three tabs across two spines: grouping is now a property of the form.
+    expect(sourced_page.locator("#source-panel .spine-tab")).to_have_count(3)
+    expect(sourced_page.locator("#source-panel .shelf-spine")).to_have_count(2)
 
 
 def test_opening_sources_does_not_move_the_answer(sourced_page: Page):
@@ -209,7 +216,10 @@ def test_a_citation_marker_opens_the_panel_on_its_passage(sourced_page: Page):
 
     panel = sourced_page.locator("#source-panel")
     expect(panel).to_be_visible()
-    expect(panel.locator("[data-index='3']")).to_have_class(re.compile(r"is-lit"))
+    # On the shelf a marker OPENS its passage rather than merely lighting a
+    # card the reader would still have to find.
+    expect(panel.locator(".spine-tab[data-index='3']")).to_contain_class("is-open")
+    expect(panel.locator(".passage-card")).to_be_visible()
 
 
 def test_escape_closes_the_panel_and_restores_the_mascot(sourced_page: Page):
@@ -266,7 +276,7 @@ def test_below_the_rail_breakpoint_the_panel_is_a_modal_sheet(sourced_page: Page
 
     panel = sourced_page.locator("#source-panel")
     expect(panel).to_be_visible()
-    expect(panel).to_have_class(re.compile(r"is-sheet"))
+    expect(panel).to_contain_class("is-sheet")
     expect(panel).to_have_attribute("role", "dialog")
     expect(panel).to_have_attribute("aria-modal", "true")
     expect(sourced_page.locator(".source-panel-backdrop")).to_be_visible()
@@ -670,13 +680,13 @@ def test_the_panel_renders_in_arabic_rtl(sourced_page: Page):
     _ask(sourced_page, "ما الذي يجب أن يتضمنه الملف؟")
     sourced_page.locator(".source-trigger").click()
 
-    cards = sourced_page.locator("#source-panel .source-card")
-    expect(cards).to_have_count(3)
-    box = cards.first.bounding_box()
-    assert box and box["width"] > 150, "source card collapsed under RTL"
+    tabs = sourced_page.locator("#source-panel .spine-tab")
+    expect(tabs).to_have_count(3)
+    spine = sourced_page.locator("#source-panel .shelf-spine").first.bounding_box()
+    assert spine and spine["width"] > 40, "spine collapsed under RTL"
 
     # Page numbers stay LTR-isolated so bidi cannot reorder them inside Arabic.
-    expect(sourced_page.locator("#source-panel .source-page").first).to_have_attribute(
+    expect(sourced_page.locator("#source-panel .tab-page").first).to_have_attribute(
         "dir", "ltr"
     )
 
@@ -693,3 +703,124 @@ def test_a_marker_free_answer_renders_no_control_in_arabic_either(uncited_page: 
 
     expect(uncited_page.locator(".source-trigger")).to_have_count(0)
     expect(uncited_page.locator("#source-panel")).to_be_hidden()
+
+
+# ── The sparse case ─────────────────────────────────────────────────────────
+#
+# One passage from one document is the state most likely to read as a bug
+# rather than a deliberate answer, so it is designed and asserted rather than
+# left to fall out of the layout.
+
+def test_a_single_source_presents_as_one_exhibit(sparse_page: Page):
+    """One spine, full width, presented rather than stranded."""
+    sparse_page.set_viewport_size(WIDE)
+    _ask(sparse_page)
+
+    expect(sparse_page.locator(".source-trigger")).to_have_text(
+        re.compile(r"1 document.*1 passage")
+    )
+    sparse_page.locator(".source-trigger").click()
+
+    spines = sparse_page.locator("#source-panel .shelf-spine")
+    expect(spines).to_have_count(1)
+    expect(sparse_page.locator("#source-panel .spine-tab")).to_have_count(1)
+
+    # The lone spine takes the shelf's width instead of sitting as a sliver.
+    shelf = sparse_page.locator("#source-panel .source-shelf").bounding_box()
+    spine = spines.first.bounding_box()
+    assert spine and shelf, "sparse shelf has no layout box"
+    assert spine["width"] > shelf["width"] * 0.6, (
+        f"lone spine is {spine['width']}px of a {shelf['width']}px shelf — "
+        "the sparse case reads as stranded rather than presented"
+    )
+
+
+def test_a_passage_with_no_page_still_reads_as_intentional(sparse_page: Page):
+    """`page: null` is a real payload state, not a rendering accident.
+
+    The tab keeps its notch and its citation number; only the page is absent,
+    and the card says so in words rather than leaving a blank where a number
+    should be.
+    """
+    sparse_page.set_viewport_size(WIDE)
+    _ask(sparse_page)
+    sparse_page.locator(".source-trigger").click()
+
+    tab = sparse_page.locator("#source-panel .spine-tab").first
+    expect(tab).to_be_visible()
+    expect(tab.locator(".tab-index")).to_have_text("1")
+    expect(tab.locator(".tab-page")).to_have_text("")
+
+    tab.click()
+    expect(sparse_page.locator(".passage-card .passage-page")).to_have_text("No page cited")
+
+
+def test_a_spine_label_is_not_the_date_every_filename_starts_with(sourced_page: Page):
+    """All 111 corpus documents begin with an ISO date.
+
+    Truncating the raw filename gives "2010-08-31_Gui" for both the allergenics
+    guideline and the antisera one — three spines carrying the same label,
+    which is worse than the list the shelf replaced. The date and extension are
+    stripped before anything is truncated.
+    """
+    sourced_page.set_viewport_size(WIDE)
+    _ask(sourced_page)
+    sourced_page.locator(".source-trigger").click()
+
+    labels = sourced_page.locator("#source-panel .spine-label")
+    expect(labels.first).not_to_have_text(re.compile(r"^\d{4}-\d{2}-\d{2}"))
+    expect(labels.first).not_to_have_text(re.compile(r"\.pdf"))
+    # Distinct documents must produce distinct labels.
+    texts = labels.all_inner_texts()
+    assert len(set(texts)) == len(texts), f"spine labels collide: {texts}"
+
+
+# ── The mascot reports what the reader is looking at ────────────────────────
+
+def test_the_mascot_carries_provenance_while_sources_are_open(sourced_page: Page):
+    """Teal means "this came from a document" everywhere else in the
+    transcript, so Sunny's eyes take it for as long as the evidence is on
+    screen. His face reports the reader's state rather than decorating it.
+    """
+    page = sourced_page
+    page.set_viewport_size(WIDE)
+    _ask(page)
+
+    companion = page.locator(".robot-companion-body")
+    eye = lambda: page.evaluate(
+        "() => getComputedStyle(document.querySelector('.robot-companion-body .sunny-svg'))"
+        ".getPropertyValue('--sunny-eye').trim()"
+    )
+    signal = page.evaluate(
+        "() => getComputedStyle(document.documentElement).getPropertyValue('--signal').trim()"
+    )
+
+    page.locator(".source-trigger").click()
+    expect(companion).to_contain_class("robot-presenting")
+    assert eye() == signal, "the mascot did not take the provenance colour"
+
+    page.locator(".source-trigger").click()
+    expect(companion).not_to_contain_class("robot-presenting")
+    assert eye() != signal, "the mascot kept the provenance colour after closing"
+
+
+def test_the_present_gesture_is_one_shot_and_repeatable(sourced_page: Page):
+    """The nod plays on every open, not only the first.
+
+    It is applied as its own class and removed again, so the idle breathe on
+    the same element resumes rather than being left overridden forever — and
+    so a second answer's sources get the gesture too.
+    """
+    page = sourced_page
+    page.set_viewport_size(WIDE)
+    _ask(page)
+    companion = page.locator(".robot-companion-body")
+
+    page.locator(".source-trigger").click()
+    expect(companion).to_contain_class("robot-presents")
+    # One-shot: gone once it has played.
+    expect(companion).not_to_contain_class("robot-presents", timeout=3000)
+
+    page.locator(".source-trigger").click()   # close
+    page.locator(".source-trigger").click()   # and open again
+    expect(companion).to_contain_class("robot-presents")

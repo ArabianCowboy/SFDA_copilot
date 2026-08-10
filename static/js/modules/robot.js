@@ -239,6 +239,36 @@ export const RobotStateManager = {
   },
 
   /** One antenna flash per retrieved passage, capped so eight doesn't strobe. */
+  /**
+   * Sources opened or closed.
+   *
+   * Deliberately NOT a VALID_STATE. The state machine is driven by the stream
+   * — searching, retrieved, drafting — and a reader can open the panel at any
+   * point during it; making this a state would clobber whatever stage Sunny
+   * was reporting. It layers on top instead, so he can be mid-search and
+   * presenting at once.
+   *
+   * While the evidence is on screen his eyes take the provenance colour. Teal
+   * means "this came from a document" everywhere else in the transcript, so
+   * his face reports what the reader is looking at rather than decorating it.
+   */
+  presentSources(isOpen) {
+    const body = this._getCompanionBody();
+    if (!body) return;
+
+    body.classList.toggle('robot-presenting', !!isOpen);
+    if (!isOpen || prefersReducedMotion()) return;
+
+    // One dip toward the shelf, then back. Restarted by hand so opening a
+    // second answer's sources plays it again rather than sitting finished.
+    this._pulseAntenna(1);
+    body.classList.remove('robot-presents');
+    void body.offsetWidth;
+    body.classList.add('robot-presents');
+    clearTimeout(this._presentTimer);
+    this._presentTimer = setTimeout(() => body.classList.remove('robot-presents'), 700);
+  },
+
   _pulseAntenna(count) {
     if (prefersReducedMotion() || count <= 0) return;
     const balls = document.querySelectorAll('.antenna-ball');

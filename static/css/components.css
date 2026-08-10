@@ -775,8 +775,17 @@
   justify-content: space-between;
   gap: var(--space-3);
   flex: none;
-  padding-block-end: var(--space-3);
+  /* A tonal cap, so the panel has a top the way a card does and the shelf
+     below it reads as contents rather than as the whole surface. */
+  padding: var(--space-3) var(--space-4);
   border-block-end: 1px solid var(--hairline);
+  background: var(--bg-sunken);
+}
+/* The sheet is edge-to-edge and supplies its own padding; only the rail's
+   panel is a bounded card. */
+.source-panel.is-sheet .source-panel-head {
+  padding-inline: 0;
+  background: none;
 }
 .source-panel-title {
   margin: 0;
@@ -806,10 +815,13 @@
 .source-panel-body {
   flex: 1 1 auto;
   min-block-size: 0;
+  display: flex;
+  flex-direction: column;
   /* The panel scrolls on its own, so opening sources never moves the answer. */
   overflow-y: auto;
-  padding-block: var(--space-4);
+  padding: var(--space-4);
 }
+.source-panel.is-sheet .source-panel-body { padding-inline: 0; }
 .source-panel-note {
   margin: 0 0 var(--space-4);
   font-size: var(--fs-100);
@@ -946,6 +958,284 @@
   align-items: center;
   gap: var(--space-3);
   padding-block: var(--space-1);
+}
+
+/* ——————————————— The shelf ———————————————
+   The rail read as a shelf seen edge-on: one spine per cited document, one tab
+   per cited passage. Grouping stops being a rule imposed on a list and becomes
+   a property of the form — you can see how many documents an answer rests on
+   before reading a word of it.
+
+   Tabs are spaced EVENLY along the spine, never proportionally to the page.
+   Proportional placement would be claiming a document length the payload does
+   not carry; the page number is printed instead, which says exactly what is
+   known. */
+.source-shelf {
+  flex: 1 1 auto;
+  min-block-size: 0;
+  display: flex;
+  padding-block: var(--space-4) 0;
+  border-block-end: 2px solid var(--hairline-strong);
+  margin-block-end: var(--space-4);
+  /* Contact: the ground darkens where the spines meet it. Tonal, so no
+     resting surface has to carry a shadow. */
+  background: linear-gradient(to bottom, transparent 78%, var(--bg-sunken) 100%);
+}
+.shelf-spines {
+  flex: 1 1 auto;
+  min-block-size: 0;
+  display: flex;
+  align-items: stretch;
+  gap: var(--space-2);
+  inline-size: 100%;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.shelf-spine {
+  flex: 1 1 0;
+  min-inline-size: 0;
+  display: flex;
+  flex-direction: column;
+  padding-block: var(--space-3) var(--space-2);
+  border: 1px solid var(--hairline);
+  /* Rounded at the head, squared where it meets the floor — a bound spine
+     standing on a shelf, not a rounded rectangle floating near one. This is
+     also what took the hard edge off: a uniform 6px on a tall thin object
+     reads as a UI box. */
+  border-start-start-radius: var(--radius-md);
+  border-start-end-radius: var(--radius-md);
+  border-end-start-radius: 2px;
+  border-end-end-radius: 2px;
+  /* Light falls from the head. Tonal layering rather than a shadow: the
+     Earned-Shadow Rule keeps resting surfaces flat, and a gradient inside the
+     paper ramp gives the face its curvature without breaking it. */
+  background: linear-gradient(
+    to bottom,
+    var(--bg-surface) 0%,
+    var(--bg-sunken) 45%,
+    var(--bg-page) 100%
+  );
+  transition: border-color var(--duration-m) var(--ease-soft),
+              transform var(--duration-m) var(--ease-out);
+}
+/* The whole document responds, not just the tab you happen to be over. */
+.shelf-spine:hover { border-color: var(--hairline-strong); transform: translateY(-2px); }
+.shelf-spine:hover .spine-label { color: var(--fg-primary); }
+.shelf-spine:has(.spine-tab.is-open) { border-color: var(--signal); }
+
+/* The head band. A bound book has one; here it also carries the category
+   glyph, so the space above the first tab identifies the document instead of
+   sitting empty. */
+.spine-head {
+  flex: none;
+  margin-inline: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 24px;
+  block-size: 24px;
+  margin-block-end: var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--bg-page);
+  color: var(--fg-faint);
+}
+.shelf-spine:has(.spine-tab.is-open) .spine-head { color: var(--signal); }
+
+/* One document is the sparse case, and the one most likely to read as a bug
+   rather than a state. It gets the full width and a generous label instead of
+   a lonely sliver — one exhibit, presented deliberately. */
+.source-shelf[data-spines="1"] .shelf-spine { max-inline-size: 100%; }
+.source-shelf[data-spines="1"] .spine-label { font-size: var(--fs-200); }
+
+.spine-face {
+  position: relative;
+  flex: 1 1 auto;
+  min-block-size: 140px;
+}
+
+/* ——————————————— Tabs ———————————————
+   A tab is the passage. It crosses the spine so it reads as a marker placed
+   INTO the document rather than a chip sitting beside it. */
+.spine-tab {
+  position: absolute;
+  inset-inline: 0;
+  inset-block-start: var(--at, 50%);
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-1);
+  /* A band cut ACROSS the spine, not a chip floating on it. Rules above and
+     below rather than a box: --bg-surface and --bg-sunken sit within a step of
+     each other on both themes, so a fill alone did no work and the tab read as
+     loose text. A horizontal band reads at any contrast. */
+  border: none;
+  border-block: 1px solid var(--hairline-strong);
+  border-radius: 0;
+  background: var(--bg-surface);
+  color: var(--fg-muted);
+  cursor: pointer;
+  transition: border-color var(--duration-s) var(--ease-soft),
+              background var(--duration-s) var(--ease-soft),
+              color var(--duration-s) var(--ease-soft),
+              transform var(--duration-s) var(--ease-out);
+}
+.spine-tab:hover {
+  border-block-color: var(--signal);
+  background: var(--signal-tint);
+  color: var(--fg-primary);
+}
+.spine-tab.is-open,
+.spine-tab[aria-expanded="true"] {
+  border-block-color: var(--signal);
+  background: var(--signal-tint);
+}
+.tab-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-inline-size: 1.15em;
+  padding: 0 .3em;
+  border: 1px solid var(--signal);
+  border-radius: var(--radius-xs);
+  background: var(--signal-tint);
+  color: var(--signal);
+  font-family: var(--font-mono);
+  font-size: var(--fs-100);
+  font-weight: var(--fw-medium);
+  line-height: 1.5;
+}
+.spine-tab.is-open .tab-index {
+  background: var(--signal);
+  color: var(--fg-on-signal);
+}
+/* Latin digits, isolated: the citation markers in the prose are Latin by
+   instruction, and a page in Arabic-Indic digits beside a Latin marker on the
+   same tab is incoherent. Azeret Mono has no tabular figures for them either. */
+.tab-page {
+  direction: ltr;
+  unicode-bidi: isolate;
+  font-family: var(--font-mono);
+  font-size: var(--fs-100);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ——————————————— Spine label ———————————————
+   Vertical, like a book spine. writing-mode rotates the BOX; the glyphs are
+   not mirrored, so this is identical in both directions and the isolation
+   below keeps a Latin filename from being reordered by Arabic chrome. */
+.spine-label {
+  writing-mode: vertical-rl;
+  direction: ltr;
+  unicode-bidi: isolate;
+  margin: 0;
+  padding: var(--space-2) var(--space-1);
+  max-block-size: 15ch;
+  flex: 0 1 auto;
+  font-size: var(--fs-200);
+  font-weight: var(--fw-medium);
+  line-height: var(--lh-snug);
+  letter-spacing: var(--track-tight);
+  color: var(--fg-secondary);
+  text-align: start;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-inline: auto;
+}
+
+/* ——————————————— The passage ———————————————
+   Over the shelf, with its spine still visible behind — the passage stays
+   attached to the document it came from. */
+.passage-card {
+  position: absolute;
+  inset-inline: var(--space-4);
+  inset-block-end: var(--space-4);
+  z-index: var(--z-raised);
+  padding: var(--space-4);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-lg);
+}
+.passage-card[hidden] { display: none; }
+.passage-card-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-block-end: var(--space-3);
+}
+.passage-index {
+  flex: none;
+  min-inline-size: 1.5em;
+  padding: 1px .3em;
+  border: 1px solid var(--signal);
+  border-radius: var(--radius-xs);
+  color: var(--signal);
+  font-family: var(--font-mono);
+  font-size: var(--fs-100);
+  text-align: center;
+}
+.passage-page {
+  direction: ltr;
+  unicode-bidi: isolate;
+  font-family: var(--font-mono);
+  font-size: var(--fs-100);
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-muted);
+}
+.passage-close {
+  margin-inline-start: auto;
+  display: inline-flex;
+  padding: var(--space-1);
+  border: none;
+  border-radius: var(--radius-xs);
+  background: none;
+  color: var(--fg-faint);
+  cursor: pointer;
+}
+.passage-close:hover { color: var(--fg-primary); background: var(--bg-sunken); }
+.passage-doc {
+  margin: 0 0 var(--space-2);
+  font-size: var(--fs-200);
+  font-weight: var(--fw-medium);
+  line-height: var(--lh-snug);
+  color: var(--fg-primary);
+  overflow-wrap: anywhere;
+}
+.passage-snippet {
+  margin: 0;
+  font-size: var(--fs-200);
+  line-height: var(--lh-body);
+  color: var(--fg-secondary);
+}
+.passage-cat {
+  display: block;
+  margin-block-start: var(--space-3);
+  font-size: var(--fs-100);
+  letter-spacing: var(--track-caps);
+  text-transform: uppercase;
+  color: var(--fg-faint);
+}
+
+/* The panel is the passage card's positioning context. */
+.source-panel { position: relative; }
+
+/* Spines rise once the answer is complete. One authored moment, from an
+   already-visible default so a dead stylesheet leaves the shelf standing. */
+@media (prefers-reduced-motion: no-preference) {
+  .source-panel:not([hidden]) .shelf-spine {
+    animation: spineRise var(--duration-l) var(--ease-out) backwards;
+  }
+  .shelf-spine:nth-child(2) { animation-delay: 60ms; }
+  .shelf-spine:nth-child(3) { animation-delay: 120ms; }
+  .shelf-spine:nth-child(4) { animation-delay: 180ms; }
+}
+@keyframes spineRise {
+  from { transform: translateY(10px); opacity: 0; }
+  to   { transform: translateY(0); opacity: 1; }
 }
 
 /* ——————————————— Sheet presentation ———————————————

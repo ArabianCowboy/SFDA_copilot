@@ -13,6 +13,18 @@
  */
 
 const REGISTRY = window.__ICONS || {};
+const CATEGORY = window.__CATEGORY_ICONS || {};
+
+/**
+ * The glyph for a corpus category, from the server's own mapping.
+ *
+ * Not a copy of it: web/utils/icons.py owns CATEGORY_ICONS and ships it as
+ * window.__CATEGORY_ICONS, because a category that gains a glyph in Jinja and
+ * not in the browser is the drift this indirection exists to prevent.
+ */
+export function categoryIcon(category) {
+  return CATEGORY[String(category || '').trim().toLowerCase()] || '';
+}
 
 /**
  * One icon as an SVG string, for the places that assemble innerHTML.

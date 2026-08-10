@@ -31,8 +31,9 @@
  */
 
 import { DOMCache } from './dom.js';
-import { iconMarkup } from './icons.js';
+import { iconMarkup, categoryIcon } from './icons.js';
 import { I18n } from './i18n.js';
+import { RobotStateManager } from './robot.js';
 
 const RAIL_QUERY = '(min-width: 1200px)';
 
@@ -66,6 +67,26 @@ export function groupByDocument(sources) {
   return [...groups].map(([document, items]) => ({ document, sources: items }));
 }
 
+/**
+ * A corpus filename as a spine label.
+ *
+ * Every one of the 111 documents in the corpus begins with an ISO date —
+ * "2010-08-31_Guideline_on_Allergenic_Products.pdf" — so truncating the raw
+ * filename produces "2010-08-31_Gui" for both the allergenics guideline and
+ * the antisera one. Three spines would carry the same label and the shelf
+ * would be worse than a list. The date and the extension go first, then the
+ * underscores, and only what is left gets truncated (by CSS, so the full name
+ * survives in the passage card and the title attribute).
+ */
+export function documentLabel(name) {
+  const cleaned = String(name || "")
+    .replace(/\.pdf$/i, "")
+    .replace(/^\d{4}-\d{2}-\d{2}[_-]/, "")
+    .replace(/_+/g, " ")
+    .trim();
+  return cleaned || I18n.t("cite.unknownDocument");
+}
+
 export const SourcePanel = {
   _panel: null,
   _backdrop: null,
@@ -87,7 +108,17 @@ export const SourcePanel = {
       `<h2 class="source-panel-title" id="source-panel-title"></h2>` +
       `<button type="button" class="source-panel-close">${iconMarkup('close', 16)}</button>` +
       `</div>` +
-      `<div class="source-panel-body"></div>`;
+      `<div class="source-panel-body"></div>` +
+      `<div class="passage-card" hidden>` +
+      `<div class="passage-card-head">` +
+      `<span class="passage-index"></span>` +
+      `<span class="passage-page" dir="ltr"></span>` +
+      `<button type="button" class="passage-close">${iconMarkup('close', 14)}</button>` +
+      `</div>` +
+      `<p class="passage-doc" dir="auto"></p>` +
+      `<p class="passage-snippet" dir="auto"></p>` +
+      `<span class="passage-cat"></span>` +
+      `</div>`;
 
     const backdrop = DOMCache.createElement('div', 'source-panel-backdrop');
     backdrop.hidden = true;
@@ -101,6 +132,19 @@ export const SourcePanel = {
         this.close();
         return;
       }
+      const tab = event.target.closest('.spine-tab');
+      if (tab) {
+        const index = Number(tab.dataset.index);
+        // A second press on the open tab closes it, like the trigger.
+        if (tab.classList.contains('is-open')) this._closePassage();
+        else this._openPassage(index);
+        return;
+      }
+      if (event.target.closest('.passage-close')) {
+        this._closePassage();
+        return;
+      }
+
       const toggle = event.target.closest('.source-diag-toggle');
       if (toggle) {
         const list = document.getElementById(toggle.getAttribute('aria-controls'));
@@ -159,6 +203,7 @@ export const SourcePanel = {
     }
 
     this._msgId = msgId;
+    this._state = state;
     this._render(state);
     this._mount();
     this._syncTriggers();
@@ -194,6 +239,7 @@ export const SourcePanel = {
     this.close({ restoreFocus: false });
     if (this._panel) {
       this._panel.querySelector('.source-panel-body').textContent = '';
+      this._closePassage();
       this._panel.querySelector('.source-panel-title').textContent = '';
     }
   },
@@ -209,6 +255,8 @@ export const SourcePanel = {
   close({ restoreFocus = true } = {}) {
     if (!this._panel || this._panel.hidden) return;
 
+    this._closePassage();
+    RobotStateManager.presentSources(false);
     this._panel.hidden = true;
     this._backdrop.hidden = true;
     this._panel.removeAttribute('role');
@@ -234,6 +282,14 @@ export const SourcePanel = {
   /** Scroll one passage into view and mark it, e.g. after a marker click. */
   revealPassage(msgId, index) {
     if (!this.isOpenFor(msgId)) return;
+    // On the shelf a passage IS its tab, so a marker click opens it rather
+    // than merely lighting a card the reader would still have to find.
+    if (this._panel.querySelector('.spine-tab')) {
+      this._openPassage(index);
+      this._panel.querySelector(`.spine-tab[data-index="${index}"]`)
+        ?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      return;
+    }
     this._panel.querySelectorAll('.source-card.is-lit')
       .forEach((el) => el.classList.remove('is-lit'));
     const card = this._panel.querySelector(`[data-index="${index}"]`);
@@ -262,6 +318,7 @@ export const SourcePanel = {
     this._isModal = !useRail;
     this._panel.hidden = false;
     this._panel.classList.toggle('is-sheet', !useRail);
+    RobotStateManager.presentSources(true);
 
     if (useRail) {
       rail.appendChild(this._panel);
@@ -313,9 +370,7 @@ export const SourcePanel = {
     }
   },
 
-  _render({ sources = [], cited = null }) {
-    const msgId = this._msgId;
-
+  _render(state) {
     this._panel.querySelector('.source-panel-title').textContent =
       I18n.t('cite.panelTitle');
     this._panel.querySelector('.source-panel-close')
@@ -323,6 +378,22 @@ export const SourcePanel = {
 
     const body = this._panel.querySelector('.source-panel-body');
     body.textContent = '';
+
+    /* The shelf is a rail form: it reads vertically and needs the column's
+       height. In the sheet it would be a second metaphor to validate on the
+       breakpoint where it reads worst, so the sheet keeps the grouped list —
+       which carries the same fact (how many documents, and where in each). */
+    if (this._mql.matches && document.getElementById('chat-rail')) {
+      this._renderShelf(state, body);
+    } else {
+      this._renderList(state, body);
+    }
+
+    body.appendChild(this._renderDiagnostics(state.sources || [], this._msgId));
+  },
+
+  _renderList({ sources = [], cited = null }, body) {
+    const msgId = this._msgId;
 
     for (const group of groupByDocument(sources)) {
       const section = DOMCache.createElement('section', 'source-group');
@@ -363,8 +434,116 @@ export const SourcePanel = {
       section.appendChild(list);
       body.appendChild(section);
     }
+  },
 
-    body.appendChild(this._renderDiagnostics(sources, msgId));
+  /**
+   * The shelf: one spine per cited document, one tab per cited passage.
+   *
+   * Tabs are ordered by page and spaced EVENLY, never proportionally. A tab
+   * placed at a fraction of the spine's height would be claiming a document
+   * length nobody knows — the payload carries the page a passage came from,
+   * not how many pages the guideline has. Even spacing with the page printed
+   * says exactly what is known and nothing more.
+   */
+  _renderShelf({ sources = [], cited = null }, body) {
+    const msgId = this._msgId;
+    const groups = groupByDocument(sources);
+
+    const shelf = DOMCache.createElement('div', 'source-shelf');
+    // The sparse case is the one that has to look deliberate rather than
+    // broken: a single spine gets the full width and presents as one exhibit.
+    shelf.dataset.spines = String(groups.length);
+
+    const spines = DOMCache.createElement('ol', 'shelf-spines');
+
+    for (const group of groups) {
+      const spine = DOMCache.createElement('li', 'shelf-spine');
+      const face = DOMCache.createElement('div', 'spine-face');
+
+      const ordered = [...group.sources].sort(
+        (a, b) => (a.page ?? Number.MAX_SAFE_INTEGER) - (b.page ?? Number.MAX_SAFE_INTEGER)
+      );
+
+      ordered.forEach((source, i) => {
+        const tab = DOMCache.createElement('button', 'spine-tab');
+        tab.type = 'button';
+        tab.id = `src-${msgId}-${source.index}`;
+        tab.dataset.index = String(source.index);
+        tab.setAttribute('aria-expanded', 'false');
+        // Even spacing: the i-th of n tabs sits at (i+1)/(n+1) of the face.
+        tab.style.setProperty('--at', `${((i + 1) / (ordered.length + 1)) * 100}%`);
+        if (Array.isArray(cited) && cited.includes(source.index)) {
+          tab.classList.add('is-cited');
+        }
+
+        const num = DOMCache.createElement('span', 'tab-index');
+        num.textContent = String(source.index);
+
+        const page = DOMCache.createElement('span', 'tab-page');
+        // Latin digits, isolated. The model is told to keep page numbers in
+        // Latin form and the citation markers already are; a page rendered in
+        // Arabic-Indic digits beside a Latin marker on the same tab is
+        // incoherent, and Azeret Mono has no tabular figures for them.
+        page.setAttribute('dir', 'ltr');
+        page.textContent = source.page != null
+          ? I18n.t('cite.pageShort', { n: source.page })
+          : '';
+        tab.setAttribute('aria-label', source.page != null
+          ? I18n.t('cite.tabAria', { n: source.index, page: source.page })
+          : I18n.t('cite.tabAriaNoPage', { n: source.index }));
+
+        tab.append(num, page);
+        face.appendChild(tab);
+      });
+
+      const head = DOMCache.createElement('div', 'spine-head');
+      const glyph = categoryIcon(group.sources[0]?.category);
+      if (glyph) head.innerHTML = iconMarkup(glyph, 14, 'spine-glyph');
+
+      const label = DOMCache.createElement('p', 'spine-label');
+      const full = group.document || I18n.t('cite.unknownDocument');
+      label.textContent = documentLabel(full);
+      label.title = full;
+
+      spine.append(head, face, label);
+      spines.appendChild(spine);
+    }
+
+    shelf.appendChild(spines);
+    body.appendChild(shelf);
+  },
+
+  /** The passage behind a tab, over the shelf, with its spine still visible. */
+  _openPassage(index) {
+    const source = (this._state?.sources || []).find(s => s.index === index);
+    if (!source) return;
+
+    this._panel.querySelectorAll('.spine-tab').forEach((t) => {
+      t.setAttribute('aria-expanded', String(Number(t.dataset.index) === index));
+      t.classList.toggle('is-open', Number(t.dataset.index) === index);
+    });
+
+    const card = this._panel.querySelector('.passage-card');
+    card.hidden = false;
+    card.querySelector('.passage-doc').textContent =
+      source.document || I18n.t('cite.unknownDocument');
+    card.querySelector('.passage-page').textContent = source.page != null
+      ? I18n.t('cite.page', { n: source.page })
+      : I18n.t('cite.pageUnknown');
+    card.querySelector('.passage-snippet').textContent = source.snippet || '';
+    card.querySelector('.passage-cat').textContent = source.category || '';
+    card.querySelector('.passage-index').textContent = String(source.index);
+    card.querySelector('.passage-close')
+      .setAttribute('aria-label', I18n.t('cite.closePassage'));
+  },
+
+  _closePassage() {
+    const card = this._panel.querySelector('.passage-card');
+    if (card) card.hidden = true;
+    this._panel.querySelectorAll('.spine-tab').forEach((t) => {
+      t.setAttribute('aria-expanded', 'false');
+      t.classList.remove('is-open');
+    });
   },
 
   /**

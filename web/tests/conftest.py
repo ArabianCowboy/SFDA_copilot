@@ -217,6 +217,21 @@ SSE_CHAT_MOCK_UNCITED = _sse_exchange(_SSE_UNCITED_ANSWER, [], [], 8)
 # Nothing cleared retrieval at all — the "who is claude?" case.
 SSE_CHAT_MOCK_NO_SOURCES = _sse_exchange(_SSE_ANSWER, [], [], 0)
 
+# The sparse case: one passage, one document. The state most likely to read as
+# a bug rather than a deliberate answer, so it gets its own fixture. The page
+# is null on purpose too — a chunk whose metadata carried no page.
+_SSE_SPARSE = [{
+    "index": 1,
+    "document": "2022-10-19_Guidance_for_Submission_of_Registration_Dossiers.pdf",
+    "page": None,
+    "category": "Regulatory",
+    "score": 0.71, "semantic_score": 0.63, "lexical_score": 0.8,
+    "snippet": "A single retrieved passage, cited once, with no page recorded.",
+}]
+SSE_CHAT_MOCK_SPARSE = _sse_exchange(
+    "One claim, one source [1].", _SSE_SPARSE, [1], 1
+)
+
 
 # Individual frames, for tests that release them one at a time.
 SSE_FINAL_FRAME = _sse_final(_SSE_ANSWER, _SSE_CITED_SOURCES, _SSE_CITED, 8)
@@ -384,6 +399,12 @@ def _stream_route(page, body: str):
 def uncited_page(authenticated_page):
     """Signed in, with an answer that cites none of what was retrieved."""
     return _stream_route(authenticated_page, SSE_CHAT_MOCK_UNCITED)
+
+
+@pytest.fixture
+def sparse_page(authenticated_page):
+    """Signed in, with an answer resting on exactly one passage of one document."""
+    return _stream_route(authenticated_page, SSE_CHAT_MOCK_SPARSE)
 
 
 @pytest.fixture

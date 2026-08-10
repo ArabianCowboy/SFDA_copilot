@@ -91,6 +91,11 @@ runtime:
     # The panel.
     panelTitle: "Sources for this answer"
     page: "Page {n}"
+    pageShort: "p.{n}"
+    pageUnknown: "No page cited"
+    tabAria: "Source {n}, page {page}"
+    tabAriaNoPage: "Source {n}, no page cited"
+    closePassage: "Close passage"
     unknownDocument: "Unknown document"
     close: "Close sources"
     # Raw retrieval figures. Named as diagnostics, not confidence, because that

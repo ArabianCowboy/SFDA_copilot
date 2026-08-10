@@ -86,6 +86,7 @@
         /* Same trick for the icons the browser modules draw. Only the subset
            JS actually builds ships here; the rest render server-side. */
         window.__ICONS = {{ icons_runtime | tojson }};
+        window.__CATEGORY_ICONS = {{ category_icons | tojson }};
     </script>
 
     <!-- Versions the ES modules themselves. The <script> tag below carries

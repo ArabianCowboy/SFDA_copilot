@@ -83,7 +83,7 @@
 
 /* ——————————————— HAPPY ——————————————— */
 .robot-happy { animation: sunnyHop .6s var(--ease-out) 2; }
-.robot-happy .robot-head { animation: sunnyWobble .5s ease-in-out 2; transform-origin: center 96px; }
+.robot-happy .robot-head { animation: sunnySettle .8s var(--ease-out); transform-origin: center 96px; }
 .robot-happy .antenna-glow { animation: sunnyAntennaHappy 1.2s ease-in-out infinite; }
 .robot-happy .eye-glow { opacity: .35; }
 
@@ -111,11 +111,50 @@
 }
 
 /* ═══════════════ KEYFRAMES ═══════════════ */
+/* ——————————————— Presenting ———————————————
+   Sources are open. Additive to whatever stage state Sunny is in, and placed
+   after the state rules deliberately: while the gesture plays it must win over
+   the idle breathe on the same element, and it is removed in JS afterwards so
+   the breathe resumes rather than being left overridden forever. */
+.robot-presenting .sunny-svg { --sunny-eye: var(--signal); }
+.robot-presenting .eye-glow { opacity: .3; }
+.robot-presents .robot-head {
+  animation: sunnyPresent .7s var(--ease-out);
+  transform-origin: center 96px;
+}
+
+/* A dip toward the shelf below him, then a settle. The rotation carries
+   direction, so it goes through --flip and reads the same in both scripts. */
+@keyframes sunnyPresent {
+  0%   { transform: translateY(0) rotate(0); }
+  30%  { transform: translateY(5px) rotate(calc(3deg * var(--flip))); }
+  62%  { transform: translateY(-2px) rotate(calc(-1.5deg * var(--flip))); }
+  100% { transform: translateY(0) rotate(0); }
+}
+
 @keyframes sunnyBreathe { 0%,100% { transform: scale(1); } 50% { transform: scale(1.025); } }
 @keyframes sunnyBlink { 0%,92%,100% { opacity: 0; } 95% { opacity: 1; } }
 @keyframes sunnyThink { 0%,100% { transform: rotate(-5deg) translateY(0); } 50% { transform: rotate(5deg) translateY(-3px); } }
 @keyframes sunnyNod { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-3px) scale(1.02); } }
-@keyframes sunnyWobble { 0%,100% { transform: rotate(0); } 25% { transform: rotate(-8deg); } 75% { transform: rotate(8deg); } }
+/* A head turning at good news and coming to rest, not a jitter. Named for what
+   it does now: it used to be `sunnyWobble`, a symmetric +/-8deg oscillation run
+   twice: four full reversals at the same
+   amplitude, which is the mechanical wobble a real object never makes. The
+   swing decays instead (7 -> 3.5 -> 1.2 -> 0) under an exponential ease-out,
+   so it settles the way weight does. One iteration, because running a decay
+   twice restarts it and undoes the point.
+
+   Now that the first swing is the largest, the direction is perceptible, so it
+   goes through --flip. Note .robot-head sits INSIDE .sunny-svg, which is
+   scaleX(-1) under RTL: the multiplier cancels that mirror, which is what
+   makes the gesture look identical in both scripts rather than reversed. */
+@keyframes sunnySettle {
+  0%   { transform: rotate(0); }
+  22%  { transform: rotate(calc(-7deg * var(--flip))); }
+  55%  { transform: rotate(calc(3.5deg * var(--flip))); }
+  80%  { transform: rotate(calc(-1.2deg * var(--flip))); }
+  100% { transform: rotate(0); }
+}
 @keyframes sunnyShake { 0%,100% { transform: translateX(0) rotate(0); } 25% { transform: translateX(calc(-5px * var(--flip))) rotate(-4deg); } 75% { transform: translateX(calc(5px * var(--flip))) rotate(4deg); } }
 @keyframes sunnyBallBreathe { 0%,100% { transform: scale(1); } 50% { transform: scale(1.12); } }
 @keyframes sunnyAntennaFlash { 0% { transform: scale(1); } 45% { transform: scale(1.5); } 100% { transform: scale(1); } }

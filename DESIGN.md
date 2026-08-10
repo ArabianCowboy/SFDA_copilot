@@ -299,15 +299,18 @@ Borders are 1px hairlines by default. 2px is the system's one *meaningful* rule 
 - **Tabs (auth modal):** Borderless links in muted ink; the active tab takes primary ink and a 2px teal underline.
 - **Footer:** A top hairline, the independence notice on a sunken fill at 70ch, then the builder's colophon links in secondary ink going teal on hover.
 
-### Source panel (signature component)
+### Source shelf (signature component)
 
-The evidence behind one answer, in a surface of its own. It is the product's central claim made operable, so its rules are stricter than the rest of the system's.
+The evidence behind one answer, read as a shelf seen edge-on. It is the product's central claim made operable, so its rules are stricter than the rest of the system's.
 
-- **In the transcript:** one line, and only when the answer cited something. `Sources · 2 documents · 3 passages`, set as a label (12px, +0.08em, uppercase) in teal — the transcript's provenance colour — with a chevron that mirrors on `--flip` and rotates a quarter turn when the panel is open. Both numbers count the same (cited) set, so they cannot contradict each other.
-- **Two presentations, one component.** At ≥1200px it takes the rail as a real grid column and the mascot steps aside; it is **not** modal there, because it sits beside the transcript rather than over it, and a focus trap would be a lie about what is reachable. Below 1200px it becomes a bottom sheet at `70dvh` with a scrim, `aria-modal`, focus containment and Escape — modal because it genuinely covers the reading column.
-- **Grouped by document.** Passages sit under one heading per file, so eight passages read as three documents rather than eight rows. The citation number is the identity: grouping changes which heading a passage sits beneath and never its number.
-- **Passage:** sunken porcelain on the panel's white, 6px radius, 1px hairline, and a 2px inline-start edge that goes teal when the passage is one the answer cited. The number is mono in a teal-outlined chip; the page is mono, held `direction: ltr; unicode-bidi: isolate` so bidi cannot reorder it inside an Arabic answer.
-- **Diagnostics:** a collapsed disclosure at the foot of the panel, in faint ink, carrying combined/semantic/keyword figures and a line saying they are ranking figures rather than a measure of accuracy. Never a bar, a percentage or a colour.
+- **In the transcript:** one line, and only when the answer cited something. `Sources · 2 documents · 3 passages`, set as a label (12px, +0.08em, uppercase) in teal, with a chevron that mirrors on `--flip`. Both numbers count the same (cited) set, so they cannot contradict each other.
+- **The shelf:** one **spine** per cited document, one **tab** per cited passage, standing on a 2px floor rule. Grouping stops being a rule imposed on a list and becomes a property of the form — a reader sees how many documents an answer rests on before reading a word of it. Sunny keeps the head of the shelf at 56px; he used to be hidden outright the moment sources opened, which removed the mascot at exactly the moment the product does its most characteristic thing.
+- **Tabs are spaced evenly, never proportionally.** The i-th of n sits at `(i+1)/(n+1)` of the spine face, with the page printed on it. Proportional placement would claim a document length the payload does not carry; the payload knows which page a passage came from, not how many pages the guideline has. Ordered by page, so the sequence is still true.
+- **Spine labels** are vertical (`writing-mode: vertical-rl`), `direction: ltr; unicode-bidi: isolate`, and are the cleaned document name — the ISO date prefix and `.pdf` stripped, underscores spaced — before any truncation. Every document in the corpus begins with a date, so truncating the raw filename yields `2010-08-31_Gui` for several different guidelines and the shelf becomes worse than the list it replaced. The full name lives in the passage card and the `title`.
+- **The passage** opens over the shelf with its spine still visible behind it, so a passage stays attached to the document it came from. A `[n]` marker in the prose opens its tab directly.
+- **Page digits are Latin, always,** isolated `direction: ltr`. The model is instructed to keep markers and pages in Latin form, the citation markers already are, and Azeret Mono carries no tabular figures for Arabic-Indic digits — a page in one script beside a marker in the other on the same tab is incoherent.
+- **`page: null`** keeps its tab and its number; only the page is absent, and the card says "No page cited" rather than leaving a blank where a number belongs.
+- **Below 1200px** the sheet keeps the grouped list. The shelf is a rail form: it reads vertically and needs the column's height, and the breakpoint where a rotated shelf reads worst is the one where it would have to be validated.
 - **Never opens itself,** in any state. It closes when a new question is asked, and on logout it is emptied rather than hidden — one reader's evidence must not sit in the DOM while the next signs in.
 
 ### Sunny (signature component)

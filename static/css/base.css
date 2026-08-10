@@ -284,7 +284,28 @@ aside.sidebar {
    hiding the companion directly keeps RobotStateManager out of it — the robot
    goes on animating behind a display:none, harmlessly, and needs no knowledge
    that the panel exists. */
-.chat-rail.rail-shows-sources .robot-companion { display: none; }
+/* Sunny stays. He used to be hidden outright the moment sources opened —
+   which removed the mascot at exactly the moment the product does its most
+   characteristic thing. Now he keeps the head of the shelf and steps down a
+   size: the rail reads as one object changing state rather than two elements
+   swapping places, and his face is still the retrieval indicator while the
+   evidence he found sits under him. */
+.chat-rail.rail-shows-sources .robot-companion {
+  position: static;
+  flex: none;
+  inline-size: 72px;
+  /* Close enough to read as one composition — he stands ON the panel rather
+     than floating near it. */
+  margin-block-end: var(--space-2);
+}
+.chat-rail.rail-shows-sources .robot-companion-body .sunny-svg {
+  inline-size: 56px;
+  block-size: 56px;
+}
+/* The status pill is the stage line's job while an answer streams; under the
+   shelf it would caption a mascot nobody is looking at. */
+.chat-rail.rail-shows-sources .robot-companion-status,
+.chat-rail.rail-shows-sources .robot-companion-glow { display: none; }
 
 @media (min-width: 1200px) {
   .chat-container {
@@ -306,6 +327,19 @@ aside.sidebar {
     display: flex;
     flex-direction: column;
     min-block-size: 0;
+    overflow: hidden;
+  }
+  /* Without this the panel is content-height and the shelf floats in the top
+     third of an 812px column with dead space under it. The shelf is a
+     full-height form or it is not a shelf. */
+  .chat-rail.rail-shows-sources .source-panel {
+    flex: 1 1 auto;
+    min-block-size: 0;
+    /* A defined surface rather than a bare background: the panel used to have
+       no edge at all, so the sources dissolved into the rail and there was
+       nothing under the mascot for him to be presenting. */
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-lg);
     overflow: hidden;
   }
 }
