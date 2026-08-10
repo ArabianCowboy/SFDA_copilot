@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-08-07T00:00:00Z",
+  "generatedAt": "2026-08-10T00:00:00Z",
   "title": "Design System: SFDA Copilot",
   "extensions": {
     "colorMeta": {
@@ -9,76 +9,282 @@
         "displayName": "Aubergine Ink",
         "canonical": "#241F2B",
         "darkValue": "#F1ECF4",
-        "tonalRamp": ["#100D13", "#1A161F", "#241F2B", "#463E52", "#675D75", "#857A94", "#B3ABBD", "#E8E4EC"]
+        "tonalRamp": [
+          "#100D13",
+          "#1A161F",
+          "#241F2B",
+          "#463E52",
+          "#675D75",
+          "#857A94",
+          "#B3ABBD",
+          "#E8E4EC"
+        ]
       },
-      "ink-700": { "role": "neutral", "displayName": "Aubergine Secondary", "canonical": "#463E52", "darkValue": "#D2CAD9" },
-      "ink-500": { "role": "neutral", "displayName": "Aubergine Muted", "canonical": "#675D75", "darkValue": "#A79DB1" },
-      "ink-300": { "role": "neutral", "displayName": "Aubergine Faint", "canonical": "#857A94", "darkValue": "#837A8D" },
+      "ink-700": {
+        "role": "neutral",
+        "displayName": "Aubergine Secondary",
+        "canonical": "#463E52",
+        "darkValue": "#D2CAD9"
+      },
+      "ink-500": {
+        "role": "neutral",
+        "displayName": "Aubergine Muted",
+        "canonical": "#675D75",
+        "darkValue": "#A79DB1"
+      },
+      "ink-300": {
+        "role": "neutral",
+        "displayName": "Aubergine Faint",
+        "canonical": "#857A94",
+        "darkValue": "#837A8D"
+      },
       "paper-050": {
         "role": "neutral",
         "displayName": "Warm Porcelain",
         "canonical": "#F4F2F0",
         "darkValue": "#191420",
-        "tonalRamp": ["#2A2622", "#453F39", "#635B52", "#877E73", "#ABA298", "#CDC6BE", "#E9E5E1", "#F4F2F0"]
+        "tonalRamp": [
+          "#2A2622",
+          "#453F39",
+          "#635B52",
+          "#877E73",
+          "#ABA298",
+          "#CDC6BE",
+          "#E9E5E1",
+          "#F4F2F0"
+        ]
       },
-      "paper-000": { "role": "neutral", "displayName": "Card White", "canonical": "#FFFFFF", "darkValue": "#241E2C" },
-      "paper-100": { "role": "neutral", "displayName": "Sunken Porcelain", "canonical": "#E9E5E1", "darkValue": "#2F2839" },
-      "rule-200": { "role": "neutral", "displayName": "Hairline", "canonical": "#DCD7D1", "darkValue": "#362E42" },
-      "rule-300": { "role": "neutral", "displayName": "Hairline Strong", "canonical": "#BFB8B0", "darkValue": "#4A4058" },
+      "paper-000": {
+        "role": "neutral",
+        "displayName": "Card White",
+        "canonical": "#FFFFFF",
+        "darkValue": "#241E2C"
+      },
+      "paper-100": {
+        "role": "neutral",
+        "displayName": "Sunken Porcelain",
+        "canonical": "#E9E5E1",
+        "darkValue": "#2F2839"
+      },
+      "rule-200": {
+        "role": "neutral",
+        "displayName": "Hairline",
+        "canonical": "#DCD7D1",
+        "darkValue": "#362E42"
+      },
+      "rule-300": {
+        "role": "neutral",
+        "displayName": "Hairline Strong",
+        "canonical": "#BFB8B0",
+        "darkValue": "#4A4058"
+      },
       "teal-600": {
         "role": "primary",
         "displayName": "Deep Teal",
         "canonical": "#0F5E63",
         "darkValue": "#4FC2C8",
-        "tonalRamp": ["#042628", "#073B3E", "#0B4A4E", "#0F5E63", "#177F85", "#2BA5AC", "#4FC2C8", "#DCECEC"]
+        "tonalRamp": [
+          "#042628",
+          "#073B3E",
+          "#0B4A4E",
+          "#0F5E63",
+          "#177F85",
+          "#2BA5AC",
+          "#4FC2C8",
+          "#DCECEC"
+        ]
       },
-      "teal-700": { "role": "primary", "displayName": "Deep Teal Pressed", "canonical": "#0B4A4E", "darkValue": "#7FD9DD" },
-      "teal-100": { "role": "primary", "displayName": "Teal Wash", "canonical": "#DCECEC", "darkValue": "#0D3437" },
+      "teal-700": {
+        "role": "primary",
+        "displayName": "Deep Teal Pressed",
+        "canonical": "#0B4A4E",
+        "darkValue": "#7FD9DD"
+      },
+      "teal-100": {
+        "role": "primary",
+        "displayName": "Teal Wash",
+        "canonical": "#DCECEC",
+        "darkValue": "#0D3437"
+      },
       "gold-600": {
         "role": "secondary",
         "displayName": "Marigold",
         "canonical": "#B87310",
         "darkValue": "#E9A84B",
-        "tonalRamp": ["#3B2404", "#5C3806", "#7A4A08", "#94590A", "#B87310", "#D89430", "#E9A84B", "#FAEEDA"]
+        "tonalRamp": [
+          "#3B2404",
+          "#5C3806",
+          "#7A4A08",
+          "#94590A",
+          "#B87310",
+          "#D89430",
+          "#E9A84B",
+          "#FAEEDA"
+        ]
       },
-      "gold-700": { "role": "secondary", "displayName": "Marigold Deep", "canonical": "#94590A", "darkValue": "#F3C176" },
-      "gold-100": { "role": "secondary", "displayName": "Marigold Tint", "canonical": "#FAEEDA", "darkValue": "#332A26" },
-      "alert-600": { "role": "tertiary", "displayName": "Alert Clay", "canonical": "#A8301F", "darkValue": "#F0857A" },
-      "warn-600": { "role": "tertiary", "displayName": "Warn Amber", "canonical": "#8A5A00", "darkValue": "#E0A94D" }
+      "gold-700": {
+        "role": "secondary",
+        "displayName": "Marigold Deep",
+        "canonical": "#94590A",
+        "darkValue": "#F3C176"
+      },
+      "gold-100": {
+        "role": "secondary",
+        "displayName": "Marigold Tint",
+        "canonical": "#FAEEDA",
+        "darkValue": "#332A26"
+      },
+      "alert-600": {
+        "role": "tertiary",
+        "displayName": "Alert Clay",
+        "canonical": "#A8301F",
+        "darkValue": "#F0857A"
+      },
+      "warn-600": {
+        "role": "tertiary",
+        "displayName": "Warn Amber",
+        "canonical": "#8A5A00",
+        "darkValue": "#E0A94D"
+      },
+      "scrim": {
+        "role": "neutral",
+        "displayName": "Scrim",
+        "canonical": "rgb(36 31 43 / 0.38)",
+        "tonalRamp": []
+      }
     },
     "typographyMeta": {
-      "display": { "displayName": "Display / Zain", "purpose": "The wordmark only. Clamp floor is tuned to the Arabic mark, which runs ~1.4x the inline length of the English one." },
-      "headline": { "displayName": "Headline / Zain", "purpose": "Landing section headings." },
-      "title": { "displayName": "Title / Zain", "purpose": "Card headings, modal titles, sidebar title." },
-      "body": { "displayName": "Body / Readex Pro", "purpose": "All prose. One variable family across Latin and Arabic. Measure 68ch; hero lead 54ch." },
-      "label": { "displayName": "Label / Readex Pro caps", "purpose": "Small uppercase meta labels. Uppercasing and tracking are switched off under RTL." },
-      "mono": { "displayName": "Mono / Azeret Mono", "purpose": "Machine-reported facts only: page numbers, relevance scores, timestamps, citation indices." }
+      "display": {
+        "displayName": "Display / Zain",
+        "purpose": "The wordmark only. Clamp floor is tuned to the Arabic mark, which runs ~1.4x the inline length of the English one."
+      },
+      "headline": {
+        "displayName": "Headline / Zain",
+        "purpose": "Landing section headings."
+      },
+      "title": {
+        "displayName": "Title / Zain",
+        "purpose": "Card headings, modal titles, sidebar title."
+      },
+      "body": {
+        "displayName": "Body / Readex Pro",
+        "purpose": "All prose. One variable family across Latin and Arabic. Measure 68ch; hero lead 54ch."
+      },
+      "label": {
+        "displayName": "Label / Readex Pro caps",
+        "purpose": "Small uppercase meta labels. Uppercasing and tracking are switched off under RTL."
+      },
+      "mono": {
+        "displayName": "Mono / Azeret Mono",
+        "purpose": "Machine-reported facts only: page numbers, relevance scores, timestamps, citation indices."
+      }
     },
     "shadows": [
-      { "name": "shadow-sm", "value": "0 1px 2px rgb(36 31 43 / .05)", "purpose": "Small detached chrome, e.g. the mascot status pill." },
-      { "name": "shadow-md", "value": "0 4px 14px rgb(36 31 43 / .07)", "purpose": "Card hover lift and the jump-to-latest pill." },
-      { "name": "shadow-lg", "value": "0 12px 32px rgb(36 31 43 / .10)", "purpose": "Dropdown menu surfaces." },
-      { "name": "shadow-xl", "value": "0 24px 60px rgb(36 31 43 / .16)", "purpose": "Modals and toasts." },
-      { "name": "cta-lift", "value": "0 6px 18px rgb(var(--signal-rgb) / .22)", "purpose": "The primary action's coloured lift; deepens to 0 10px 26px / .28 on hover." },
-      { "name": "focus-ring-shadow", "value": "0 0 0 3px rgb(15 94 99 / .28)", "purpose": "Field focus ring, alongside a teal border." },
-      { "name": "shadow-dark-set", "value": "0 1px 2px rgb(0 0 0 / .40) | 0 4px 14px rgb(0 0 0 / .45) | 0 12px 32px rgb(0 0 0 / .50) | 0 24px 60px rgb(0 0 0 / .60)", "purpose": "Dark-mode replacements: the ink tint disappears on a dark ground, so alpha rises sharply." }
+      {
+        "name": "shadow-sm",
+        "value": "0 1px 2px rgb(36 31 43 / .05)",
+        "purpose": "Small detached chrome, e.g. the mascot status pill."
+      },
+      {
+        "name": "shadow-md",
+        "value": "0 4px 14px rgb(36 31 43 / .07)",
+        "purpose": "Card hover lift and the jump-to-latest pill."
+      },
+      {
+        "name": "shadow-lg",
+        "value": "0 12px 32px rgb(36 31 43 / .10)",
+        "purpose": "Dropdown menu surfaces."
+      },
+      {
+        "name": "shadow-xl",
+        "value": "0 24px 60px rgb(36 31 43 / .16)",
+        "purpose": "Modals and toasts."
+      },
+      {
+        "name": "cta-lift",
+        "value": "0 6px 18px rgb(var(--signal-rgb) / .22)",
+        "purpose": "The primary action's coloured lift; deepens to 0 10px 26px / .28 on hover."
+      },
+      {
+        "name": "focus-ring-shadow",
+        "value": "0 0 0 3px rgb(15 94 99 / .28)",
+        "purpose": "Field focus ring, alongside a teal border."
+      },
+      {
+        "name": "shadow-dark-set",
+        "value": "0 1px 2px rgb(0 0 0 / .40) | 0 4px 14px rgb(0 0 0 / .45) | 0 12px 32px rgb(0 0 0 / .50) | 0 24px 60px rgb(0 0 0 / .60)",
+        "purpose": "Dark-mode replacements: the ink tint disappears on a dark ground, so alpha rises sharply."
+      },
+      {
+        "name": "shadow-sheet",
+        "value": "0 -12px 32px rgb(36 31 43 / .16)",
+        "purpose": "The bottom-sheet source panel. The only shadow that points up: a sheet is lit from the page it rises over."
+      },
+      {
+        "name": "scrim",
+        "value": "rgb(36 31 43 / .38)",
+        "purpose": "Dimming behind the modal sheet, at modal z-index. Warm ink, never neutral grey."
+      }
     ],
     "motion": [
-      { "name": "duration-s", "value": "0.15s", "purpose": "Colour, border and small transform state changes." },
-      { "name": "duration-m", "value": "0.25s", "purpose": "Card hover, menu open, toast." },
-      { "name": "duration-l", "value": "0.4s", "purpose": "Card reveal and sidebar entrance." },
-      { "name": "duration-xl", "value": "0.7s", "purpose": "Longest scripted entrance." },
-      { "name": "ease-out", "value": "cubic-bezier(.16, 1, .3, 1)", "purpose": "Entrances and reveals." },
-      { "name": "ease-soft", "value": "cubic-bezier(.4, 0, .2, 1)", "purpose": "Default easing for state transitions." },
-      { "name": "flip", "value": "1 in LTR, -1 in RTL", "purpose": "Direction multiplier inside transforms, since CSS has no logical translate: translateX(calc(-12px * var(--flip)))." },
-      { "name": "reduced-motion", "value": "@media (prefers-reduced-motion: reduce) collapses all animation and transition to .001ms", "purpose": "Why mascot motion is CSS keyframes rather than SVG SMIL, which ignores the query." }
+      {
+        "name": "duration-s",
+        "value": "0.15s",
+        "purpose": "Colour, border and small transform state changes."
+      },
+      {
+        "name": "duration-m",
+        "value": "0.25s",
+        "purpose": "Card hover, menu open, toast."
+      },
+      {
+        "name": "duration-l",
+        "value": "0.4s",
+        "purpose": "Card reveal and sidebar entrance."
+      },
+      {
+        "name": "duration-xl",
+        "value": "0.7s",
+        "purpose": "Longest scripted entrance."
+      },
+      {
+        "name": "ease-out",
+        "value": "cubic-bezier(.16, 1, .3, 1)",
+        "purpose": "Entrances and reveals."
+      },
+      {
+        "name": "ease-soft",
+        "value": "cubic-bezier(.4, 0, .2, 1)",
+        "purpose": "Default easing for state transitions."
+      },
+      {
+        "name": "flip",
+        "value": "1 in LTR, -1 in RTL",
+        "purpose": "Direction multiplier inside transforms, since CSS has no logical translate: translateX(calc(-12px * var(--flip)))."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "@media (prefers-reduced-motion: reduce) collapses all animation and transition to .001ms",
+        "purpose": "Why mascot motion is CSS keyframes rather than SVG SMIL, which ignores the query."
+      }
     ],
     "breakpoints": [
-      { "name": "feature-grid-2col", "value": "640px" },
-      { "name": "feature-grid-3col", "value": "1000px" },
-      { "name": "sidebar-static (lg)", "value": "992px" },
-      { "name": "mascot-rail (xl)", "value": "1200px" },
-      { "name": "source-deck-promoted", "value": "1440px" }
+      {
+        "name": "feature-grid-2col",
+        "value": "640px"
+      },
+      {
+        "name": "feature-grid-3col",
+        "value": "1000px"
+      },
+      {
+        "name": "sidebar-static (lg)",
+        "value": "992px"
+      },
+      {
+        "name": "mascot-rail (xl)",
+        "value": "1200px"
+      }
     ]
   },
   "components": [
@@ -155,20 +361,28 @@
       "css": ".ds-cite-host { font-family: 'Readex Pro', sans-serif; font-size: 1.0625rem; line-height: 1.65; color: var(--fg-primary, #241F2B); margin: 0; } .ds-cite-marker { display: inline-flex; align-items: center; justify-content: center; min-inline-size: 1.15em; padding: 0 .3em; margin-inline-start: .15em; border: 1px solid var(--signal, #0F5E63); border-radius: 3px; background: var(--signal-tint, #DCECEC); color: var(--signal, #0F5E63); font-family: 'Azeret Mono', ui-monospace, monospace; font-size: .7em; font-weight: 500; line-height: 1.5; vertical-align: .35em; cursor: pointer; transition: background .15s cubic-bezier(.4,0,.2,1), color .15s cubic-bezier(.4,0,.2,1); } .ds-cite-marker:hover, .ds-cite-marker:focus-visible { background: var(--signal, #0F5E63); color: #fff; }"
     },
     {
-      "name": "Source Card",
+      "name": "Source Trigger",
+      "kind": "custom",
+      "refersTo": "source-trigger",
+      "description": "The one line an answer's sources get in the transcript. Rendered only when the answer cited something.",
+      "html": "<button class=\"ds-source-trigger\" aria-expanded=\"false\"><span>Sources · 2 documents · 3 passages</span><svg class=\"ds-chev\" width=\"12\" height=\"12\" viewBox=\"0 0 16 16\" fill=\"currentColor\" aria-hidden=\"true\"><path d=\"M6.1 3.3a.75.75 0 0 1 1.06 0l4 4a.75.75 0 0 1 0 1.06l-4 4a.75.75 0 1 1-1.06-1.06L9.54 7.8 6.1 4.36a.75.75 0 0 1 0-1.06\"/></svg></button>",
+      "css": ".ds-source-trigger { display: inline-flex; align-items: center; gap: 8px; padding: 0; border: none; background: none; color: var(--signal); font-family: var(--font-sans); font-size: .75rem; font-weight: 500; letter-spacing: .08em; text-transform: uppercase; text-align: start; cursor: pointer; transition: color .15s cubic-bezier(.4,0,.2,1); } .ds-source-trigger:hover { color: var(--fg-primary); } .ds-source-trigger:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; } .ds-source-trigger .ds-chev { transition: transform .15s cubic-bezier(.4,0,.2,1); } .ds-source-trigger[aria-expanded=\"true\"] .ds-chev { transform: rotate(90deg); }"
+    },
+    {
+      "name": "Source Passage",
       "kind": "card",
-      "refersTo": "cite-marker",
-      "description": "What a citation resolves to: document, page, relevance bar and score in mono. Lights teal when its marker is active.",
-      "html": "<div class=\"ds-source-card is-lit\"><div class=\"ds-source-head\"><span class=\"ds-source-index\">1</span><span class=\"ds-source-doc\">Guideline on Good Pharmacovigilance Practices</span><span class=\"ds-source-page\">p. 42</span></div><div class=\"ds-relevance\"><div class=\"ds-relevance-bar\" style=\"inline-size:78%\"></div></div><div class=\"ds-source-scores\"><span class=\"ds-score\"><b>SEM</b> 0.81</span><span class=\"ds-score\"><b>LEX</b> 0.74</span></div></div>",
-      "css": ".ds-source-card { padding: 12px; border: 1px solid var(--hairline, #DCD7D1); border-radius: 6px; background: var(--bg-surface, #fff); transition: border-color .15s cubic-bezier(.4,0,.2,1), background .15s cubic-bezier(.4,0,.2,1); } .ds-source-card:hover { border-color: var(--hairline-strong, #BFB8B0); } .ds-source-card.is-lit { border-color: var(--signal, #0F5E63); background: var(--signal-tint, #DCECEC); } .ds-source-head { display: flex; align-items: baseline; gap: 8px; } .ds-source-index { flex: none; min-inline-size: 1.4em; padding: 0 .3em; border: 1px solid var(--signal, #0F5E63); border-radius: 3px; color: var(--signal, #0F5E63); font-family: 'Azeret Mono', monospace; font-size: .75rem; text-align: center; } .ds-source-doc { flex: 1; min-inline-size: 0; font-family: 'Readex Pro', sans-serif; font-size: .8125rem; font-weight: 500; color: var(--fg-primary, #241F2B); } .ds-source-page { flex: none; direction: ltr; unicode-bidi: isolate; font-family: 'Azeret Mono', monospace; font-size: .75rem; font-variant-numeric: tabular-nums; color: var(--fg-muted, #675D75); } .ds-relevance { block-size: 4px; margin-block-start: 8px; border-radius: 999px; background: var(--bg-sunken, #E9E5E1); overflow: hidden; } .ds-relevance-bar { block-size: 100%; border-radius: inherit; background: var(--confidence, #B87310); } .ds-source-scores { display: flex; gap: 12px; margin-block-start: 8px; } .ds-score { direction: ltr; unicode-bidi: isolate; font-family: 'Azeret Mono', monospace; font-size: .75rem; font-variant-numeric: tabular-nums; color: var(--fg-muted, #675D75); } .ds-score b { font-weight: 500; color: var(--fg-faint, #857A94); letter-spacing: .08em; }"
+      "refersTo": "source-passage",
+      "description": "One cited passage inside the panel. The inline-start edge goes teal when the answer cited it.",
+      "html": "<li class=\"ds-source-passage ds-is-cited\"><div class=\"ds-passage-head\"><span class=\"ds-passage-index\">1</span><span class=\"ds-passage-page\">Page 14</span></div><p class=\"ds-passage-snippet\">Applications must be submitted through the SFDA electronic portal, with the dossier following the eCTD structure…</p><span class=\"ds-passage-cat\">regulatory</span></li>",
+      "css": ".ds-source-passage { list-style: none; padding: 12px; border: 1px solid var(--hairline); border-inline-start: 2px solid var(--hairline); border-radius: 6px; background: var(--bg-sunken); transition: border-color .15s cubic-bezier(.4,0,.2,1), background .15s cubic-bezier(.4,0,.2,1); } .ds-source-passage.ds-is-cited { border-inline-start-color: var(--signal); } .ds-source-passage:hover { border-color: var(--hairline-strong); } .ds-passage-head { display: flex; align-items: center; gap: 12px; margin-block-end: 8px; } .ds-passage-index { flex: none; min-inline-size: 1.5em; padding: 1px .3em; border: 1px solid var(--signal); border-radius: 3px; color: var(--signal); font-family: var(--font-mono); font-size: .75rem; text-align: center; } .ds-passage-page { direction: ltr; unicode-bidi: isolate; font-family: var(--font-mono); font-size: .75rem; font-variant-numeric: tabular-nums; color: var(--fg-muted); } .ds-passage-snippet { margin: 0; font-size: .8125rem; line-height: 1.65; color: var(--fg-secondary); } .ds-passage-cat { display: block; margin-block-start: 8px; font-size: .75rem; letter-spacing: .08em; text-transform: uppercase; color: var(--fg-faint); }"
     }
   ],
   "narrative": {
     "northStar": "The Warm Instrument",
-    "overview": "This is a regulatory instrument that is pleasant to sit in front of. The reader arrives mid-task with one question and a deadline, and the surface has to be sober enough to be defended to an auditor while being warm enough to spend an hour inside. The resolution of that tension is material, not decorative: a warm porcelain ground (#F4F2F0) under a cool radial signal-tint wash, aubergine ink instead of neutral grey so even body copy carries warmth, one deep teal that means action on the landing and provenance in the transcript, and a marigold that carries the product's character - the mascot, the lead card, the confidence marks.\n\nThe system is built in three layers and the layering is load-bearing, not organizational hygiene. Layer 1 is raw ramps (ink, paper, rule, teal, gold, status). Layer 2 is scales (spacing, type, radii, z-index, motion). Layer 3 is semantics - the only names a component is allowed to say. Dark mode overrides primitives only: there is not one dark-mode branch in any component file, and every Layer 3 name resolves correctly on both themes because the ramps beneath it flipped. The same discipline governs direction: the corpus is bilingual, so RTL is structural rather than a stylesheet variant, and a build test fails on any physical property that cannot mirror.\n\nBilingualism also chooses the type. Zain is an Arabic-first display family with a matching Latin - the right way round for a product whose corpus is written in Arabic - and Readex Pro is one variable family drawn across both scripts, so body text does not change designer between languages. Azeret Mono appears only where a machine reports a fact: page numbers, relevance scores, timestamps, citation indices. It is never a costume for \"technical\".\n\nBoth surfaces are composed to this world. The landing was redesigned first; the chat app was composed against the same ramp in a following pass. Two rules came out of it: an answer is not a bubble - a bordered card around a thousand words carrying its own tables is a box inside a box, so assistant messages sit on the page ground and only the reader's short question stays a bubble - and the source deck opens once an answer is complete, because provenance is the product. Iconography is inline SVG from one registry in web/utils/icons.py, filled with currentColor; there is no icon webfont and no emoji.",
+    "overview": "This is a regulatory instrument that is pleasant to sit in front of. The reader arrives mid-task with one question and a deadline, and the surface has to be sober enough to be defended to an auditor while being warm enough to spend an hour inside. The resolution of that tension is material, not decorative: a warm porcelain ground (`#F4F2F0`) under a cool radial signal-tint wash, aubergine ink instead of neutral grey so even body copy carries warmth, one deep teal that means *action* on the landing and *provenance* in the transcript, and a marigold that carries the product's character — the mascot, the lead card, the confidence marks.\n\nThe system is built in three layers and the layering is load-bearing, not organizational hygiene. Layer 1 is raw ramps (ink, paper, rule, teal, gold, status). Layer 2 is scales (spacing, type, radii, z-index, motion). Layer 3 is semantics — the only names a component is allowed to say. Dark mode overrides **primitives only**: there is not one dark-mode branch in any component file, and every Layer 3 name resolves correctly on both themes because the ramps beneath it flipped. The same discipline governs direction: the corpus is bilingual, so RTL is structural rather than a stylesheet variant, and a build test fails on any physical property that cannot mirror.\n\nBilingualism also chooses the type. Zain is an Arabic-first display family with a matching Latin — the right way round for a product whose corpus is written in Arabic — and Readex Pro is one variable family drawn across both scripts, so body text does not change designer between languages. Azeret Mono appears only where a machine reports a fact: page numbers, relevance scores, timestamps, citation indices. It is never a costume for \"technical\".\n\nBoth surfaces are now composed to this world. The landing was redesigned first; the authenticated chat app was composed against the same ramp in a following pass that did not touch the landing's composition. Two things changed in the chat that are worth stating here because they are rules, not details: an **answer is not a bubble** — a bordered card around a thousand words of prose containing its own tables and blockquotes is a box inside a box, so assistant messages sit on the page ground and only the reader's own short question stays a bubble; and **sources are one line in the transcript and a panel in the rail**, never opened unasked.\n\nTwo rules govern how provenance is shown, and both are about not overclaiming. **An answer's sources are the passages it actually cited** — an answer that cited none gets no source control at all, because a control under a refusal is evidence attached to a claim nobody made. And **a source the reader cannot click is not offered**: the server decides which passages an answer is allowed to show, the browser decides which of their markers actually became buttons, and the panel shows the intersection. The two disagree in the corners of markdown — a marker inside a code span, or swallowed by a link — and rather than predict a parser from the server side, the surface never claims evidence it cannot let you check. Retrieval candidates that no answer used are a server-side diagnostic, not a surface.\n\nNothing reports a relevance score as a proportion. A bar whose width is `score × 100` reads as calibrated confidence in the answer; it is a weighted blend of two cosine similarities with a heuristic penalty applied, and a near-empty bar beside a passage the answer actually cited undermines a correct answer. The raw figures live behind a collapsed disclosure named for what they are — ranking diagnostics — with no bars, no percentages and no colour.\n\nIconography is inline SVG on a 16-unit grid, filled with `currentColor`, from a single registry in `web/utils/icons.py` that serves Jinja directly and the browser modules through an inlined `window.__ICONS` subset. There is no icon webfont and no emoji anywhere: a font glyph cannot be sized independently of its text and arrives as an empty box when a CDN is slow, and an emoji renders per-platform, ignores `currentColor` and cannot follow the theme.\n\n`CATEGORY_ICONS` is the one mapping from a corpus category to its glyph. The four real categories — regulatory, pharmacovigilance, veterinary medicines, biological products — carry theirs in both places a category is named: the sidebar's FAQ headings and the composer's scope selector. The fifth entry, `all`, is a scope rather than a category and appears only in the selector, since there is no \"All\" FAQ group. `faq.yaml` deliberately carries **no** `icon:` field; the API derives it from the category key, because the same mapping written down twice is the same mapping drifting eventually.",
     "keyCharacteristics": [
       "Warm porcelain ground under a cool teal wash; warmth and coolness both present, neither dominant",
-      "Aubergine ink ramp - no neutral grey anywhere in the text stack",
+      "Aubergine ink ramp — no neutral grey anywhere in the text stack",
       "Soft radii (3/6/10/14/16/24px + pill) and warm-tinted shadows; the archival hairline-only world is retired",
       "One teal, two jobs split by surface: brand action on the landing, provenance inside the transcript",
       "Arabic-first display voice; one variable body family across both scripts",
@@ -176,40 +390,83 @@
       "Logical properties are enforced by a test, not by preference"
     ],
     "rules": [
-      { "name": "The Two Jobs Rule", "body": "Teal is the brand's action colour on the landing (CTA and card icons) and is rationed to retrieval and citation state inside the chat transcript. A decorative teal in the transcript dilutes the one cue that says \"this sentence came from a document\"; a rationed teal on the landing leaves the page with no action colour. Which job applies is decided by surface, never by taste.", "section": "colors" },
-      { "name": "The Primitives-Only Dark Rule", "body": "Dark mode overrides Layer 1 primitives and nothing else. A [data-bs-theme=\"dark\"] branch inside a component means the primitive ramp is wrong - fix the ramp. The teal ramp lifts to #4FC2C8 in dark because #0F5E63 on #191420 is roughly 2.1:1 and unreadable; that is a ramp decision, not a component decision.", "section": "colors" },
-      { "name": "The Semantic-Names-Only Rule", "body": "Components reference Layer 3 names (--bg-surface, --fg-muted, --signal, --confidence, --hairline). Reaching for a primitive in a component file means the semantic layer is missing a name; add the name.", "section": "colors" },
-      { "name": "The Warm Shadow Rule", "body": "Shadows are tinted with the ink hue (rgb(36 31 43 / ...)), never neutral grey. A grey shadow on a warm ground reads as dirt.", "section": "colors" },
-      { "name": "The Joined-Script Rule", "body": "Negative letter-spacing shatters Arabic glyph joining. Every tracking token zeroes under [dir=\"rtl\"], a blanket letter-spacing: normal catches any hardcoded value, and the leading opens up (body 1.65 to 1.85, tight 1.08 to 1.25, snug 1.3 to 1.45). Uppercasing is also switched off in RTL: Arabic has no case, so the transform does nothing while the tracking that accompanies it breaks joins. Small labels keep their role through weight and colour instead.", "section": "typography" },
-      { "name": "The Interpolate-Between-Tokens Rule", "body": "Fluid type clamps interpolate between ramp tokens (clamp(var(--fs-400), 1.5vw, var(--fs-500))), never between literals. A clamp written with raw rem values is off the scale by construction.", "section": "typography" },
-      { "name": "The Mono-Means-Measured Rule", "body": "Azeret Mono marks a value a machine produced. Numbers that carry meaning also get font-variant-numeric: tabular-nums so digits do not jitter between streaming frames, and page numbers and scores are held direction: ltr; unicode-bidi: isolate so bidi cannot reorder them inside an Arabic answer.", "section": "typography" },
-      { "name": "The Logical-Properties Rule", "body": "Physical properties that cannot mirror (margin-left, padding-right, left, text-align: left, border-left) are banned and web/tests/test_css_contract.py fails the build on them; the five shipped stylesheets currently carry zero violations. Where CSS has no logical equivalent - translateX inside a keyframe - the direction multiplier --flip (1 in LTR, -1 in RTL) goes inside the transform: translateX(calc(-12px * var(--flip))). Overlays are placed in a shared grid cell with align-self, not with absolute offsets, so they mirror for free.", "section": "layout" },
-      { "name": "The Earned-Shadow Rule", "body": "Surfaces are flat at rest and lift on state. A shadow on a static element that is not floating over content is decoration; use a hairline and a tonal step instead.", "section": "elevation" },
-      { "name": "The JS-Arms-The-Hidden-State Rule", "body": "The card reveal's hidden state (.animate-card.is-armed) is applied by effects.js at runtime and is never authored in the HTML or triggered by CSS alone. If the module fails to load or the observer never attaches, the cards are simply visible. Verified with JS disabled and with the app module aborted. Any future scroll-reveal follows the same shape: no content is hidden by a stylesheet on the promise that a script will unhide it.", "section": "components" }
+      {
+        "name": "The Two Jobs Rule",
+        "body": "Teal is the brand's action colour on the landing (CTA and card icons) and is rationed to retrieval and citation state inside the chat transcript. A decorative teal in the transcript dilutes the one cue that says \"this sentence came from a document\"; a rationed teal on the landing leaves the page with no action colour. Which job applies is decided by surface, never by taste.",
+        "section": "colors"
+      },
+      {
+        "name": "The Primitives-Only Dark Rule",
+        "body": "Dark mode overrides Layer 1 primitives and nothing else. A `[data-bs-theme=\"dark\"]` branch inside a component means the primitive ramp is wrong — fix the ramp. The teal ramp lifts to `#4FC2C8` in dark because `#0F5E63` on `#191420` is roughly 2.1:1 and unreadable; that is a ramp decision, not a component decision.",
+        "section": "colors"
+      },
+      {
+        "name": "The Semantic-Names-Only Rule",
+        "body": "Components reference Layer 3 names (`--bg-surface`, `--fg-muted`, `--signal`, `--confidence`, `--hairline`). Reaching for a primitive in a component file means the semantic layer is missing a name; add the name.",
+        "section": "colors"
+      },
+      {
+        "name": "The Warm Shadow Rule",
+        "body": "Shadows are tinted with the ink hue (`rgb(36 31 43 / …)`), never neutral grey. A grey shadow on a warm ground reads as dirt.",
+        "section": "colors"
+      },
+      {
+        "name": "The Joined-Script Rule",
+        "body": "Negative letter-spacing shatters Arabic glyph joining. Every tracking token zeroes under `[dir=\"rtl\"]`, a blanket `letter-spacing: normal` catches any hardcoded value, and the leading opens up (body 1.65 → 1.85, tight 1.08 → 1.25, snug 1.3 → 1.45). Uppercasing is also switched off in RTL: Arabic has no case, so the transform does nothing while the tracking that accompanies it breaks joins. Small labels keep their role through weight and colour instead.",
+        "section": "typography"
+      },
+      {
+        "name": "The Interpolate-Between-Tokens Rule",
+        "body": "Fluid type clamps interpolate between ramp tokens (`clamp(var(--fs-400), 1.5vw, var(--fs-500))`), never between literals. A clamp written with raw rem values is off the scale by construction.",
+        "section": "typography"
+      },
+      {
+        "name": "The Mono-Means-Measured Rule",
+        "body": "Azeret Mono marks a value a machine produced. Numbers that carry meaning also get `font-variant-numeric: tabular-nums` so digits do not jitter between streaming frames, and page numbers and scores are held `direction: ltr; unicode-bidi: isolate` so bidi cannot reorder them inside an Arabic answer.",
+        "section": "typography"
+      },
+      {
+        "name": "The Logical-Properties Rule",
+        "body": "Physical properties that cannot mirror (`margin-left`, `padding-right`, `left`, `text-align: left`, `border-left`) are banned and `web/tests/test_css_contract.py` fails the build on them; the five shipped stylesheets currently carry zero violations. Where CSS has no logical equivalent — `translateX` inside a keyframe — the direction multiplier `--flip` (1 in LTR, −1 in RTL) goes inside the transform: `translateX(calc(-12px * var(--flip)))`. Overlays are placed in a shared grid cell with `align-self`, not with absolute offsets, so they mirror for free.",
+        "section": "layout"
+      },
+      {
+        "name": "The Earned-Shadow Rule",
+        "body": "Surfaces are flat at rest and lift on state. A shadow on a static element that is not floating over content is decoration; use a hairline and a tonal step instead.",
+        "section": "elevation"
+      },
+      {
+        "name": "The JS-Arms-The-Hidden-State Rule",
+        "body": "The card reveal's hidden state (`.animate-card.is-armed`) is applied by `effects.js` at runtime and is never authored in the HTML or triggered by CSS alone. If the module fails to load or the observer never attaches, the cards are simply visible. Verified with JS disabled and with the app module aborted. Any future scroll-reveal follows the same shape: no content is hidden by a stylesheet on the promise that a script will unhide it.",
+        "section": "components"
+      }
     ],
     "dos": [
-      "Do put every new colour in a Layer 1 ramp, give it a Layer 3 semantic name, and let components reference only the semantic name.",
-      "Do flip primitives - and only primitives - for dark mode; if a component needs a dark branch, the ramp is wrong.",
-      "Do use logical properties for everything, and reach for calc(x * var(--flip)) when the property has no logical form.",
-      "Do spend teal on the primary action and card icons on the landing, and ration it to retrieval and citation state inside the transcript.",
-      "Do write fluid type as clamps between ramp tokens (clamp(var(--fs-400), 1.5vw, var(--fs-500))).",
-      "Do set the display clamp's floor by the longer script - the Arabic wordmark, not the English one.",
-      "Do use Azeret Mono with tabular figures for machine-reported values, and isolate them direction: ltr when they sit inside Arabic prose.",
-      "Do tint shadows with the ink hue in light mode and swap to black at high alpha in dark.",
-      "Do arm scroll-reveal hidden states from JS at runtime, so a dead module leaves content visible.",
-      "Do bump asset_version in web/api/app.py (currently \"warm5\") in any commit touching CSS or JS.",
-      "Do carry the independence notice on every surface; the landing footer holds it."
+      "**Do** put every new colour in a Layer 1 ramp, give it a Layer 3 semantic name, and let components reference only the semantic name.",
+      "**Do** flip primitives — and only primitives — for dark mode; if a component needs a dark branch, the ramp is wrong.",
+      "**Do** use logical properties for everything, and reach for `calc(x * var(--flip))` when the property has no logical form.",
+      "**Do** spend teal on the primary action and card icons on the landing, and ration it to retrieval and citation state inside the transcript.",
+      "**Do** write fluid type as clamps between ramp tokens (`clamp(var(--fs-400), 1.5vw, var(--fs-500))`).",
+      "**Do** set the display clamp's floor by the longer script — the Arabic wordmark, not the English one.",
+      "**Do** use Azeret Mono with tabular figures for machine-reported values, and isolate them `direction: ltr` when they sit inside Arabic prose.",
+      "**Do** tint shadows with the ink hue in light mode and swap to black at high alpha in dark.",
+      "**Do** arm scroll-reveal hidden states from JS at runtime, so a dead module leaves content visible.",
+      "**Do** bump `asset_version` in `web/api/app.py` (currently `\"warm6\"`) in any commit touching CSS or JS.",
+      "**Do** add a new glyph to `web/utils/icons.py` once, and to `RUNTIME_ICON_NAMES` as well if a browser module draws it.",
+      "**Do** carry the independence notice on every surface; the landing footer holds it."
     ],
     "donts": [
-      "Don't author a physical property that cannot mirror. test_css_contract.py fails the build; the five stylesheets are at zero violations and stay there.",
-      "Don't apply negative letter-spacing or text-transform: uppercase under [dir=\"rtl\"] - both break Arabic glyph joining or do nothing while breaking it.",
-      "Don't reach for a primitive token inside a component file; add the missing semantic name instead.",
-      "Don't state a guideline count, or any corpus figure, anywhere in copy. The corpus changes; the number goes stale on the next update.",
-      "Don't wrap a card icon in a rounded-square tile, or repeat the same idea as both a mascot and a stock illustration on one page.",
-      "Don't put a neutral grey shadow on the warm ground, or a shadow on anything that is flat and not responding to state.",
-      "Don't use the 2px rule weight decoratively - it is reserved for marks that carry meaning.",
-      "Don't hide content in CSS on the assumption a script will reveal it.",
-      "Don't revive ambient decoration on every surface at once (drifting orbs, conic rings, canvas particle fields, per-element parallax). Motion marks a state change; that is its whole job."
+      "**Don't** author a physical property that cannot mirror. `test_css_contract.py` fails the build; the five stylesheets are at zero violations and stay there.",
+      "**Don't** apply negative letter-spacing or `text-transform: uppercase` under `[dir=\"rtl\"]` — both break Arabic glyph joining or do nothing while breaking it.",
+      "**Don't** reach for a primitive token inside a component file; add the missing semantic name instead.",
+      "**Don't** state a guideline count, or any corpus figure, anywhere in copy. The corpus changes; the number goes stale on the next update.",
+      "**Don't** wrap a card icon in a rounded-square tile, or repeat the same idea as both a mascot and a stock illustration on one page.",
+      "**Don't** put a neutral grey shadow on the warm ground, or a shadow on anything that is flat and not responding to state.",
+      "**Don't** use the 2px rule weight decoratively — it is reserved for marks that carry meaning.",
+      "**Don't** hide content in CSS on the assumption a script will reveal it.",
+      "**Don't** reach for an emoji, a webfont glyph, or a second icon style. Every glyph is a filled 16-unit path in `icons.py`, and a set that mixes stroke weights or sources reads as assembled rather than drawn.",
+      "**Don't** put a bordered card around an assistant answer, or give a shrink-to-fit flex parent a `inline-size: 100%` child — a percentage width contributes nothing to intrinsic sizing, which is exactly how the source deck once resolved to zero by zero on wide screens. The rule outlived the deck: the source panel nests groups inside lists inside a flex column, so it is the same shape of mistake waiting to be made again, and `test_source_panel.py` asserts a real bounding box for a passage at 1600px for that reason.",
+      "**Don't** revive ambient decoration on every surface at once (drifting orbs, conic rings, canvas particle fields, per-element parallax). Motion marks a state change; that is its whole job."
     ]
   }
 }

@@ -19,6 +19,7 @@ colors:
   gold-100: "#FAEEDA"
   alert-600: "#A8301F"
   warn-600: "#8A5A00"
+  scrim: "rgb(36 31 43 / 0.38)"
 typography:
   display:
     fontFamily: "Zain, Readex Pro, -apple-system, BlinkMacSystemFont, sans-serif"
@@ -126,6 +127,23 @@ components:
     typography: "{typography.mono}"
     rounded: "{rounded.xs}"
     padding: "0 0.3em"
+  source-trigger:
+    backgroundColor: "transparent"
+    textColor: "{colors.teal-600}"
+    typography: "{typography.label}"
+  source-panel:
+    backgroundColor: "{colors.paper-000}"
+    textColor: "{colors.ink-900}"
+    padding: "16px 0"
+  source-passage:
+    backgroundColor: "{colors.paper-100}"
+    textColor: "{colors.ink-700}"
+    rounded: "{rounded.sm}"
+    padding: "12px"
+  source-passage-cited:
+    backgroundColor: "{colors.paper-100}"
+    textColor: "{colors.ink-700}"
+    rounded: "{rounded.sm}"
 ---
 
 # Design System: SFDA Copilot
@@ -142,11 +160,9 @@ Bilingualism also chooses the type. Zain is an Arabic-first display family with 
 
 Both surfaces are now composed to this world. The landing was redesigned first; the authenticated chat app was composed against the same ramp in a following pass that did not touch the landing's composition. Two things changed in the chat that are worth stating here because they are rules, not details: an **answer is not a bubble** — a bordered card around a thousand words of prose containing its own tables and blockquotes is a box inside a box, so assistant messages sit on the page ground and only the reader's own short question stays a bubble; and **sources are one line in the transcript and a panel in the rail**, never opened unasked.
 
-That second rule replaced an earlier one — "the source deck opens by default, because provenance is the product" — which was right about the goal and wrong about the mechanism. Sources were emitted before the model was called, so the deck could not know what the answer had done with them: a refusal arrived under eight expanded cards, each with a relevance bar, asserting evidence for an answer that had explicitly declined to give any. Opening by default turned out not to be a claim of transparency but a claim of support, made on the answer's behalf whether or not the answer made it. So: an answer's sources are the passages it actually **cited**, and an answer that cited none gets no source control at all. There was an intermediate version where a citation-free answer kept a muted "8 passages retrieved, not cited" line, on the reasoning that a reader auditing the answer still wants to see what search returned. It reads as a contradiction — the label disclaims the passages in the same breath as advertising eight of them — and under a refusal it is still evidence attached to an answer that has none. Retrieval candidates are a server-side diagnostic. The panel opens on request, which is also what keeps a two-line answer from being buried under its own provenance.
+Two rules govern how provenance is shown, and both are about not overclaiming. **An answer's sources are the passages it actually cited** — an answer that cited none gets no source control at all, because a control under a refusal is evidence attached to a claim nobody made. And **a source the reader cannot click is not offered**: the server decides which passages an answer is allowed to show, the browser decides which of their markers actually became buttons, and the panel shows the intersection. The two disagree in the corners of markdown — a marker inside a code span, or swallowed by a link — and rather than predict a parser from the server side, the surface never claims evidence it cannot let you check. Retrieval candidates that no answer used are a server-side diagnostic, not a surface.
 
-One consequence worth stating as a rule: **a source the reader cannot click is not offered**. The server decides which passages an answer is allowed to show; the browser decides which of their markers actually became buttons, and the panel shows the intersection. The two disagree in the corners of markdown — a marker inside a code span or swallowed by a link — and rather than trying to predict a parser from the server side, the surface simply never claims evidence it cannot let you check.
-
-The relevance bar went with it. A bar whose width is `score × 100` reads as calibrated confidence in the answer; it is a weighted blend of two cosine similarities with a heuristic penalty applied, and a near-empty bar beside a passage the answer actually cited undermined a correct answer. The raw figures survive behind a collapsed disclosure labelled as ranking diagnostics — no bars, no percentages, no colour.
+Nothing reports a relevance score as a proportion. A bar whose width is `score × 100` reads as calibrated confidence in the answer; it is a weighted blend of two cosine similarities with a heuristic penalty applied, and a near-empty bar beside a passage the answer actually cited undermines a correct answer. The raw figures live behind a collapsed disclosure named for what they are — ranking diagnostics — with no bars, no percentages and no colour.
 
 Iconography is inline SVG on a 16-unit grid, filled with `currentColor`, from a single registry in `web/utils/icons.py` that serves Jinja directly and the browser modules through an inlined `window.__ICONS` subset. There is no icon webfont and no emoji anywhere: a font glyph cannot be sized independently of its text and arrives as an empty box when a CDN is slow, and an emoji renders per-platform, ignores `currentColor` and cannot follow the theme.
 
@@ -170,7 +186,7 @@ A warm porcelain-and-aubergine field holding two saturated voices — a deep tea
 - **Teal Wash** (`teal-100`): The landing's ground gradient (`radial-gradient(120% 70% at 50% -18%, …)` from the top edge), the resting fill of a citation marker, and the lit state of a source card.
 
 ### Secondary
-- **Marigold** (`gold-600`): The product's warmth and its confidence signal. Sunny's eyes, mouth and antenna; the relevance bar; the knowledge-cutoff badge outline; the success toast rule; the mascot's ambient glow. `gold-700` is the variant to use when text sits on or beside a fill, including the badge's own label.
+- **Marigold** (`gold-600`): The product's warmth and its confidence signal. Sunny's eyes, mouth and antenna; the knowledge-cutoff badge outline; the success toast rule; the mascot's ambient glow. `gold-700` is the variant to use when text sits on or beside a fill, including the badge's own label.
 - **Marigold Tint** (`gold-100`): The lead feature card's fill and Sunny's cheeks. The only large tinted surface on the landing.
 
 ### Neutral
@@ -179,6 +195,8 @@ A warm porcelain-and-aubergine field holding two saturated voices — a deep tea
 - **Card White** (`paper-000`): Every raised surface — cards, modals, composer, sidebar, chrome buttons, status pills.
 - **Sunken Porcelain** (`paper-100`): Recessed fills — the independence notice, code blocks, table headers, hover states, the cutoff notice.
 - **Rule** (`rule-200`, `rule-300`): The hairline pair. `rule-200` is the default 1px border on cards, modals and dividers; `rule-300` is the stronger stroke used on input borders, blockquote rules, the paired-wordmark hairlines and the scrollbar thumb.
+
+- **Scrim** (`scrim`, `rgb(36 31 43 / .38)` light / `rgb(0 0 0 / .66)` dark): The dimming behind a modal surface — currently the source panel's bottom-sheet presentation. Warm ink for the same reason the shadows are: a neutral grey veil over a warm ground reads as dirt.
 
 ### Tertiary
 - **Alert** (`alert-600`) and **Warn** (`warn-600`): Error text, the error toast rule, and Sunny's error face. Nothing else.
@@ -206,7 +224,7 @@ A warm porcelain-and-aubergine field holding two saturated voices — a deep tea
 - **Title** (700, 1.25rem/1.5rem, 1.3, −0.012em): Card headings, modal titles, sidebar title. The lead card's heading steps up one rung (1.5rem) rather than getting its own token.
 - **Body** (400, 1.0625rem/17px, 1.65): All prose. The reading measure is 68ch (`--measure`); the hero lead is tightened to 54ch and the independence notice to 70ch.
 - **Label** (500, 0.75rem, +0.08em, uppercase): Section eyebrows inside the FAQ rail, table headers, stage lines, composer labels, source categories.
-- **Mono** (400, 0.75rem, tabular figures): Machine-reported facts only — page numbers, relevance scores, timestamps, citation indices, stream notes.
+- **Mono** (400, 0.75rem, tabular figures): Machine-reported facts only — page numbers, retrieval diagnostics, timestamps, citation indices, stream notes.
 
 ### Named Rules
 **The Joined-Script Rule.** Negative letter-spacing shatters Arabic glyph joining. Every tracking token zeroes under `[dir="rtl"]`, a blanket `letter-spacing: normal` catches any hardcoded value, and the leading opens up (body 1.65 → 1.85, tight 1.08 → 1.25, snug 1.3 → 1.45). Uppercasing is also switched off in RTL: Arabic has no case, so the transform does nothing while the tracking that accompanies it breaks joins. Small labels keep their role through weight and colour instead.
@@ -235,6 +253,8 @@ Hybrid, and deliberately so. Structure at rest is carried by hairlines and tonal
 - **Menu** (`0 12px 32px rgb(36 31 43 / .10)`): Dropdown surfaces.
 - **Overlay** (`0 24px 60px rgb(36 31 43 / .16)`): Modals and toasts.
 - **Coloured CTA lift** (`0 6px 18px rgb(var(--signal-rgb) / .22)`, `0 10px 26px / .28` on hover): The primary action only. It is the one element on the landing allowed to look inviting.
+- **Sheet** (`0 -12px 32px rgb(36 31 43 / .16)`): The bottom-sheet presentation of the source panel, and the only shadow in the set that points **up** — a sheet is lit from the page it rises over. That is why it is its own name rather than the overlay shadow used sideways.
+- **Scrim** (`rgb(36 31 43 / .38)`): Not a shadow but the same job — the dimming behind the sheet, at modal z-index so nothing floats over a surface claiming `aria-modal`.
 - **Dark mode** replaces the ink tint with black at much higher alpha (.40 / .45 / .50 / .60), because a tinted shadow disappears on a dark ground.
 
 ### Named Rules
@@ -242,7 +262,7 @@ Hybrid, and deliberately so. Structure at rest is carried by hairlines and tonal
 
 ## Shapes
 
-Radii are soft and stepped: 3px on inline chips and dropdown items, 6px on inputs, small cards and quiet buttons, 10px on composer fields and menus, 14px on message bubbles, 16px on feature cards and modals, 24px reserved for the largest surfaces, and a full pill (999px) on every control that reads as a *control* — the primary CTA, the 38px icon buttons, badges, suggested-question chips, the jump pill, the relevance bar. A tool you sit in front of all day does not need to be sharp.
+Radii are soft and stepped: 3px on inline chips and dropdown items, 6px on inputs, small cards and quiet buttons, 10px on composer fields and menus, 14px on message bubbles, 16px on feature cards and modals, 24px reserved for the largest surfaces, and a full pill (999px) on every control that reads as a *control* — the primary CTA, the 38px icon buttons, badges, suggested-question chips, and the jump pill. A tool you sit in front of all day does not need to be sharp.
 
 Two silhouettes recur. The **pill** marks anything actionable or status-bearing. The **flagged corner** marks speech: a message bubble is 14px on three corners and 6px on the corner that points back at its speaker, expressed logically (`border-start-start-radius` for the assistant, `border-start-end-radius` for the user) so it follows writing direction instead of a fixed side.
 
@@ -279,6 +299,17 @@ Borders are 1px hairlines by default. 2px is the system's one *meaningful* rule 
 - **Tabs (auth modal):** Borderless links in muted ink; the active tab takes primary ink and a 2px teal underline.
 - **Footer:** A top hairline, the independence notice on a sunken fill at 70ch, then the builder's colophon links in secondary ink going teal on hover.
 
+### Source panel (signature component)
+
+The evidence behind one answer, in a surface of its own. It is the product's central claim made operable, so its rules are stricter than the rest of the system's.
+
+- **In the transcript:** one line, and only when the answer cited something. `Sources · 2 documents · 3 passages`, set as a label (12px, +0.08em, uppercase) in teal — the transcript's provenance colour — with a chevron that mirrors on `--flip` and rotates a quarter turn when the panel is open. Both numbers count the same (cited) set, so they cannot contradict each other.
+- **Two presentations, one component.** At ≥1200px it takes the rail as a real grid column and the mascot steps aside; it is **not** modal there, because it sits beside the transcript rather than over it, and a focus trap would be a lie about what is reachable. Below 1200px it becomes a bottom sheet at `70dvh` with a scrim, `aria-modal`, focus containment and Escape — modal because it genuinely covers the reading column.
+- **Grouped by document.** Passages sit under one heading per file, so eight passages read as three documents rather than eight rows. The citation number is the identity: grouping changes which heading a passage sits beneath and never its number.
+- **Passage:** sunken porcelain on the panel's white, 6px radius, 1px hairline, and a 2px inline-start edge that goes teal when the passage is one the answer cited. The number is mono in a teal-outlined chip; the page is mono, held `direction: ltr; unicode-bidi: isolate` so bidi cannot reorder it inside an Arabic answer.
+- **Diagnostics:** a collapsed disclosure at the foot of the panel, in faint ink, carrying combined/semantic/keyword figures and a line saying they are ranking figures rather than a measure of accuracy. Never a bar, a percentage or a colour.
+- **Never opens itself,** in any state. It closes when a new question is asked, and on logout it is emptied rather than hidden — one reader's evidence must not sit in the DOM while the next signs in.
+
 ### Sunny (signature component)
 The mascot is a generated SVG, not an asset. Every fill in it references a `--sunny-*` variable that resolves to a semantic token: teal shell (`--signal`), aubergine visor, marigold eyes, mouth and antenna (`--confidence`), marigold-tint cheeks, white core. Because of that, **a theme change and a state change are the same operation** — searching reassigns `--sunny-eye` to `--signal`, retrieved returns it to `--confidence`, error reassigns eye and mouth to `--danger`, and dark mode needs no rule at all. Sunny's face is the retrieval progress indicator: the antenna carries the retrieval signal, the eyes carry confidence.
 
@@ -298,7 +329,7 @@ On the landing Sunny is the page's only image, sized `clamp(150px, 24vw, 232px)`
 - **Do** use Azeret Mono with tabular figures for machine-reported values, and isolate them `direction: ltr` when they sit inside Arabic prose.
 - **Do** tint shadows with the ink hue in light mode and swap to black at high alpha in dark.
 - **Do** arm scroll-reveal hidden states from JS at runtime, so a dead module leaves content visible.
-- **Do** bump `asset_version` in `web/api/app.py` (currently `"warm5"`) in any commit touching CSS or JS.
+- **Do** bump `asset_version` in `web/api/app.py` (currently `"warm6"`) in any commit touching CSS or JS.
 - **Do** add a new glyph to `web/utils/icons.py` once, and to `RUNTIME_ICON_NAMES` as well if a browser module draws it.
 - **Do** carry the independence notice on every surface; the landing footer holds it.
 
