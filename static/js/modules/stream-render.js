@@ -17,7 +17,7 @@
  */
 
 import { marked } from 'https://cdn.jsdelivr.net/npm/marked@12.0.2/+esm';
-import DOMPurify from 'https://cdn.jsdelivr.net/npm/dompurify@3.4.12/+esm';
+import DOMPurify from 'https://cdn.jsdelivr.net/npm/dompurify@3.4.13/+esm';
 
 const FENCE_LINE = /^\s{0,3}(```|~~~)/;
 
