@@ -36,6 +36,40 @@ export const DOMCache = {
   },
 };
 
+/* ——————————————— TOAST TIMING ——————————————— */
+
+/* One timer for the one toast element. See showToast for why it is not a
+   per-call setTimeout any more. */
+let toastTimer = null;
+let toastDuration = CONFIG.TOAST_DURATION;
+
+function scheduleToastHide(toast) {
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toast.classList.add(CONFIG.CLASSES.HIDDEN), toastDuration);
+}
+
+/**
+ * Hold an actionable toast open while it is being read or reached.
+ *
+ * An undo on a timer is a timing constraint on the reader, so the timer stops
+ * for anyone who is plainly still deciding — pointer over it, or focus inside
+ * it. Bound once per element; the toast is server-rendered and never replaced.
+ */
+function bindToastHold(toast) {
+  if (toast.dataset.holdBound) return;
+  toast.dataset.holdBound = '1';
+
+  const hold = () => clearTimeout(toastTimer);
+  const release = () => {
+    if (!toast.classList.contains(CONFIG.CLASSES.HIDDEN)) scheduleToastHide(toast);
+  };
+
+  toast.addEventListener('mouseenter', hold);
+  toast.addEventListener('focusin', hold);
+  toast.addEventListener('mouseleave', release);
+  toast.addEventListener('focusout', release);
+}
+
 /* ——————————————— ERROR HANDLER ——————————————— */
 
 export const ErrorHandler = {
@@ -55,15 +89,48 @@ export const ErrorHandler = {
     return error?.message || 'An unknown authentication error occurred.';
   },
 
-  showToast(message, isError = false, duration = CONFIG.TOAST_DURATION) {
+  /**
+   * Show a toast, optionally carrying one action.
+   *
+   * The hide timer is held in module scope rather than being a bare setTimeout
+   * per call. It used to be the latter, which was harmless while every toast
+   * was a status line: the worst case was one message hiding a moment early.
+   * It stops being harmless the moment a toast carries an Undo — a status
+   * toast fired seconds earlier would take the control away with it.
+   */
+  showToast(message, isError = false, duration = CONFIG.TOAST_DURATION, { actionLabel, onAction } = {}) {
     const toast = DOMCache.get(CONFIG.SELECTORS.TOAST);
     if (!toast) return;
 
+    clearTimeout(toastTimer);
+    toastDuration = duration;
+
+    // Wipes any previous action button along with the previous text.
     toast.textContent = message;
     toast.className = `toast-notification ${isError ? CONFIG.CLASSES.ERROR : CONFIG.CLASSES.SUCCESS}`;
-    toast.classList.remove(CONFIG.CLASSES.HIDDEN);
 
-    setTimeout(() => toast.classList.add(CONFIG.CLASSES.HIDDEN), duration);
+    if (actionLabel && typeof onAction === 'function') {
+      toast.classList.add(CONFIG.CLASSES.HAS_ACTION);
+      const action = DOMCache.createElement('button', CONFIG.CLASSES.TOAST_ACTION);
+      action.type = 'button';
+      action.textContent = actionLabel;
+      action.addEventListener('click', () => {
+        ErrorHandler.hideToast();
+        onAction();
+      });
+      toast.appendChild(action);
+      bindToastHold(toast);
+    }
+
+    toast.classList.remove(CONFIG.CLASSES.HIDDEN);
+    scheduleToastHide(toast);
+  },
+
+  hideToast() {
+    const toast = DOMCache.get(CONFIG.SELECTORS.TOAST);
+    if (!toast) return;
+    clearTimeout(toastTimer);
+    toast.classList.add(CONFIG.CLASSES.HIDDEN);
   },
 
   showAuthError(message) {

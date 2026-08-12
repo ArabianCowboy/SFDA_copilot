@@ -132,7 +132,7 @@ SUPPORTED_FAQ_LANGS = ("en", "ar")
 # that mixes a fresh template with a stale module is worse than a stale page —
 # post-icon-migration it would render an <i class="bi"> with no icon font behind
 # it, or print a glyph NAME as text. MODULE_IMPORT_MAP below closes that.
-ASSET_VERSION = "warm10"
+ASSET_VERSION = "warm11"
 
 # Product release, rendered in the landing footer. Kept as one constant so
 # the number cannot drift between the page and the module headers.
@@ -832,6 +832,82 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
         except Exception as exception:
             logging.error("Unhandled error in /api/chat: %s", exception, exc_info=True)
             return jsonify(error="An internal server error occurred."), 500
+
+    @app.route("/api/conversation/reset", methods=["POST"])
+    @auth_required
+    @limiter.limit(
+        lambda: config.get("server", "rate_limit", {}).get("reset_api", "30 per minute")
+    )
+    def handle_conversation_reset() -> Union[Response, Tuple[Response, int]]:
+        """End the current conversation without ending the session.
+
+        Reset **rotates** `conv_id` rather than deleting its store entry, and the
+        distinction is load-bearing twice over.
+
+        First, correctness. `store.append_turn` runs near the end of the streaming
+        generator, before the "done" frame; `ConversationStore.clear` is a keyed
+        pop with no tombstone. Deleting the entry here would leave a generator
+        that is still winding down free to write the old turn straight back under
+        the same id — so whether a reset held would depend on whether the client's
+        disconnect beat one line of server code. Rotating means a late append
+        lands on an id nothing will ever read again, and the reset holds
+        regardless of timing.
+
+        Second, undo. Because the old conversation is set aside rather than
+        destroyed, undo can restore what the *model* remembers and not merely what
+        the screen shows. A transcript that came back over a server that had
+        forgotten it would be the kind of half-truth this product's own citations
+        rule exists to prevent.
+
+        The set-aside conversation is dropped on the next reset, on `forget`, on
+        logout (`purge_conversation_state`), or by the store's TTL — whichever
+        comes first. `chat_history` is cleared alongside because the non-streaming
+        `/api/chat` fallback keeps its history in the session rather than the
+        store, and a reset that missed it would leave that path remembering
+        everything.
+        """
+        payload = request.get_json(silent=True) or {}
+        store: ConversationStore = current_app.config["conversations"]
+
+        if payload.get("undo"):
+            restored = session.pop("prev_conv_id", None)
+            if restored:
+                # The empty conversation the reset started. Nothing has read it
+                # — undo is torn down client-side before a new question is sent
+                # — but it is this session's litter either way.
+                if current := session.get("conv_id"):
+                    store.clear(current)
+                session["conv_id"] = restored
+
+            # Nothing set aside is a no-op, NOT an error: a reader whose first
+            # question never reached the server has a transcript to restore and
+            # no server history to go with it, and the two are still consistent
+            # afterwards because there was nothing to be inconsistent about.
+            # Reporting that as a failure would leave their turns discarded.
+            return jsonify(
+                ok=True,
+                restored=bool(restored),
+                conversation_id=session.get("conv_id"),
+            )
+
+        if payload.get("forget"):
+            if stale := session.pop("prev_conv_id", None):
+                store.clear(stale)
+            return jsonify(ok=True, conversation_id=session.get("conv_id"))
+
+        # A reset while an earlier one is still undoable: that older conversation
+        # is now unreachable by any route, so it goes now rather than waiting for
+        # the TTL.
+        if stale := session.pop("prev_conv_id", None):
+            store.clear(stale)
+
+        if previous := session.get("conv_id"):
+            session["prev_conv_id"] = previous
+
+        conversation_id = uuid.uuid4().hex
+        session["conv_id"] = conversation_id
+        session.pop("chat_history", None)
+        return jsonify(ok=True, conversation_id=conversation_id)
 
 
 # ──────────────────────────────────────────────────────────

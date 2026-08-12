@@ -248,6 +248,39 @@ export const Services = {
     }
   },
 
+  /**
+   * End the current conversation server-side, keeping the reader signed in.
+   *
+   * `mode` is `{}` to reset, `{ undo: true }` to put the previous conversation
+   * back, `{ forget: true }` to drop the one an earlier reset set aside.
+   *
+   * Failure THROWS here, unlike endServerSession, and the difference is
+   * deliberate. A logout that cannot reach the server must still sign the
+   * reader out locally. A reset that cannot reach the server must not clear
+   * the transcript: a blank screen over a server that still holds the history
+   * is worse than no reset at all, because the next answer would silently
+   * carry context the reader believes they deleted.
+   */
+  async resetConversation(mode = {}) {
+    const headers = { 'Content-Type': 'application/json' };
+    const token = await this.getSessionToken().catch(() => null);
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    const response = await fetch('/api/conversation/reset', {
+      method: 'POST',
+      headers,
+      cache: 'no-store',
+      credentials: 'same-origin',
+      body: JSON.stringify(mode),
+    });
+
+    if (!response.ok) {
+      const errorJson = await response.json().catch(() => ({}));
+      throw new Error(errorJson.error || `Network error (${response.status})`);
+    }
+    return response.json().catch(() => ({}));
+  },
+
   async logout() {
     await this.endServerSession();
 

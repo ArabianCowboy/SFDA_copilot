@@ -394,6 +394,44 @@
 .form-floating > label { color: var(--fg-muted); }
 .form-text { color: var(--fg-muted); font-size: var(--fs-200); }
 
+/* ——————————————— New chat ———————————————
+   A pill, because it reads as a control; teal on hover, because the chrome
+   toggles it sits under already do and an inconsistency here would be louder
+   than the consistency. Not red: the system has no destructive variant at all
+   and logout — the one genuinely irreversible control in the app — is a quiet
+   ghost button, so a red pill would be the loudest thing in the column.
+
+   Flat at rest. It is not floating over anything. */
+.new-chat-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: none;
+  align-self: flex-start;
+  margin-block-start: var(--space-2);
+  padding-block: var(--space-2);
+  padding-inline: var(--space-3);
+  font-family: inherit;
+  font-size: var(--fs-200);
+  font-weight: var(--fw-medium);
+  line-height: 1;
+  color: var(--fg-secondary);
+  background: var(--bg-surface);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  transition: var(--btn-transition);
+}
+/* The display above outranks the `hidden` attribute's UA rule, and the button
+   ships hidden. Without this it is visible on every first paint. */
+.new-chat-btn[hidden] { display: none; }
+.new-chat-btn .icon {
+  color: var(--fg-muted);
+  transition: color var(--duration-s) var(--ease-soft);
+}
+.new-chat-btn:hover { color: var(--fg-primary); border-color: var(--signal); }
+.new-chat-btn:hover .icon { color: var(--signal); }
+
 /* ——————————————— FAQ rail ———————————————
    The reason the sidebar exists: a first session usually starts by clicking a
    question rather than typing one. It takes the height between the identity
@@ -1588,3 +1626,35 @@
    meaningful rule in the system. */
 .toast-notification.error { border-inline-start: 2px solid var(--danger); }
 .toast-notification.success { border-inline-start: 2px solid var(--confidence); }
+
+/* A toast that carries an action becomes a row rather than a line of text.
+   Only the undo affordance uses this; a plain toast keeps its original
+   single-text-node rendering, which the Playwright suite asserts verbatim. */
+.toast-notification.has-action {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  /* Clear of the composer. A status toast may sit over it for a second and
+     cost nothing, but this one carries a control the reader has to reach AND
+     appears at the moment focus is put back in the input — so at the default
+     offset it covers the field their caret is now in, with the button they
+     are meant to press floating on top of it. */
+  inset-block-end: var(--space-9);
+}
+/* Underlined rather than boxed: a second bordered control inside a floating
+   surface reads as a dialog, and this is a toast. The inverse ground is the
+   one place the ink ramp is not available, so the rule is currentColor. */
+.toast-action {
+  flex: none;
+  padding: 0;
+  font: inherit;
+  font-weight: var(--fw-display);
+  color: inherit;
+  background: none;
+  border: none;
+  border-block-end: 1px solid currentColor;
+  cursor: pointer;
+  opacity: .85;
+  transition: opacity var(--duration-s) var(--ease-soft);
+}
+.toast-action:hover { opacity: 1; }

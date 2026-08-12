@@ -439,6 +439,7 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
                 "test_profile_theme_integration.py",
                 "test_source_panel.py",
                 "test_composer.py",
+                "test_new_chat.py",
             )
         ):
             item.add_marker(pytest.mark.browser)

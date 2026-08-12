@@ -133,7 +133,34 @@
   transition: opacity var(--duration-s) ease, transform var(--duration-s) ease;
 }
 
+/* ——————————————— Transcript exit ———————————————
+   Turns leave the way they arrived: one at a time, and toward the start of the
+   reading direction. Newest first, so a reset reads as the conversation
+   unwinding rather than the page blanking. The stagger is an inline
+   animation-delay set by handlers.js and capped there, so a long transcript
+   still clears in well under half a second. */
+.messages > .is-clearing {
+  animation: transcriptClear var(--duration-m) var(--ease-soft) both;
+}
+/* The glyph acknowledges the press, restarted from JS by forced reflow the
+   same way the theme toggle restarts its spin. */
+.new-chat-btn.is-activating .icon {
+  animation: newChatPop var(--duration-m) var(--ease-out);
+}
+
 /* ═══════════════════ KEYFRAMES ═══════════════════ */
+@keyframes transcriptClear {
+  from { opacity: 1; transform: translateY(0) translateX(0); }
+  to { opacity: 0; transform: translateY(-8px) translateX(calc(-6px * var(--flip))); }
+}
+/* A plus presses in and settles. Deliberately not a rotation: a turning arrow
+   reads as *refresh*, which is what you press when something is broken, and
+   this button starts something instead. */
+@keyframes newChatPop {
+  0% { transform: scale(1); }
+  40% { transform: scale(.82); }
+  100% { transform: scale(1); }
+}
 @keyframes glowPulse {
   0%, 100% { opacity: .45; transform: translateY(-50%) scale(1); }
   50% { opacity: .8; transform: translateY(-50%) scale(1.12); }

@@ -9,6 +9,10 @@ export const CONFIG = {
   STREAMING: true,
 
   TOAST_DURATION: 3000,
+  /* Longer than a status toast, because this one carries a control the reader
+     has to notice, read and reach. Hovering or tabbing into the toast holds it
+     open, so the number is a floor rather than a deadline. */
+  UNDO_DURATION: 10000,
   DEBOUNCE_DELAY: 300,
   ANIMATION_DELAY: 100,
   API_TIMEOUT: 15000,
@@ -33,6 +37,11 @@ export const CONFIG = {
     SUGGESTED_BUTTON: 'suggested-question-enhanced',
     SUGGESTED_ICON: 'suggested-question-icon',
     FAQ_BUTTON: 'faq-button',
+    NEW_CHAT_BTN: 'new-chat-btn',
+    IS_CLEARING: 'is-clearing',
+    IS_ACTIVATING: 'is-activating',
+    HAS_ACTION: 'has-action',
+    TOAST_ACTION: 'toast-action',
     MESSAGE_LIST: 'message-list',
     MESSAGE_CODE_BLOCK: 'message-code-block',
     MESSAGE_INLINE_CODE: 'message-inline-code',

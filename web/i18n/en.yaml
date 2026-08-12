@@ -25,6 +25,10 @@ runtime:
     askPrefix: "Ask: {question}"
     jumpToLatest: "Jump to latest"
     jumpToLatestAria: "Scroll to the latest message"
+    cleared: "Conversation cleared"
+    undo: "Undo"
+    restored: "Conversation restored"
+    resetFailed: "Could not start a new chat. Your conversation is unchanged."
 
   stage:
     searching: "Searching the guidelines"
@@ -200,6 +204,8 @@ page:
     bullet3: "Click on FAQ buttons for common questions"
     cutoff: "SFDA Copilot provides regulatory guidance based on official SFDA guidelines current through August 2026. For the most recent regulatory updates and post-August 2026 changes, please consult the official SFDA website."
     prompt: "How can I assist you today?"
+    newChat: "New chat"
+    newChatTitle: "Start a new conversation"
     searchIn: "Search in:"
     inputPlaceholder: "Ask about SFDA regulations..."
     inputAria: "Chat message input"

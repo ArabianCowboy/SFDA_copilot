@@ -26,6 +26,25 @@
 </div>
 {% endif %}
 
+{#
+  End the conversation without ending the session.
+
+  Server-rendered `hidden`, and revealed by ui.js only once there is a
+  transcript to end. That ordering matters for the composition above: on a
+  first visit the FAQ rail is what this column is for, and a control offering
+  to clear a conversation nobody has had yet would take the first actionable
+  slot away from the questions that start one. It is also the safe failure
+  mode — if the module never loads there is no chat to reset, so a button that
+  stays hidden is telling the truth.
+
+  A labelled pill rather than a fourth icon circle: the chrome toggles are
+  interchangeable at a glance and this one is destructive.
+#}
+<button id="new-chat-button{{ suffix }}" class="new-chat-btn" type="button" hidden
+        title="{{ t('page.chat.newChatTitle') }}">
+  {{ icon('plus', 15) }}<span>{{ t('page.chat.newChat') }}</span>
+</button>
+
 <div class="faq-section" id="{{ faq_id }}"></div>
 
 {#

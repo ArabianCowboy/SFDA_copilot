@@ -263,6 +263,13 @@ ICONS: dict[str, str] = {
         '<path d="M13.35 3.65a.5.5 0 0 1 0 .7l-7 7a.5.5 0 0 1-.7 0l-3-3a.5.5 0 '
         '1 1 .7-.7L6 10.29l6.65-6.64a.5.5 0 0 1 .7 0"/>'
     ),
+    # "New chat" marks a beginning, so the glyph is a plus and not a circular
+    # arrow: a rotating arrow reads as *refresh*, which is what you press when
+    # something is broken rather than when you are starting something.
+    "plus": (
+        '<path d="M8 2.5a.5.5 0 0 1 .5.5v4.5H13a.5.5 0 0 1 0 1H8.5V13a.5.5 0 0 '
+        '1-1 0V8.5H3a.5.5 0 0 1 0-1h4.5V3a.5.5 0 0 1 .5-.5"/>'
+    ),
     # ── Corpus categories ────────────────────────────────────────────
     # One glyph per category, used by BOTH the sidebar's FAQ group headings
     # and the composer's category selector, so the same mark always means the

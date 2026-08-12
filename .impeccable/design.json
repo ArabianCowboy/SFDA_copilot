@@ -313,6 +313,14 @@
       "css": ".ds-icon-control { display: inline-flex; align-items: center; justify-content: center; inline-size: 38px; block-size: 38px; padding: 0; border: 1px solid var(--hairline, #DCD7D1); border-radius: 999px; color: var(--fg-muted, #675D75); background: var(--bg-surface, #fff); cursor: pointer; transition: color .15s cubic-bezier(.4,0,.2,1), border-color .15s cubic-bezier(.4,0,.2,1); } .ds-icon-control:hover { color: var(--signal, #0F5E63); border-color: var(--signal, #0F5E63); } .ds-icon-control:focus-visible { outline: 2px solid var(--focus-ring, #0F5E63); outline-offset: 2px; }"
     },
     {
+      "name": "New Chat",
+      "kind": "button",
+      "refersTo": "new-chat",
+      "description": "Ends the conversation without ending the session, at the head of the sidebar body. A labelled pill rather than a fourth 38px circle, because it sits among interchangeable icon chrome and one of them must not be pressed by accident. Takes the icon controls' resting colours and teal hover rather than a destructive red: the system has no danger variant, and logout — the one irreversible control in the app — is a quiet ghost. Hidden, not disabled, until there is a conversation to end.",
+      "html": "<button class=\"ds-new-chat\" type=\"button\" title=\"Start a new conversation\"><svg width=\"15\" height=\"15\" viewBox=\"0 0 16 16\" fill=\"currentColor\" aria-hidden=\"true\"><path d=\"M8 2.5a.5.5 0 0 1 .5.5v4.5H13a.5.5 0 0 1 0 1H8.5V13a.5.5 0 0 1-1 0V8.5H3a.5.5 0 0 1 0-1h4.5V3a.5.5 0 0 1 .5-.5\"/></svg><span>New chat</span></button>",
+      "css": ".ds-new-chat { display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; font: inherit; font-size: 13px; font-weight: 500; line-height: 1; color: var(--fg-secondary, #4A4155); background: var(--bg-surface, #fff); border: 1px solid var(--hairline, #DCD7D1); border-radius: 999px; cursor: pointer; transition: color .15s cubic-bezier(.4,0,.2,1), border-color .15s cubic-bezier(.4,0,.2,1); } .ds-new-chat[hidden] { display: none; } .ds-new-chat svg { color: var(--fg-muted, #675D75); transition: color .15s cubic-bezier(.4,0,.2,1); } .ds-new-chat:hover { color: var(--fg-primary, #241F2B); border-color: var(--signal, #0F5E63); } .ds-new-chat:hover svg { color: var(--signal, #0F5E63); } .ds-new-chat:focus-visible { outline: 2px solid var(--focus-ring, #0F5E63); outline-offset: 2px; }"
+    },
+    {
       "name": "Knowledge Badge",
       "kind": "chip",
       "refersTo": "badge-knowledge",

@@ -7,7 +7,7 @@
 import { marked } from 'https://cdn.jsdelivr.net/npm/marked@12.0.2/+esm';
 import DOMPurify from 'https://cdn.jsdelivr.net/npm/dompurify@3.4.13/+esm';
 
-import { CONFIG } from './config.js';
+import { CONFIG, prefersReducedMotion } from './config.js';
 import { DOMCache } from './dom.js';
 import { AppState } from './state.js';
 import { Utils } from './utils.js';
@@ -165,6 +165,7 @@ export const UI = {
         Utils.renderSuggestedQuestions(suggestionsContainer, suggestedQuestions);
       }
       this.scrollMessagesToBottom();
+      this.updateNewChatAvailability();
     };
 
     render();
@@ -414,11 +415,111 @@ export const UI = {
    * reader in the same tab reveals the first reader's conversation intact.
    */
   clearTranscript() {
+    this.detachTranscript();
+  },
+
+  /**
+   * Take the transcript's turns out of the page and hand them back, still live.
+   *
+   * The nodes are MOVED into a fragment rather than serialized, because every
+   * handler that makes a turn work — citation markers, source triggers,
+   * suggested questions — is delegated on #messages rather than bound per
+   * node. Nodes that leave and come back are therefore wired exactly as they
+   * were, and `stateByMessage` still resolves their sources.
+   *
+   * Restoring from HTML would not do: that path has to strip its own controls
+   * (see neutraliseRestoredCitations), which is correct across a reload, where
+   * module memory is genuinely gone, and wrong for an undo, where it is not.
+   */
+  detachTranscript() {
+    const fragment = document.createDocumentFragment();
     const container = DOMCache.get(CONFIG.SELECTORS.MESSAGES);
-    if (!container) return;
-    [...container.children]
-      .filter(el => !el.hasAttribute('data-chat-intro'))
-      .forEach(el => el.remove());
+    if (container) {
+      [...container.children]
+        .filter(el => !el.hasAttribute('data-chat-intro'))
+        .forEach(el => fragment.appendChild(el));
+    }
+    this.updateNewChatAvailability();
+    return fragment;
+  },
+
+  /**
+   * Play the transcript out, then hand back the turns.
+   *
+   * Newest first: the conversation unwinds rather than the page blanking. The
+   * stagger is capped so thirty turns still clear in well under half a second.
+   *
+   * The class is added at runtime and never authored in the template — a
+   * stylesheet that hides content on the promise that a script will move it is
+   * the failure mode this codebase already legislates against.
+   */
+  async playTranscriptExit() {
+    const container = DOMCache.get(CONFIG.SELECTORS.MESSAGES);
+    const turns = container
+      ? [...container.children].filter(el => !el.hasAttribute('data-chat-intro'))
+      : [];
+
+    if (!turns.length || prefersReducedMotion()) return this.detachTranscript();
+
+    const last = turns.length - 1;
+    turns.forEach((el, index) => {
+      el.style.animationDelay = `${Math.min((last - index) * 18, 140)}ms`;
+      el.classList.add(CONFIG.CLASSES.IS_CLEARING);
+    });
+
+    /* turns[0] is the oldest, so under a newest-first stagger it carries the
+       largest delay and finishes last. The timeout is a backstop rather than a
+       nicety: animationend does not fire for an interrupted animation, and a
+       transcript that never detaches is a worse failure than one that detaches
+       a frame early. */
+    await new Promise((resolve) => {
+      let settled = false;
+      const finish = () => { if (!settled) { settled = true; resolve(); } };
+      turns[0].addEventListener('animationend', finish, { once: true });
+      setTimeout(finish, 400);
+    });
+
+    const fragment = this.detachTranscript();
+    // The turns come back clean; an undo must not restore a half-played exit.
+    [...fragment.children].forEach(el => {
+      el.classList.remove(CONFIG.CLASSES.IS_CLEARING);
+      el.style.removeProperty('animation-delay');
+    });
+    return fragment;
+  },
+
+  /** Put detached turns back, without re-announcing the whole conversation. */
+  restoreTranscript(fragment) {
+    const container = DOMCache.get(CONFIG.SELECTORS.MESSAGES);
+    if (!container || !fragment) return;
+
+    /* #messages is role="log" aria-live="polite", so re-appending a whole
+       conversation would have a screen reader read every turn back. aria-busy
+       marks the bulk update as one the reader should not be walked through. */
+    container.setAttribute('aria-busy', 'true');
+    container.appendChild(fragment);
+    requestAnimationFrame(() => container.removeAttribute('aria-busy'));
+
+    this.updateNewChatAvailability();
+  },
+
+  /**
+   * Show "New chat" only once there is a chat to end.
+   *
+   * Hidden rather than disabled. On a first visit this column's job is the FAQ
+   * rail — a first session usually starts by clicking a question — and a
+   * greyed-out control offering to clear a conversation nobody has had yet
+   * would still be the first thing in the column.
+   */
+  updateNewChatAvailability() {
+    const container = DOMCache.get(CONFIG.SELECTORS.MESSAGES);
+    const hasTurns = !!container && [...container.children]
+      .some(el => !el.hasAttribute('data-chat-intro'));
+    const available = hasTurns || AppState.isRequestInProgress();
+
+    DOMCache.getAll(`.${CONFIG.CLASSES.NEW_CHAT_BTN}`).forEach(btn => {
+      btn.hidden = !available;
+    });
   },
 
   /** One-shot screen-reader announcement. */
@@ -517,6 +618,10 @@ export const UI = {
         isSending ? I18n.t('chat.cancelAria') : I18n.t('chat.sendAria')
       );
     }
+
+    /* An in-flight answer counts as a chat to end: New chat cancels it and
+       clears, which is a legitimate way out of a question you regret asking. */
+    this.updateNewChatAvailability();
   },
 
   Faq: {

@@ -275,6 +275,7 @@ Borders are 1px hairlines by default. 2px is the system's one *meaningful* rule 
 - **Primary (`.unified-button`):** Teal fill, white label, `--fw-display` (700) at 17px, 16px/48px padding, a coloured lift shadow, and a trailing arrow. Hover darkens the fill, raises the button 1px, deepens the shadow, and nudges the arrow 3px *toward the reading direction* (`translateX(calc(3px * var(--flip)))`) so it points onward in both scripts.
 - **Ghost:** Transparent with a `rule-300` hairline; fills to sunken porcelain and darkens its text on hover.
 - **Icon controls:** 38×38 circles, white fill, `rule-200` hairline, muted glyph; the border and glyph both go teal on hover. Language and theme toggles share this base.
+- **New chat (`.new-chat-btn`):** A pill with a plus glyph and a label, at the head of the sidebar body. It takes the icon controls' resting colours and their teal hover rather than a destructive red — the system has no danger variant at all, and logout, the one genuinely irreversible control in the app, is a quiet ghost button; a red pill here would be the loudest thing in the column. It is *labelled* precisely because it sits among interchangeable 38px circles and one of them must not be pressed by accident. **It is hidden, not disabled, until there is a conversation to end:** on a first visit the FAQ rail is what the column is for, and a greyed-out control offering to clear a chat nobody has had yet still takes the first slot. Server-rendered `hidden`, revealed by `ui.js` — a dead module leaves no button, which is honest, because a dead module leaves no chat either.
 - **Focus:** Global — `2px solid var(--focus-ring)` at 2px offset. Fields instead take a teal border plus a 3px `rgb(15 94 99 / .28)` ring.
 
 ### Chips
@@ -332,7 +333,8 @@ On the landing Sunny is the page's only image, sized `clamp(150px, 24vw, 232px)`
 - **Do** use Azeret Mono with tabular figures for machine-reported values, and isolate them `direction: ltr` when they sit inside Arabic prose.
 - **Do** tint shadows with the ink hue in light mode and swap to black at high alpha in dark.
 - **Do** arm scroll-reveal hidden states from JS at runtime, so a dead module leaves content visible.
-- **Do** bump `asset_version` in `web/api/app.py` (currently `"warm6"`) in any commit touching CSS or JS.
+- **Do** stagger a multi-element exit newest-first and cap the total delay — the transcript clear caps at 140ms — so motion marks the state change without metering it. Wait on the *last* element to finish, and keep a timeout backstop: `animationend` never fires for an interrupted animation, and a transcript that fails to detach is worse than one that detaches a frame early.
+- **Do** bump `ASSET_VERSION` in `web/api/app.py` (currently `"warm11"`) in any commit touching CSS or JS.
 - **Do** add a new glyph to `web/utils/icons.py` once, and to `RUNTIME_ICON_NAMES` as well if a browser module draws it.
 - **Do** carry the independence notice on every surface; the landing footer holds it.
 
