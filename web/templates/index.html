@@ -127,7 +127,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     <!-- ═══════════════════════════════════════════
          AUTH MODAL — Login / Signup
          ═══════════════════════════════════════════ -->
-    <div class="modal fade" id="authModal" tabindex="-1" aria-labelledby="authModalLabel" aria-hidden="true">
+    <div class="modal fade" id="authModal" tabindex="-1" role="dialog" aria-modal="true" aria-labelledby="authModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content">
                 <!-- Header. `text-white`/`btn-close-white` were left over from a
@@ -236,7 +236,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     <!-- ═══════════════════════════════════════════
          PROFILE MODAL
          ═══════════════════════════════════════════ -->
-    <div class="modal fade" id="profileModal" tabindex="-1" aria-labelledby="profileModalLabel" aria-hidden="true">
+    <div class="modal fade" id="profileModal" tabindex="-1" role="dialog" aria-modal="true" aria-labelledby="profileModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content">
                 <div class="modal-header">
@@ -297,7 +297,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
         {# Language and theme only. The hub and LinkedIn links are the
            builder's byline and live in the footer: up here the globe
            duplicated them and read as a second language switcher. #}
-        <div class="landing-header-utility">
+        <nav class="landing-header-utility" aria-label="{{ t('page.nav.utilityAria') }}">
             <!-- .lang-toggle-btn, NOT .theme-toggle-btn: test_theme_toggle.py
                  asserts exactly three of the latter on the page. -->
             <button class="lang-toggle-btn btn btn-sm" type="button"
@@ -306,23 +306,23 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
                 title="{{ t('runtime.lang.toEnglish') if lang == 'ar' else t('runtime.lang.toArabic') }}">
                 <span class="lang-code">{{ 'EN' if lang == 'ar' else 'ع' }}</span>
             </button>
-            <button id="landing-theme-toggle" class="theme-toggle-btn btn btn-sm ms-2"
+            <button id="landing-theme-toggle" class="theme-toggle-btn btn btn-sm ms-2" type="button"
                 aria-label="{{ t('page.nav.toggleThemeLong') }}" title="{{ t('page.nav.toggleTheme') }}">
                 {{ icon('moon', 16) }}
             </button>
-        </div>
+        </nav>
 
         <div class="landing-inner">
                 <!-- Hero Section -->
-                <div class="landing-hero">
+                <section class="landing-hero" aria-labelledby="hero-heading">
                     {# Sunny, mounted by robot.js. He is the page's only image —
                        it used to carry a small mascot AND a stock illustration,
                        which said the same thing twice and let neither land. The
                        wordmark still leads the viewport; Sunny carries the warmth
                        above it. #}
                     <div class="landing-robot" id="landing-robot">
-                        <div class="landing-robot-glow"></div>
-                        <div class="landing-robot-body" id="landing-robot-body"></div>
+                        <div class="landing-robot-glow" aria-hidden="true"></div>
+                        <div class="landing-robot-body" id="landing-robot-body" aria-hidden="true"></div>
                         <div class="landing-robot-status" id="landing-robot-status">{{ t('page.landing.greeting') }}</div>
                     </div>
 
@@ -332,7 +332,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
                        Size and weight come from the scale (--fs-900), not from
                        Bootstrap utilities. #}
                     <div class="hero-title-wrapper">
-                        <h1>{{ t('page.brand.name') }}</h1>
+                        <h1 id="hero-heading">{{ t('page.brand.name') }}</h1>
                         <p class="hero-title-alt" lang="{{ 'en' if lang == 'ar' else 'ar' }}"
                            dir="{{ 'ltr' if lang == 'ar' else 'rtl' }}">{{ t('page.brand.nameOther') }}</p>
                     </div>
@@ -350,7 +350,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
                             {{ t('page.features.coverage.badge') }}
                         </span>
                     </div>
-                </div>
+                </section>
 
 
                 <!-- ── Why use it ──────────────────────────────────────
@@ -417,7 +417,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
         <!-- Mobile top bar. The glyph is ours rather than Bootstrap's
              background-image toggler, so it takes currentColor and needs no
              dark-mode token of its own. -->
-        <nav class="navbar app-topbar d-lg-none sticky-top">
+        <nav class="navbar app-topbar d-lg-none sticky-top" aria-label="{{ t('page.nav.mobileNavAria') }}">
             <div class="container-fluid">
                 <button class="navbar-toggler" type="button" data-bs-toggle="offcanvas"
                     data-bs-target="#sidebarOffcanvas" aria-controls="sidebarOffcanvas" aria-label="{{ t('page.nav.toggleNav') }}">
@@ -432,9 +432,9 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
             {# d-lg-FLEX, not d-lg-block: Bootstrap's display utility carries
                !important and would override the column layout base.css gives
                .sidebar, which is what pins the account block to the bottom. #}
-            <aside class="col-lg-3 col-md-4 sidebar d-none d-lg-flex h-100" id="sidebarContentRegular">
+            <aside class="col-lg-3 col-md-4 sidebar d-none d-lg-flex h-100" id="sidebarContentRegular" aria-label="{{ t('page.nav.sidebarAria') }}">
                 <div class="sidebar-brandbar">
-                    <button id="sidebar-theme-toggle" class="theme-toggle-btn btn btn-sm"
+                    <button id="sidebar-theme-toggle" class="theme-toggle-btn btn btn-sm" type="button"
                         aria-label="{{ t('page.nav.toggleTheme') }}" title="{{ t('page.nav.toggleTheme') }}">
                         {{ icon('moon', 16) }}
                     </button>
@@ -444,13 +444,13 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 
             <!-- Mobile Offcanvas Sidebar -->
             <div class="offcanvas offcanvas-start d-lg-none" tabindex="-1" id="sidebarOffcanvas"
-                aria-labelledby="sidebarOffcanvasLabel">
+                role="dialog" aria-modal="true" aria-labelledby="sidebarOffcanvasLabel">
                 <header class="offcanvas-header">
                     <h5 class="offcanvas-title" id="sidebarOffcanvasLabel">
                         {{ icon('menu', 16) }}<span>{{ t('page.nav.menu') }}</span>
                     </h5>
                     <div class="offcanvas-actions">
-                        <button id="offcanvas-theme-toggle"
+                        <button id="offcanvas-theme-toggle" type="button"
                             class="theme-toggle-btn btn btn-sm"
                             aria-label="{{ t('page.nav.toggleTheme') }}" title="{{ t('page.nav.toggleTheme') }}">
                             {{ icon('moon', 16) }}
@@ -465,9 +465,9 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
             </div>
 
             <!-- Chat Area -->
-            <section class="col-12 col-lg-9 chat-area h-100">
+            <section class="col-12 col-lg-9 chat-area h-100" aria-labelledby="chat-intro-title">
                 <div class="chat-container">
-                    <div id="messages" class="messages" aria-live="polite">
+                    <div id="messages" class="messages" role="log" aria-live="polite">
                         {#
                           The opening state, NOT a message. It used to be a
                           .chatbot-message bubble complete with an avatar, a
@@ -481,8 +481,8 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
                           new one instead of restoring the old.
                         #}
                         <section class="chat-intro" data-chat-intro>
-                            <div class="robot-avatar-wrapper robot-idle" id="welcome-robot-avatar"></div>
-                            <h2 class="chat-intro-title">
+                            <div class="robot-avatar-wrapper robot-idle" id="welcome-robot-avatar" aria-hidden="true"></div>
+                            <h2 class="chat-intro-title" id="chat-intro-title">
                                 {{ t('page.chat.welcomeLead') }} <strong>{{ t('page.brand.name') }}</strong>{{ t('page.chat.welcomeRest') }}
                             </h2>
                             <ul class="chat-intro-list">
@@ -514,9 +514,9 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
                          around a floating ghost. Hidden below xl. -->
                     <aside class="chat-rail" id="chat-rail" aria-label="{{ t('page.nav.assistantStatus') }}">
                         <div class="robot-companion" id="robot-companion">
-                            <div class="robot-companion-glow"></div>
-                            <div class="robot-companion-platform"></div>
-                            <div class="robot-companion-body" id="robot-companion-body"></div>
+                            <div class="robot-companion-glow" aria-hidden="true"></div>
+                            <div class="robot-companion-platform" aria-hidden="true"></div>
+                            <div class="robot-companion-body" id="robot-companion-body" aria-hidden="true"></div>
                             <div class="robot-companion-status" id="robot-status-text">{{ t('runtime.robot.idle') }}</div>
                         </div>
                     </aside>
@@ -535,26 +535,26 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
                   <div class="composer">
                     <div class="custom-dropdown" id="category-dropdown">
                         <button class="custom-dropdown-trigger" id="query-category" type="button"
-                                aria-haspopup="listbox" aria-expanded="false" data-value="all"
+                                aria-haspopup="listbox" aria-expanded="false" aria-controls="category-listbox" data-value="all"
                                 aria-label="{{ t('page.chat.searchIn') }} {{ t('page.categories.all') }}"
                                 data-label-prefix="{{ t('page.chat.searchIn') }}">
-                            <span class="dropdown-icon">{{ icon(category_icon('all'), 15) }}</span>
+                            <span class="dropdown-icon" aria-hidden="true">{{ icon(category_icon('all'), 15) }}</span>
                             <span class="dropdown-text">{{ t('page.categories.all') }}</span>
                             {{ icon('chevron-down', 12, 'dropdown-arrow') }}
                         </button>
-                        <ul class="custom-dropdown-menu" role="listbox" tabindex="-1"
+                        <ul class="custom-dropdown-menu" id="category-listbox" role="listbox" tabindex="-1"
                             aria-label="{{ t('page.categories.aria') }}">
                             {% for key in ['all', 'regulatory', 'pharmacovigilance', 'veterinary', 'biological'] %}
                             <li class="custom-dropdown-item{{ ' active' if key == 'all' }}" data-value="{{ key }}"
                                 data-icon="{{ category_icon(key) }}" role="option" tabindex="-1"
                                 aria-selected="{{ 'true' if key == 'all' else 'false' }}">
-                                <span class="dropdown-icon">{{ icon(category_icon(key), 15) }}</span>
+                                <span class="dropdown-icon" aria-hidden="true">{{ icon(category_icon(key), 15) }}</span>
                                 <span class="dropdown-text">{{ t('page.categories.' ~ key) }}</span>
                             </li>
                             {% endfor %}
                         </ul>
                     </div>
-                    <select id="query-category-hidden" class="d-none" aria-label="{{ t('page.categories.aria') }}">
+                    <select id="query-category-hidden" class="d-none" tabindex="-1" aria-hidden="true" aria-label="{{ t('page.categories.aria') }}">
                         <option value="all" selected>{{ t('page.categories.all') }}</option>
                         <option value="regulatory">{{ t('page.categories.regulatory') }}</option>
                         <option value="pharmacovigilance">{{ t('page.categories.pharmacovigilance') }}</option>

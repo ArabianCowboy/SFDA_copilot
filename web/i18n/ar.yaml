@@ -162,6 +162,9 @@ page:
     toggleThemeLong: "التبديل بين المظهر الفاتح والداكن"
     close: "إغلاق"
     assistantStatus: "حالة المساعد"
+    utilityAria: "اللغة والمظهر"
+    mobileNavAria: "تنقل الجوال"
+    sidebarAria: "الشريط الجانبي"
 
   auth:
     modalTitle: "مرحباً بك في مساعد الغذاء والدواء"

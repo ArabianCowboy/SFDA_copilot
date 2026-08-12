@@ -164,6 +164,9 @@ page:
     toggleThemeLong: "Toggle theme between light and dark"
     close: "Close"
     assistantStatus: "Assistant status"
+    utilityAria: "Language and theme"
+    mobileNavAria: "Mobile navigation"
+    sidebarAria: "Sidebar"
 
   auth:
     modalTitle: "Welcome to SFDA Copilot"
