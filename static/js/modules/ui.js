@@ -493,6 +493,14 @@ export const UI = {
     const container = DOMCache.get(CONFIG.SELECTORS.MESSAGES);
     if (!container || !fragment) return;
 
+    /* Stamped BEFORE the nodes go back in, because a re-appended element
+       replays its entrance animation and there is no frame in between to catch
+       it. Same reason as the aria-busy below, in the other channel: an undo
+       should reach both a reader watching and a reader listening as the clear
+       never having happened. See effects.css. */
+    [...fragment.children].forEach(el =>
+      el.classList.add(CONFIG.CLASSES.ANIM_SUPPRESSED));
+
     /* #messages is role="log" aria-live="polite", so re-appending a whole
        conversation would have a screen reader read every turn back. aria-busy
        marks the bulk update as one the reader should not be walked through. */

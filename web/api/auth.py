@@ -9,12 +9,20 @@ logger = logging.getLogger(__name__)
 # Session keys holding one reader's conversation. Named once so the purge below
 # and the identity check in app.py cannot drift apart.
 #
-# `prev_conv_id` is the conversation a "New chat" rotated away from, kept alive
-# only long enough for the reader to undo. It is listed here because a reader who
-# resets and then signs out must not leave that one behind: it is still their
-# conversation, and the purge exists precisely so nothing of theirs outlives the
-# session.
-CONVERSATION_SESSION_KEYS = ("conv_id", "prev_conv_id", "chat_history")
+# `prev_conv_id` and `prev_chat_history` are the conversation a "New chat"
+# rotated away from — the store side and the non-streaming side of the same one
+# — kept alive only long enough for the reader to undo. They are listed here
+# because a reader who resets and then signs out must not leave either behind:
+# it is still their conversation, and the purge exists precisely so nothing of
+# theirs outlives the session. `prev_chat_history` is the one that carries the
+# actual text, in the cookie, so missing it would leave one reader's questions
+# and answers sitting in the next reader's browser.
+CONVERSATION_SESSION_KEYS = (
+    "conv_id",
+    "prev_conv_id",
+    "chat_history",
+    "prev_chat_history",
+)
 
 # The subset of the above that keys a server-side ConversationStore entry.
 CONVERSATION_ID_KEYS = ("conv_id", "prev_conv_id")

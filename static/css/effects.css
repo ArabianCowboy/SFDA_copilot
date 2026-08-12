@@ -125,9 +125,22 @@
 /* Visibility is the rail's job (base.css): below xl there is no rail, and the
    inline message avatars carry the mascot instead. */
 
-/* ——————————————— Message entrances ——————————————— */
-.chatbot-message { animation: botMessageIn .5s var(--ease-out) both; }
-.user-message { animation: userMessageIn .4s var(--ease-out) both; }
+/* ——————————————— Message entrances ———————————————
+   `.anim-suppressed` marks a turn that has already made its entrance. An undo
+   puts the SAME nodes back, and a re-appended element replays its entrance from
+   the start — so the whole conversation slid in again, announcing a clear that
+   is meant to read as never having happened. ui.js stamps the restored turns.
+
+   Two things about how that is expressed. It is permanent, because an entrance
+   restarts whenever animation-name goes from `none` back to a name — so
+   suppressing for a frame and then releasing is a delay, not a fix. And it sits
+   ON the entrance declaration rather than as a blanket `animation: none`
+   elsewhere, so it can only ever prevent an entrance: a restored turn that some
+   later feature wants to pulse, highlight or flag still animates. `:where()`
+   contributes no specificity, so these rules stay exactly where they were and
+   the exit below still wins on specificity rather than on source order. */
+.chatbot-message:where(:not(.anim-suppressed)) { animation: botMessageIn .5s var(--ease-out) both; }
+.user-message:where(:not(.anim-suppressed)) { animation: userMessageIn .4s var(--ease-out) both; }
 #typing-indicator {
   animation: botMessageIn .35s var(--ease-out) both;
   transition: opacity var(--duration-s) ease, transform var(--duration-s) ease;

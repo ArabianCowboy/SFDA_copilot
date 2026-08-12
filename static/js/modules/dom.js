@@ -196,6 +196,21 @@ export const ErrorHandler = {
     toast.classList.add(CONFIG.CLASSES.HIDDEN);
   },
 
+  /**
+   * Take the toast down, but only while it is still offering an action.
+   *
+   * For the caller that ends the thing the action DID — the toast and the undo
+   * behind it are one object to a reader, so an Undo button that outlives the
+   * undo is a button that lies. The guard is what keeps that from also taking
+   * down a plain status toast which had since replaced it, carrying a message
+   * the reader has not read yet.
+   */
+  hideActionToast() {
+    const toast = DOMCache.get(CONFIG.SELECTORS.TOAST);
+    if (!toast?.querySelector(`.${CONFIG.CLASSES.TOAST_ACTION}`)) return;
+    this.hideToast();
+  },
+
   showAuthError(message) {
     const errorEl = DOMCache.get(CONFIG.SELECTORS.AUTH_ERROR);
     if (!errorEl) return;

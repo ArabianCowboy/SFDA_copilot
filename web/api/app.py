@@ -132,7 +132,7 @@ SUPPORTED_FAQ_LANGS = ("en", "ar")
 # that mixes a fresh template with a stale module is worse than a stale page —
 # post-icon-migration it would render an <i class="bi"> with no icon font behind
 # it, or print a glyph NAME as text. MODULE_IMPORT_MAP below closes that.
-ASSET_VERSION = "warm13"
+ASSET_VERSION = "warm14"
 
 # Product release, rendered in the landing footer. Kept as one constant so
 # the number cannot drift between the page and the module headers.
@@ -803,6 +803,16 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
             # are cut to the same limit.
             retrieved = build_source_payload(search_results, limit=openai_handler.max_context_results)
 
+            # Asking a question ends the undo, so the conversation a reset set
+            # aside stops being reachable here. The client fires `forget` for
+            # exactly this reason, but relying on that request landing is what
+            # would let this cookie carry TWO histories at once — and each is
+            # capped at 3,500 JSON characters against a ~4KB cookie limit, so
+            # the pair is the one combination that can cost the reader their
+            # session rather than merely their history. Enforced rather than
+            # trusted: at most one history is ever in the cookie.
+            session.pop("prev_chat_history", None)
+
             chat_history = session.get("chat_history", [])
             answer, suggested_questions = openai_handler.generate_response(
                 query, llm_context, category, chat_history, lang=lang,
@@ -861,16 +871,23 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
 
         The set-aside conversation is dropped on the next reset, on `forget`, on
         logout (`purge_conversation_state`), or by the store's TTL — whichever
-        comes first. `chat_history` is cleared alongside because the non-streaming
-        `/api/chat` fallback keeps its history in the session rather than the
-        store, and a reset that missed it would leave that path remembering
-        everything.
+        comes first.
+
+        The non-streaming `/api/chat` fallback keeps its history in the session
+        rather than the store, so it needs the same treatment and gets it the
+        same way: `chat_history` is rotated into `prev_chat_history` rather than
+        dropped. Clearing it outright was half a reset — the path a browser
+        without streaming bodies takes would stop remembering, which is right,
+        but an undo could then put the transcript and the streaming context back
+        while that path carried on as though the reset had stood. Undo has to
+        restore what the model remembers on BOTH paths or on neither.
         """
         payload = request.get_json(silent=True) or {}
         store: ConversationStore = current_app.config["conversations"]
 
         if payload.get("undo"):
             restored = session.pop("prev_conv_id", None)
+            restored_history = session.pop("prev_chat_history", None)
             if restored:
                 # The empty conversation the reset started. Nothing has read it
                 # — undo is torn down client-side before a new question is sent
@@ -878,6 +895,8 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
                 if current := session.get("conv_id"):
                     store.clear(current)
                 session["conv_id"] = restored
+            if restored_history is not None:
+                session["chat_history"] = restored_history
 
             # Nothing set aside is a no-op, NOT an error: a reader whose first
             # question never reached the server has a transcript to restore and
@@ -886,27 +905,31 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
             # Reporting that as a failure would leave their turns discarded.
             return jsonify(
                 ok=True,
-                restored=bool(restored),
+                restored=bool(restored) or restored_history is not None,
                 conversation_id=session.get("conv_id"),
             )
 
         if payload.get("forget"):
             if stale := session.pop("prev_conv_id", None):
                 store.clear(stale)
+            session.pop("prev_chat_history", None)
             return jsonify(ok=True, conversation_id=session.get("conv_id"))
 
         # A reset while an earlier one is still undoable: that older conversation
         # is now unreachable by any route, so it goes now rather than waiting for
-        # the TTL.
+        # the TTL. Its history goes with it, which is also what keeps the session
+        # cookie holding at most one conversation's worth of text.
         if stale := session.pop("prev_conv_id", None):
             store.clear(stale)
+        session.pop("prev_chat_history", None)
 
         if previous := session.get("conv_id"):
             session["prev_conv_id"] = previous
 
         conversation_id = uuid.uuid4().hex
         session["conv_id"] = conversation_id
-        session.pop("chat_history", None)
+        if (history := session.pop("chat_history", None)) is not None:
+            session["prev_chat_history"] = history
         return jsonify(ok=True, conversation_id=conversation_id)
 
 

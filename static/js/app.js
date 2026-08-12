@@ -83,6 +83,13 @@ const App = {
        reload, so its controls are stripped rather than left resolving to
        nothing. */
     Transcript.restore(identity, neutraliseRestoredCitations);
+
+    /* Every other route to a populated transcript runs through UI, which keeps
+       New chat in step. This one writes the turns in as markup and never told
+       it — so after a language switch the reader had a conversation on screen
+       and no way to end it, which is the state the control exists for.
+       `animate: false`: nothing arrived, the page loaded. */
+    UI.updateNewChatAvailability({ animate: false });
   },
 
   async handleTestingModeInit() {

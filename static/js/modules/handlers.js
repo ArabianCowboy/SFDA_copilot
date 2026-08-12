@@ -40,6 +40,43 @@ let resetGeneration = 0;
    during which a second press would reset the freshly-started conversation. */
 let resetInFlight = false;
 
+/* The handle of the answer currently streaming, or null. Cleared in
+ * processChatRequestInternal's finally, alongside setSendingState — the two
+ * mark the same thing, the end of one request's lifetime.
+ *
+ * Published because handleNewChat can end up owning that bubble. It aborts the
+ * stream before calling the server, and streamChat then walks away without
+ * touching the bubble — correctly, since on the normal path the bubble is a
+ * fraction of a second from leaving the transcript entirely. When the server
+ * call FAILS the transcript stays put, and the bubble stays with it: spinning,
+ * still aria-busy, with no stream behind it and nothing coming back for it. */
+let activeStream = null;
+
+/**
+ * Close out a bubble a failed reset abandoned.
+ *
+ * Takes the handle rather than reading `activeStream` itself, and that is the
+ * whole point. A reset releases the composer the moment it aborts, so the
+ * reader can start a NEW question during the server round trip — and by the
+ * time a failure comes back, `activeStream` points at that new, legitimately
+ * streaming answer. Reading it here would kill the wrong bubble.
+ *
+ * Whether there is anything to close out is then read off the bubble rather
+ * than tracked: aria-busy means "still mid-flight", set by
+ * beginStreamingMessage and removed by every path that finishes one, and
+ * dropInFlightExchange already relies on exactly that. So a handle whose stream
+ * finished on its own before the reset failed filters itself out.
+ *
+ * Marked `cancelled` rather than `error`: nothing went wrong with the answer,
+ * the reader ended it. That the reset then failed is a separate fact, and the
+ * toast carries it.
+ */
+function settleAbandonedStream(handle) {
+  if (!handle?.messageEl?.hasAttribute('aria-busy')) return;
+  UI.markStreamIncomplete(handle, 'cancelled');
+  RobotStateManager.resetToIdle();
+}
+
 /**
  * Drop the exchange that was still streaming when a reset landed.
  *
@@ -202,6 +239,10 @@ export const Handlers = {
       RobotStateManager.showError();
     } finally {
       UI.setSendingState(false);
+      /* Both lines mark the same moment — this request is over. Here rather
+         than inside streamChat because this is the one exit every path shares,
+         including the one that rethrows. */
+      activeStream = null;
     }
   },
 
@@ -239,6 +280,11 @@ export const Handlers = {
        value and declines to render into a bubble that is on its way out. */
     resetGeneration += 1;
     const wasStreaming = AppState.isRequestInProgress();
+    /* Captured BEFORE the abort and held directly, rather than read back off
+       `activeStream` if the reset fails — see settleAbandonedStream for the
+       question that answers. Reading it before the abort also removes any
+       dependence on when the abort's rejection is scheduled. */
+    const doomed = wasStreaming ? activeStream : null;
     if (wasStreaming) {
       Services.cancelChatRequest();
       UI.toggleTypingIndicator(false);
@@ -249,6 +295,10 @@ export const Handlers = {
       await Services.resetConversation();
     } catch (error) {
       logError(error, 'handleNewChat');
+      /* The transcript is staying, so the bubble the abort above left mid-flight
+         is staying with it. streamChat declined to close it — it could not know
+         this call would fail — which leaves that to here. */
+      settleAbandonedStream(doomed);
       ErrorHandler.showToast(I18n.t('chat.resetFailed'), true);
       resetInFlight = false;
       return;
@@ -295,10 +345,12 @@ export const Handlers = {
       await Services.resetConversation({ undo: true });
     } catch (error) {
       /* The reset itself stands, so the cleared view and the server still
-         agree. Only the restoration failed. */
+         agree. Only the restoration failed — which is why this is not
+         `chat.resetFailed`: that message says the conversation is unchanged,
+         and here it is precisely the thing that did change. */
       logError(error, 'undoReset');
       pendingUndo = null;
-      ErrorHandler.showToast(I18n.t('chat.resetFailed'), true);
+      ErrorHandler.showToast(I18n.t('chat.restoreFailed'), true);
       return;
     }
 
@@ -319,6 +371,11 @@ export const Handlers = {
   discardUndo() {
     if (!pendingUndo) return;
     pendingUndo = null;
+    /* The toast is the only route to the undo, so it goes when the undo does.
+       Leaving it up left an Undo button on screen that silently did nothing —
+       and this runs on the reader's next question, which is the moment they
+       are least able to tell a dead control from a slow one. */
+    ErrorHandler.hideActionToast();
     resetCitationState();
     Services.resetConversation({ forget: true })
       .catch(error => logError(error, 'discardUndo'));
@@ -333,6 +390,9 @@ export const Handlers = {
     /* Stamped at the start so every exit below can ask whether the
        conversation this answer belongs to still exists. */
     const generation = resetGeneration;
+    /* Published for the one caller that can end up owning this bubble instead
+       of the code below — see settleAbandonedStream. */
+    activeStream = handle;
     let sawToken = false;
     let failed = null;
 
@@ -393,9 +453,25 @@ export const Handlers = {
       throw error;
     }
 
-    /* Same reasoning as the catch above, for a stream that ran to completion
-       while the reset was resolving. */
-    if (generation !== resetGeneration) return;
+    if (generation !== resetGeneration) {
+      /* A New chat ended this conversation while the stream was resolving —
+         but unlike the catch above, this one got all the way here, so the
+         question of whether the server recorded the turn has an answer.
+         `result.complete` means both `final` and `done` arrived, and the
+         generator writes the turn to the store between them. It is therefore
+         part of the conversation the reset set aside, and an undo will bring
+         that conversation back.
+
+         So it has to be finished. dropInFlightExchange drops whatever still
+         carries aria-busy, and dropping this turn would restore a transcript
+         that disagrees with what the model remembers — the one invariant undo
+         exists to keep. The bubble is on its way off screen either way;
+         handleNewChat owns the mascot and the send button on this path. */
+      if (result?.complete && !failed) {
+        UI.finishStreamingMessage(handle, handle.suggested || [], handle.final || null);
+      }
+      return;
+    }
 
     if (failed) {
       /* A failure after streaming began cannot change the 200 status line, so
@@ -463,10 +539,12 @@ export const Handlers = {
     try {
       const data = await Services.sendChatRequest(queryText, category, token, I18N_LANG);
 
-      /* This path has no AbortController — cancelChatRequest only reaches the
-         streaming one — so a New chat while the request was in the air cannot
-         stop the answer arriving. What it can do is decline to append it to a
-         conversation that no longer exists. */
+      /* `sendChatRequest` sets `Services.chatAbortController` exactly as the
+         streaming path does, so `cancelChatRequest` aborts this request too and
+         a New chat mid-flight rejects it — an earlier note here claimed the
+         opposite. The check still earns its place: abort and reply race, and a
+         reply that already landed cannot be called back. What this declines is
+         appending it to a conversation that no longer exists. */
       if (generation !== resetGeneration) return;
 
       UI.toggleTypingIndicator(false);

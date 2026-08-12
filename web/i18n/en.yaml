@@ -29,6 +29,10 @@ runtime:
     undo: "Undo"
     restored: "Conversation restored"
     resetFailed: "Could not start a new chat. Your conversation is unchanged."
+    # Deliberately NOT resetFailed: by the time an undo can fail, the reset has
+    # already stood, so telling the reader their conversation is unchanged would
+    # be the opposite of what happened.
+    restoreFailed: "Could not restore the previous conversation."
 
   stage:
     searching: "Searching the guidelines"

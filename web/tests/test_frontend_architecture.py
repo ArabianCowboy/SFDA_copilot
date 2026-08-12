@@ -55,6 +55,7 @@ def test_english_catalogue_preserves_test_asserted_strings():
     assert runtime["chat"]["genericError"].startswith(
         "Sorry, I encountered an error while processing your request."
     )
+    assert runtime["chat"]["restoreFailed"] == "Could not restore the previous conversation."
     assert runtime["chat"]["sendAria"] == "Send message"
     assert runtime["chat"]["cancelAria"] == "Cancel message"
     assert runtime["auth"]["invalidCredentials"] == "Incorrect email or password."

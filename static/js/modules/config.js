@@ -41,6 +41,7 @@ export const CONFIG = {
     IS_CLEARING: 'is-clearing',
     IS_ACTIVATING: 'is-activating',
     IS_ARRIVING: 'is-arriving',
+    ANIM_SUPPRESSED: 'anim-suppressed',
     IS_HELD: 'is-held',
     HAS_ACTION: 'has-action',
     TOAST_ACTION: 'toast-action',
