@@ -26,6 +26,7 @@ prevent.
 from __future__ import annotations
 
 import copy
+import re
 
 import pytest
 from playwright.sync_api import expect
@@ -327,3 +328,101 @@ def test_clearing_does_not_sign_the_reader_out(authenticated_page):
 
     expect(authenticated_page.locator("#authenticated-view")).to_be_visible()
     expect(authenticated_page.locator("#logout-button")).to_be_visible()
+
+
+# ── The undo countdown ──────────────────────────────────────────────────────
+
+COUNTDOWN = "(el) => getComputedStyle(el, '::after').animationName"
+# `width`, not `inline-size`: the logical property is what the stylesheet
+# authors and what mirrors under RTL, but it does not resolve to a length in a
+# pseudo-element's computed style. The toast is horizontal either way.
+BAR_WIDTH = "(el) => parseFloat(getComputedStyle(el, '::after').width) || 0"
+
+# `.is-arriving` is transient — added for the entrance and cleared when it
+# finishes — so polling for it races the animation. Watch for it instead.
+WATCH_ARRIVAL = """
+(selector) => {
+  window.__arrived = false;
+  const button = document.querySelector(selector);
+  new MutationObserver(() => {
+    if (button.classList.contains('is-arriving')) window.__arrived = true;
+  }).observe(button, { attributes: true, attributeFilter: ['class'] });
+}
+"""
+
+
+def test_the_undo_toast_carries_a_countdown(authenticated_page):
+    send(authenticated_page)
+    authenticated_page.locator(NEW_CHAT).click()
+
+    toast = authenticated_page.locator("#toast")
+    expect(toast).to_have_class(re.compile(r"has-action"))
+    assert toast.evaluate(COUNTDOWN) == "toastCountdown"
+
+
+def test_the_countdown_drains(authenticated_page):
+    send(authenticated_page)
+    authenticated_page.locator(NEW_CHAT).click()
+
+    # The toast only appears once the server reset has resolved and the
+    # transcript has played out, so reading before it exists measures nothing.
+    expect(authenticated_page.locator("#toast .toast-action")).to_be_visible()
+
+    toast = authenticated_page.locator("#toast")
+    before = toast.evaluate(BAR_WIDTH)
+    authenticated_page.wait_for_timeout(1200)
+    after = toast.evaluate(BAR_WIDTH)
+
+    assert before > 0, "the rule should start at full width"
+    assert after < before, f"the rule did not drain ({before} -> {after})"
+
+
+def test_a_plain_toast_leaves_no_countdown_behind(authenticated_page):
+    """The singleton case, through a real path.
+
+    There is one #toast and many callers. Undo is its own best example: it
+    replaces the counting-down toast with a plain "restored" one through the
+    same element. That message must not inherit the countdown, the paused
+    state, or the ten-second lifetime that went with it.
+    """
+    send(authenticated_page)
+    authenticated_page.locator(NEW_CHAT).click()
+    expect(authenticated_page.locator("#toast .toast-action")).to_be_visible()
+
+    authenticated_page.locator("#toast .toast-action").click()
+
+    toast = authenticated_page.locator("#toast")
+    expect(toast).to_have_text("Conversation restored")
+    expect(toast).not_to_have_class(re.compile(r"has-action"))
+    expect(authenticated_page.locator("#toast .toast-action")).to_have_count(0)
+    assert toast.evaluate(COUNTDOWN) == "none"
+    assert toast.evaluate("(el) => el.style.getPropertyValue('--toast-duration')") == ""
+
+
+def test_undo_does_not_replay_the_arrival_animation(authenticated_page):
+    """An undo should read as the clear never having happened.
+
+    The button animating back in would announce that it did — and every route
+    that touches the transcript runs through updateNewChatAvailability, including
+    restoreTranscript, so this is exactly the call that has to opt out.
+    """
+    send(authenticated_page)
+    authenticated_page.locator(NEW_CHAT).click()
+    expect(authenticated_page.locator(NEW_CHAT)).to_be_hidden()
+
+    # Watch only the restore, not the first arrival.
+    authenticated_page.evaluate(WATCH_ARRIVAL, NEW_CHAT)
+    authenticated_page.locator("#toast .toast-action").click()
+    expect(authenticated_page.locator(".chatbot-message")).to_have_count(1)
+
+    assert authenticated_page.evaluate("() => window.__arrived") is False
+
+
+def test_the_button_animates_in_when_it_first_appears(authenticated_page):
+    """The other half of the same rule: it must still arrive on the way in."""
+    expect(authenticated_page.locator(NEW_CHAT)).to_be_hidden()
+
+    authenticated_page.evaluate(WATCH_ARRIVAL, NEW_CHAT)
+    send(authenticated_page)
+
+    assert authenticated_page.evaluate("() => window.__arrived") is True

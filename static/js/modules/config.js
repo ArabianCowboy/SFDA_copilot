@@ -40,6 +40,8 @@ export const CONFIG = {
     NEW_CHAT_BTN: 'new-chat-btn',
     IS_CLEARING: 'is-clearing',
     IS_ACTIVATING: 'is-activating',
+    IS_ARRIVING: 'is-arriving',
+    IS_HELD: 'is-held',
     HAS_ACTION: 'has-action',
     TOAST_ACTION: 'toast-action',
     MESSAGE_LIST: 'message-list',

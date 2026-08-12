@@ -38,36 +38,89 @@ export const DOMCache = {
 
 /* ——————————————— TOAST TIMING ——————————————— */
 
-/* One timer for the one toast element. See showToast for why it is not a
-   per-call setTimeout any more. */
+/* There is ONE #toast element and many callers, so every piece of state below
+   is shared and has to be torn down between messages rather than accumulated.
+   The countdown made that a correctness problem instead of a tidiness one: a
+   status toast firing mid-undo inherits whatever the previous one left behind. */
 let toastTimer = null;
-let toastDuration = CONFIG.TOAST_DURATION;
+let toastRemaining = 0;
+let toastResumeAt = 0;
 
-function scheduleToastHide(toast) {
+/* Bumped on every show and hide. A timeout or an action handler from a toast
+   that has since been replaced compares its captured id and declines to act. */
+let toastId = 0;
+
+/* Two independent hold channels — pointer and focus — so hovering the toast
+   and then tabbing into its action does not subtract the same elapsed span
+   twice, and leaving with focus still inside does not resume early. */
+let pointerHeld = false;
+let focusHeld = false;
+
+/** Drop every trace of the toast currently on screen. */
+function resetToastState(toast) {
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => toast.classList.add(CONFIG.CLASSES.HIDDEN), toastDuration);
+  toastTimer = null;
+  toastRemaining = 0;
+  toastResumeAt = 0;
+  pointerHeld = false;
+  focusHeld = false;
+  toastId += 1;
+
+  toast.classList.remove(CONFIG.CLASSES.IS_HELD);
+  toast.style.removeProperty('--toast-duration');
+  return toastId;
+}
+
+function armToastHide(toast, id) {
+  clearTimeout(toastTimer);
+  toastResumeAt = performance.now();
+  toastTimer = setTimeout(() => {
+    if (id !== toastId) return;
+    toast.classList.add(CONFIG.CLASSES.HIDDEN);
+  }, toastRemaining);
 }
 
 /**
- * Hold an actionable toast open while it is being read or reached.
+ * Hold a toast open while it is being read or reached.
  *
- * An undo on a timer is a timing constraint on the reader, so the timer stops
- * for anyone who is plainly still deciding — pointer over it, or focus inside
- * it. Bound once per element; the toast is server-rendered and never replaced.
+ * An undo on a timer is a timing constraint on the reader, so the clock stops
+ * for anyone plainly still deciding. The countdown rule is a CSS animation on
+ * the toast's own ::after, paused by the same class — pausing an animation
+ * freezes its elapsed time, so the bar and the timeout stay in step without
+ * either one driving the other.
+ *
+ * Bound once per element; the toast is server-rendered and never replaced.
  */
 function bindToastHold(toast) {
   if (toast.dataset.holdBound) return;
   toast.dataset.holdBound = '1';
 
-  const hold = () => clearTimeout(toastTimer);
-  const release = () => {
-    if (!toast.classList.contains(CONFIG.CLASSES.HIDDEN)) scheduleToastHide(toast);
+  const held = () => pointerHeld || focusHeld;
+
+  const hold = (channel) => () => {
+    if (toast.classList.contains(CONFIG.CLASSES.HIDDEN)) return;
+    const wasHeld = held();
+    if (channel === 'pointer') pointerHeld = true; else focusHeld = true;
+    if (wasHeld) return;                       // already stopped; do not subtract twice
+
+    clearTimeout(toastTimer);
+    toastRemaining = Math.max(0, toastRemaining - (performance.now() - toastResumeAt));
+    toast.classList.add(CONFIG.CLASSES.IS_HELD);
   };
 
-  toast.addEventListener('mouseenter', hold);
-  toast.addEventListener('focusin', hold);
-  toast.addEventListener('mouseleave', release);
-  toast.addEventListener('focusout', release);
+  const release = (channel) => () => {
+    if (!held()) return;
+    if (channel === 'pointer') pointerHeld = false; else focusHeld = false;
+    if (held()) return;                        // the other channel still holds it
+
+    toast.classList.remove(CONFIG.CLASSES.IS_HELD);
+    if (!toast.classList.contains(CONFIG.CLASSES.HIDDEN)) armToastHide(toast, toastId);
+  };
+
+  toast.addEventListener('mouseenter', hold('pointer'));
+  toast.addEventListener('focusin', hold('focus'));
+  toast.addEventListener('mouseleave', release('pointer'));
+  toast.addEventListener('focusout', release('focus'));
 }
 
 /* ——————————————— ERROR HANDLER ——————————————— */
@@ -102,8 +155,9 @@ export const ErrorHandler = {
     const toast = DOMCache.get(CONFIG.SELECTORS.TOAST);
     if (!toast) return;
 
-    clearTimeout(toastTimer);
-    toastDuration = duration;
+    // Everything the previous message left behind goes first, so a plain status
+    // toast can never inherit a countdown — or a paused one.
+    const id = resetToastState(toast);
 
     // Wipes any previous action button along with the previous text.
     toast.textContent = message;
@@ -111,10 +165,18 @@ export const ErrorHandler = {
 
     if (actionLabel && typeof onAction === 'function') {
       toast.classList.add(CONFIG.CLASSES.HAS_ACTION);
+
+      /* The countdown rule is the toast's own ::after, so there is no node to
+         insert in the right place, none to mark aria-hidden, and none for a
+         test asserting the plain toast's text to trip over. Its length is data,
+         so it arrives as a custom property. */
+      toast.style.setProperty('--toast-duration', `${duration}ms`);
+
       const action = DOMCache.createElement('button', CONFIG.CLASSES.TOAST_ACTION);
       action.type = 'button';
       action.textContent = actionLabel;
       action.addEventListener('click', () => {
+        if (id !== toastId) return;
         ErrorHandler.hideToast();
         onAction();
       });
@@ -123,13 +185,14 @@ export const ErrorHandler = {
     }
 
     toast.classList.remove(CONFIG.CLASSES.HIDDEN);
-    scheduleToastHide(toast);
+    toastRemaining = duration;
+    armToastHide(toast, id);
   },
 
   hideToast() {
     const toast = DOMCache.get(CONFIG.SELECTORS.TOAST);
     if (!toast) return;
-    clearTimeout(toastTimer);
+    resetToastState(toast);
     toast.classList.add(CONFIG.CLASSES.HIDDEN);
   },
 

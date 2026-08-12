@@ -408,16 +408,17 @@
   gap: var(--space-2);
   flex: none;
   align-self: flex-start;
-  margin-block-start: var(--space-2);
+  margin-block: var(--space-4) var(--space-2);
   padding-block: var(--space-2);
-  padding-inline: var(--space-3);
+  padding-inline: var(--space-4);
+  min-block-size: 38px;
   font-family: inherit;
-  font-size: var(--fs-200);
+  font-size: var(--fs-300);
   font-weight: var(--fw-medium);
   line-height: 1;
-  color: var(--fg-secondary);
-  background: var(--bg-surface);
-  border: 1px solid var(--hairline);
+  color: var(--signal);
+  background: var(--signal-tint);
+  border: 1px solid var(--signal);
   border-radius: var(--radius-pill);
   cursor: pointer;
   transition: var(--btn-transition);
@@ -425,12 +426,25 @@
 /* The display above outranks the `hidden` attribute's UA rule, and the button
    ships hidden. Without this it is visible on every first paint. */
 .new-chat-btn[hidden] { display: none; }
-.new-chat-btn .icon {
-  color: var(--fg-muted);
-  transition: color var(--duration-s) var(--ease-soft);
+
+/* Deepened, NOT inverted. The citation marker this borrows its resting fill
+   from goes solid teal on hover, but #send-button is already a solid --signal
+   fill with an --fg-on-signal label at this very size and weight — so the same
+   move here would put a visual twin of Send in the sidebar, and this one clears
+   your work. Solid teal stays the primary action's alone. */
+.new-chat-btn:hover {
+  /* The fill has to carry the hover, because --signal-hover sits close enough
+     to --signal in light mode that a border-and-label shift alone is nearly
+     invisible. Deepening the tint through the channel triplet keeps the
+     response obvious while staying a tint — and it flips with the ramp, so it
+     reads as *deeper* in light and *lighter* in dark without a branch. */
+  background: rgb(var(--signal-rgb) / .24);
+  color: var(--signal-hover);
+  border-color: var(--signal-hover);
+  transform: translateY(-1px);
 }
-.new-chat-btn:hover { color: var(--fg-primary); border-color: var(--signal); }
-.new-chat-btn:hover .icon { color: var(--signal); }
+/* No .icon colour rule: the glyph is filled with currentColor, so it follows
+   the label through every state for free. */
 
 /* ——————————————— FAQ rail ———————————————
    The reason the sidebar exists: a first session usually starts by clicking a
@@ -1640,6 +1654,61 @@
      offset it covers the field their caret is now in, with the button they
      are meant to press floating on top of it. */
   inset-block-end: var(--space-9);
+}
+
+/* ——————————————— The undo countdown ———————————————
+   How long the action has left, along the toast's block-end edge.
+
+   This is a METER, not a rule, and the distinction is why it is 4px rather
+   than the system's 2px. A rule marks a boundary — a tab indicator, a
+   blockquote, the cutoff notice — and that job is held to one weight so the
+   weight itself carries meaning. A meter reports a quantity that is changing
+   while you look at it, so it is sized to be read at a glance instead. At 2px
+   it was technically present and practically invisible on a floating surface
+   you have seconds to notice.
+
+   Two pseudo-elements, no child nodes: nothing to insert in the right place,
+   nothing to mark aria-hidden, nothing focusable, and nothing that can alter
+   the toast's text content, which the Playwright suite asserts verbatim.
+
+   ::before is the track and ::after is the remaining time. The track matters
+   more than it looks — without it a short bar is just a short line, with no
+   reference for how much of the window it represents. */
+.toast-notification.has-action::before,
+.toast-notification.has-action::after {
+  content: "";
+  position: absolute;
+  inset-inline-start: 0;
+  inset-block-end: 0;
+  block-size: 4px;
+}
+.toast-notification.has-action::before {
+  inline-size: 100%;
+  background: rgb(var(--confidence-rgb) / .26);
+}
+/* Shrinks its inline-size from an inline-start anchor, so the remaining time
+   retreats toward the start of the reading direction — and the whole thing
+   mirrors under RTL without a --flip in sight. */
+.toast-notification.has-action::after {
+  inline-size: 100%;
+  background: var(--confidence);
+  animation: toastCountdown var(--toast-duration, 10000ms) linear forwards;
+}
+/* Reading it, or reaching for it, stops the clock. Pausing the animation
+   freezes its own elapsed time, which is what keeps the meter and the JS
+   timeout in step without either one driving the other. */
+.toast-notification.is-held::after { animation-play-state: paused; }
+
+/* Both bands are square-ended; the toast's own radius does the rounding. Safe
+   for the action's focus ring, which sits 24px (--space-5 of inline padding)
+   from the edge and extends 4px. */
+.toast-notification { overflow: hidden; }
+
+/* The global focus ring is teal, and this is the one surface in the app on an
+   inverse ground. currentColor reads on it in both themes. */
+.toast-action:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
 }
 /* Underlined rather than boxed: a second bordered control inside a floating
    surface reads as a dialog, and this is a toast. The inverse ground is the

@@ -500,7 +500,9 @@ export const UI = {
     container.appendChild(fragment);
     requestAnimationFrame(() => container.removeAttribute('aria-busy'));
 
-    this.updateNewChatAvailability();
+    // No entrance on the way back: an undo should read as the clear never
+    // having happened, and a button animating in would announce that it did.
+    this.updateNewChatAvailability({ animate: false });
   },
 
   /**
@@ -511,14 +513,34 @@ export const UI = {
    * greyed-out control offering to clear a conversation nobody has had yet
    * would still be the first thing in the column.
    */
-  updateNewChatAvailability() {
+  updateNewChatAvailability({ animate = true } = {}) {
     const container = DOMCache.get(CONFIG.SELECTORS.MESSAGES);
     const hasTurns = !!container && [...container.children]
       .some(el => !el.hasAttribute('data-chat-intro'));
     const available = hasTurns || AppState.isRequestInProgress();
 
     DOMCache.getAll(`.${CONFIG.CLASSES.NEW_CHAT_BTN}`).forEach(btn => {
+      /* Only the hidden→visible transition animates, and only when the caller
+         allows it. Every route that touches the transcript lands here — a sent
+         message, a stream starting or ending, a clear, an undo — so keying off
+         `available` alone would replay the arrival on every turn, and keying
+         off the transition alone would replay it on an undo, which is supposed
+         to feel like nothing happened. */
+      const arriving = animate && btn.hidden && available;
       btn.hidden = !available;
+      if (!arriving) return;
+
+      // Restart the animation: removing the class alone is coalesced away.
+      btn.classList.remove(CONFIG.CLASSES.IS_ARRIVING);
+      void btn.offsetHeight;
+      btn.classList.add(CONFIG.CLASSES.IS_ARRIVING);
+      // Cleared once it has played, so the class means "arriving" rather than
+      // "arrived once, some time ago".
+      btn.addEventListener(
+        'animationend',
+        () => btn.classList.remove(CONFIG.CLASSES.IS_ARRIVING),
+        { once: true }
+      );
     });
   },
 

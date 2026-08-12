@@ -148,6 +148,15 @@
   animation: newChatPop var(--duration-m) var(--ease-out);
 }
 
+/* The button arrives the moment there is a conversation to end. Styling can
+   only raise how visible a control is at rest; motion is what catches the eye
+   at the instant it becomes available, which is the one job motion has here.
+   Applied by ui.js on the hidden→visible transition only, and deliberately NOT
+   on an undo — a restored conversation should feel like nothing happened. */
+.new-chat-btn.is-arriving {
+  animation: newChatArrive var(--duration-m) var(--ease-out);
+}
+
 /* ═══════════════════ KEYFRAMES ═══════════════════ */
 @keyframes transcriptClear {
   from { opacity: 1; transform: translateY(0) translateX(0); }
@@ -160,6 +169,34 @@
   0% { transform: scale(1); }
   40% { transform: scale(.82); }
   100% { transform: scale(1); }
+}
+@keyframes newChatArrive {
+  from { opacity: 0; transform: translateY(-6px) scale(.96); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes toastCountdown {
+  from { inline-size: 100%; }
+  to { inline-size: 0%; }
+}
+
+/* Reduced motion: the countdown becomes discrete instead of disappearing.
+   The global switch in base.css collapses every animation to .001ms, which
+   would leave this rule empty the instant it appeared and take the only signal
+   of how long the undo lasts with it. But "it carries information" is not on
+   its own a licence to override a stated preference — so the answer is neither
+   to exempt it nor to drop it. steps() turns ten seconds of continuous travel
+   into ten once-a-second jumps: the reader still learns how much time is left,
+   and there is no motion to track.
+
+   The hide itself is a JS timeout, never this animation's animationend, so
+   the undo window is the same length either way. Specificity carries the
+   override — a class plus a pseudo-element beats the universal selector — so
+   source order does not matter. */
+@media (prefers-reduced-motion: reduce) {
+  .toast-notification.has-action::after {
+    animation-duration: var(--toast-duration, 10000ms) !important;
+    animation-timing-function: steps(10) !important;
+  }
 }
 @keyframes glowPulse {
   0%, 100% { opacity: .45; transform: translateY(-50%) scale(1); }
