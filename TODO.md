@@ -129,12 +129,40 @@ reflect the stored preference: both `populateProfileForm` (ui.js:625) and the
 empty-profile reset (handlers.js:668) check `ThemeManager.getCurrent()` — the
 live `data-bs-theme` attribute — not `profile.preferences.theme`, so a reader
 who saved Dark is shown their *current* theme, not their saved one. And the
-surface is silently English-only: the profile-toast strings in `handlers.js`
-(lines 620, 635, 650) are hardcoded literals while the `runtime.profile.*` keys
-written for exactly this sit unused — an Arabic reader gets English error copy
-on this one surface. The immediate reason to touch it is downstairs: the admin
-controls (below) will need somewhere to live, and nothing but this modal exists
-to hang them from.
+surface is silently English-only while the `runtime.profile.*` keys written for
+exactly this sit unused. The immediate reason to touch it is downstairs: the
+admin controls (below) will need somewhere to live, and nothing but this modal
+exists to hang them from.
+
+**Two live bugs to fix while you are in here.** Both are shipped today, both
+were confirmed by reading the code, and neither has a test that would catch it —
+which is why they are written out rather than left in the prose above.
+
+1. **The theme radios ignore the saved preference.** `populateProfileForm`
+   (`static/js/modules/ui.js:625`) and the empty-profile reset
+   (`static/js/modules/handlers.js:668`) both select the radio matching
+   `ThemeManager.getCurrent()` — the live `data-bs-theme` attribute — rather
+   than `profile.preferences.theme`. Save Dark, switch to Light, reopen the
+   modal: it shows Light, and saving from there silently overwrites the stored
+   preference with the current one. Neither test in
+   `test_profile_theme_integration.py` asserts which radio is *selected*:
+   `test_profile_form_loads_cached_profile` opens the modal but checks only the
+   name and organization fields, and `test_profile_update_applies_and_persists_theme`
+   saves and never reopens it. The gap is the read-back, so that is where the
+   new test goes.
+
+2. **Every profile string is hardcoded English.** Five call sites in
+   `static/js/modules/handlers.js` — 620, 635, 639, 650 and 674 — pass literals
+   to `showProfileError`/`showToast`, while
+   `runtime.profile.{loadFailed,saveFailed,saved}` sit in *both*
+   `web/i18n/en.yaml` and `web/i18n/ar.yaml` and are read by no module. An
+   Arabic reader gets English on this one surface.
+   `test_arabic_catalogue_covers_every_runtime_key` cannot catch this: it
+   checks that Arabic has every key English has, and both catalogues have
+   these — they are simply never used. Note there are five sites and only
+   three keys, so translating them is not a one-to-one mapping; the session-
+   expired (620) and save-failure (639) messages need keys that do not exist
+   yet.
 
 **What it would disturb.** Every profile behaviour is pinned by tests that name
 it. `web/tests/test_profile_theme_integration.py` runs three browser tests —
