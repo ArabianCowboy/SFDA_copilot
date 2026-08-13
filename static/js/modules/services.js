@@ -226,10 +226,10 @@ export const Services = {
    * End the session on BOTH sides.
    *
    * Signing out of Supabase drops the access token; it does nothing to the
-   * Flask session cookie, which carries `conv_id` and `chat_history`. Without
-   * the call below that cookie survived logout intact, and the next reader to
-   * sign in on this browser had the previous reader's conversation fed to the
-   * model as context.
+   * Flask session cookie, which carries `conv_id` — the key into the
+   * server-side conversation history. Without the call below that cookie
+   * survived logout intact, and the next reader to sign in on this browser
+   * had the previous reader's conversation fed to the model as context.
    *
    * The server call goes FIRST and its failure is not fatal: a network error
    * must not leave the reader signed in, and the server rotates conversation

@@ -1,9 +1,9 @@
 """One browser, two readers: the second must never inherit the first's chat.
 
 The Flask session cookie outlives a Supabase sign-out. It carries `conv_id`,
-which keys the server-side ConversationStore, and `chat_history`, which the
-blocking route feeds straight back to the model. Nothing in the logout path
-touched either — the client never called the Flask logout endpoint, and that
+which keys the server-side ConversationStore that both the streaming and
+blocking routes feed straight back to the model. Nothing in the logout path
+touched it — the client never called the Flask logout endpoint, and that
 endpoint never cleared the session — so on a shared machine the next reader's
 first question arrived carrying the previous reader's conversation as context.
 
@@ -147,11 +147,11 @@ def test_a_different_reader_does_not_inherit_the_streaming_conversation(app, cli
 
 
 def test_a_different_reader_does_not_inherit_the_blocking_history(app, client):
-    """The blocking route reads session["chat_history"] straight into the
-    prompt, so it needs its own assertion."""
+    """The blocking route now reads its history from the same store-backed
+    conv_id the streaming route uses, so it needs its own assertion too."""
     client.post("/api/chat", json={"query": "first"}, headers=AUTH)
     with client.session_transaction() as flask_session:
-        assert flask_session.get("chat_history"), "precondition: history recorded"
+        assert flask_session.get("conv_id"), "precondition: a conversation exists"
         flask_session["auth_identity"] = "someone-else@example.com"
 
     client.post("/api/chat", json={"query": "second"}, headers=AUTH)

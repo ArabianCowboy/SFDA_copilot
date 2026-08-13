@@ -13,7 +13,6 @@ os.environ.setdefault("OMP_NUM_THREADS", "1")
 os.environ.setdefault("MKL_NUM_THREADS", "1")
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 
-import json
 import logging
 import re
 import sys
@@ -242,17 +241,47 @@ def auth_required(view_func):
     return wrapper
 
 
-def _truncate_chat_history(chat_history: List[Dict[str, str]], max_pairs: int, max_chars: int) -> List[Dict[str, str]]:
-    """Trim chat history to max_pairs and max_chars JSON length for the session."""
-    # 1. Truncate by message pair count first
-    truncated_history = chat_history[-(max_pairs * 2) :]
+def _resolve_and_adopt(
+    store: ConversationStore, existing_id: Optional[str], legacy_history: Optional[List[Dict[str, str]]]
+) -> Optional[str]:
+    """Return the id this content lives under, adopting it into the store.
 
-    # 2. Truncate by character count if still too long, using walrus operator for efficiency
-    while truncated_history and len((payload := json.dumps(truncated_history))) > max_chars:
-        # Drop the oldest user-assistant pair
-        truncated_history = truncated_history[2:]
+    Mints an id for cookie-only legacy content that predates `conv_id` (a
+    reader who reset, or who used only the blocking chat path, before
+    history moved server-side) so it isn't left stranded in the cookie.
+    Returns None if there's neither an id nor legacy content to adopt.
 
-    return truncated_history
+    If `existing_id` already has its own store entry, `adopt_cookie_history`
+    is a no-op — the store wins over orphaned cookie content rather than
+    attempting a merge, since the two could only exist if a reader used both
+    the blocking and streaming paths before this migration unified them, and
+    there's no principled way to reconcile histories that were already
+    inconsistent with each other.
+    """
+    resolved = existing_id or (uuid.uuid4().hex if legacy_history else None)
+    if resolved:
+        store.adopt_cookie_history(resolved, legacy_history)
+    return resolved
+
+
+def _migrate_legacy_undo_history(store: ConversationStore) -> None:
+    """Move a pre-migration `prev_chat_history` out of the cookie on the next
+    chat request, whichever route it lands on.
+
+    `handle_conversation_reset`'s `undo` branch already adopts this, but only
+    if the reader actually presses Undo. Without this, a reader who reset
+    once on the old blocking implementation and then just kept asking
+    questions — never touching Undo, Forget, or another reset — would have
+    their old set-aside history keep riding the signed cookie on every
+    request indefinitely, which is exactly the cookie-size failure this
+    migration exists to close. Called at the top of both chat routes; a
+    no-op for every session created after this migration shipped.
+    """
+    legacy = session.pop("prev_chat_history", None)
+    if legacy is None:
+        return
+    if prev_id := _resolve_and_adopt(store, session.get("prev_conv_id"), legacy):
+        session["prev_conv_id"] = prev_id
 
 
 # ──────────────────────────────────────────────────────────
@@ -665,6 +694,7 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
         # Flask writes Set-Cookie in finalize_request(), which runs after this
         # function returns but before the WSGI server iterates the generator
         # below, so a session write inside generate() would be silently dropped.
+        _migrate_legacy_undo_history(store)
         conversation_id = session.get("conv_id")
         if not conversation_id:
             conversation_id = uuid.uuid4().hex
@@ -803,17 +833,27 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
             # are cut to the same limit.
             retrieved = build_source_payload(search_results, limit=openai_handler.max_context_results)
 
-            # Asking a question ends the undo, so the conversation a reset set
-            # aside stops being reachable here. The client fires `forget` for
-            # exactly this reason, but relying on that request landing is what
-            # would let this cookie carry TWO histories at once — and each is
-            # capped at 3,500 JSON characters against a ~4KB cookie limit, so
-            # the pair is the one combination that can cost the reader their
-            # session rather than merely their history. Enforced rather than
-            # trusted: at most one history is ever in the cookie.
-            session.pop("prev_chat_history", None)
+            store: ConversationStore = current_app.config["conversations"]
+            max_pairs = current_app.config["MAX_CHAT_HISTORY_MESSAGE_PAIRS"]
 
-            chat_history = session.get("chat_history", [])
+            # Same pattern the streaming route uses (see its comment there):
+            # get/create conv_id up front, one-time-migrate any pre-deploy
+            # cookie history into the store under it. No "asking ends the
+            # undo" step here — that was a cookie-byte safety rule (a history
+            # in the cookie could double the session's size against a ~4KB
+            # limit), not a UX decision, and it doesn't apply once history
+            # never touches the cookie. Keeping it would also diverge from
+            # the streaming route, which has never ended the undo on a new
+            # question — asking here now behaves the same way asking there
+            # always has.
+            _migrate_legacy_undo_history(store)
+            conversation_id = session.get("conv_id")
+            if not conversation_id:
+                conversation_id = uuid.uuid4().hex
+                session["conv_id"] = conversation_id
+            store.adopt_cookie_history(conversation_id, session.pop("chat_history", None))
+
+            chat_history = store.get(conversation_id)
             answer, suggested_questions = openai_handler.generate_response(
                 query, llm_context, category, chat_history, lang=lang,
             )
@@ -824,8 +864,7 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
             cited = extract_cited_indices(answer, retrieved)
             sources = [s for s in retrieved if s["index"] in cited]
 
-            chat_history.extend([{"role": "user", "content": query}, {"role": "assistant", "content": answer}])
-            session["chat_history"] = _truncate_chat_history(chat_history, current_app.config["MAX_CHAT_HISTORY_MESSAGE_PAIRS"], MAX_SESSION_CHAT_HISTORY_CHARS)
+            store.append_turn(conversation_id, query, answer, max_pairs, MAX_SESSION_CHAT_HISTORY_CHARS)
 
             return jsonify(
                 response=answer,
@@ -873,21 +912,23 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
         logout (`purge_conversation_state`), or by the store's TTL — whichever
         comes first.
 
-        The non-streaming `/api/chat` fallback keeps its history in the session
-        rather than the store, so it needs the same treatment and gets it the
-        same way: `chat_history` is rotated into `prev_chat_history` rather than
-        dropped. Clearing it outright was half a reset — the path a browser
-        without streaming bodies takes would stop remembering, which is right,
-        but an undo could then put the transcript and the streaming context back
-        while that path carried on as though the reset had stood. Undo has to
-        restore what the model remembers on BOTH paths or on neither.
+        Both `/api/chat` and `/api/chat/stream` keep their history in the same
+        `ConversationStore`, keyed by `conv_id`, so this rotation covers both
+        paths uniformly — there is nothing path-specific left to rotate.
+        `chat_history` / `prev_chat_history` are no longer written by either
+        route; `_resolve_and_adopt` below only exists to adopt a pre-migration
+        cookie's leftover history into the store under the id being restored
+        or rotated away, so a session that predates this migration does not
+        lose or strand content — it is a no-op for every session created
+        after this migration shipped.
         """
         payload = request.get_json(silent=True) or {}
         store: ConversationStore = current_app.config["conversations"]
 
         if payload.get("undo"):
-            restored = session.pop("prev_conv_id", None)
-            restored_history = session.pop("prev_chat_history", None)
+            restored = _resolve_and_adopt(
+                store, session.pop("prev_conv_id", None), session.pop("prev_chat_history", None)
+            )
             if restored:
                 # The empty conversation the reset started. Nothing has read it
                 # — undo is torn down client-side before a new question is sent
@@ -895,8 +936,6 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
                 if current := session.get("conv_id"):
                     store.clear(current)
                 session["conv_id"] = restored
-            if restored_history is not None:
-                session["chat_history"] = restored_history
 
             # Nothing set aside is a no-op, NOT an error: a reader whose first
             # question never reached the server has a transcript to restore and
@@ -905,7 +944,7 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
             # Reporting that as a failure would leave their turns discarded.
             return jsonify(
                 ok=True,
-                restored=bool(restored) or restored_history is not None,
+                restored=bool(restored),
                 conversation_id=session.get("conv_id"),
             )
 
@@ -917,19 +956,24 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
 
         # A reset while an earlier one is still undoable: that older conversation
         # is now unreachable by any route, so it goes now rather than waiting for
-        # the TTL. Its history goes with it, which is also what keeps the session
-        # cookie holding at most one conversation's worth of text.
+        # the TTL.
         if stale := session.pop("prev_conv_id", None):
             store.clear(stale)
         session.pop("prev_chat_history", None)
 
-        if previous := session.get("conv_id"):
+        # Usually just conv_id — but a pre-migration session may instead (or
+        # also) be carrying its live history as session["chat_history"], with
+        # no conv_id at all (a reader who only ever used the blocking path
+        # before this migration). _resolve_and_adopt mints an id for that
+        # legacy content so it rotates into prev_conv_id like everything
+        # else, rather than sitting inert in the cookie until some later
+        # request silently resurrects it under an unrelated conversation.
+        previous = _resolve_and_adopt(store, session.get("conv_id"), session.pop("chat_history", None))
+        if previous:
             session["prev_conv_id"] = previous
 
         conversation_id = uuid.uuid4().hex
         session["conv_id"] = conversation_id
-        if (history := session.pop("chat_history", None)) is not None:
-            session["prev_chat_history"] = history
         return jsonify(ok=True, conversation_id=conversation_id)
 
 

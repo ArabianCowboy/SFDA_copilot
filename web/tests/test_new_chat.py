@@ -25,7 +25,10 @@ prevent.
 
 from __future__ import annotations
 
+import base64
 import copy
+import hashlib
+import json
 import re
 
 import pytest
@@ -115,23 +118,27 @@ def test_the_model_gets_no_prior_context_after_a_reset(app, client):
     assert app.config["llm_history"][-1] == []
 
 
-def test_reset_clears_the_blocking_paths_history(client):
-    """`/api/chat` keeps history in the session, not the store.
-
-    A reset that only handled `conv_id` would leave the non-streaming fallback
-    remembering everything — the path a browser without streaming bodies takes.
-    """
+def test_reset_rotates_the_blocking_paths_conversation_id(client):
+    """`/api/chat` now shares `conv_id`/`ConversationStore` with the streaming
+    path, so a reset rotates it here exactly the same way."""
     drain(client.post("/api/chat", json={"query": "first"}, headers=AUTH))
     with client.session_transaction() as flask_session:
-        assert flask_session.get("chat_history"), "precondition: history recorded"
+        before = flask_session["conv_id"]
 
-    client.post("/api/conversation/reset", json={}, headers=AUTH)
+    response = client.post("/api/conversation/reset", json={}, headers=AUTH)
 
+    assert response.status_code == 200
     with client.session_transaction() as flask_session:
-        assert flask_session.get("chat_history") is None
-        # Set aside rather than destroyed, for the same reason `conv_id` is
-        # rotated rather than deleted — see the undo tests below.
-        assert flask_session.get("prev_chat_history")
+        assert flask_session["conv_id"] != before
+        assert flask_session["prev_conv_id"] == before
+
+
+def test_the_blocking_path_model_gets_no_prior_context_after_a_reset(app, client):
+    drain(client.post("/api/chat", json={"query": "first"}, headers=AUTH))
+    client.post("/api/conversation/reset", json={}, headers=AUTH)
+    drain(client.post("/api/chat", json={"query": "second"}, headers=AUTH))
+
+    assert app.config["llm_history"][-1] == []
 
 
 def test_reset_keeps_the_reader_signed_in(client):
@@ -201,17 +208,12 @@ def test_undo_with_nothing_set_aside_is_a_no_op_not_an_error(client):
 
 
 def test_undo_restores_the_blocking_paths_history(client):
-    """The other half of the rotation, for the path that has no store entry.
-
-    `/api/chat` keeps its history in the session cookie, so clearing it and not
-    putting it back made undo half a restore: the transcript and the streaming
-    context came back while a browser without streaming bodies carried on as
-    though the reset had stood — answering the conversation on screen with no
-    memory of it.
-    """
+    """The other half of the rotation, now that `/api/chat` shares the same
+    store-backed `conv_id` mechanism the streaming path already used — it no
+    longer has a separate cookie-resident history to restore in parallel."""
     drain(client.post("/api/chat", json={"query": "first"}, headers=AUTH))
     with client.session_transaction() as flask_session:
-        original = flask_session["chat_history"]
+        original = flask_session["conv_id"]
 
     client.post("/api/conversation/reset", json={}, headers=AUTH)
     response = client.post("/api/conversation/reset", json={"undo": True}, headers=AUTH)
@@ -219,8 +221,8 @@ def test_undo_restores_the_blocking_paths_history(client):
     assert response.status_code == 200
     assert response.get_json()["restored"] is True
     with client.session_transaction() as flask_session:
-        assert flask_session["chat_history"] == original
-        assert flask_session.get("prev_chat_history") is None
+        assert flask_session["conv_id"] == original
+        assert flask_session.get("prev_conv_id") is None
 
 
 def test_the_model_gets_the_restored_history_on_the_blocking_path(app, client):
@@ -233,34 +235,73 @@ def test_the_model_gets_the_restored_history_on_the_blocking_path(app, client):
     assert app.config["llm_history"][-1], "undo restored the view but not the context"
 
 
-def test_the_cookie_never_carries_two_histories(client):
-    """The bound that makes setting a history aside safe at all.
-
-    Each history is capped at 3,500 JSON *characters* — not serialized cookie
-    bytes — against a browser limit of about 4,093 bytes, and content that
-    compresses badly is not hypothetical on this product: a pasted table of
-    batch numbers, a list of submission IDs, signed URLs, OCR output. One such
-    history is already close to the edge; two would go over, and a dropped
-    cookie costs the reader their session rather than their history.
-
-    So the two are never both present. Asking a question ends the undo, and the
-    server enforces that rather than trusting the client's `forget` request to
-    land — which makes rotating the history exactly as cookie-expensive as
-    clearing it was.
+def test_undo_survives_a_blocking_question_asked_after_the_reset(client):
+    """Unlike the old cookie-bound design — where a blocking-path question
+    used to force-end the undo, purely to keep two full histories from ever
+    sharing one ~4KB cookie — asking again here no longer ends it. That
+    reason is gone once history never touches the cookie at all, and keeping
+    the old rule would have made the blocking path behave differently from
+    the streaming path, which has never ended the undo on a new question.
     """
     drain(client.post("/api/chat", json={"query": "first"}, headers=AUTH))
     client.post("/api/conversation/reset", json={}, headers=AUTH)
 
-    with client.session_transaction() as flask_session:
-        assert flask_session.get("prev_chat_history"), "precondition: one set aside"
-        assert flask_session.get("chat_history") is None
-
-    # A new question on the blocking path, with no `forget` from the client.
     drain(client.post("/api/chat", json={"query": "second"}, headers=AUTH))
 
+    response = client.post("/api/conversation/reset", json={"undo": True}, headers=AUTH)
+    assert response.get_json()["restored"] is True
+
+
+def test_undo_survives_a_blocking_question_after_resetting_a_streaming_conversation(app, client):
+    """The cross-route case that mattered most: mixing routes must not behave
+    differently from using one route throughout. `conv_id`/`prev_conv_id` are
+    shared machinery now, not something either route owns on its own.
+
+    Asserts more than `restored: True` — the old blocking path never touched
+    `prev_conv_id` at all, so an intervening blocking question wouldn't have
+    stopped the old code from reporting a restore either. What only the fix
+    gets right is *what* gets restored: the streaming conversation's own
+    context, not whatever the intervening blocking question happened to leave
+    behind in a `chat_history` no longer being read from.
+    """
+    ask(client, "first")
     with client.session_transaction() as flask_session:
-        assert flask_session.get("chat_history"), "the new question was recorded"
-        assert flask_session.get("prev_chat_history") is None, "two histories in one cookie"
+        original = flask_session["conv_id"]
+
+    client.post("/api/conversation/reset", json={}, headers=AUTH)
+    drain(client.post("/api/chat", json={"query": "second"}, headers=AUTH))
+
+    response = client.post("/api/conversation/reset", json={"undo": True}, headers=AUTH)
+    assert response.get_json()["restored"] is True
+    with client.session_transaction() as flask_session:
+        assert flask_session["conv_id"] == original
+
+    drain(client.post("/api/chat", json={"query": "third"}, headers=AUTH))
+    history = app.config["llm_history"][-1]
+    assert history and history[0]["content"] == "first"
+
+
+def test_a_late_blocking_response_remains_reachable_by_undo(app, client):
+    """Mirrors `test_a_late_append_cannot_resurrect_a_reset_conversation`'s
+    companion for the streaming path — `test_undo_keeps_a_turn_the_server_already_recorded`
+    in `test_chat_stream.py`: once the server has genuinely recorded a turn,
+    undo restores it, even if a reset landed while a request was still in
+    flight. Simulated the same deterministic way that streaming race is
+    simulated: write directly to the now-stale id rather than relying on real
+    request timing.
+    """
+    drain(client.post("/api/chat", json={"query": "first"}, headers=AUTH))
+    with client.session_transaction() as flask_session:
+        stale = flask_session["conv_id"]
+
+    client.post("/api/conversation/reset", json={}, headers=AUTH)
+
+    store = app.config["conversations"]
+    store.append_turn(stale, "late question", "late answer", 6, 8000)
+
+    response = client.post("/api/conversation/reset", json={"undo": True}, headers=AUTH)
+    assert response.get_json()["restored"] is True
+    assert any(m["content"] == "late question" for m in store.get(stale))
 
 
 def test_forget_drops_the_conversation_set_aside(app, client):
@@ -276,23 +317,24 @@ def test_forget_drops_the_conversation_set_aside(app, client):
         assert flask_session.get("prev_conv_id") is None
 
 
-def test_forget_drops_the_blocking_paths_set_aside_history(client):
+def test_forget_drops_the_blocking_paths_set_aside_history(app, client):
     """`forget` fires when the reader asks their next question, so it has to
-    reach every trace of the set-aside conversation — including the one that
-    carries the actual text."""
+    reach every trace of the set-aside conversation."""
     drain(client.post("/api/chat", json={"query": "first"}, headers=AUTH))
+    with client.session_transaction() as flask_session:
+        original = flask_session["conv_id"]
+
     client.post("/api/conversation/reset", json={}, headers=AUTH)
     client.post("/api/conversation/reset", json={"forget": True}, headers=AUTH)
 
+    assert app.config["conversations"].get(original) == []
     with client.session_transaction() as flask_session:
-        assert flask_session.get("prev_chat_history") is None
+        assert flask_session.get("prev_conv_id") is None
 
     # And an undo that arrives anyway finds nothing to put back, rather than
     # resurrecting a conversation the reader has already moved on from.
     response = client.post("/api/conversation/reset", json={"undo": True}, headers=AUTH)
     assert response.get_json()["restored"] is False
-    with client.session_transaction() as flask_session:
-        assert flask_session.get("chat_history") is None
 
 
 def test_a_second_reset_drops_the_first_ones_leftover(app, client):
@@ -328,51 +370,223 @@ def test_logout_purges_the_conversation_set_aside(app, client):
         assert flask_session.get("prev_conv_id") is None
 
 
-def test_logout_purges_the_set_aside_history(client):
-    """End to end: nothing of the set-aside conversation survives a sign-out.
-
-    The logout route's own `session.clear()` would deliver this on its own. The
-    test below is the one that holds `CONVERSATION_SESSION_KEYS` honest.
-    """
-    drain(client.post("/api/chat", json={"query": "first"}, headers=AUTH))
-    client.post("/api/conversation/reset", json={}, headers=AUTH)
-    with client.session_transaction() as flask_session:
-        assert flask_session.get("prev_chat_history"), "precondition: set aside"
-
-    client.post("/auth/logout")
-
-    with client.session_transaction() as flask_session:
-        assert flask_session.get("prev_chat_history") is None
-
-
-def test_a_change_of_reader_purges_the_set_aside_history(client):
+def test_a_change_of_reader_purges_the_set_aside_conversation(client):
     """The backstop for every ending that skips the logout route.
 
     A closed tab, an expired refresh token, a revoked session — any of them
     leaves a valid Flask cookie behind, and `_bind_session_to_identity` is what
     catches it on the next authenticated request. That purge works from a list
     of key names and nothing else, so a key missing from it survives: here, one
-    reader's questions and answers riding the cookie into the next reader's
-    session, one Undo press from being back on screen.
+    reader's conversation riding the cookie into the next reader's session, one
+    Undo press from being back on screen.
     """
     drain(client.post("/api/chat", json={"query": "first"}, headers=AUTH))
     client.post("/api/conversation/reset", json={}, headers=AUTH)
 
     with client.session_transaction() as flask_session:
-        assert flask_session.get("prev_chat_history"), "precondition: set aside"
+        assert flask_session.get("prev_conv_id"), "precondition: set aside"
         # Somebody else held this cookie first, so the request below is a
         # different reader picking it up.
         flask_session["auth_identity"] = "someone-else@example.com"
 
-    client.post("/api/conversation/reset", json={"undo": True}, headers=AUTH)
+    response = client.post("/api/conversation/reset", json={"undo": True}, headers=AUTH)
 
+    assert response.get_json()["restored"] is False
     with client.session_transaction() as flask_session:
-        assert flask_session.get("prev_chat_history") is None
-        assert flask_session.get("chat_history") is None, "the previous reader's turns came back"
+        assert flask_session.get("prev_conv_id") is None
+        assert flask_session.get("conv_id") is None, "the previous reader's conversation came back"
 
 
 def test_reset_requires_authentication(client):
     assert client.post("/api/conversation/reset", json={}).status_code == 401
+
+
+# ── Migrating a pre-fix session ─────────────────────────────────────────────
+#
+# Before this fix, `/api/chat` kept its history as raw JSON in
+# session["chat_history"] / session["prev_chat_history"] and never touched
+# conv_id. A cookie that predates the fix can still be carrying that content
+# when a request first reaches the new code, so New chat and Undo have to
+# adopt it into the store rather than strand or silently drop it.
+
+def test_reset_migrates_a_pre_migration_readers_active_history(app, client):
+    """A reader whose session predates this fix may be carrying live history
+    as session["chat_history"] with no conv_id at all — the blocking path
+    never set one before. New chat must not leave that stranded in the
+    cookie, where a later question would silently resurrect it under a
+    conversation the reader believes is fresh.
+
+    Follows through to a real question after undo, not just the `restored`
+    flag and the store's raw contents — proving the exact legacy messages
+    are what the model sees, not merely that *something* survived.
+    """
+    legacy = [
+        {"role": "user", "content": "pre-migration question"},
+        {"role": "assistant", "content": "pre-migration answer"},
+    ]
+    with client.session_transaction() as flask_session:
+        flask_session["chat_history"] = list(legacy)
+
+    client.post("/api/conversation/reset", json={}, headers=AUTH)
+
+    with client.session_transaction() as flask_session:
+        assert flask_session.get("chat_history") is None
+        prev_id = flask_session.get("prev_conv_id")
+        assert prev_id, "the legacy history must still be reachable, not dropped"
+    assert app.config["conversations"].get(prev_id) == legacy
+
+    response = client.post("/api/conversation/reset", json={"undo": True}, headers=AUTH)
+    assert response.get_json()["restored"] is True
+    with client.session_transaction() as flask_session:
+        assert flask_session["conv_id"] == prev_id
+
+    drain(client.post("/api/chat", json={"query": "follow-up"}, headers=AUTH))
+    history = app.config["llm_history"][-1]
+    assert history and history[0]["content"] == "pre-migration question"
+
+
+def test_a_stray_legacy_cookie_history_does_not_override_the_stores_own_entry(app, client):
+    """A reader who used both routes before this migration unified them may
+    carry both a real conv_id (with its own store entry) and leftover
+    session["chat_history"] from the blocking path's old cookie-only days.
+    The two were already inconsistent with each other before this fix, so
+    the store — the more recently written side for either route — wins, and
+    the orphaned cookie content is dropped rather than merged."""
+    ask(client, "first")  # gives conv_id a real store entry
+    with client.session_transaction() as flask_session:
+        conv_id = flask_session["conv_id"]
+        flask_session["chat_history"] = [{"role": "user", "content": "orphaned"}]
+
+    client.post("/api/conversation/reset", json={}, headers=AUTH)
+
+    with client.session_transaction() as flask_session:
+        assert flask_session.get("prev_conv_id") == conv_id
+        # Not just "not merged" — actually consumed, so it can't resurface
+        # later (e.g. via a subsequent adopt_cookie_history call finding it
+        # still sitting in the cookie).
+        assert "chat_history" not in flask_session
+        assert "prev_chat_history" not in flask_session
+    history = app.config["conversations"].get(conv_id)
+    assert all(m["content"] != "orphaned" for m in history)
+
+
+@pytest.mark.parametrize("route", ["/api/chat", "/api/chat/stream"])
+def test_an_ordinary_question_migrates_a_dangling_legacy_undo_history(app, client, route):
+    """A reader who reset once on the pre-fix blocking implementation ends up
+    with a fresh conv_id and a `prev_chat_history` set aside — often with no
+    `prev_conv_id`, since the blocking path never touched that key before
+    this migration. If they don't happen to press Undo next and just keep
+    asking ordinary questions instead, that stray history has to stop riding
+    the cookie on the very next request, on EITHER route — otherwise it
+    keeps re-sending itself on every response indefinitely, which is exactly
+    the cookie-size failure this migration exists to close.
+    """
+    legacy = [{"role": "user", "content": "set aside before the fix shipped"}]
+    with client.session_transaction() as flask_session:
+        flask_session["prev_chat_history"] = legacy
+        # No prev_conv_id: this reader never used the streaming path before
+        # resetting, so pre-fix code never set one.
+
+    drain(client.post(route, json={"query": "second"}, headers=AUTH))
+
+    with client.session_transaction() as flask_session:
+        assert "prev_chat_history" not in flask_session, "still riding the cookie"
+        prev_id = flask_session.get("prev_conv_id")
+        assert prev_id, "the set-aside history must still be reachable, not dropped"
+    assert app.config["conversations"].get(prev_id) == legacy
+
+    # And it's still genuinely undoable, not merely evicted from the cookie.
+    response = client.post("/api/conversation/reset", json={"undo": True}, headers=AUTH)
+    assert response.get_json()["restored"] is True
+
+
+# ── Arabic and cookie-size regressions ──────────────────────────────────────
+#
+# TODO.md's two blocking-path bugs: json.dumps(..., ensure_ascii=True) — the
+# default — escaped every non-ASCII character to a 6-char \uXXXX sequence, so
+# an Arabic exchange was measured at several times its real size and trimmed
+# to nothing; and the 3,500-char budget bounded JSON characters, not the
+# actual serialized/compressed/signed session cookie bytes a browser
+# receives, so incompressible content could survive the budget and still
+# blow the ~4,093-byte cookie limit.
+
+ARABIC_PHRASE = "ما هي المتطلبات التنظيمية الكاملة لتسجيل منتج دوائي جديد في المملكة؟ "
+
+
+def test_arabic_history_survives_the_blocking_path(app, client):
+    """Regression for TODO.md's "Arabic readers get no chat history on the
+    non-streaming path". Twelve repeats of the phrase above, stripped (as
+    `handle_chat` strips the incoming query), are 827 real characters —
+    4,428 chars escaped (over the 3,500 budget, the bug), 948 unescaped
+    (under it, the fix) — measured against the mock's fixed answer text, so
+    this fails today and passes after the ensure_ascii fix.
+    """
+    query = ARABIC_PHRASE * 12
+    drain(client.post("/api/chat", json={"query": query, "lang": "ar"}, headers=AUTH))
+    drain(client.post("/api/chat", json={"query": "second question"}, headers=AUTH))
+
+    history = app.config["llm_history"][-1]
+    assert history, "the Arabic exchange was trimmed to nothing"
+    # handle_chat strips the incoming query before recording it.
+    assert history[0]["content"] == query.strip()
+
+
+def _deterministic_high_entropy(seed: str, n_chunks: int) -> str:
+    """Deterministic stand-in for a pasted table of batch numbers, signed
+    URLs, or OCR output: high per-character entropy, so it does not compress
+    the way prose does — but reproducible across test runs, unlike
+    os.urandom."""
+    chunks = []
+    for i in range(n_chunks):
+        digest = hashlib.sha256(f"{seed}-{i}".encode()).digest()
+        chunks.append(base64.urlsafe_b64encode(digest).decode().rstrip("="))
+    return "\n".join(chunks)
+
+
+def test_the_session_cookie_stays_under_the_browsers_limit_with_incompressible_content(app, client):
+    """Bug: the cap bounded JSON *characters*, not the serialized, compressed,
+    signed cookie *bytes* a browser actually receives. Reproduced against the
+    real app before this fix: this exact content survives the 3,500-char
+    budget comfortably, but a realistic-size access token — which every real
+    signed-in session carries (`auth_required`, app.py) but this test client
+    must inject by hand, since TESTING mode's auth bypass never sets one —
+    pushed the actual cookie past the limit and made Werkzeug log "the
+    'session' cookie is too large". Moving history off the cookie entirely
+    removes the class of problem rather than tuning the budget.
+    """
+    from web.api.app import MAX_SESSION_CHAT_HISTORY_CHARS
+
+    incompressible = _deterministic_high_entropy("pasted-ids", 73)
+    pair = [
+        {"role": "user", "content": incompressible},
+        {"role": "assistant", "content": ANSWER},
+    ]
+    # Self-assert the precondition: this content must survive the char-based
+    # budget, or the test stops proving anything if the budget ever changes.
+    assert len(json.dumps(pair, ensure_ascii=False)) <= MAX_SESSION_CHAT_HISTORY_CHARS
+
+    with client.session_transaction() as flask_session:
+        # Every real signed-in session carries this; TESTING's bypass never
+        # does, so without injecting one here the bug cannot reproduce.
+        flask_session["supabase_access_token"] = _deterministic_high_entropy("fake-jwt", 15)
+
+    response = client.post("/api/chat", json={"query": incompressible}, headers=AUTH)
+    assert response.status_code == 200
+
+    session_cookies = [c for c in response.headers.getlist("Set-Cookie") if c.startswith("session=")]
+    assert session_cookies, "precondition: a session cookie was actually set"
+    max_size = app.config.get("MAX_COOKIE_SIZE", 4093)
+    assert len(session_cookies[0]) <= max_size, f"cookie header is {len(session_cookies[0])} bytes"
+
+    # Not just "the cookie stayed small" — prove the content actually made it
+    # into the store, so an implementation that silently drops history can't
+    # pass this test too.
+    with client.session_transaction() as flask_session:
+        conv_id = flask_session["conv_id"]
+        assert "chat_history" not in flask_session
+        assert "prev_chat_history" not in flask_session
+    history = app.config["conversations"].get(conv_id)
+    assert history and history[0]["content"] == incompressible
 
 
 # ── The control itself ──────────────────────────────────────────────────────
