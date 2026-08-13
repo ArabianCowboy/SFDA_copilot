@@ -61,6 +61,34 @@ through the session at all, which today it does not.
 
 ---
 
+### Leaked-password protection is disabled in Supabase Auth
+
+**Where:** The Supabase project itself (`yjjuudnsnjzhyqllsqrd`), not this
+repo — surfaced by Supabase's advisors during a 2026-08-13 database audit.
+
+**What is wrong.** Leaked-password protection is off in Auth: Supabase would
+otherwise reject signups/password changes using a password known to be
+compromised, checked against HaveIBeenPwned.
+
+**Who it reaches.** Every signup — project-wide, not per-route.
+
+**The fix, and why it was not made here.** It's a toggle under
+Authentication → Attack Protection, but the toggle is a **Pro-plan feature**
+and this project is on a lower tier while actively developing. Left off
+intentionally rather than forced — revisit when the project upgrades to Pro
+or moves toward production.
+
+**Companion item, resolved:** the same audit flagged the project's Postgres
+as behind on security patches. That side is done — upgraded to `17.6.1.155`
+on 2026-08-13, confirmed via Security Advisor (warnings dropped from 2 to
+1, the remaining one being leaked-password protection above). The same
+audit pass also fixed what it could reach via `apply_migration` (revoking
+public `EXECUTE` on the `handle_new_user` signup trigger, pinning
+`handle_profile_update`'s `search_path`, and optimizing the RLS policies on
+`profiles`/`users`).
+
+---
+
 ### The session cookie can be blown by one history of low-entropy content
 
 **Where:** `MAX_SESSION_CHAT_HISTORY_CHARS = 3_500` in `web/api/app.py`, applied
@@ -240,6 +268,16 @@ which response shape it wants, and the landing page's own authentication signal
 (`is_authenticated=bool(session.get("user_email"))`, app.py:558) does not
 distinguish roles.
 
+**A dormant start already exists.** The same 2026-08-13 Supabase audit found
+a `public.users` table — separate from `public.profiles` — with `role`
+(text, default `'user'`), `is_admin` (bool, default `false`), and `tier`
+columns, populated by the signup trigger on every new account but never
+read by any app code (only `public.profiles` is queried, client-side). It
+duplicates `organization`/`role` that `profiles` already carries. Looks
+like abandoned groundwork for role storage. The audit left it as-is —
+restructuring it is exactly the architecture decision this entry is about,
+so it wasn't touched piecemeal.
+
 **Open questions.** Where the role lives: a `profiles` column (an out-of-repo
 Supabase migration plus RLS — there are no `.sql` files in this repo to point
 at) versus something read off the Supabase auth user's `app_metadata`, which
@@ -299,6 +337,15 @@ screen is bilingual (`test_arabic_catalogue_covers_every_runtime_key`),
 logical-property CSS (`web/tests/test_css_contract.py`, zero violations today),
 and an `ASSET_VERSION` bump — no bundler means the build-step temptation should
 be counted as behind this too.
+
+**A dormant start already exists.** A 2026-08-13 Supabase audit found
+`public.chatbot_settings` — `welcome_message`, `response_style`,
+`rate_limit_per_minute` — already sitting in the database, RLS-enabled with
+zero policies, zero reads or writes anywhere in this repo's app code. It
+looks like unused groundwork for exactly this entry's config surface.
+Left untouched by that audit (adding a policy for a feature that doesn't
+exist yet was out of scope), but worth knowing it's there before building
+this from nothing.
 
 **Open questions.** Where the selection is stored so the change is durable:
 config.yaml is read once at process start with no live-reload seam, so a
