@@ -119,6 +119,12 @@ class ConversationStore:
 def _truncate(history: list[dict[str, str]], max_pairs: int, max_chars: int) -> list[dict[str, str]]:
     """Trim to max_pairs exchanges, then to max_chars of serialized JSON."""
     trimmed = history[-(max_pairs * 2):]
-    while trimmed and len(json.dumps(trimmed)) > max_chars:
+    # ensure_ascii=False: the default True escapes every non-ASCII character
+    # (e.g. Arabic) to a 6-char \uXXXX sequence, so a ~950-char Arabic
+    # exchange would measure ~4,700 chars against a 3,500 budget and the loop
+    # below would drop it to nothing. Pinned by
+    # test_store_measures_serialized_size_without_ascii_escaping and
+    # test_arabic_history_survives_the_blocking_path.
+    while trimmed and len(json.dumps(trimmed, ensure_ascii=False)) > max_chars:
         trimmed = trimmed[2:]  # drop the oldest user/assistant pair
     return trimmed

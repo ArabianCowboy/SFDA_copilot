@@ -13,54 +13,6 @@ says only what it wants is a wish, and the useful half is the cost.
 
 ## Known bugs
 
-### Arabic readers get no chat history on the non-streaming path
-
-**Where:** `_truncate_chat_history` in `web/api/app.py` (~line 245), against
-`MAX_SESSION_CHAT_HISTORY_CHARS = 3_500`.
-
-**What is wrong.** The cap is measured with `json.dumps(truncated_history)`,
-which defaults to `ensure_ascii=True` and escapes every non-ASCII character to
-`\uXXXX` — six characters where the reader typed one. A single Arabic
-question-and-answer pair of ~950 characters measures ~4,700 against a 3,500
-budget, so the `while` loop drops the oldest pair, measures again, and keeps
-going until the list is empty. The Arabic reader does not get a shortened
-history; they get **none**.
-
-Measured directly:
-
-```
-actual characters in one pair:            948
-json.dumps length (what the cap measures): 4704
-json.dumps(..., ensure_ascii=False):       1019
-```
-
-**Who it reaches.** Only `/api/chat`, the blocking fallback — the path a browser
-without streaming bodies takes. `/api/chat/stream` keeps its history in the
-`ConversationStore` and is unaffected. So this is invisible on a current desktop
-browser and total on an old one, which is why it went unnoticed.
-
-**How it was found.** Not by a bug report. A cookie-size guard added alongside
-the New chat undo work — since reworked into
-`test_the_cookie_never_carries_two_histories` — was parametrised over English
-and Arabic, and the Arabic case could not reach its own precondition: the
-history it built came back empty.
-
-**The fix, and why it was not made here.** Measuring with
-`ensure_ascii=False` is a one-line change and is almost certainly right: the
-budget is meant to bound the session cookie, the cookie is compressed and signed
-after this point, and `ensure_ascii` affects neither. But it silently changes how
-much history *every* reader is handed on the main chat path — more turns of
-context per question, in both languages — which is a behavioural change to the
-product's answers, not a bug fix. It wants its own commit, its own before/after
-on answer quality, and a decision on whether 3,500 is still the right number once
-it means what it says.
-
-**When it is fixed:** add an Arabic case to the blocking-path history tests in
-`web/tests/test_new_chat.py` — an Arabic exchange should survive a round trip
-through the session at all, which today it does not.
-
----
-
 ### Leaked-password protection is disabled in Supabase Auth
 
 **Where:** The Supabase project itself (`yjjuudnsnjzhyqllsqrd`), not this
@@ -86,43 +38,6 @@ audit pass also fixed what it could reach via `apply_migration` (revoking
 public `EXECUTE` on the `handle_new_user` signup trigger, pinning
 `handle_profile_update`'s `search_path`, and optimizing the RLS policies on
 `profiles`/`users`).
-
----
-
-### The session cookie can be blown by one history of low-entropy content
-
-**Where:** `MAX_SESSION_CHAT_HISTORY_CHARS = 3_500` in `web/api/app.py`, applied
-by `_truncate_chat_history` (and by `_truncate` in
-`web/services/conversation_store.py`).
-
-**What is wrong.** The cap counts **JSON characters**, but the thing that has to
-fit is the **serialized, signed, compressed session cookie**, and browsers
-silently drop a cookie over ~4,093 bytes. Losing the cookie costs the reader
-their *session*, not just their history. Prose compresses ~3x so a 3,500-char
-history lands around 1KB and nobody notices — but content that compresses badly
-does not, and this product invites it: a pasted table of batch numbers,
-submission IDs, signed URLs, OCR output, a list of product codes.
-
-Measured with incompressible content, one history produced a **4,544-byte**
-cookie and Werkzeug logged `the 'session' cookie is too large`.
-
-**Who it reaches.** `/api/chat` only, the blocking fallback — the streaming path
-keeps history server-side.
-
-**What this is NOT.** It is not caused by the New chat undo work. Setting a
-history aside was made cookie-neutral by `/api/chat` dropping
-`prev_chat_history` whenever it records a turn, so the cookie carries at most
-one history at any moment — pinned by
-`test_the_cookie_never_carries_two_histories`. This entry is the *pre-existing*
-single-history case underneath that.
-
-**The fix.** Bound the serialized session rather than the JSON string: either
-measure what the session interface will actually emit and trim until it fits, or
-stop keeping blocking-path history in the cookie at all and give `/api/chat` the
-same server-side `ConversationStore` the streaming path uses. The second is the
-better shape and removes this whole class of problem — `adopt_cookie_history`
-already exists for exactly that migration — but it changes where the blocking
-path's memory lives, so it wants its own commit.
 
 ---
 
@@ -365,14 +280,13 @@ separate admin surface, and how that surface is reached without a route change.
 Server-side: `ConversationStore` (`web/services/conversation_store.py`), created
 in `_register_routes` as `app.config["conversations"] = ConversationStore()`
 (`web/api/app.py:513`) — process-local, TTL 3600s, LRU-bounded to 500, keyed by
-the opaque `conv_id` that `handle_chat_stream` invents and parks in the Flask
-session (app.py:668-671). The non-streaming path never touches the store: its
-history rides the cookie as `session["chat_history"]`, capped by
-`_truncate_chat_history` / `MAX_SESSION_CHAT_HISTORY_CHARS = 3_500` (app.py:120,
-245-255), and `handle_conversation_reset` rotates `conv_id` → `prev_conv_id` and
-`chat_history` → `prev_chat_history` to keep the undo honest (app.py:846-933);
-`adopt_cookie_history` is the one-time cookie→store migration
-(`conversation_store.py:95-108`). All of it is torn down by
+the opaque `conv_id` that both `handle_chat` and `handle_chat_stream` invent and
+park in the Flask session. The cookie itself never carries conversation content
+any more, only `conv_id` / `prev_conv_id`; `handle_conversation_reset` rotates
+those two to keep the undo honest (app.py:846-933), and `adopt_cookie_history`
+is the one-time cookie→store migration for sessions that predate that (also
+used to adopt any still-legacy `chat_history` / `prev_chat_history` a reader's
+cookie might still be carrying). All of it is torn down by
 `purge_conversation_state` and the `CONVERSATION_SESSION_KEYS` /
 `CONVERSATION_ID_KEYS` tuples (`web/api/auth.py:20-54`) on logout or on an
 identity change. Client-side: `Transcript` in `static/js/modules/i18n.js`
@@ -400,15 +314,14 @@ exists: `test_session_isolation.py` (logout purge, server-side store purge,
 reaches another. Saving per user re-keys conversations from a random cookie to
 an account, which is only safe if the *account*, not the browser, becomes the
 boundary — and it must still respect the purge that fires when a different
-reader picks up the same cookie. The cookie is already at its limit: the two
-bug entries above in this file describe how the 3,500-character cap exists
-because the serialized cookie is ~4KB. Real persistence means a database, and
+reader picks up the same cookie. Real persistence means a database, and
 this repo has none of it ready: there are no `.sql` migrations, and the only
 table named anywhere is `profiles`, read and upserted from the browser with no
 Flask route in between. Schema, RLS, and a server-side path for reads and writes
 are all net-new. The reset/undo design threads through every history test —
 `test_new_chat.py` end to end (rotation, the `prev_*` keys,
-`test_the_cookie_never_carries_two_histories`), `test_chat_stream.py`
+`test_undo_survives_a_blocking_question_after_resetting_a_streaming_conversation`),
+`test_chat_stream.py`
 (`test_history_survives_the_streaming_response`,
 `test_adopt_cookie_history_migrates_once`, the `ConversationStore` unit tests),
 `test_chat_api.py` history tests — and each of those decides, per assertion,

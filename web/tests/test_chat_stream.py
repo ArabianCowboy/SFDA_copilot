@@ -338,6 +338,23 @@ def test_store_caps_by_serialized_size():
     assert len(json.dumps(store.get("c1"))) <= 1_000
 
 
+def test_store_measures_serialized_size_without_ascii_escaping():
+    """Regression for TODO.md's "Arabic readers get no chat history on the
+    non-streaming path": json.dumps's default ensure_ascii=True escapes every
+    non-ASCII character to a 6-char \\uXXXX sequence, so a modest Arabic
+    exchange measured several times its real size against max_chars and was
+    trimmed to nothing. _truncate must measure closer to what the text
+    actually is.
+    """
+    store = ConversationStore()
+    arabic = "متطلبات التسجيل " * 40  # 640 chars; ~6,951 ascii-escaped, ~1,351 real
+    store.append_turn("c1", arabic, arabic, max_pairs=10, max_chars=2_000)
+
+    history = store.get("c1")
+    assert history, "an exchange well under max_chars must survive, not be trimmed to nothing"
+    assert history[0]["content"] == arabic
+
+
 def test_store_evicts_least_recently_used():
     store = ConversationStore(max_conversations=2)
     for cid in ("a", "b", "c"):
