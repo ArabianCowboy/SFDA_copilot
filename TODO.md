@@ -13,42 +13,60 @@ says only what it wants is a wish, and the useful half is the cost.
 
 ## Known bugs
 
-### Signup email runs on Supabase's built-in SMTP, which is capped at ~2/hour
+### The signup rate-limit message reaches the reader as raw English
 
-**Where:** The Supabase project's Auth settings, not this repo. Surfaced on
-2026-08-14 while testing the rewritten signup trigger: three signups in seven
-minutes produced one `mail.send` and two `429 over_email_send_rate_limit`.
+**Where:** `static/js/modules/handlers.js` surfaces the Supabase error text
+verbatim; `runtime.auth.*` has no key for it in either catalogue.
 
-**What is wrong.** Email confirmation is enabled and mail goes out through
-`noreply@mail.app.supabase.io`, Supabase's shared built-in sender. It is
-documented as being for testing rather than production, and its per-hour
-allowance is small — observed here as one confirmation delivered and the next
-two rejected. GoTrue rolls the account back when the send fails, so the reader
-gets no account **and** no email, and the address stays free.
+**What is wrong.** When Supabase refuses a signup for exceeding its email
+allowance, the reader sees "email rate limit exceeded" — English on a bilingual
+surface, and phrased as though *they* exceeded a limit rather than the service
+being busy. GoTrue rolls the account back when a send fails, so they get no
+account and no email, and the address stays free to retry — none of which the
+message says.
 
-**Who it reaches.** Every new registration on the live deployment
-(`sfda-copilot.aifoudahub.com`). The third person to sign up within an hour is
-turned away. There is nothing wrong with their details and nothing they can do
-except wait, which the surface does not tell them.
+**Who it reaches.** Any signup that trips the ceiling. That is now much rarer
+than it was, which is precisely why it is worth fixing rather than forgetting:
+it will next be seen by a real person, not by someone testing.
 
-**It is worse than a failed signup.** `Handlers` surfaces the raw Supabase
-message, so the reader sees "email rate limit exceeded" — English-only, and
-phrased as though *they* exceeded a limit. `runtime.auth.*` has no key for it.
-Whatever else is decided, the message needs a key in both catalogues and wording
-that says the service is busy rather than blaming the reader.
+**What changed underneath it.** The 2/hour cap that made this common was fixed
+on 2026-08-14 by moving to custom SMTP through Resend — see
+[docs/SMTP_CONFIGURATION.md](docs/SMTP_CONFIGURATION.md). Note the ceiling was
+**raised to 30/hour, not removed**: GoTrue enforces its own limiter independently
+of the provider's allowance. So this path is still reachable.
 
-**The fix, and why it was not made here.** Configure a custom SMTP sender
-(Resend, SES, Postmark, or the SFDA-side mail relay) under Authentication →
-Emails. That is a project-settings and DNS change — a sending domain with SPF
-and DKIM — not a code change, and it belongs to whoever owns the domain. It was
-found during unrelated work on the signup trigger and recorded rather than
-half-done. Until then, treat the deployment as unable to onboard more than a
-couple of people an hour.
+**The fix.** A key in both `web/i18n/en.yaml` and `web/i18n/ar.yaml` under
+`runtime.auth.*`, worded as "we could not send the confirmation email just now —
+please try again shortly", plus mapping Supabase's message to it in `handlers.js`.
+Small, and blocked on nothing.
 
-**Related, same session:** email confirmation is on, yet only one of the three
-existing accounts has `email_confirmed_at` set. Worth deciding deliberately
-whether confirmation is required to chat, because right now the answer is
-implicit.
+---
+
+### Email confirmation is disabled, so any address can register
+
+**Where:** The Supabase project's Auth settings, not this repo. Confirmed
+2026-08-14 from `auth.users`: the most recent account has
+`confirmation_sent_at = null` and `email_confirmed_at` set 25 ms after
+`created_at` — auto-confirmed, no email attempted.
+
+**What is wrong.** Nothing verifies that a registrant controls the address they
+signed up with. Someone can register as anyone, and the account is immediately
+usable. It also means password reset — the one flow that assumes the address is
+real — is the only thing standing between a typo'd address and a lost account.
+
+**Who it reaches.** Every registration. Of the three existing accounts, one has
+never been confirmed at all (`midoxp@yahoo.com`, since 2025-11-16).
+
+**Why it is like this.** It appears to have been turned off to work around the
+2 emails/hour cap, which was a reasonable thing to do at the time and is no
+longer necessary now that custom SMTP is configured.
+
+**What it would disturb.** Turning confirmation back on changes the signup flow
+the browser tests exercise, and re-opens the question the previous state answered
+implicitly: *is a confirmed address required to chat?* Supabase can enforce it,
+or `auth_required` can, or nobody can — but it should be decided rather than
+inherited. Note that re-enabling it is also the honest way to prove the new SMTP
+path actually delivers, which has not yet been demonstrated.
 
 ---
 
@@ -77,6 +95,102 @@ audit pass also fixed what it could reach via `apply_migration` (revoking
 public `EXECUTE` on the `handle_new_user` signup trigger, pinning
 `handle_profile_update`'s `search_path`, and optimizing the RLS policies on
 `profiles`/`users`).
+
+---
+
+### An account outside the newest 50 cannot be found or administered
+
+**Where:** `static/js/admin/services.js` and `handlers.js` call
+`/admin/api/users` with no query string, so it serves its default page. Found
+2026-08-14 by an independent review of the account-management surface.
+
+**What is wrong.** The console's People tab renders exactly one page of the
+newest 50 accounts and offers neither a search box nor a next-page control. The
+server does not have this limitation — `GET /admin/api/users` already accepts
+`q`, `limit` (max 200) and `offset`, and the `admin_list_users` RPC beneath it
+takes `p_search`, `p_limit` and `p_offset`. The capability is built and unreached.
+
+**Who it reaches.** Nobody today: there are three accounts. It becomes a real
+problem at the 51st, and it fails in the least helpful way — an operator looking
+for a specific person finds nothing and has no way to tell "this account does not
+exist" from "this account is not on this page".
+
+**What fixing it costs.** A search input, a debounce, and either paging controls
+or an infinite scroll, all of which need EN/AR keys in both catalogues and RTL
+mirroring. The search itself is worth thinking about once: matching on email
+substring is what an operator wants and is also the query that scans, so it wants
+an index before it meets a real user table. Deliberately not fixed in the commit
+that found it — it is a feature-sized piece of frontend, not a repair.
+
+---
+
+### An account with no profile row can chat but cannot be administered
+
+**Where:** `admin_list_users` reads from `public.profiles`; `auth_required`
+treats an unresolved profile as a non-admin reader rather than as a refusal.
+
+**What is wrong.** If an `auth.users` row exists with no matching
+`public.profiles` row, the account works — the reader signs in and chats — but it
+does not appear in the console's People list, and any attempt to act on it by id
+raises `AD003 / no_such_account`. It is a live account that no operator can
+disable.
+
+**Who it reaches.** One account today: `midoxp@yahoo.com` (registered
+2025-11-16, before the signup trigger was repaired). The repaired trigger makes
+new occurrences unlikely, which is exactly why this one is easy to forget.
+
+**What fixing it costs.** Two candidate fixes with different meanings. Backfill
+the missing profile — cheap, and makes this account administrable — or have the
+console list from `auth.users` left-joined to `profiles` so profile-less accounts
+are *visible* as a broken state rather than invisible. The second is the more
+honest surface and the larger change. Backfilling first is not wrong, but doing
+only that leaves the class of bug intact: the console would still silently omit
+any future account in this state.
+
+---
+
+### A combined or no-op account change is recorded under a misleading name
+
+**Where:** the action name is derived in `web/services/admin_store.py` from
+whichever field is present, and written by the `admin_set_user_flags` RPC.
+
+**What is wrong.** A `PATCH` carrying both `role` and `is_disabled` records one
+action name, not two, so the audit log describes half of what happened. A patch
+that sets a field to the value it already holds records a change that did not
+occur — `{role: "user", is_disabled: false}` on an already-enabled reader logs as
+`user.enable`.
+
+**Who it reaches.** Only whoever reads the log later, which is the entire reason
+the log exists. The mutation itself is correct; the record of it is not.
+
+**What fixing it costs.** Small, and it interacts with the `before`/`after`
+JSONB the RPC already captures — the honest fix is to derive the name from the
+diff rather than from the request, and to record nothing when the diff is empty.
+Worth doing before the log has enough entries for anyone to trust it.
+
+---
+
+### A disabled reader is not told until they ask a question
+
+**Where:** `Services.getIdentity` (`static/js/modules/services.js:328`) returns
+`null` for both 401 and 403, and `static/js/app.js:218` uses it only to decide
+whether to reveal the admin link.
+
+**What is wrong.** Disabling chat access is enforced server-side on every
+request, which is correct. But the reader signs in normally, the chat shell
+renders, the composer accepts their question — and only then does the 403 arrive
+and `handlers.js:244` render the notice. They discover the state by hitting it.
+
+The cause is a deliberate simplification with an unintended consequence:
+`getIdentity` flattens "not allowed" and "nobody" to the same `null` because the
+one caller's safe default is the same for both. Adding a second caller with a
+different question makes the two indistinguishable when they need to be told apart.
+
+**What fixing it costs.** `getIdentity` would have to distinguish 403 from 401 —
+a contract change to a function whose docstring currently promises it does not —
+and the composer would need a disabled state, which is a bilingual surface with
+its own CSS. Not urgent: the current behaviour is correct, merely late and
+graceless.
 
 ---
 
@@ -354,6 +468,140 @@ Chasing it needs a reproduction, and it did not reproduce on demand.
 **Where to start.** Run the browser suite with `-p no:randomly` if ordering is
 suspected, or `--tracing retain-on-failure` to capture the context state at the
 moment it dies. If it recurs in CI, that trace is the thing worth having.
+
+---
+
+### Know what people actually ask — without reading anyone's conversation
+
+**Where:** nothing records question text today. `ConversationStore`
+(`web/services/conversation_store.py`) holds turns in RAM, TTL 3600s, LRU 500,
+keyed to a cookie — so the record of what was asked dies within the hour. The
+sidebar's suggested questions are hand-curated in `faq.yaml`, categorised and
+translated, and were written by guessing at what readers want.
+
+**Why it is wanted.** Two things at once: know which questions recur, and turn
+that into a cheaper, faster answer. Put the genuinely common questions in the
+sidebar and a large share of traffic converges on a small set of answers.
+
+**The mechanism matters more than the goal here, so it is worth being exact.**
+The obvious route — let an administrator read conversations and notice the
+patterns — is both more invasive and worse at the job than the alternative.
+Frequency is an aggregate question: it needs the *text* of what was asked, not
+who asked it. A table of `(asked_at, lang, scope, question_text, cited_count)`
+with **no `user_id` column at all** answers "what are the twenty most common
+questions this month" completely and exactly, in one `group by`, forever — while
+reading transcripts answers it approximately, by hand, and only for as long as
+someone keeps doing it.
+
+Leaving identity out is not only a privacy posture, it is the thing that makes
+the table cheap to keep: with no reader attached there is no retention deadline,
+no disclosure to write, and no question about who else may be granted admin
+later. If "how many *distinct* people asked this" is ever needed, a per-period
+salted hash gives that without storing who.
+
+**The cost saving is real but not where it looks.** Two different caches get
+conflated, and only one of them pays:
+
+- **OpenAI prompt caching** discounts a repeated *prefix*, and the prefix here is
+  `BASE_SYSTEM_MESSAGE` + retrieved passages + the question. The system message
+  alone is **246 tokens** (measured with `o200k_base`), well under the ~1024-token
+  floor at which caching engages — so nothing is cached on the strength of the
+  system prompt. The prefix only qualifies once passages are included, and those
+  are identical only when the question is identical. So repeated questions *do*
+  hit, which is the intuition behind putting them in the sidebar. But the
+  discount applies to **input tokens only** — the generated answer, the expensive
+  half of a long regulatory reply, is always billed in full — and the cache goes
+  cold after a short idle window unless `prompt_cache_retention` is set.
+- **An answer cache in this app** — normalised question + language + model +
+  **index version** → the stored answer and its source payload — makes no API
+  call at all. That is the whole bill, not a fraction of the input half, and it
+  is also the latency win: an instant answer instead of a stream.
+
+So if the goal is money, the answer cache is the feature and the sidebar is how
+traffic is steered into it. Both want the question log first, and neither wants
+transcripts.
+
+**What it would disturb — and this is the real cost.** A cached regulatory
+answer is a *stale* regulatory answer the moment the corpus changes, and
+PRODUCT.md's first principle is that provenance is the product. So the cache key
+must include the index build identity and every entry must be invalidated when
+the index is rebuilt — a cache that outlives its evidence is worse than no cache,
+because it answers confidently from a document that no longer says that. There is
+no index-version identifier surfaced anywhere today; that is net-new and is the
+prerequisite, not a detail.
+
+The rest is smaller: writing a question log on the request path must not be able
+to fail a request (best-effort, unlike quota, which must not be), and promoting a
+logged question into the sidebar means translating it — `faq.yaml` is bilingual
+and a question logged in English has no Arabic twin. That is a human step, which
+argues for the console surfacing candidates for an operator to accept rather than
+the sidebar populating itself.
+
+**Deliberately narrower than what was asked.** The original framing was to review
+reader transcripts for analysis. Transcript browsing is declined here on two
+grounds: it depends on conversation persistence, which does not exist yet (see
+below) and is the largest deferred item in the admin plan; and it buys a worse
+dataset at a much higher privacy cost than a question log that answers the same
+question better. If per-reader context is ever genuinely needed — a specific
+complaint to investigate — the narrow form is a reader-initiated *answer receipt*
+they can share, not a browsing surface for everyone.
+
+**Open questions.** Whether the log stores the raw question or a normalised form
+— readers paste identifying details into questions, and a regulatory question can
+name a product and a company. Some normalisation or truncation before storage may
+be wanted, which trades exactness for safety. And whether "same question" is
+string equality after normalisation or embedding similarity — the second catches
+far more repeats and can also collide two questions that deserve different
+answers, which on a regulatory surface is the more expensive mistake.
+
+---
+
+### Account detail view in the console
+
+**Where:** `/admin` People renders one row per account — email, role, standing.
+`public.profiles` already holds `full_name`, `organization`, `specialization`
+and `preferences`, and `auth.users` holds `created_at`, `last_sign_in_at` and
+`email_confirmed_at`. None of it is shown.
+
+**Why it is wanted.** An operator deciding whether to disable an account is
+currently deciding from an email address. The data that would inform that
+decision is already stored and already reachable by the service role — the
+console simply never asks for it. It also gives the audit log somewhere to
+land: "what else happened to this account" is a per-account question and there
+is no per-account page to ask it on.
+
+**What it would disturb.** Little structurally — a route, a panel, and the
+existing bearer-only gate. Two things need deciding rather than defaulting. It
+is a new bilingual surface with mixed Latin/Arabic content and machine
+identifiers, so it needs `<bdi dir="ltr">` discipline and the `page.admin.*` /
+`runtime.admin.*` parity test. And it draws the line that the entry above is
+about: profile fields and sign-in timestamps are operational data and belong
+here; what the person *asked* is not, and does not.
+
+---
+
+### Ending a session, as distinct from disabling chat
+
+**Where:** `admin_set_user_flags` sets `profiles.is_disabled`, and
+`auth_required` (`web/api/app.py:351`) refuses new requests with 403
+`account_disabled`.
+
+**Why it is wanted.** The flag is named accurately for what it does and that
+naming is deliberate — but it means the console has no answer to an actual
+incident. A disabled account keeps its Supabase access token until it expires,
+keeps its refresh token indefinitely, can still sign in, and can still reach
+PostgREST directly with the published anon key for anything RLS permits. If
+credentials are believed compromised, "disable chat" is not the response.
+
+**What it would disturb.** This is the first console action that reaches outside
+Postgres, which is precisely why the audit design already anticipates it: a
+database mutation and its audit row go in one transaction, but an Auth Admin call
+cannot, so it needs the intent-then-outcome shape — write the intent, perform the
+action, record what happened. `auth.admin.signOut(jwt, 'global')` revokes refresh
+tokens; banning is a separate `updateUserById({ ban_duration })`. Both are
+irreversible in the sense that matters (the reader is signed out of every device
+immediately), so this is the strongest case in the console for explicit
+confirmation — and `DESIGN.md:278` gives it no red button to lean on, by design.
 
 ---
 
