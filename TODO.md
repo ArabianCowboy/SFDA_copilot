@@ -234,9 +234,10 @@ was 2025-11-16 — three weeks earlier. The trigger had never fired. That is als
 why the 2025-11-16 account had no `profiles` row: it was created under the
 *previous* trigger, the one that migration was written to fix.
 
-`supabase/migrations/20260814_0001_…sql` therefore put identity on `profiles`,
+`supabase/migrations/20260814005509_lock_profile_privileges_and_repair_signup.sql`
+therefore put identity on `profiles`,
 rewrote the trigger to write only `profiles` (idempotently, `search_path = ''`),
-and backfilled the missing row. `public.users` is dropped by `0002`.
+and backfilled the missing row. `public.users` was dropped by `20260814024903_drop_unused_public_users.sql`.
 
 **It also closed a live privilege-escalation hole that no one had noticed.**
 `authenticated` held column-level `UPDATE` on `profiles.role`, and the

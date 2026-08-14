@@ -15,14 +15,19 @@ which is exactly the drift this directory exists to prevent.
 | 20260813101747 | harden_security_definer_and_search_path |
 | 20260813101816 | optimize_rls_auth_uid_calls |
 
+Everything from `20260814005509` onward is a `.sql` file in this directory.
+
 ## State at the point this directory was created (2026-08-14)
+
+*(Historical. For the current shape of `public`, see `../README.md`.)*
 
 Three tables in `public`, all with RLS enabled:
 
 - **`profiles`** — 2 rows, FK to `auth.users(id)`, `role text default 'user'` with one row
   already set to `admin`. Own-row select/insert/update policies for `authenticated`.
 - **`users`** — 0 rows, no FK, columns `role` / `is_admin` / `tier`. Own-row select policy.
-  Read by no application code (verified by grep). Dropped in `0001`.
+  Read by no application code (verified by grep). Dropped by
+  `20260814024903_drop_unused_public_users.sql`.
 - **`chatbot_settings`** — 0 rows, RLS enabled with zero policies. Unused. Left untouched.
 
 `auth.users` held 3 accounts; `profiles` held 2.
