@@ -57,7 +57,14 @@ class SupabaseAdminClient:
 
         if cls._instance is None:
             url = os.getenv("SUPABASE_URL")
-            key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+            # Both names are accepted so the key can be migrated without a code
+            # change. Supabase is replacing the long-lived JWT `service_role`
+            # key with individually revocable `sb_secret_…` keys and removes the
+            # legacy ones in late 2026; `create_client` does not inspect the
+            # format, so the migration is a value swap. The new name wins when
+            # both are present, which makes the cutover a rename rather than an
+            # edit-in-place — and leaves the old value recoverable for a rollback.
+            key = os.getenv("SUPABASE_SECRET_KEY") or os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 
             if not url or not key:
                 # Loud in the log, but not fatal. A missing admin key must not
