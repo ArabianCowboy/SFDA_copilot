@@ -13,6 +13,91 @@ says only what it wants is a wish, and the useful half is the cost.
 
 ## Known bugs
 
+### There is no password reset, so a forgotten password is an unrecoverable account
+
+**Where:** `static/js/modules/services.js` exposes `signInWithPassword` (line
+222) and `signUp` (line 229) and nothing else — no `resetPasswordForEmail`, no
+`updateUser`, no handling of Supabase's `PASSWORD_RECOVERY` event. The auth modal
+(`web/templates/index.html:128-224`) has a Login tab and a Signup tab and no
+third affordance. `web/api/auth.py` has `/signup` and `/login` and no recovery
+route.
+
+**What is wrong.** A reader who forgets their password has no way back into their
+account. Not a slow way — none. The surface offers no link, the client has no
+call, and the server has no route.
+
+**It is worse in combination, which is why it is filed as one bug.** Three
+things compound:
+
+1. There is no self-service reset.
+2. There is no operator-side recovery either — the console can change a role and
+   revoke chat access, and cannot touch an email address or a credential.
+3. Email confirmation is currently off, so an address was never proven to belong
+   to its account in the first place.
+
+Together those mean a locked-out reader is locked out permanently and nobody in
+the system can help them. That is the actual severity, and none of the three
+parts shows it alone.
+
+**Who it reaches.** Anyone who forgets a password, changes employer, or typos
+their address at signup. On a professional tool where accounts are months old
+between sign-ins, that is not an edge case.
+
+**What fixing it costs.** `supabase.auth.resetPasswordForEmail(email, {
+redirectTo })` sends the mail; the return leg is the work. Supabase redirects
+back with a recovery token, the client sees a `PASSWORD_RECOVERY` auth event, and
+something has to render a "choose a new password" form and call
+`auth.updateUser({ password })`. This app is a one-page two-view shell —
+`AuthView` toggles `d-none` between landing and chat — so that form is a third
+view in the existing shell rather than a route, which is the consistent choice
+but is still a new state the view logic does not have.
+
+Three things are easy to miss. The `redirectTo` URL must be added to Supabase's
+allow-list or the link silently fails. The recovery email template is a Supabase
+setting and ships in English, so a bilingual product needs it authored in both
+languages — it is one of the few reader-facing strings that does not live in
+`web/i18n/`. And the whole flow depends on email actually being delivered, which
+[docs/SMTP_CONFIGURATION.md](docs/SMTP_CONFIGURATION.md) records as configured
+but not yet proven.
+
+**Do this before the admin credential work below**, which is partly made
+unnecessary by it.
+
+---
+
+### The console cannot change an email address, and deliberately cannot set a password
+
+**Where:** `admin_set_user_flags` reaches `role` and `is_disabled` only. Both
+`auth.users.email` and the credential live in Supabase Auth, not in
+`public.profiles`, so neither is reachable from the RPC the console uses.
+
+**Why an email change is wanted.** People change employer and typo their address
+at signup. With confirmation off, a typo'd address is currently permanent and
+invisible — the account works, and the mail it should receive goes to a stranger.
+
+**Why setting a password is *not* wanted, and this is a design position rather
+than an omission.** An operator who can set a reader's password can sign in as
+that reader, and nothing downstream can tell the two apart — the audit log would
+attribute to the reader actions the operator took. The console's whole thesis is
+that privileged acts are attributable, and a shared credential is the one change
+that quietly breaks it for every other record in the table. The support outcome
+people actually want from "set their password" is "get them back into their
+account", and a reset link delivers that without anyone learning a secret.
+
+So the shape to build is **send a password reset** (`auth.admin.generateLink`
+with `type: 'recovery'`, or triggering the same reader-facing flow), not **set a
+password**.
+
+**What it would disturb.** Both reach `auth.admin.*`, so both are the
+outside-Postgres case the audit design already anticipates: the mutation and its
+audit row cannot share a transaction, so they need intent-then-outcome — record
+the intent, perform the call, record what happened. An email change is also an
+account-takeover primitive when paired with a reset, so it wants confirmation to
+the *new* address rather than `email_confirm: true`, and it wants the old address
+kept in the audit row — otherwise the log cannot show what the account used to be.
+
+---
+
 ### The signup rate-limit message reaches the reader as raw English
 
 **Where:** `static/js/modules/handlers.js` surfaces the Supabase error text
@@ -508,18 +593,38 @@ conflated, and only one of them pays:
   floor at which caching engages — so nothing is cached on the strength of the
   system prompt. The prefix only qualifies once passages are included, and those
   are identical only when the question is identical. So repeated questions *do*
-  hit, which is the intuition behind putting them in the sidebar. But the
-  discount applies to **input tokens only** — the generated answer, the expensive
-  half of a long regulatory reply, is always billed in full — and the cache goes
-  cold after a short idle window unless `prompt_cache_retention` is set.
+  hit, which is the intuition behind putting them in the sidebar. The cache also
+  goes cold after a short idle window unless `prompt_cache_retention` is set.
 - **An answer cache in this app** — normalised question + language + model +
   **index version** → the stored answer and its source payload — makes no API
-  call at all. That is the whole bill, not a fraction of the input half, and it
-  is also the latency win: an instant answer instead of a stream.
+  call at all. That is the whole bill rather than a discount on part of it, and
+  it is also the latency win: an instant answer instead of a stream.
 
-So if the goal is money, the answer cache is the feature and the sidebar is how
-traffic is steered into it. Both want the question log first, and neither wants
-transcripts.
+**This prompt is input-heavy, which decides how much either is worth.**
+`max_context_results: 8` at `chunk_size: 5000` characters puts roughly 10,000
+input tokens against a few hundred output tokens on a typical answer. On
+`gpt-4o-mini`'s 1:4 input:output pricing that makes **input around 80% of the
+cost of an answer** — so prefix caching is worth substantially more here than on
+a chat-shaped workload, and the two caches are closer in value than the "one is a
+discount, one is free" framing suggests. Any decision resting on this should
+re-measure rather than trust these figures: `max_context_results` is
+operator-adjustable from the console, and doubling it moves the ratio.
+
+So the answer cache is still the feature and the sidebar is how traffic is
+steered into it — but at volume, prefix caching on the repeats is not a rounding
+error either. Both want the question log first, and neither wants transcripts.
+
+**Scale is what makes this worth building at all.** At three accounts it saves
+nothing worth the code. The arithmetic only turns at volume, and it turns hard:
+the same per-answer cost against a thousand readers asking a handful of questions
+a day is the difference between a rounding error and a monthly bill someone
+notices — more so on a frontier model, where the same prompt costs roughly ten
+times what it does on `gpt-4o-mini`. **And money is not the binding constraint.**
+This deployment runs `--workers 1 --threads 8` with an in-RAM FAISS index and a
+sentence-transformers model, because conversation state is process-local. At that
+scale the scarce resource is that single worker, and a cache hit skips embedding,
+FAISS search, TF-IDF, and fusion as well as the API call. The cache relieves the
+bottleneck that actually binds, which is a better argument for it than the bill.
 
 **What it would disturb — and this is the real cost.** A cached regulatory
 answer is a *stale* regulatory answer the moment the corpus changes, and
