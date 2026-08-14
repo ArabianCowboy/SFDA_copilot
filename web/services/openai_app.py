@@ -11,13 +11,14 @@ import json
 import logging
 import os
 import re
-from typing import Any, Iterator, List, Optional, Tuple, cast
+from typing import Any, Dict, Iterator, List, Optional, Tuple, cast
 
 import tiktoken
 from openai import OpenAI
 from openai.types.chat import ChatCompletionMessageParam
 
 from web.services.citations import strip_citation_markers
+from web.services.settings_service import model_spec
 from web.utils.config_loader import config
 
 logging.basicConfig(level=logging.INFO)
@@ -134,7 +135,22 @@ def _history_without_stale_markers(
 class OpenAIHandler:
     """Handles interactions with the OpenAI API for generating responses."""
 
-    def __init__(self) -> None:
+    def __init__(self, settings: Optional[Dict[str, Any]] = None) -> None:
+        """Build a handler, optionally from runtime settings rather than the file.
+
+        ``settings`` overrides the config.yaml values for this instance only.
+        It is how the console changes the model: a *complete replacement*
+        handler is constructed and swapped into ``app.config``, rather than the
+        live one being mutated.
+
+        That choice is the whole safety argument. Mutating four attributes on a
+        shared instance can be observed half-applied by one of the eight
+        threads — a new model against an old token ceiling — and the tokenizer
+        below is bound to the model at construction, so a naive
+        ``handler.model = x`` leaves the two disagreeing with nothing to say so.
+        A handler is either wholly old or wholly new, and each request captures
+        one reference at the top of the view and keeps it for its lifetime.
+        """
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
             logger.error("OPENAI_API_KEY environment variable not set.")
@@ -143,10 +159,24 @@ class OpenAIHandler:
         logger.info("Initializing OpenAI client with key starting: %s...", api_key[:5])
         self.client = OpenAI(api_key=api_key)
 
-        self.model = config.get("openai", "model", "gpt-4o-mini")
-        self.max_tokens = config.get("openai", "max_tokens")
-        self.temperature = config.get("openai", "temperature", 0.2)
-        self.max_context_results = config.get("openai", "max_context_results", 5)
+        settings = settings or {}
+
+        def setting(key: str, section_default):
+            value = settings.get(key)
+            return section_default if value is None else value
+
+        self.model = setting("model", config.get("openai", "model", "gpt-4o-mini"))
+        self.max_tokens = setting("max_tokens", config.get("openai", "max_tokens"))
+        self.temperature = setting("temperature", config.get("openai", "temperature", 0.2))
+        self.max_context_results = setting(
+            "max_context_results", config.get("openai", "max_context_results", 5)
+        )
+        # None means "do not send it", which is correct both for a model that
+        # has no such parameter and for a reasoning model whose own default we
+        # have no reason to override.
+        self.reasoning_effort = (settings or {}).get("reasoning_effort") or config.get(
+            "openai", "reasoning_effort", None
+        )
 
         # The citation scheme depends on prompt block [i] and sources[i] being
         # the same passage. They are today (both 8), but if someone lowers
@@ -169,7 +199,65 @@ class OpenAIHandler:
             "OpenAIHandler initialized with model: %s, max_context_results: %s",
             self.model, self.max_context_results,
         )
-        self.tokenizer = tiktoken.encoding_for_model(self.model)
+
+        # Bound to the model, here, at construction — which is precisely why a
+        # model change builds a new handler instead of reassigning `self.model`
+        # on the live one. The two must never disagree.
+        #
+        # `encoding_for_model` raises for a model tiktoken has no mapping for,
+        # which includes models that are perfectly valid but newer than the
+        # installed tiktoken. Refusing those would mean this app could not be
+        # pointed at a new model until a dependency bump, so it falls back —
+        # loudly, and with a flag rather than silently.
+        #
+        # The blast radius is small TODAY and that is the reason this is
+        # tolerable: `_log_token_counts` is the only consumer and it only feeds
+        # logger.info, so an approximate encoding costs a log line, not an
+        # answer. `tokenizer_exact` exists so that when token counts start
+        # feeding usage metering, that code can refuse to bill from an estimate
+        # instead of inheriting this compromise unnoticed.
+        try:
+            self.tokenizer = tiktoken.encoding_for_model(self.model)
+            self.tokenizer_exact = True
+        except KeyError:
+            logger.warning(
+                "tiktoken has no encoding for %r; using o200k_base for token accounting "
+                "only. Generation is unaffected; logged token counts are approximate.",
+                self.model,
+            )
+            self.tokenizer = tiktoken.get_encoding("o200k_base")
+            self.tokenizer_exact = False
+
+    def _request_kwargs(self, token_budget: int, temperature: float) -> dict:
+        """The parameters this model will actually accept.
+
+        The OpenAI families do not share a request shape, and the differences
+        are hard failures rather than degradations:
+
+        * a reasoning model rejects ``max_tokens`` and needs
+          ``max_completion_tokens`` — which also counts reasoning tokens, so
+          the same number buys less visible output;
+        * a reasoning model rejects ``temperature`` outright;
+        * ``reasoning_effort`` is meaningless to everything else.
+
+        Hardcoding the old shape is why adding one of these models would have
+        400'd on every single request. The contract lives in config.yaml beside
+        the model, because that is where someone deciding to allow a model can
+        see what allowing it commits them to.
+        """
+        spec = model_spec(self.model)
+
+        kwargs: dict = {
+            "model": self.model,
+            spec["token_param"]: token_budget,
+        }
+        if spec["supports_temperature"]:
+            kwargs["temperature"] = temperature
+        # Absent means "use the model's own default", which is the right thing
+        # to send when nobody has chosen — not a guess at what medium means.
+        if self.reasoning_effort and spec["reasoning_efforts"]:
+            kwargs["reasoning_effort"] = self.reasoning_effort
+        return kwargs
 
     # ── Prompt construction ────────────────────────────────────────────────
 
@@ -266,11 +354,9 @@ class OpenAIHandler:
         # generator gets GeneratorExit, and closing the stream here releases
         # the upstream HTTP connection instead of leaking it.
         with self.client.chat.completions.create(
-            model=self.model,
             messages=cast(List[ChatCompletionMessageParam], messages),
-            max_tokens=self.max_tokens,
-            temperature=self.temperature,
             stream=True,
+            **self._request_kwargs(self.max_tokens, self.temperature),
         ) as stream:
             for chunk in stream:
                 if not chunk.choices:  # usage-only final chunk
@@ -328,10 +414,12 @@ class OpenAIHandler:
 
         try:
             response = self.client.chat.completions.create(
-                model=self.model,
                 messages=cast(List[ChatCompletionMessageParam], [{"role": "user", "content": prompt}]),
-                max_tokens=100,
-                temperature=0.5,
+                # Suggestions are three short questions, so they get their own
+                # small budget rather than the answer's — but they go through
+                # the same contract, because the model rejects the same
+                # parameters here as anywhere else.
+                **self._request_kwargs(100, 0.5),
             )
             content = response.choices[0].message.content
             if not content:

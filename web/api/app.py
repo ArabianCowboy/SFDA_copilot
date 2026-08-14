@@ -29,6 +29,7 @@ from flask import (
     Flask,
     Response,
     current_app,
+    g,
     jsonify,
     make_response,
     redirect,
@@ -90,7 +91,19 @@ for module, default_level in [
 # ──────────────────────────────────────────────────────────
 # Application-Specific Imports (after logger setup)
 # ──────────────────────────────────────────────────────────
-from web.api.auth import auth_bp, purge_conversation_state
+from web.api.auth import (
+    IDENTITY_MARKER_KEYS,
+    auth_bp,
+    purge_conversation_state,
+    rotate_session_for_new_identity,
+)
+from web.services.admin_store import (
+    InMemoryAdminBackend,
+    get_admin_backend,
+    resolve_identity_flags,
+)
+from web.services.identity_cache import IdentityFlags, IdentityFlagsCache
+from web.services.settings_service import SettingsService
 from web.services.citations import (
     build_source_payload,
     extract_cited_indices,
@@ -131,7 +144,7 @@ SUPPORTED_FAQ_LANGS = ("en", "ar")
 # that mixes a fresh template with a stale module is worse than a stale page —
 # post-icon-migration it would render an <i class="bi"> with no icon font behind
 # it, or print a glyph NAME as text. MODULE_IMPORT_MAP below closes that.
-ASSET_VERSION = "warm14"
+ASSET_VERSION = "warm23"
 
 # Product release, rendered in the landing footer. Kept as one constant so
 # the number cannot drift between the page and the module headers.
@@ -151,6 +164,17 @@ APP_VERSION = "3.0.0"
 # behaviour before this existed — so this degrades rather than breaks.
 MODULE_FILENAMES: Tuple[str, ...] = tuple(
     sorted(p.name for p in (PROJECT_ROOT / "static" / "js" / "modules").glob("*.js"))
+)
+
+# The console's own modules live in static/js/admin/ rather than alongside the
+# reader's, and the separation is not tidiness. `index()` inlines an import-map
+# entry for *every* name in MODULE_FILENAMES, so a module dropped in beside the
+# others would publish its filename on the anonymous landing page — an
+# inventory of the operator surface, rendered for people who cannot reach it.
+# A second directory and a second map keeps each page declaring only what it
+# can actually load.
+ADMIN_MODULE_FILENAMES: Tuple[str, ...] = tuple(
+    sorted(p.name for p in (PROJECT_ROOT / "static" / "js" / "admin").glob("*.js"))
 )
 
 # ──────────────────────────────────────────────────────────
@@ -177,6 +201,12 @@ def clear_auth_session() -> None:
     """Purge authentication data from the Flask session."""
     session.pop("supabase_access_token", None)
     session.pop("user_email", None)
+    # The admin render hint is authentication data too. Leaving it behind on the
+    # 401 path would strand an elevated marker on a shared machine's cookie —
+    # the precise leak the identity rotation exists to prevent, and no less real
+    # for the marker being cosmetic.
+    for key in IDENTITY_MARKER_KEYS:
+        session.pop(key, None)
 
 
 def _bind_session_to_identity(identity: str) -> None:
@@ -194,28 +224,93 @@ def _bind_session_to_identity(identity: str) -> None:
     """
     previous = session.get("auth_identity")
     if previous is not None and previous != identity:
-        purge_conversation_state()
+        rotate_session_for_new_identity()
         logging.info("Authenticated identity changed for this session; conversation purged.")
     session["auth_identity"] = identity
 
 
-def auth_required(view_func):
-    """Decorator that enforces Supabase authentication for a route."""
+# Identities the TESTING bypass can present, most specific match first.
+#
+# ORDER IS LOAD-BEARING. Not because these three collide — "fake_token" is not a
+# contiguous substring of "fake_admin_token" — but because a future marker such
+# as `fake_token_admin` would contain it, and a plain-reader entry checked first
+# would silently shadow the privileged one. Most privileged, most specific, first.
+#
+# The plain `fake_token` row is the literal five server test files send, and its
+# resolution must not change: `user_email` stays "test@example.com" because that
+# is what existing assertions read.
+_TESTING_IDENTITIES: Tuple[Tuple[str, IdentityFlags], ...] = (
+    (
+        "fake_admin_token",
+        IdentityFlags("test-admin-id", "admin@example.com", "admin", "internal", False),
+    ),
+    (
+        "fake_disabled_token",
+        IdentityFlags("test-disabled-id", "disabled@example.com", "user", "free", True),
+    ),
+    (
+        "fake_token",
+        IdentityFlags("test-user-id", "test@example.com", "user", "free", False),
+    ),
+)
 
-    @wraps(view_func)
-    def wrapper(*args, **kwargs):
-        if current_app.config["TESTING"]:
-            if "fake_token" in request.headers.get("Authorization", ""):
-                _bind_session_to_identity("test@example.com")
-                session["user_email"] = "test@example.com"
-                return view_func(*args, **kwargs)
-            return jsonify({"error": "Invalid or missing test token"}), 401
 
+def _testing_identity() -> Optional[IdentityFlags]:
+    """Resolve the TESTING bypass token to an identity, or None if absent."""
+    header = request.headers.get("Authorization", "")
+    return next((flags for marker, flags in _TESTING_IDENTITIES if marker in header), None)
+
+
+def _is_page_request() -> bool:
+    """True for a browser navigating to a page, false for an API call.
+
+    Decides whether a rejection is a redirect or a JSON error. Previously this
+    only ever matched `index`, which is not decorated with `@auth_required` —
+    so the redirect branch was unreachable. The admin blueprint's page route is
+    the first gated GET the app has had.
+    """
+    if request.method != "GET":
+        return False
+    # Endpoints, not the blueprint. `request.blueprint == "admin"` matched every
+    # console route including /admin/api/*, so an invalid bearer on a JSON
+    # endpoint answered with a 302 to `/`. `fetch()` follows redirects by
+    # default, so the console received 200 OK and a page of HTML, parsed it as
+    # null, and carried on as though identity had been confirmed.
+    return request.endpoint in ("index", "admin.console")
+
+
+def _account_disabled_response() -> Tuple[Response, int]:
+    """403, deliberately, rather than 401.
+
+    401 means "your credentials are missing or invalid", and `_handle_unauthorized`
+    acts on that by clearing the session. A disabled reader would then be logged
+    out, log back in successfully, and be bounced again — a loop that reads as a
+    bug in the product rather than a decision about their account.
+
+    403 says the opposite and the true thing: we know exactly who you are, and
+    the answer is still no. The body carries a machine code, not a sentence —
+    the client already owns every reader-facing string, in both languages, and a
+    localized message from the server would be a second translation path nothing
+    else in this app has.
+    """
+    return jsonify({"error": "account_disabled"}), 403
+
+
+def _authenticate_request() -> Tuple[Optional[IdentityFlags], Optional[Any]]:
+    """Resolve the caller. Returns (flags, early_response); exactly one is None.
+
+    Extracted from `auth_required` so the admin blueprint's `before_request` can
+    reuse it verbatim rather than reimplementing token handling next door to it.
+    """
+    if current_app.config["TESTING"]:
+        identity = _testing_identity()
+        if identity is None:
+            return None, (jsonify({"error": "Invalid or missing test token"}), 401)
+        token = None
+    else:
         token = _get_token_from_request()
-        is_page_request = request.method == "GET" and request.endpoint == "index"
-
         if not token:
-            return _handle_unauthorized(is_page_request)
+            return None, _handle_unauthorized(_is_page_request())
 
         try:
             supabase = get_supabase()
@@ -225,18 +320,48 @@ def auth_required(view_func):
 
             if not user:
                 logging.warning("Token validation failed for %s – no user found.", request.endpoint)
-                return _handle_unauthorized(is_page_request)
+                return None, _handle_unauthorized(_is_page_request())
 
             # The user id is the stable identity; email can be changed by the
-            # account holder and is only a fallback for a provider that
-            # omits it.
-            _bind_session_to_identity(str(getattr(user, "id", None) or user.email))
-            session.update({"supabase_access_token": token, "user_email": user.email})
-            return view_func(*args, **kwargs)
-
+            # account holder and is only a fallback for a provider that omits it.
+            user_id = str(getattr(user, "id", None) or user.email)
+            identity = resolve_identity_flags(
+                current_app.config["identity_flags"],
+                user_id,
+                user.email,
+                # Console requests re-read the database rather than trusting the
+                # TTL. Being thirty seconds behind a demotion is free on the
+                # chat path and unacceptable on the one that can change a model
+                # or disable an account.
+                fresh=(request.blueprint == "admin"),
+            )
         except Exception as exception:
             logging.error("Authentication error at endpoint %s: %s", request.endpoint, exception, exc_info=True)
-            return _handle_unauthorized(is_page_request)
+            return None, _handle_unauthorized(_is_page_request())
+
+    _bind_session_to_identity(identity.user_id)
+    session["user_email"] = identity.email
+    if token is not None:
+        session["supabase_access_token"] = token
+    # Render hint only. Never an authorization input — see IDENTITY_MARKER_KEYS.
+    session["is_admin_hint"] = identity.is_admin
+    g.identity = identity
+
+    if identity.is_disabled:
+        return None, _account_disabled_response()
+
+    return identity, None
+
+
+def auth_required(view_func):
+    """Decorator that enforces Supabase authentication for a route."""
+
+    @wraps(view_func)
+    def wrapper(*args, **kwargs):
+        _, early_response = _authenticate_request()
+        if early_response is not None:
+            return early_response
+        return view_func(*args, **kwargs)
 
     return wrapper
 
@@ -410,6 +535,33 @@ def _register_testing_doubles(app: Flask) -> None:
     handler.max_context_results = config.get("openai", "max_context_results", 8)
     handler.model = config.get("openai", "model", "gpt-4o-mini")
 
+    def build_testing_handler(settings=None):
+        """The factory the settings swap uses under TESTING.
+
+        A model change must be exercisable without an OpenAI key, and replacing
+        the double with a real OpenAIHandler would break every test that leans
+        on it. So the swap builds another double carrying the requested values —
+        the mechanism under test is the atomic rebind, not what the handler
+        talks to.
+        """
+        settings = settings or {}
+        replacement = MagicMock(spec=OpenAIHandler)
+        replacement.max_context_results = settings.get(
+            "max_context_results", handler.max_context_results
+        )
+        replacement.model = settings.get("model", handler.model)
+        replacement.max_tokens = settings.get("max_tokens")
+        replacement.temperature = settings.get("temperature")
+        replacement.tokenizer_exact = True
+        # Carry the demo behaviour across, or a model switch would leave the
+        # ?testing=true console answering with bare MagicMocks.
+        replacement.stream_response.side_effect = handler.stream_response.side_effect
+        replacement.generate_response.return_value = handler.generate_response.return_value
+        replacement.generate_suggestions.return_value = handler.generate_suggestions.return_value
+        return replacement
+
+    app.config["openai_handler_factory"] = build_testing_handler
+
     demo_answer = (
         "Applications for drug registration must be submitted through the SFDA electronic "
         "portal [1]. The dossier follows the **eCTD** structure, and the manufacturing site "
@@ -476,6 +628,7 @@ def _initialize_services(app: Flask, testing: bool) -> None:
         _register_testing_doubles(app)
         return
 
+    app.config["openai_handler_factory"] = OpenAIHandler
     app.config["openai_handler"] = OpenAIHandler()
     try:
         search_engine = ImprovedSearchEngine()
@@ -540,7 +693,91 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
     """Register all application routes and blueprints."""
     app.config["FREQUENT_QUESTIONS"] = _load_faq_data()
     app.config["conversations"] = ConversationStore()
+    # Process-local, same scope contract as ConversationStore above: a cache,
+    # never the authority. The database decides who is an administrator.
+    app.config["identity_flags"] = IdentityFlagsCache()
+
+    # One in-memory backend per process under TESTING, so a setting changed by
+    # a request is visible to the next one within the same test — and nothing
+    # survives the process, which is what makes tests independent.
+    app.config["_testing_admin_backend"] = InMemoryAdminBackend()
+
+    def admin_backend():
+        """Resolved per call, never at startup.
+
+        `get_admin_backend()` builds a Supabase client, and doing that here
+        would put a network dependency in front of a process whose search index
+        takes minutes to load — for a surface most deployments never open.
+        """
+        if app.config["TESTING"]:
+            return app.config["_testing_admin_backend"]
+        return get_admin_backend()
+
+    app.config["admin_backend"] = admin_backend
+    app.config["settings_service"] = SettingsService(admin_backend)
+
+    def apply_generation_settings() -> bool:
+        """Rebuild the OpenAI handler from current settings and swap it in.
+
+        **Replacement, not mutation.** A handler is either wholly the old one or
+        wholly the new one: the model, the token ceiling, the temperature and
+        the tokenizer are established together in the constructor, and each
+        request captures one reference at the top of its view and keeps it for
+        its lifetime. So a request that is already streaming finishes on the
+        handler it started with, and the next one gets the new handler — there
+        is no moment at which any thread can observe a half-applied change.
+
+        That property is why nothing in the request path needed changing for
+        this feature. `handle_chat_stream` captures `handler` once and its
+        generator closes over that local; the blocking route does the same.
+
+        Returns False and leaves the running handler in place if construction
+        fails — a bad setting must not be able to take the chatbot down. The
+        caller reports that; it does not raise.
+        """
+        settings = app.config["settings_service"].snapshot()
+        factory = app.config.get("openai_handler_factory")
+        if factory is None:
+            return False
+
+        try:
+            replacement = factory(settings)
+        except Exception:
+            logging.error(
+                "Could not build an OpenAI handler from the stored settings; "
+                "keeping the running one. Settings: %r",
+                settings,
+                exc_info=True,
+            )
+            return False
+
+        # The whole swap: one attribute rebind, atomic under the GIL.
+        app.config["openai_handler"] = replacement
+        logging.info(
+            "Generation settings applied: model=%s max_tokens=%s temperature=%s passages=%s",
+            settings.get("model"), settings.get("max_tokens"),
+            settings.get("temperature"), settings.get("max_context_results"),
+        )
+        return True
+
+    app.config["apply_generation_settings"] = apply_generation_settings
+
+    # Adopt any stored overrides at startup, so a model chosen in the console
+    # survives a restart. Deliberately best-effort and after the handler already
+    # exists: a settings-store outage during boot leaves the deployed defaults
+    # running rather than preventing the app from serving at all.
+    if app.config["settings_service"].overrides():
+        apply_generation_settings()
     app.register_blueprint(auth_bp, url_prefix="/auth")
+    # Imported here rather than at module scope: admin.py imports back into this
+    # module for `_authenticate_request`, and a top-level import would be a cycle.
+    from web.api.admin import admin_bp
+    app.register_blueprint(admin_bp)
+    # The console is chrome and a handful of JSON reads, but the global default
+    # of 200/day would lock an operator out of their own instance after an
+    # afternoon of refreshes. Exempting it entirely would let a loop hammer the
+    # database instead.
+    limiter.limit("60 per minute")(admin_bp)
 
     workers = os.getenv("WEB_CONCURRENCY", "1")
     if workers != "1":
@@ -562,12 +799,34 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
             "category_icon": lambda key: CATEGORY_ICONS.get(key, "globe"),
         }
 
-    @app.route("/")
-    def index():
+    def _import_map(subdir: str, filenames: Sequence[str]) -> Dict[str, Any]:
+        """Map each module's bare URL to its versioned one."""
+        return {
+            "imports": {
+                url_for("static", filename=f"js/{subdir}/{name}"):
+                url_for("static", filename=f"js/{subdir}/{name}", v=ASSET_VERSION)
+                for name in filenames
+            }
+        }
+
+    app.jinja_env.globals["_import_map"] = _import_map
+
+    def base_render_context(lang: Optional[str] = None, *, admin: bool = False) -> Dict[str, Any]:
+        """Everything any full page render needs, shared by / and /admin.
+
+        Deliberately a function rather than a context processor. ``t`` and
+        ``i18n_runtime`` depend on the language negotiated for *this* request,
+        which a processor cannot see without redoing the negotiation, and the
+        import map must not be built for a partial render that will never use
+        it. Two callers, one definition.
+
+        ``admin`` widens the inlined catalogue and glyph set. It defaults to
+        False so the anonymous landing page keeps shipping exactly what it
+        shipped before.
+        """
         supabase_url = os.getenv("SUPABASE_URL")
         supabase_anon_key = os.getenv("SUPABASE_ANON_KEY")
 
-        # Validate Supabase configuration
         if not supabase_url or not supabase_anon_key:
             logging.warning(
                 "Supabase configuration missing: URL=%s, Key=%s",
@@ -577,36 +836,39 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
 
         # Rendering the page strings server-side means an Arabic reader never
         # sees a flash of English while the JS boots.
-        lang = pick_lang(request)
+        lang = lang or pick_lang(request)
         catalog = load_catalog(lang)
 
-        response = make_response(render_template(
-            "index.html",
-            SUPABASE_URL=supabase_url or "",
-            SUPABASE_ANON_KEY=supabase_anon_key or "",
-            is_authenticated=bool(session.get("user_email")),
-            user_email=session.get("user_email"),
-            lang=lang,
-            text_dir=text_direction(lang),
-            t=make_translator(catalog),
-            i18n_runtime=runtime_subset(catalog),
-            icons_runtime=runtime_icons(),
+        return {
+            "SUPABASE_URL": supabase_url or "",
+            "SUPABASE_ANON_KEY": supabase_anon_key or "",
+            "lang": lang,
+            "text_dir": text_direction(lang),
+            "t": make_translator(catalog),
+            "i18n_runtime": runtime_subset(catalog, include_admin=admin),
+            "icons_runtime": runtime_icons(include_admin=admin),
             # The one category->glyph mapping, shared with the browser rather
             # than restated there. DESIGN.md: the same mapping written down
             # twice is the same mapping drifting eventually.
-            category_icons=CATEGORY_ICONS,
-            module_import_map={
-                "imports": {
-                    url_for("static", filename=f"js/modules/{name}"):
-                    url_for("static", filename=f"js/modules/{name}", v=ASSET_VERSION)
-                    for name in MODULE_FILENAMES
-                }
-            },
+            "category_icons": CATEGORY_ICONS,
+        }
+
+    app.config["base_render_context"] = base_render_context
+
+    @app.route("/")
+    def index():
+        context = base_render_context()
+        response = make_response(render_template(
+            "index.html",
+            **context,
+            is_authenticated=bool(session.get("user_email")),
+            user_email=session.get("user_email"),
+            module_import_map=_import_map("modules", MODULE_FILENAMES),
         ))
         # Persist an explicit ?lang= so the choice survives the next visit.
         if request.args.get("lang"):
             response.set_cookie(
-                "lang", lang, max_age=31_536_000, samesite="Lax", path="/"
+                "lang", context["lang"], max_age=31_536_000, samesite="Lax", path="/"
             )
         return response
 
@@ -641,6 +903,30 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
             if isinstance(block, dict)
         }
         return jsonify(selected)
+
+    @app.route("/api/identity")
+    @auth_required
+    def identity() -> Response:
+        """What the server believes about the caller.
+
+        The authoritative answer to "am I an administrator", as opposed to the
+        `is_admin_hint` cookie value, which only decides whether a link is drawn
+        on a page rendered without validating a token. The client asks this once
+        after sign-in and reveals admin chrome from the answer — which is also
+        the only thing that works on a first sign-in in a fresh browser, where
+        there is no hint yet because no authenticated request has been made.
+
+        Deliberately says nothing a reader may not know about themselves: no
+        other accounts, no counts, no settings.
+        """
+        flags: IdentityFlags = g.identity
+        return jsonify({
+            "user_id": flags.user_id,
+            "email": flags.email,
+            "role": flags.role,
+            "tier": flags.tier,
+            "is_admin": flags.is_admin,
+        })
 
     # Shared across both chat routes so a client cannot double its allowance by
     # alternating between the streaming and blocking endpoints.
@@ -825,10 +1111,18 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
                 logging.error("Search engine unavailable for chat request.")
                 return jsonify(error="Search service is currently unavailable."), 503
 
+            # Captured BEFORE retrieval, not after. Search can block for a
+            # noticeable time, and a settings change landing during it would
+            # otherwise mean the request began under one model and generated
+            # under another — coherent, but not the model that was current when
+            # the reader asked. The streaming route already captured up front;
+            # this makes the two agree, and makes the claim in the commit that
+            # introduced the swap actually true.
+            openai_handler: OpenAIHandler = current_app.config["openai_handler"]
+
             search_results: List[SearchResult] = search_engine.search(query, category)
             llm_context = [{"text": r.text, "document": r.document, "category": r.category, "page": r.page} for r in search_results]
 
-            openai_handler: OpenAIHandler = current_app.config["openai_handler"]
             # retrieved[i] must be the same passage as prompt block [i], so both
             # are cut to the same limit.
             retrieved = build_source_payload(search_results, limit=openai_handler.max_context_results)

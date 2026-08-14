@@ -27,6 +27,18 @@ CONVERSATION_SESSION_KEYS = (
 # The subset of the above that keys a server-side ConversationStore entry.
 CONVERSATION_ID_KEYS = ("conv_id", "prev_conv_id")
 
+# Markers that describe *who* is holding this cookie rather than what they said.
+#
+# `is_admin_hint` is a render hint and nothing else — it decides whether the
+# Admin link is drawn on a page the server renders without validating a token.
+# Authorization is always a fresh server-side lookup; see `_authenticate_request`.
+#
+# It still rotates with the conversation, and for the same reason: an elevated
+# marker that outlived its reader is exactly the leak `_bind_session_to_identity`
+# exists to close. A hint is cheap to rebuild and expensive to leave lying around
+# on a shared machine.
+IDENTITY_MARKER_KEYS = ("is_admin_hint",)
+
 
 def purge_conversation_state():
     """Drop this browser session's conversation, server side included.
@@ -52,6 +64,19 @@ def purge_conversation_state():
 
     for key in CONVERSATION_SESSION_KEYS:
         session.pop(key, None)
+
+
+def rotate_session_for_new_identity() -> None:
+    """Reset everything tied to the previous reader of this cookie.
+
+    One call rather than two, so a marker added later cannot be wired into one
+    purge and forgotten in the other — which is how `is_admin_hint` would
+    otherwise have survived a change of reader on a shared machine.
+    """
+    purge_conversation_state()
+    for key in IDENTITY_MARKER_KEYS:
+        session.pop(key, None)
+
 
 @auth_bp.route('/signup', methods=['POST'])
 def signup():

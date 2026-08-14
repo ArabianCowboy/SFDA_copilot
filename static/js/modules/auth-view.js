@@ -69,9 +69,42 @@ function showUnauthenticatedView() {
   }
 }
 
+/**
+ * Show or hide the console link.
+ *
+ * Deliberately separate from `render`, and deliberately not driven by the
+ * signed-in toggle in `updateStatusAndActions`: that one reveals chrome to
+ * *anyone* who signs in, which is exactly wrong for this control. Being an
+ * administrator is a second question, answered by the server, and it arrives
+ * later than sign-in does.
+ *
+ * Visibility stays owned by this module because that is what
+ * `test_ui_does_not_own_authentication_transitions` protects — the alternative
+ * is `app.js` reaching into the DOM to toggle a class, which is how view logic
+ * starts leaking out of here.
+ *
+ * Hiding is courtesy, never a control. `/admin/api/*` is gated server-side, so
+ * a reader who unhides this link reaches a page that tells them nothing.
+ */
+function renderAdminAffordance(isAdmin) {
+  const selectors = [
+    CONFIG.SELECTORS.ADMIN_BTN,
+    CONFIG.SELECTORS.ADMIN_BTN_OFFCANVAS,
+  ].join(', ');
+
+  DOMCache.getAll(selectors).forEach(link => {
+    if (link) link.classList.toggle(CONFIG.CLASSES.D_NONE, !isAdmin);
+  });
+}
+
 export const AuthView = {
   render(user) {
     updateStatusAndActions(user);
+    // Signing out is the one moment this can be decided locally, and it must
+    // be: leaving the link up for the next person on a shared machine is the
+    // same shape of leak as a stale `is_admin_hint`.
+    if (!user) renderAdminAffordance(false);
     user ? showAuthenticatedView() : showUnauthenticatedView();
   },
+  renderAdminAffordance,
 };

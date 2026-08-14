@@ -141,9 +141,12 @@ document.addEventListener('keydown', (e) => {
 
 4. **Configure Supabase**
    - Create a new Supabase project
-   - Set up the database schema (see `web/migrations/`)
+   - Apply the schema from `supabase/migrations/` (see `supabase/README.md`)
    - Get your project URL and anon key
    - Update `.env` with your credentials
+   - For a deployment that sends signup email, configure custom SMTP —
+     the built-in sender is capped at 2 emails/hour. See
+     [docs/SMTP_CONFIGURATION.md](docs/SMTP_CONFIGURATION.md)
 
 5. **Run the application**
    ```bash
@@ -339,13 +342,17 @@ different one in the composer. Adding a category means adding it there too.
 
 ## 📚 Documentation
 
-### Component Documentation
+Design intent and product principles live at the repository root; anything under
+`docs/` records **state that this repository cannot tell you** — configuration
+that lives in a third-party dashboard, in DNS, or in the Supabase project.
 
-### Theme Toggle Refactoring
-- Detailed implementation plan and technical specifications
-
-### API Documentation
-API endpoints are documented in the code with OpenAPI/Swagger annotations.
+| Document | What it covers |
+|---|---|
+| [PRODUCT.md](PRODUCT.md) | What the product is for, and the principles a change is judged against |
+| [DESIGN.md](DESIGN.md) | The design system: tokens, components, and the RTL contract |
+| [TODO.md](TODO.md) | Known bugs and planned work, each with the cost of fixing it |
+| [supabase/README.md](supabase/README.md) | Migration conventions and how schema changes are applied |
+| [docs/SMTP_CONFIGURATION.md](docs/SMTP_CONFIGURATION.md) | Transactional email: why the built-in sender failed, the Resend SMTP and DNS setup, and how to verify delivery |
 
 ## 🤝 Contributing
 

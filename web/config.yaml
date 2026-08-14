@@ -64,6 +64,69 @@ openai:
   max_tokens: 16384  # Max supported by gpt-4o-mini
   max_context_results: 8
 
+  # Models an administrator may select at runtime. The console renders exactly
+  # this list, and the server rejects anything absent from it.
+  #
+  # The split is the design: ADDING a model is a deploy decision, because it
+  # changes what this application can be pointed at and needs someone to have
+  # checked the ceiling below. CHOOSING among them is an operations decision,
+  # made in the console by whoever is awake when a model degrades. An operator
+  # who could type an arbitrary string could point production at a model that
+  # does not exist, or at one whose output limit differs — and `max_tokens` is
+  # not a free parameter: exceeding a model's ceiling is a 400 from the API on
+  # every request, not a graceful degradation.
+  #
+  # `max_output_tokens` is enforced here rather than discovered at runtime,
+  # because discovering it means finding out in production. VERIFY IT AGAINST
+  # THE PROVIDER'S CURRENT DOCUMENTATION when adding a model; a wrong number
+  # here is a wrong number in the validator.
+  #
+  # `label` is deliberately untranslated. A model name is a machine fact, like
+  # a version number, and is identical in both catalogues.
+  #
+  # An entry also describes the model's PARAMETER CONTRACT, because the OpenAI
+  # families do not share one. Reasoning models reject `max_tokens` outright
+  # (they need `max_completion_tokens`, which counts reasoning tokens too) and
+  # reject `temperature` entirely. Sending either to one is a 400 on every
+  # request — so this is not metadata, it is what makes the call well-formed.
+  #
+  #   token_param          max_tokens (default) | max_completion_tokens
+  #   supports_temperature true (default) | false
+  #   reasoning_efforts    omitted for a non-reasoning model; otherwise the
+  #                        EXACT list that model accepts — they differ per
+  #                        model, so this cannot be a shared constant.
+  allowed_models:
+    - id: gpt-4o-mini
+      label: GPT-4o mini
+      max_output_tokens: 16384
+    - id: gpt-4o
+      label: GPT-4o
+      max_output_tokens: 16384
+    - id: gpt-5.6-luna
+      label: GPT-5.6 Luna
+      max_output_tokens: 128000
+      token_param: max_completion_tokens
+      supports_temperature: false
+      # `none` turns reasoning off and is the cheap, fast mode. Luna is the one
+      # model here that offers it; Nano's equivalent floor is `minimal`.
+      reasoning_efforts: [none, low, medium, high, xhigh, max]
+
+    # gpt-5.4-nano is deliberately NOT enabled. It exists — the API lists
+    # `gpt-5.4-nano-2026-03-17` among the chat-completions models — but no
+    # published output ceiling could be found for it, and inventing one defeats
+    # the only thing `max_output_tokens` is for. A guess that is too high is a
+    # 400 on every request; too low silently truncates answers.
+    #
+    # To enable: confirm the output limit against the provider's model page,
+    # then uncomment. The effort list below is what the docs describe; note it
+    # has no `none`.
+    # - id: gpt-5.4-nano
+    #   label: GPT-5.4 Nano
+    #   max_output_tokens: ???        # VERIFY before enabling
+    #   token_param: max_completion_tokens
+    #   supports_temperature: false
+    #   reasoning_efforts: [minimal, low, medium, high]
+
 # --- Data Processing ---
 data_processing:
   chunk_size: 5000

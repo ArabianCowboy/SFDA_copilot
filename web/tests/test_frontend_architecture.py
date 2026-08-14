@@ -4,6 +4,7 @@ from pathlib import Path
 
 
 MODULES = Path("static/js/modules")
+ADMIN = Path("static/js/admin")
 
 
 def test_services_module_has_no_view_or_state_dependencies():
@@ -32,6 +33,48 @@ def test_ui_does_not_own_authentication_transitions():
 
     assert "updateAuthUI" not in ui_source
     assert "transitionToAuthenticatedView" in auth_view_source
+
+
+def test_console_transport_has_no_view_or_state_dependencies():
+    """The same contract as services.js, for the same reason.
+
+    Transport that knows how to display a failure ends up deciding what a
+    failure means, and the two answers then live in two places.
+    """
+    source = (ADMIN / "services.js").read_text(encoding="utf-8")
+
+    assert "from '../modules/dom.js'" not in source
+    assert "from '../modules/state.js'" not in source
+    assert "from '../modules/ui.js'" not in source
+    assert "ErrorHandler" not in source
+    assert "DOMCache" not in source
+
+
+def test_console_handlers_own_user_facing_failures():
+    source = (ADMIN / "handlers.js").read_text(encoding="utf-8")
+
+    assert "ErrorHandler.showToast" in source
+    assert "I18n.t('admin.accessDenied')" in source
+
+
+def test_the_console_does_not_import_the_chat_shell():
+    """app.js, ui.js and handlers.js bind selectors that do not exist on /admin.
+
+    Importing any of them would wire a composer, a transcript and a mascot into
+    a console. The failure would not be subtle, but it would be at runtime and
+    only for whoever opened the page — which is one administrator, possibly in
+    production.
+    """
+    forbidden = ("modules/ui.js", "modules/handlers.js", "modules/app.js",
+                 "modules/robot.js", "modules/source-panel.js")
+
+    sources = list(ADMIN.glob("*.js")) + [Path("static/js/admin.js")]
+    assert sources, "expected console modules to exist"
+
+    for path in sources:
+        source = path.read_text(encoding="utf-8")
+        for name in forbidden:
+            assert name not in source, f"{path.name} imports the chat shell ({name})"
 
 
 def test_english_catalogue_preserves_test_asserted_strings():

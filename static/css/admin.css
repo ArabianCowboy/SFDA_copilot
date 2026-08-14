@@ -1,0 +1,425 @@
+/* ============================================================================
+   Console — the operator surface.
+
+   Layer 3 semantic names only. If a primitive is wanted here, the semantic
+   layer is missing a name; add it to tokens.css instead. Dark mode gets no
+   rules in this file at all — the ramps beneath these names already flipped.
+
+   Logical properties throughout. test_css_contract.py fails the build on a
+   physical property that cannot mirror, and the five shipped stylesheets are
+   at zero violations. This is the sixth and stays there.
+
+   Restraint is the brief. This is the same instrument as the reader surface,
+   seen from behind: porcelain ground, hairlines, one teal. An operator console
+   that looks like a different product would be a different product.
+   ========================================================================= */
+
+.admin-body {
+  min-block-size: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-page);
+  color: var(--fg-primary);
+  font-family: var(--font-sans);
+}
+
+/* Visible only on focus. A console is a keyboard surface before it is a mouse
+   one, and the tablist is several stops in. */
+.skip-link {
+  position: absolute;
+  inset-block-start: var(--space-2);
+  inset-inline-start: var(--space-2);
+  z-index: var(--z-toast);
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  color: var(--fg-primary);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-200%);
+}
+
+.skip-link:focus-visible {
+  transform: translateY(0);
+}
+
+/* ── Top bar ─────────────────────────────────────────────────────────────── */
+
+.admin-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  padding: var(--space-3) var(--gutter);
+  background: var(--bg-surface);
+  border-block-end: 1px solid var(--hairline);
+}
+
+.admin-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  text-decoration: none;
+  color: var(--fg-primary);
+  font-weight: var(--fw-display);
+}
+
+.admin-brand .icon {
+  color: var(--signal);
+}
+
+.admin-brand-sep,
+.admin-brand-role {
+  color: var(--fg-muted);
+  font-weight: var(--fw-body);
+}
+
+.admin-bar-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-inline-start: auto;
+}
+
+/* An email address is a machine-reported fact, so it takes the mono face and
+   is isolated LTR — the element also carries dir="ltr", because bidi reorders
+   an address dropped into an Arabic bar. */
+.admin-whoami {
+  font-family: var(--font-mono);
+  font-size: var(--fs-200);
+  color: var(--fg-secondary);
+  unicode-bidi: isolate;
+}
+
+/* ── Main ────────────────────────────────────────────────────────────────── */
+
+.admin-main {
+  flex: 1 1 auto;
+  inline-size: 100%;
+  max-inline-size: var(--page-max);
+  margin-inline: auto;
+  padding: var(--space-6) var(--gutter);
+}
+
+.admin-gate {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-block-size: 40vh;
+}
+
+.admin-gate-text {
+  margin: 0;
+  color: var(--fg-secondary);
+  text-align: center;
+  max-inline-size: 48ch;
+}
+
+/* ── Tabs ────────────────────────────────────────────────────────────────── */
+
+.admin-tabs {
+  display: flex;
+  gap: var(--space-1);
+  flex-wrap: wrap;
+  border-block-end: 1px solid var(--hairline);
+  margin-block-end: var(--space-5);
+}
+
+.admin-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border: 0;
+  background: none;
+  color: var(--fg-secondary);
+  font: inherit;
+  font-weight: var(--fw-medium);
+  cursor: pointer;
+  /* The 2px weight is the system's one meaningful rule, and an active tab is
+     exactly what it is reserved for. Transparent at rest so selecting a tab
+     shifts nothing. */
+  border-block-end: 2px solid transparent;
+  margin-block-end: -1px;
+}
+
+.admin-tab .icon {
+  color: var(--fg-muted);
+}
+
+.admin-tab:hover {
+  color: var(--fg-primary);
+}
+
+.admin-tab[aria-selected="true"] {
+  color: var(--fg-primary);
+  border-block-end-color: var(--signal);
+}
+
+.admin-tab[aria-selected="true"] .icon {
+  color: var(--signal);
+}
+
+/* ── Panels ──────────────────────────────────────────────────────────────── */
+
+.admin-heading {
+  font-family: var(--font-display);
+  font-size: var(--fs-500);
+  font-weight: var(--fw-display);
+  margin-block: 0 var(--space-4);
+}
+
+.admin-panel-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.admin-empty {
+  margin: 0;
+  padding: var(--space-6);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+  color: var(--fg-muted);
+  text-align: center;
+}
+
+/* ── Forms ───────────────────────────────────────────────────────────────── */
+
+.admin-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  max-inline-size: 34rem;
+}
+
+.admin-form-hint {
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: var(--fs-200);
+  max-inline-size: 60ch;
+}
+
+.admin-field {
+  display: grid;
+  /* Label and origin marker share a row; the control spans beneath both, so a
+     long Arabic label never squeezes the input. */
+  grid-template-columns: 1fr auto;
+  gap: var(--space-1) var(--space-3);
+  align-items: baseline;
+  padding-block-end: var(--space-4);
+  border-block-end: 1px solid var(--hairline);
+}
+
+.admin-field-label {
+  font-weight: var(--fw-medium);
+  margin: 0;
+}
+
+.admin-input {
+  grid-column: 1 / -1;
+  /* background-COLOR, not the shorthand: `.form-select` carries its chevron as
+     a background-image, and the shorthand would clear it — leaving a select
+     that looks exactly like a text input and gives no sign it can be opened. */
+  background-color: var(--bg-surface);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-sm);
+  color: var(--fg-primary);
+  padding: var(--space-2) var(--space-3);
+  font: inherit;
+}
+
+/* Machine-reported values take the mono face with tabular figures, so a digit
+   does not shift as it changes. */
+.admin-input[type="number"] {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Room for the chevron. The rule above sets padding symmetrically, which would
+   otherwise run a long model name underneath it. */
+select.admin-input {
+  padding-inline-end: var(--space-7);
+}
+
+/* Bootstrap pins the chevron with a physical `right` and we load the LTR
+   build, so under RTL it stays on the right — over the text, which is now
+   right-aligned. Moved to the other side, and the padding with it.
+   background-position takes no logical keywords, so this is the mirror. */
+[dir="rtl"] select.admin-input {
+  background-position: left var(--space-3) center; /* physical-ok: background-position has no logical form; this IS the RTL branch */
+  padding-inline-end: var(--space-3);
+  padding-inline-start: var(--space-7);
+}
+
+.admin-input:focus {
+  outline: none;
+  border-color: var(--signal);
+  box-shadow: 0 0 0 3px var(--focus-ring-shadow);
+}
+
+/* Whether this value was chosen or merely inherited. Quiet by default, because
+   most settings are defaults and a page of badges says nothing. */
+.admin-field-origin {
+  font-size: var(--fs-100);
+  color: var(--fg-faint);
+  text-align: end;
+}
+
+.admin-field-origin.is-override {
+  color: var(--signal);
+}
+
+.admin-field-error {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: var(--fs-200);
+  color: var(--danger);
+}
+
+.admin-field.has-error .admin-input {
+  border-color: var(--danger);
+}
+
+.admin-form-actions {
+  display: flex;
+  gap: var(--space-3);
+}
+
+/* ── Tables ──────────────────────────────────────────────────────────────── */
+
+/* Wide content scrolls inside its own container. The page body must never
+   scroll sideways — a horizontal scrollbar on the document is how a table
+   takes the whole layout with it on a narrow screen. */
+.admin-panel-body:has(.admin-table) {
+  overflow-x: auto;
+}
+
+.admin-table {
+  inline-size: 100%;
+  border-collapse: collapse;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  font-size: var(--fs-200);
+}
+
+.admin-table th,
+.admin-table td {
+  /* `start`, not `left`: this table carries emails and timestamps and has to
+     mirror wholesale under RTL. */
+  text-align: start;
+  padding: var(--space-3) var(--space-4);
+  border-block-end: 1px solid var(--hairline);
+  vertical-align: top;
+}
+
+.admin-table thead th {
+  background: var(--bg-sunken);
+  color: var(--fg-secondary);
+  font-weight: var(--fw-medium);
+  font-size: var(--fs-100);
+  letter-spacing: var(--track-caps);
+  text-transform: uppercase;
+}
+
+.admin-table tbody tr:last-child td {
+  border-block-end: 0;
+}
+
+/* Machine-reported values: timestamps, addresses, the diff. Mono with tabular
+   figures so digits do not jitter between rows, and each cell carries its own
+   dir="ltr" because bidi reorders an address or a date dropped into Arabic. */
+.admin-cell-machine {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-secondary);
+  white-space: pre-line;
+  unicode-bidi: isolate;
+}
+
+/* ── Footer ──────────────────────────────────────────────────────────────── */
+
+.admin-footer {
+  padding: var(--space-5) var(--gutter);
+  border-block-start: 1px solid var(--hairline);
+}
+
+.admin-independence {
+  margin: 0 auto;
+  max-inline-size: 70ch;
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--bg-sunken);
+  color: var(--fg-secondary);
+  font-size: var(--fs-200);
+  text-align: center;
+}
+
+/* ── Row actions ─────────────────────────────────────────────────────────── */
+
+.admin-row-actions {
+  white-space: nowrap;
+}
+
+.admin-row-action + .admin-row-action {
+  margin-inline-start: var(--space-2);
+}
+
+.admin-row-action:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* The design system has no danger button variant — logout, the one genuinely
+   irreversible control in the reader app, is a quiet ghost. A destructive
+   action here stays a ghost too and takes the alert ramp only on hover, so a
+   table of accounts does not read as a wall of warnings. The weight is carried
+   by the confirmation and the record. */
+.admin-row-action.is-destructive:hover:not(:disabled) {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+/* "you", beside your own address. Not a badge: it is an aside, not a status. */
+.admin-you {
+  color: var(--fg-faint);
+  font-family: var(--font-sans);
+}
+
+/* A withdrawn permission is a state, not an error — the alert ramp would make
+   a deliberate decision look like a fault in the table. */
+.admin-flag-off {
+  color: var(--fg-muted);
+  font-weight: var(--fw-medium);
+}
+
+/* Reverting is staged, not immediate — the form submits whole. The control sits
+   with the field it belongs to rather than in the actions row, because it acts
+   on one value and Save acts on all of them. */
+.admin-field-revert {
+  grid-column: 1 / -1;
+  justify-self: start;
+  padding-inline: 0;
+  font-size: var(--fs-100);
+  color: var(--fg-muted);
+  border: 0;
+  background: none;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.admin-field-revert:hover {
+  color: var(--signal);
+}
+
+/* A stated reason, under the state it explains. Quiet: it is context for the
+   row, not a second column competing with it. */
+.admin-cell-note {
+  display: inline-block;
+  margin-block-start: var(--space-1);
+  color: var(--fg-muted);
+  font-family: var(--font-sans);
+  font-size: var(--fs-100);
+  max-inline-size: 28ch;
+}

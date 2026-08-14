@@ -35,6 +35,45 @@ def test_profile_update_applies_and_persists_theme(authenticated_page: Page):
     ) == "dark"
 
 
+def test_profile_update_sends_only_the_columns_it_may_write(authenticated_page: Page):
+    """The upsert payload is a privilege boundary, not just a shape.
+
+    `authenticated` no longer holds table-wide INSERT/UPDATE on public.profiles.
+    The write columns are granted one by one, precisely so that `role`, `tier`
+    and `is_disabled` are excluded and a reader cannot promote themselves. The
+    consequence is that naming *any* ungranted column fails the whole statement
+    with "permission denied for table profiles" — Postgres reports a column
+    miss as a table-level error, which makes it read like a much bigger problem
+    than it is.
+
+    That is not hypothetical: this form used to send `updated_at: new Date()`,
+    which broke every profile save the moment the grants were narrowed. The
+    trigger sets updated_at from the server clock anyway.
+
+    The browser mock accepts anything, so only this assertion stands between a
+    new field here and a 42501 in production.
+    """
+    granted = {"id", "full_name", "organization", "specialization", "preferences"}
+
+    authenticated_page.locator("#profile-button").click()
+    authenticated_page.locator("#profile-full-name").fill("Column Check")
+    authenticated_page.locator("#profile-form").evaluate(
+        "(form) => form.requestSubmit()"
+    )
+
+    sent = set(
+        authenticated_page.evaluate(
+            "Object.keys(window.__supabaseState.lastProfileUpdate)"
+        )
+    )
+    assert sent <= granted, (
+        f"profile upsert names column(s) the browser has no grant on: "
+        f"{sorted(sent - granted)}. Either drop them from the payload, or add "
+        f"them to the column grants in supabase/migrations/*_lock_profile_* "
+        f"— but never add role, tier or is_disabled."
+    )
+
+
 def test_profile_service_contracts(authenticated_page: Page):
     result = authenticated_page.evaluate(
         """

@@ -234,6 +234,19 @@ export const Handlers = {
       }
 
       logError(error, 'processChatRequestInternal');
+
+      /* A disabled account is not a fault. The server understood perfectly and
+         the answer is no, so the reader gets an explanation in their own
+         language rather than "something went wrong" — which would send them
+         retrying a thing that will never work. No error toast and no error
+         face for the same reason: this is a decision about their account, not
+         a malfunction. */
+      if (error?.code === 'account_disabled') {
+        UI.addMessage(I18n.t('auth.accountDisabled'), 'bot');
+        RobotStateManager.resetToIdle();
+        return;
+      }
+
       UI.addMessage(I18n.t('chat.genericError'), 'bot');
       ErrorHandler.showToast(I18n.t('chat.sendFailed'), true);
       RobotStateManager.showError();
@@ -621,12 +634,18 @@ export const Handlers = {
       }
 
       const formData = new FormData(event.target);
+      // No updated_at. The `on_profile_update` trigger sets it from the server
+      // clock on every update, and the column default covers the insert — so a
+      // browser-supplied timestamp was both redundant and less trustworthy.
+      // It is also the one key here the client has no privilege to write: the
+      // profile columns are granted individually so that `role`, `tier` and
+      // `is_disabled` cannot be, and a payload naming an ungranted column fails
+      // the whole statement with "permission denied for table profiles".
       const updates = {
         full_name: formData.get('full_name'),
         organization: formData.get('organization'),
         specialization: formData.get('specialization'),
         preferences: { theme: formData.get('theme-preference') },
-        updated_at: new Date(),
       };
 
       await Services.updateProfile(user.id, updates);
