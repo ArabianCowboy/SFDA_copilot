@@ -1111,10 +1111,18 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
                 logging.error("Search engine unavailable for chat request.")
                 return jsonify(error="Search service is currently unavailable."), 503
 
+            # Captured BEFORE retrieval, not after. Search can block for a
+            # noticeable time, and a settings change landing during it would
+            # otherwise mean the request began under one model and generated
+            # under another — coherent, but not the model that was current when
+            # the reader asked. The streaming route already captured up front;
+            # this makes the two agree, and makes the claim in the commit that
+            # introduced the swap actually true.
+            openai_handler: OpenAIHandler = current_app.config["openai_handler"]
+
             search_results: List[SearchResult] = search_engine.search(query, category)
             llm_context = [{"text": r.text, "document": r.document, "category": r.category, "page": r.page} for r in search_results]
 
-            openai_handler: OpenAIHandler = current_app.config["openai_handler"]
             # retrieved[i] must be the same passage as prompt block [i], so both
             # are cut to the same limit.
             retrieved = build_source_payload(search_results, limit=openai_handler.max_context_results)

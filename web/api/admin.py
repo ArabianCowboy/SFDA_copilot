@@ -77,6 +77,17 @@ def _gate() -> Optional[Response]:
     if early_response is not None:
         return early_response
 
+    # An outage is not a refusal, and saying "forbidden" when the truth is "we
+    # could not check" tells an administrator they have lost access they still
+    # have. Ordered before the role test because an unresolved identity always
+    # reports role='user', so checking is_admin first would misclassify every
+    # lookup failure as a denial.
+    if not identity.is_resolved:
+        logger.error(
+            "Could not resolve identity for %s; refusing console access.", identity.user_id
+        )
+        return jsonify({"error": "identity_unavailable"}), 503
+
     if not identity.is_admin:
         logger.warning(
             "Non-administrator %s attempted %s", identity.user_id, request.path
@@ -142,7 +153,21 @@ def put_settings() -> Response:
     from web.services.audit import actor_from_request
 
     service = current_app.config["settings_service"]
-    errors = service.update(payload, actor=actor_from_request(g.identity))
+    apply_settings = current_app.config["apply_generation_settings"]
+
+    # Applied inside the service's write lock, so store, publish, build and swap
+    # are one serialized operation. Two overlapping saves would otherwise each
+    # store then build then swap, and whichever build finished last would win —
+    # leaving generation on the older settings while the store and both
+    # responses reported the newer.
+    outcome = {"applied": False}
+
+    def apply_now() -> None:
+        outcome["applied"] = apply_settings()
+
+    errors = service.update(
+        payload, actor=actor_from_request(g.identity), on_committed=apply_now
+    )
 
     if errors:
         return jsonify({
@@ -150,15 +175,13 @@ def put_settings() -> Response:
             "errors": [error.as_dict() for error in errors],
         }), 422
 
-    logger.info(
-        "Settings updated by %s: %s", g.identity.email, sorted(payload)
-    )
+    logger.info("Settings updated by %s: %s", g.identity.email, sorted(payload))
 
-    # Apply to generation immediately. Reported rather than raised: the settings
-    # are already stored, so a handler that would not build is a reason to tell
-    # the operator their change is not live yet — not a reason to fail a write
-    # that succeeded, and certainly not a reason to take the chatbot down.
-    applied = current_app.config["apply_generation_settings"]()
+    # Reported rather than raised: the settings are already stored, so a handler
+    # that would not build is a reason to tell the operator their change is not
+    # live yet — not a reason to fail a write that succeeded, and certainly not
+    # a reason to take the chatbot down.
+    applied = outcome["applied"]
     if not applied:
         logger.error("Settings were stored but could not be applied to generation.")
 

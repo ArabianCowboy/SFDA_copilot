@@ -202,7 +202,15 @@ class SettingsService:
         backend = self._backend
         if backend is None:
             raise RuntimeError("no settings backend configured")
-        return backend.get_settings() or {}
+
+        stored = backend.get_settings() or {}
+        # The column is JSONB with no object-shape constraint, so a scalar or an
+        # array written directly to the row would reach `.items()` and raise.
+        # Since startup adopts stored overrides, that turned malformed data into
+        # a boot failure — the app would not start at all.
+        if not isinstance(stored, dict):
+            raise TypeError(f"stored settings must be a JSON object, got {type(stored).__name__}")
+        return stored
 
     def _overrides(self) -> Dict[str, Any]:
         """Lenient read for display and snapshots.
@@ -255,7 +263,24 @@ class SettingsService:
         """What has actually been changed, for the console to show as such."""
         return {k: v for k, v in self._overrides().items() if k in GENERATION_KEYS}
 
-    def update(self, patch: Dict[str, Any], *, actor) -> List[ValidationError]:
+    def _publish(self, overrides: Dict[str, Any]) -> None:
+        """Install a known-committed document as the snapshot.
+
+        Deliberately not a re-read. `snapshot(force=True)` after a write goes
+        back to the store, and that read is the lenient one — so a store that
+        fails in the instant after a successful write would publish the deployed
+        defaults while the API reported the change as applied. Publishing what
+        was actually committed cannot disagree with what was committed.
+        """
+        effective = deployed_defaults()
+        for key in GENERATION_KEYS:
+            if key in overrides:
+                effective[key] = overrides[key]
+        with self._lock:
+            self._cached = dict(effective)
+            self._loaded_at = self._now()
+
+    def update(self, patch: Dict[str, Any], *, actor, on_committed=None) -> List[ValidationError]:
         """Apply a patch. Returns errors; an empty list means it was written.
 
         A key set to None is removed, which is how an operator reverts to the
@@ -310,6 +335,18 @@ class SettingsService:
             # effective settings: "somebody set the model" and "the model
             # happens to differ from the default" are different facts, and only
             # the first is an action anyone took.
-            backend.put_settings(stored, actor=actor, before=original, after=dict(stored))
-            self.snapshot(force=True)
+            committed = backend.put_settings(
+                stored, actor=actor, before=original, after=dict(stored)
+            )
+            # Trust the store's answer over our own copy where it gives one.
+            self._publish(committed if isinstance(committed, dict) else stored)
+
+            # Inside the lock, deliberately. Two overlapping saves would
+            # otherwise each store, then build, then swap — and if the first
+            # build finished last, generation would settle on the older
+            # settings while the store and both responses said the newer. The
+            # write is already serialized; the effect has to be too, or the
+            # serialization only covers half the operation.
+            if on_committed is not None:
+                on_committed()
         return []

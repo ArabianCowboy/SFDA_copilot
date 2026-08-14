@@ -172,3 +172,74 @@ def test_changed_keys_reports_only_what_moved():
 def test_changed_keys_reports_additions_and_removals():
     assert changed_keys({}, {"model": "b"}) == {"model": {"from": None, "to": "b"}}
     assert changed_keys({"model": "a"}, {}) == {"model": {"from": "a", "to": None}}
+
+
+# ── Fixes from the second adversarial review ─────────────────────────────────
+
+
+def test_a_non_object_settings_row_does_not_take_the_app_down(app):
+    """Startup adopts stored overrides, so malformed data became a boot failure.
+
+    The column is JSONB with no object-shape constraint, so a scalar or an array
+    written directly to the row reached `.items()` and raised — during
+    create_app, where nothing catches it.
+    """
+    from web.services.settings_service import SettingsService, deployed_defaults
+
+    class Malformed:
+        def get_settings(self):
+            return ["not", "an", "object"]
+
+    service = SettingsService(lambda: Malformed())
+    assert service.snapshot() == deployed_defaults()
+
+
+def test_a_rejected_identity_publication_does_not_authorize_its_own_request(monkeypatch, app):
+    """The demotion arrived everywhere except the request that needed to see it.
+
+    `put()` correctly refused to keep a stale admin result, but the resolver
+    returned that rejected object anyway — so the request holding it acted on a
+    role the cache had just thrown away.
+    """
+    from web.services import admin_store
+    from web.services.identity_cache import IdentityFlags, IdentityFlagsCache
+
+    cache = IdentityFlagsCache()
+
+    class SlowStaleAdmin:
+        def fetch_identity(self, user_id, email):
+            # While "this" lookup was in flight, a newer one published a
+            # demotion. Publication must reject us, and so must the answer.
+            cache.put(IdentityFlags(user_id, email, "user", "free", False))
+            return IdentityFlags(user_id, email, "admin", "internal", False)
+
+    monkeypatch.setattr(admin_store, "get_admin_backend", lambda: SlowStaleAdmin())
+
+    with app.app_context():
+        flags = admin_store.resolve_identity_flags(cache, "u1", "u1@example.com")
+
+    assert flags.is_admin is False, "a rejected publication must not authorize its own request"
+    assert cache.get("u1").role == "user"
+
+
+def test_an_identity_outage_is_a_503_not_a_refusal(monkeypatch, client):
+    """"Forbidden" tells an administrator they lost access they still have.
+
+    The console re-reads identity on every request, so a profile-store outage
+    makes a real admin unresolved. That has to read as an outage — and the
+    ordering matters: an unresolved identity reports role='user', so testing
+    is_admin first would misclassify every lookup failure as a denial.
+    """
+    from web.services.identity_cache import IdentityFlags
+
+    # Patched on web.api.app, not web.api.admin: the gate imports it inside the
+    # function to avoid a circular import, so the name is resolved from the
+    # source module at call time and a patch on the importer would do nothing.
+    monkeypatch.setattr(
+        "web.api.app._authenticate_request",
+        lambda: (IdentityFlags.unknown("test-admin-id", "admin@example.com"), None),
+    )
+
+    response = client.get("/admin/api/settings", headers=ADMIN)
+    assert response.status_code == 503
+    assert response.get_json() == {"error": "identity_unavailable"}

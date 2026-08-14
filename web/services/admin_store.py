@@ -283,5 +283,15 @@ def resolve_identity_flags(
         logger.warning("No profile row for authenticated user %s.", user_id)
         flags = IdentityFlags.unprivileged(user_id, email)
 
-    cache.put(flags, fetched_at=started)
+    if not cache.put(flags, fetched_at=started):
+        # The cache rejected this as stale — a newer lookup already published,
+        # or the entry was invalidated after this fetch began. Returning the
+        # rejected value anyway would let *this* request act on a role the cache
+        # correctly refused to keep, which is the demotion arriving everywhere
+        # except the request that needed to see it.
+        current = cache.get(user_id)
+        if current is not None:
+            return current
+        return _fallback(cache, user_id, email)
+
     return flags
