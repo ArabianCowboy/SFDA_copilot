@@ -18,6 +18,10 @@ server:
     per_hour: 50
     per_minute: 10
     chat_api: "15 per minute"
+    # Password recovery. Low on purpose: the endpoint is unauthenticated and
+    # every accepted call sends mail, and GoTrue's own project-wide ceiling is
+    # 30/hour — a caller must not be able to exhaust that in one minute.
+    recover_api: "5 per minute"
   
   # CORS origins (only used when debug=false)
   allowed_origins:

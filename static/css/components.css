@@ -1732,3 +1732,40 @@
   transition: opacity var(--duration-s) var(--ease-soft);
 }
 .toast-action:hover { opacity: 1; }
+
+/* ── Recovery view ───────────────────────────────────────────────────────────
+   The third view in the shell, reached only from a link in an inbox. It borrows
+   `.landing`'s ground and measure rather than introducing a surface of its own:
+   a reader arriving here has already been shown the landing once, and a second
+   visual language for one form would read as a different site.
+   Logical properties throughout — test_css_contract.py is at zero violations. */
+.recovery .landing-inner {
+  max-inline-size: 34rem;
+  padding-block: clamp(2rem, 8vh, 5rem);
+}
+
+.recovery-heading {
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: -0.012em;
+  margin-block-end: 0.5rem;
+}
+
+.recovery-lead {
+  color: var(--ink-secondary);
+  max-inline-size: 54ch;
+  margin-block-end: 1.5rem;
+}
+
+.recovery-form {
+  background: var(--paper-000);
+  border: 1px solid var(--rule-200);
+  border-radius: var(--radius-lg, 0.75rem);
+  padding: 1.5rem;
+}
+
+/* The notice is at the end of the flow here rather than in a footer, because
+   this view has none. Same sunken fill and measure as the landing's. */
+.recovery-notice {
+  margin-block-start: 2rem;
+}

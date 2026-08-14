@@ -26,6 +26,10 @@ export function createClient() {
     sessionError: null,
     profileError: null,
     profileUpdateError: null,
+    lastUserUpdate: null,
+    updateUserError: null,
+    lastSignOutScope: null,
+    signUpError: null,
   };
 
   const session = () => state.user ? {
@@ -58,12 +62,26 @@ export function createClient() {
         return { data: { user: state.user, session: currentSession }, error: null };
       },
       async signUp({ email }) {
+        if (state.signUpError) {
+          return { data: { user: null, session: null }, error: new Error(state.signUpError) };
+        }
         return { data: { user: { id: 'test-user-id', email } }, error: null };
       },
       async signOut() {
         state.user = null;
+        state.lastSignOutScope = arguments[0]?.scope ?? 'default';
         queueMicrotask(() => state.authCallback?.('SIGNED_OUT', null));
         return { error: null };
+      },
+      /* Recovery. The real client never sees `resetPasswordForEmail` any more —
+         recovery mail is sent server-side — but `updateUser` is the call that
+         actually changes the password, and it is the one worth pinning. */
+      async updateUser(attributes) {
+        if (state.updateUserError) {
+          return { data: { user: null }, error: new Error(state.updateUserError) };
+        }
+        state.lastUserUpdate = attributes;
+        return { data: { user: state.user ?? { id: 'test-user-id', email: 'test@example.com' } }, error: null };
       },
     },
     from() {

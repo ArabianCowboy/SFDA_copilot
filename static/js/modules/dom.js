@@ -135,6 +135,16 @@ export const ErrorHandler = {
       'email not confirmed': I18n.t('auth.emailNotConfirmed'),
       'user already registered': I18n.t('auth.alreadyRegistered'),
       'to be a valid email': I18n.t('auth.invalidEmail'),
+      /* GoTrue's own email limiter, reached from signup as well as recovery.
+         Its text is English-only and blames the reader for a limit the service
+         imposed; worse, GoTrue rolls the account back when a send fails, so they
+         get no account, no email, and no hint that the address is still free to
+         retry. Recovery handles these as status codes from our own endpoint —
+         signup gets them here, which is the only place its errors pass through. */
+      'for security purposes': I18n.t('auth.tooSoon'),
+      'only request this after': I18n.t('auth.tooSoon'),
+      'email rate limit exceeded': I18n.t('auth.emailUnavailable'),
+      'over_email_send_rate_limit': I18n.t('auth.emailUnavailable'),
     };
     for (const key in errorMap) {
       if (message.includes(key)) return errorMap[key];
@@ -232,9 +242,20 @@ export const ErrorHandler = {
     errorEl.classList.remove(CONFIG.CLASSES.D_NONE);
   },
 
+  /* The recovery view sits outside the auth modal, so `#auth-error` is not on
+     screen when it needs to say something. Same treatment, its own element. */
+  showRecoveryError(message) {
+    const errorEl = DOMCache.get(CONFIG.SELECTORS.RECOVERY_ERROR);
+    if (!errorEl) return;
+
+    errorEl.textContent = message;
+    errorEl.classList.remove(CONFIG.CLASSES.D_NONE);
+  },
+
   clearErrors() {
     const authError = DOMCache.get(CONFIG.SELECTORS.AUTH_ERROR);
     const profileError = DOMCache.get(CONFIG.SELECTORS.PROFILE_ERROR);
+    const recoveryError = DOMCache.get(CONFIG.SELECTORS.RECOVERY_ERROR);
 
     if (authError) {
       authError.classList.add(CONFIG.CLASSES.D_NONE);
@@ -246,7 +267,13 @@ export const ErrorHandler = {
       profileError.textContent = '';
     }
 
-    [CONFIG.SELECTORS.LOGIN_FORM, CONFIG.SELECTORS.SIGNUP_FORM]
+    if (recoveryError) {
+      recoveryError.classList.add(CONFIG.CLASSES.D_NONE);
+      recoveryError.textContent = '';
+    }
+
+    [CONFIG.SELECTORS.LOGIN_FORM, CONFIG.SELECTORS.SIGNUP_FORM,
+     CONFIG.SELECTORS.RESET_REQUEST_FORM, CONFIG.SELECTORS.RECOVERY_FORM]
       .map(sel => DOMCache.get(sel))
       .filter(Boolean)
       .forEach(form => {

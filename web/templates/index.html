@@ -189,6 +189,38 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
                                     class="btn btn-primary w-100 btn-lg py-2 fw-bold">
                                     <span class="spinner-border spinner-border-sm d-none me-2" role="status"
                                         aria-hidden="true"></span>{{ t('page.auth.login') }}</button>
+
+                                <!-- type="button" is not optional: a bare button
+                                     inside this form submits it. -->
+                                <button type="button" id="forgot-password-link"
+                                    class="btn btn-link w-100 mt-2 p-0">{{ t('page.auth.reset.link') }}</button>
+                            </form>
+
+                            <!-- Swaps with the login form rather than adding a
+                                 third tab: a rare action does not earn permanent
+                                 space, and #authTab is reached by two tests. -->
+                            <form id="reset-request-form" class="d-none" novalidate>
+                                <h3 class="h6 mb-2">{{ t('page.auth.reset.heading') }}</h3>
+                                <p class="text-secondary small mb-3">{{ t('page.auth.reset.lead') }}</p>
+
+                                <div class="form-floating mb-3">
+                                    <input type="email" class="form-control" id="reset-email" placeholder=" " required
+                                        autocomplete="username">
+                                    <label for="reset-email">
+                                        {{ icon('mail', 15) }}<span>{{ t('page.auth.email') }}</span>
+                                    </label>
+                                    <div class="invalid-feedback">{{ t('page.auth.emailInvalid') }}</div>
+                                </div>
+
+                                <div id="reset-sent" class="alert alert-info d-none" role="status" aria-live="polite">
+                                    <span>{{ t('runtime.auth.recovery.sent') }}</span>
+                                    <span class="d-block mt-1 small">{{ t('runtime.auth.recovery.contactAdmin') }}</span>
+                                </div>
+
+                                <button type="submit"
+                                    class="btn btn-primary w-100 btn-lg py-2 fw-bold">{{ t('page.auth.reset.submit') }}</button>
+                                <button type="button" id="reset-back-to-login"
+                                    class="btn btn-link w-100 mt-2 p-0">{{ t('page.auth.reset.back') }}</button>
                             </form>
                         </div>
 
@@ -407,6 +439,79 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
                         <a href="https://www.linkedin.com/in/mohfouda/" target="_blank" rel="noopener">LinkedIn</a>
                     </div>
                 </footer>
+        </div>
+    </main>
+
+    <!-- ═══════════════════════════════════════════
+         RECOVERY VIEW — Choose a new password
+
+         The third view in a shell that had two. Reached only by following a
+         link from an inbox, so it carries no navigation of its own and — note —
+         no theme toggle: three is the number on this page, and a fourth breaks
+         test_theme_toggle.py and test_rtl.py. It does carry the independence
+         notice, because DESIGN.md asks every surface to and this one has no
+         footer to inherit it from.
+         ═══════════════════════════════════════════ -->
+    <main id="recovery-view" class="landing recovery flex-grow-1 d-none">
+        {# Language only, and it is not optional: both other toggles live inside
+           the two views this one hides, so without this a reader who lands here
+           in the wrong language has no way to switch on the one page where they
+           are already stuck. No theme toggle — three .theme-toggle-btn is the
+           number test_theme_toggle.py and test_rtl.py count. #}
+        <nav class="landing-header-utility" aria-label="{{ t('page.nav.utilityAria') }}">
+            <button class="lang-toggle-btn btn btn-sm" type="button"
+                data-lang="{{ 'en' if lang == 'ar' else 'ar' }}"
+                aria-label="{{ t('runtime.lang.switchAria') }}"
+                title="{{ t('runtime.lang.toEnglish') if lang == 'ar' else t('runtime.lang.toArabic') }}">
+                <span class="lang-code">{{ 'EN' if lang == 'ar' else 'ع' }}</span>
+            </button>
+        </nav>
+        <div class="landing-inner">
+            <h1 id="recovery-heading" class="recovery-heading" tabindex="-1">
+                {{ t('page.auth.recovery.heading') }}
+            </h1>
+            <p class="recovery-lead">{{ t('page.auth.recovery.lead') }}</p>
+
+            <div id="recovery-expired" class="alert alert-warning d-none" role="status" aria-live="polite">
+                {{ t('runtime.auth.recovery.expired') }}
+            </div>
+
+            <form id="recovery-form" class="recovery-form d-none" novalidate>
+                <div class="form-floating mb-3">
+                    {# Same rule and the same words as signup, on purpose: one
+                       place to change the password policy. #}
+                    <input type="password" class="form-control" id="recovery-password" placeholder=" " required
+                        pattern="(?=.*\d)(?=.*[a-z])(?=.*[A-Z]).{8,}" autocomplete="new-password"
+                        aria-describedby="recovery-password-requirements">
+                    <label for="recovery-password">
+                        {{ icon('lock', 15) }}<span>{{ t('page.auth.recovery.newPassword') }}</span>
+                    </label>
+                    <div id="recovery-password-requirements" class="form-text mt-1">
+                        {{ t('page.auth.passwordHint') }}
+                    </div>
+                    <div class="invalid-feedback">{{ t('page.auth.passwordInvalid') }}</div>
+                </div>
+
+                {# A typo here costs another round trip through email, which is
+                   why this field exists and the pattern alone is not enough. #}
+                <div class="form-floating mb-4">
+                    <input type="password" class="form-control" id="recovery-password-confirm" placeholder=" "
+                        required autocomplete="new-password">
+                    <label for="recovery-password-confirm">
+                        {{ icon('lock', 15) }}<span>{{ t('page.auth.recovery.confirmPassword') }}</span>
+                    </label>
+                    <div class="invalid-feedback">{{ t('page.auth.passwordRequired') }}</div>
+                </div>
+
+                <button type="submit"
+                    class="btn btn-primary w-100 btn-lg py-2 fw-bold">{{ t('page.auth.recovery.submit') }}</button>
+                <button type="button" id="recovery-cancel"
+                    class="btn btn-link w-100 mt-2 p-0">{{ t('page.auth.recovery.cancel') }}</button>
+            </form>
+
+            <div id="recovery-error" class="alert alert-danger mt-3 d-none" role="alert"></div>
+
+            <p class="landing-notice recovery-notice">{{ t('page.landing.notice') | safe }}</p>
         </div>
     </main>
 

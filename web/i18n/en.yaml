@@ -66,6 +66,23 @@ runtime:
     checkingStatus: "Checking status..."
     servicesUnavailable: "Authentication services are not configured."
     initFailed: "Failed to initialize core application services."
+    # Both of these map a GoTrue message that would otherwise reach the reader as
+    # raw English. `emailUnavailable` also covers the signup rate limit, which is
+    # the same ceiling surfacing on the adjacent form.
+    tooSoon: "You just asked for a link. Wait a minute before asking again — check your inbox and your spam folder in the meantime."
+    emailUnavailable: "We could not send the email just now. Nothing has changed on your account — please try again shortly."
+    # Nested under auth rather than a top-level `recovery` block: the inlined
+    # catalogue's top-level keys are a closed allow-list, and a new one there
+    # fails test_page_strings_never_reach_the_browser.
+    recovery:
+      sent: "If that address has an account, a reset link is on its way."
+      contactAdmin: "Still not there? Contact your administrator."
+      mismatch: "The two passwords do not match."
+      saving: "Saving your new password..."
+      done: "Your password has been changed. Please sign in with it."
+      expired: "This link has expired or has already been used. Request a new one to try again."
+      failed: "We could not change your password. Please request a new link."
+      resendIn: "You can ask again in {count}s"
 
   profile:
     loadFailed: "Failed to load your profile."
@@ -272,6 +289,19 @@ page:
     passwordInvalid: "Password must meet the requirements."
     loginSignup: "Login / Signup"
     logout: "Logout"
+    reset:
+      link: "Forgot your password?"
+      heading: "Reset your password"
+      lead: "Enter the address you signed up with and we'll send you a link to choose a new password."
+      submit: "Send reset link"
+      back: "Back to login"
+    recovery:
+      heading: "Choose a new password"
+      lead: "You followed a recovery link. Set a new password below, then sign in with it."
+      newPassword: "New password"
+      confirmPassword: "Confirm new password"
+      submit: "Save new password"
+      cancel: "Cancel"
 
   profile:
     heading: "Edit Your Profile"

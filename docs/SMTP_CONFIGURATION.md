@@ -1,9 +1,10 @@
 # Transactional email: custom SMTP through Resend
 
-**Status:** configured 2026-08-14, **delivery not yet proven.** See
-[Verification](#verification) for exactly what has and has not been confirmed —
-the distinction matters, and the obvious test does not test what it looks like
-it tests.
+**Status:** configured 2026-08-14, **delivery proven the same day.** See
+[Verification](#verification) for what was confirmed and how — including the
+thing that took longest to notice: the `mail.send` log line is *not* the
+evidence, and waiting for it would have left this file saying "unproven"
+indefinitely.
 
 This file exists because none of the state it describes lives in this
 repository. The SMTP settings are in the Supabase dashboard, the DNS records are
@@ -119,39 +120,50 @@ reports that `p=none` exists to collect are being sent nowhere. Adding
 - GoTrue raised its email limiter from 2/1h to 30, which it only does for a
   custom sender.
 
-**Not confirmed — no email has been sent through Resend yet.** The last
-`mail.send` in the auth log is `2026-08-14T01:03:17Z`, over ten hours *before*
-the SMTP change. Nothing has exercised the new path.
+**Confirmed — mail is being delivered through Resend.** Three sends, all after
+the 11:17:50Z SMTP change, each verified in the database rather than by eye:
 
-**And the obvious test would not test it.** Email confirmation is currently
-**disabled** on this project. The most recent signup shows it plainly:
+| What | Evidence |
+|---|---|
+| Signup confirmation | `mohifouda@gmail.com` — `confirmation_sent_at = 12:06:22`, then `/verify 303` at 12:06:38 and `email_confirmed_at` set. Sixteen seconds is someone opening a real email and clicking a real link. |
+| Password recovery | `midoxp@gmail.com` — `recovery_sent_at` moved from null (since April 2025) to `16:48:19`. |
+| Recovery, completed end to end | `midoxp@yahoo.com` — `recovery_sent_at` set at `16:52:58`, then cleared once the single-use token was spent; `email_confirmed_at` set at `16:53:21` and `last_sign_in_at` at `17:03:47`, both previously null since 2025-11-16. |
+
+**The `mail.send` log line is not the test, and this is the trap.** The only
+`mail.send` in the auth log is still `2026-08-14T01:03:17Z`, from *before* the
+SMTP change — it has not appeared once for any of the three sends above.
+Whatever raises that line, custom SMTP does not. An earlier version of this file
+proposed watching for it; anyone who does will conclude delivery is broken while
+mail is arriving. Read `auth.users` instead: `confirmation_sent_at`,
+`recovery_sent_at`, and the state changes a used token leaves behind.
+
+**Why a signup used to prove nothing, and now does.** Email confirmation was
+disabled when this file was first written, and the trap is worth keeping:
 
 ```sql
 select email, created_at, email_confirmed_at, confirmation_sent_at from auth.users;
 -- midoxp@live.com | 2026-08-14 01:13:28.630 | 2026-08-14 01:13:28.655 | null
 ```
 
-`confirmation_sent_at` is null and the address was confirmed 25 ms after the
-account was created — i.e. auto-confirmed, with no email attempted. **A signup
-performed today would succeed while sending nothing**, which reads as a pass and
-proves nothing.
+`confirmation_sent_at` null and the address confirmed 25 ms after the account was
+created is auto-confirmation with no email attempted — a signup that *reads* as a
+pass while sending nothing. **Confirmation was re-enabled at 12:05:17Z** (auth log:
+`reloading api with new configuration`, immediately before the 12:06:22 signup
+above), so that hole is closed and `confirmation_sent_at` is now meaningful.
 
-To actually prove delivery, do one of these:
+To re-prove delivery later, trigger a password reset for an existing account and
+watch `auth.users.recovery_sent_at` move. It sends through the same SMTP
+configuration without changing a project setting, and it is reversible.
 
-1. **Re-enable "Confirm email"** (Authentication → Sign In / Providers → Email),
-   register a disposable address, and confirm a `mail.send` appears in the auth
-   log *after* 11:17:50Z. This is the honest test, because it exercises the real
-   signup path.
-2. **Trigger a password reset** for an existing account. Sends through the same
-   SMTP configuration without changing any project setting — a smaller,
-   reversible check, and the one to reach for first.
+Cross-check the Resend Activity log for the delivery itself. That is the only
+place that distinguishes **accepted then bounced** from **accepted then ignored**
+— the database can only tell you a send was accepted, which is why the app names
+its audit action `password_reset_accepted` rather than `sent`.
 
-Then cross-check the Resend dashboard's Activity/Logs view for the delivery, and
-watch for a bounce or a spam placement rather than assuming a queued message
-arrived.
-
-Whether email confirmation *should* be on is a separate, still-open decision —
-see `TODO.md`. Right now anyone can register with an address they do not control.
+Email confirmation being on is no longer an open question; the remaining decision
+recorded in `TODO.md` was whether a confirmed address is *required to chat*, and
+it is — GoTrue refuses to issue a session for an unconfirmed address, so the
+enforcement sits at the session boundary and needs no application code.
 
 ## Troubleshooting and rollback
 

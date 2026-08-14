@@ -36,6 +36,43 @@ export function parseSseFrame(raw) {
   }
 }
 
+/**
+ * Is this page load the landing leg of a password recovery?
+ *
+ * Read before the Supabase client exists, because the answer picks the client's
+ * flow type and that is fixed at construction.
+ *
+ * Recovery mail is sent server-side (see `web/services/account_recovery.py`), so
+ * the link comes back with tokens in the fragment rather than a `?code=` to
+ * exchange. Measured against gotrue-js 2.62.2 on 2026-08-14: a client built with
+ * `flowType: 'pkce'` **silently drops** that callback — no session, no
+ * PASSWORD_RECOVERY event, and no error either, because `_initialize` swallows
+ * the "Not a valid PKCE flow url" it raises. The reader lands on the page and
+ * nothing whatsoever happens. `'implicit'` consumes it correctly.
+ *
+ * Every other flow keeps PKCE. Only this one page load changes.
+ *
+ * The `?recovery=1` marker is checked as well as the fragment because it is the
+ * thing we control: it survives GoTrue's redirect (proven), it states the
+ * reader's intent before any auth event fires, and the event ordering is a known
+ * upstream bug (supabase/auth-js#349).
+ */
+/** Where a recovery session lives — per tab, never beside the reader's own. */
+export const RECOVERY_STORAGE_KEY = 'sfda-supabase-recovery';
+
+export function isRecoveryCallback() {
+  /* Parsed, not substring-matched. `search.includes('recovery=1')` also matched
+     `?notrecovery=1`, and `hash.includes('access_token=')` matched a stale or
+     empty fragment — either of which put a perfectly ordinary page load into
+     recovery mode. */
+  if (new URLSearchParams(window.location.search).get('recovery') === '1') {
+    return true;
+  }
+
+  const fragment = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+  return Boolean(fragment.get('access_token')) && fragment.get('type') === 'recovery';
+}
+
 export const Services = {
   supabase: null,
   chatAbortController: null,
@@ -57,14 +94,27 @@ export const Services = {
       window.location.hostname === 'localhost' ||
       window.location.hostname === '127.0.0.1';
 
+    /* A recovery session is kept in per-tab sessionStorage under its own key,
+       not in the shared localStorage the signed-in reader uses.
+
+       Supabase propagates a localStorage session to every open tab. Without this
+       split, following a recovery link while the app is open elsewhere writes
+       over that tab's session and hands it a recovery token as an ordinary
+       sign-in — the chat shell, drawn from a link in an inbox, in a tab that
+       never asked. The guards in auth-view.js only cover the tab that did.
+
+       sessionStorage survives a reload of this tab, which is all the flow needs,
+       and dies with it, which is the point. */
+    const recovering = isRecoveryCallback();
+
     this.supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
       auth: {
         persistSession: true,
         autoRefreshToken: true,
         detectSessionInUrl: true,
-        storage: window.localStorage,
-        storageKey: 'sfda-supabase-auth',
-        flowType: 'pkce',
+        storage: recovering ? window.sessionStorage : window.localStorage,
+        storageKey: recovering ? RECOVERY_STORAGE_KEY : 'sfda-supabase-auth',
+        flowType: recovering ? 'implicit' : 'pkce',
         debug: isDebugMode,
       },
     });
@@ -232,6 +282,52 @@ export const Services = {
   },
 
   /**
+   * Ask for a password-reset link.
+   *
+   * Goes to our own origin rather than straight to Supabase, unlike `login` and
+   * `signup` above. A link requested from the browser carries a PKCE
+   * `code_challenge` whose verifier is written into *this* browser's storage, so
+   * opening the mail on a phone could never complete it. The server has no such
+   * problem, and readers open mail on whatever device is to hand.
+   *
+   * The server answers the same way whether or not the address exists, so there
+   * is nothing here to branch on — only a rate limit, which is worth telling the
+   * reader about because it means "wait", not "give up".
+   */
+  async requestPasswordReset(email, lang) {
+    const response = await fetch('/auth/recover', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({ email, lang }),
+    });
+
+    if (response.status === 429) {
+      const body = await response.json().catch(() => ({}));
+      const refusal = new Error(body.error || 'reset_rate_limited');
+      refusal.code = body.error || 'reset_rate_limited';
+      throw refusal;
+    }
+    if (!response.ok) throw new Error(`Reset request failed: ${response.status}`);
+    return response.json().catch(() => ({ sent: true }));
+  },
+
+  /**
+   * Set a new password on the recovery session the callback established.
+   *
+   * Short-circuits under `?testing=true` for the same reason `getSessionToken`
+   * and `logout` do: the demo path is a shipping surface and has to be able to
+   * show this view end to end without a Supabase project behind it.
+   */
+  async updatePassword(password) {
+    if (window.location.search.includes('testing=true')) return { testing: true };
+    if (!this.supabase) throw new Error('Supabase client not initialized.');
+    const { data, error } = await this.supabase.auth.updateUser({ password });
+    if (error) throw error;
+    return data;
+  },
+
+  /**
    * End the session on BOTH sides.
    *
    * Signing out of Supabase drops the access token; it does nothing to the
@@ -300,7 +396,12 @@ export const Services = {
     if (sessionError) throw sessionError;
     if (!session) return { signedOut: false, sessionMissing: true };
 
-    const { error } = await this.supabase.auth.signOut();
+    /* `global` is already the library default, and it is stated here anyway.
+       After a password change every other device must lose its session — OWASP's
+       Forgot Password guidance asks for exactly that, and Supabase does not do it
+       on a password change by itself. A property that matters this much should
+       not rest on a default that a future version is free to change. */
+    const { error } = await this.supabase.auth.signOut({ scope: 'global' });
     if (error) throw error;
     return { signedOut: true, sessionMissing: false };
   },

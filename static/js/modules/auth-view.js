@@ -39,14 +39,37 @@ function updateStatusAndActions(user) {
   });
 }
 
+/* Which of the three views is showing. Recovery is a state the shell did not
+   have when it was two views and a boolean, and `render(user)` cannot infer it:
+   a recovery session carries a user, so it is indistinguishable from a sign-in
+   by that argument alone. */
+const VIEW = { LANDING: 'landing', CHAT: 'chat', RECOVERY: 'recovery' };
+let currentView = null;
+
+/* The pending handle for showAuthenticatedView's delay below. Without this a
+   fast sequence — recovery entered while a chat transition is still queued —
+   let the stale timer fire afterwards and reveal the chat view over the top. */
+let pendingTransition = null;
+
+function cancelPendingTransition() {
+  if (pendingTransition !== null) {
+    clearTimeout(pendingTransition);
+    pendingTransition = null;
+  }
+}
+
 function showAuthenticatedView() {
   const unauthView = DOMCache.get(CONFIG.SELECTORS.UNAUTH_VIEW);
   const authView = DOMCache.get(CONFIG.SELECTORS.AUTH_VIEW);
+  const recoveryView = DOMCache.get(CONFIG.SELECTORS.RECOVERY_VIEW);
 
   RobotStateManager.transitionToAuthenticatedView();
 
-  setTimeout(() => {
+  cancelPendingTransition();
+  pendingTransition = setTimeout(() => {
+    pendingTransition = null;
     if (unauthView) unauthView.classList.add(CONFIG.CLASSES.D_NONE);
+    if (recoveryView) recoveryView.classList.add(CONFIG.CLASSES.D_NONE);
     if (authView) {
       authView.classList.remove(CONFIG.CLASSES.D_NONE);
       authView.style.animation = 'viewFadeIn 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards';
@@ -57,15 +80,48 @@ function showAuthenticatedView() {
 function showUnauthenticatedView() {
   const unauthView = DOMCache.get(CONFIG.SELECTORS.UNAUTH_VIEW);
   const authView = DOMCache.get(CONFIG.SELECTORS.AUTH_VIEW);
+  const recoveryView = DOMCache.get(CONFIG.SELECTORS.RECOVERY_VIEW);
 
   /* Symmetry with showAuthenticatedView. Without this the landing came back
      with the mascot still held at the last frame of its exit animation. */
   RobotStateManager.transitionToUnauthenticatedView();
 
+  cancelPendingTransition();
   if (authView) authView.classList.add(CONFIG.CLASSES.D_NONE);
+  if (recoveryView) recoveryView.classList.add(CONFIG.CLASSES.D_NONE);
   if (unauthView) {
     unauthView.classList.remove(CONFIG.CLASSES.D_NONE);
     unauthView.style.animation = 'viewFadeIn 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards';
+  }
+}
+
+/**
+ * Show the recovery form.
+ *
+ * Synchronous, unlike `showAuthenticatedView`. That delay exists to let the
+ * mascot play its exit before the chat arrives; here it would mean 300ms of
+ * landing page painted over a reader who followed a link from their inbox, which
+ * is a flash of the wrong page rather than a transition.
+ *
+ * Note what this does NOT do: it does not ask the server anything. A recovery
+ * session has a real access token, so `/api/identity` would answer and the
+ * console link could be revealed on a page reached from an emailed link. Not
+ * drawing it is view hygiene — the API is gated server-side and stays reachable
+ * either way — but there is no reason to draw it.
+ */
+function showRecoveryView() {
+  const unauthView = DOMCache.get(CONFIG.SELECTORS.UNAUTH_VIEW);
+  const authView = DOMCache.get(CONFIG.SELECTORS.AUTH_VIEW);
+  const recoveryView = DOMCache.get(CONFIG.SELECTORS.RECOVERY_VIEW);
+
+  cancelPendingTransition();
+  RobotStateManager.transitionToUnauthenticatedView();
+
+  if (authView) authView.classList.add(CONFIG.CLASSES.D_NONE);
+  if (unauthView) unauthView.classList.add(CONFIG.CLASSES.D_NONE);
+  if (recoveryView) {
+    recoveryView.classList.remove(CONFIG.CLASSES.D_NONE);
+    recoveryView.style.animation = 'viewFadeIn 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards';
   }
 }
 
@@ -98,13 +154,53 @@ function renderAdminAffordance(isAdmin) {
 }
 
 export const AuthView = {
+  /**
+   * Draw the view this user implies — unless recovery is in progress.
+   *
+   * The guard is the load-bearing line. Supabase emits SIGNED_IN *before*
+   * PASSWORD_RECOVERY (supabase/auth-js#349), and a recovery session has a user,
+   * so without it the very first event of the recovery flow drops the reader
+   * into the chat shell holding a session they got from an emailed link. There
+   * is exactly one way out of recovery, and it is `leaveRecovery`.
+   */
   render(user) {
+    if (currentView === VIEW.RECOVERY) return;
+
     updateStatusAndActions(user);
     // Signing out is the one moment this can be decided locally, and it must
     // be: leaving the link up for the next person on a shared machine is the
     // same shape of leak as a stale `is_admin_hint`.
     if (!user) renderAdminAffordance(false);
+    currentView = user ? VIEW.CHAT : VIEW.LANDING;
     user ? showAuthenticatedView() : showUnauthenticatedView();
   },
+
+  /** Enter recovery. Idempotent: the callback and the marker may both fire. */
+  renderRecovery() {
+    if (currentView === VIEW.RECOVERY) return;
+    currentView = VIEW.RECOVERY;
+    updateStatusAndActions(null);
+    renderAdminAffordance(false);
+    showRecoveryView();
+  },
+
+  /**
+   * Leave recovery, and only then let `render` speak again.
+   *
+   * Called on cancel and after a completed password change. Deliberately not
+   * driven by the SIGNED_OUT event alone: that event does not fire in the demo
+   * path (`logout` short-circuits under `?testing=true`) and may not fire at all
+   * if sign-out errors — either of which would strand the reader on a form whose
+   * work is already done.
+   */
+  leaveRecovery(user = null) {
+    currentView = null;
+    this.render(user);
+  },
+
+  isRecovering() {
+    return currentView === VIEW.RECOVERY;
+  },
+
   renderAdminAffordance,
 };

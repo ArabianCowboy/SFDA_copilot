@@ -1,8 +1,23 @@
 import logging
 from flask import Blueprint, current_app, jsonify, request, session
+from web.services.account_recovery import RecoveryRefused, recovery_redirect_url
 from web.utils.supabase_client import get_supabase
 
 auth_bp = Blueprint('auth', __name__)
+
+# Its own blueprint purely so it can carry its own rate limit.
+#
+# Flask-Limiter registers a per-route limit through the decorator at definition
+# time, and this blueprint's routes are defined at import — before the limiter
+# for a given app exists. Applying the decorator afterwards to the resolved view
+# function registers the limit nowhere and the endpoint answers unlimited, which
+# is what happened here and is invisible until something exercises it. A
+# blueprint-scoped limit is the mechanism the console already uses successfully,
+# and it is applied in `_register_routes`.
+#
+# Scoped to this one route rather than all of `auth_bp` because a 5/minute
+# ceiling on logout would be wrong.
+recover_bp = Blueprint('recover', __name__)
 logger = logging.getLogger(__name__)
 
 
@@ -211,6 +226,67 @@ def login():
         elif 'Email not confirmed' in error_msg or 'email_not_confirmed' in error_msg.lower():
             error_msg = 'Please confirm your email address before logging in'
         return jsonify({'error': error_msg}), 401
+
+@recover_bp.route('/recover', methods=['POST'])
+def recover():
+    """Send a password-recovery link. Unauthenticated, by necessity.
+
+    This is the reader's *forgot password*. It is a POST to our own origin rather
+    than a browser call to Supabase, and that is not stylistic: a link requested
+    from the browser carries a PKCE `code_challenge` whose verifier lives in that
+    browser's localStorage, so opening the mail on a phone cannot complete it.
+    Originating the mail here produces an implicit link that any device can use.
+    See `web/services/account_recovery.py` for the measurement behind that.
+
+    **The response never says whether the address exists.** Same body, same
+    status, whether the account is real, absent, or the provider refused for a
+    reason the reader cannot act on. An endpoint that answers "no such account"
+    is an account-enumeration oracle, and on a professional tool the membership
+    list is itself worth something. The one thing that *is* reported honestly is
+    a rate limit, because that one tells the reader to wait rather than to give
+    up — and it reveals nothing, since it is reachable with any address at all.
+
+    Deliberately not audited. `audit_log` records privileged acts by operators;
+    writing a row every time a reader recovers their own account would quietly
+    turn it into a reader-activity trail, which is exactly what TODO.md's
+    identity-free question log exists to avoid.
+    """
+    data = request.get_json(silent=True) or {}
+    email = data.get('email')
+    lang = data.get('lang')
+
+    if not isinstance(email, str) or not email.strip():
+        return jsonify({'error': 'invalid_payload'}), 400
+    if not isinstance(lang, (str, type(None))):
+        return jsonify({'error': 'invalid_payload'}), 400
+
+    try:
+        # Resolved inside the try, not above it. `get_recovery_dispatcher()`
+        # constructs a Supabase client, and a malformed SUPABASE_URL makes that
+        # raise — which outside this block became a 500 carrying whatever the
+        # error handler chose to say. A misconfigured deployment must be
+        # indistinguishable from an unknown address, or it is an oracle.
+        dispatcher = current_app.config.get('recovery_dispatcher')
+        dispatcher = dispatcher() if callable(dispatcher) else dispatcher
+
+        if dispatcher is None:
+            raise RecoveryRefused('reset_not_configured', 'no dispatcher available')
+        dispatcher.send_recovery(email.strip(), recovery_redirect_url(lang or None))
+    except RecoveryRefused as refusal:
+        # Rate limits are the reader's own doing and are worth saying out loud.
+        # Everything else collapses into the generic success below: a
+        # misconfigured project must not be distinguishable from an unknown
+        # address by anyone probing this endpoint.
+        if refusal.code in ('reset_rate_limited', 'reset_quota_exhausted'):
+            return jsonify({'error': refusal.code}), 429
+        logging.getLogger(__name__).error("recovery unavailable (%s)", refusal.code)
+        return jsonify({'sent': True}), 202
+    except Exception:  # noqa: BLE001 - provider surface is untyped
+        logging.getLogger(__name__).exception("recovery send failed")
+        return jsonify({'sent': True}), 202
+
+    return jsonify({'sent': True}), 202
+
 
 @auth_bp.route('/logout', methods=['POST'])
 def logout():

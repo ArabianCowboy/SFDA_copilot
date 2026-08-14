@@ -20,6 +20,7 @@ import uuid
 from functools import wraps
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union, Tuple, cast, Sequence, Callable # Added Callable
+from urllib.parse import urlparse
 from logging.handlers import RotatingFileHandler # New import for logging
 from werkzeug.middleware.proxy_fix import ProxyFix  # For reverse proxy support
 
@@ -95,12 +96,19 @@ from web.api.auth import (
     IDENTITY_MARKER_KEYS,
     auth_bp,
     purge_conversation_state,
+    recover_bp,
     rotate_session_for_new_identity,
 )
 from web.services.admin_store import (
     InMemoryAdminBackend,
     get_admin_backend,
     resolve_identity_flags,
+)
+from web.services.account_recovery import (
+    InMemoryRecoveryDispatcher,
+    RecoveryRefused,
+    get_recovery_dispatcher,
+    recovery_redirect_url,
 )
 from web.services.identity_cache import IdentityFlags, IdentityFlagsCache
 from web.services.settings_service import SettingsService
@@ -144,7 +152,7 @@ SUPPORTED_FAQ_LANGS = ("en", "ar")
 # that mixes a fresh template with a stale module is worse than a stale page —
 # post-icon-migration it would render an <i class="bi"> with no icon font behind
 # it, or print a glyph NAME as text. MODULE_IMPORT_MAP below closes that.
-ASSET_VERSION = "warm23"
+ASSET_VERSION = "warm24"
 
 # Product release, rendered in the landing footer. Kept as one constant so
 # the number cannot drift between the page and the module headers.
@@ -716,6 +724,55 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
     app.config["admin_backend"] = admin_backend
     app.config["settings_service"] = SettingsService(admin_backend)
 
+    # Recovery mail, for the reader's forgot-password and the console's send-reset
+    # alike. Same shape as `admin_backend` above and for the same reason: built
+    # per call, not at startup, so a process whose index takes minutes to load
+    # does not also wait on a network client for a path most requests never take.
+    app.config["_testing_recovery_dispatcher"] = InMemoryRecoveryDispatcher()
+
+    def recovery_dispatcher():
+        if app.config["TESTING"]:
+            return app.config["_testing_recovery_dispatcher"]
+        return get_recovery_dispatcher()
+
+    app.config["recovery_dispatcher"] = recovery_dispatcher
+
+    # Said once at startup rather than discovered at the first reset attempt.
+    #
+    # `POST /auth/recover` answers a generic 202 whatever happens, deliberately —
+    # a misconfiguration must not be distinguishable from an unknown address, or
+    # the endpoint becomes an account-enumeration oracle. The cost of that choice
+    # is that a missing PUBLIC_BASE_URL is invisible from the outside: the reader
+    # is told a link is on its way and no link is ever sent. The operator's
+    # channel is this log, and waiting until someone is already locked out to
+    # write to it is too late.
+    if not app.config.get("TESTING"):
+        try:
+            landing = recovery_redirect_url()
+        except RecoveryRefused as refusal:
+            logging.error(
+                "PUBLIC_BASE_URL is not usable (%s); password recovery is DISABLED. "
+                "Every reset request will answer 202 and send nothing. Set it to a "
+                "bare origin (scheme + host + port) that is also on Supabase's "
+                "redirect allow-list.",
+                refusal.code,
+            )
+        else:
+            # A recovery link that resolves to a port nothing is serving is the
+            # most likely way this goes wrong, and it is invisible from both ends:
+            # the send succeeds, the mail arrives, and the reader lands on a
+            # connection error. The port here has to track `server.port`, which
+            # comes from config.yaml and not from the PORT environment variable.
+            served_port = str(config.get("server", "port", 5001))
+            link_port = urlparse(landing).port
+            if link_port is not None and str(link_port) != served_port:
+                logging.warning(
+                    "PUBLIC_BASE_URL points at port %s but this app serves on %s. "
+                    "Recovery mail will be sent with a link nobody is listening on.",
+                    link_port,
+                    served_port,
+                )
+
     def apply_generation_settings() -> bool:
         """Rebuild the OpenAI handler from current settings and swap it in.
 
@@ -769,6 +826,15 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
     if app.config["settings_service"].overrides():
         apply_generation_settings()
     app.register_blueprint(auth_bp, url_prefix="/auth")
+    # Recovery triggers an email from an unauthenticated endpoint, which is the
+    # one shape on this origin that a script can turn into someone else's inbox
+    # problem. GoTrue enforces its own ceilings behind this (60s per address,
+    # 30/hour per project) — this limit is about not letting a caller burn the
+    # project's whole allowance before GoTrue's per-address limiter even applies.
+    app.register_blueprint(recover_bp, url_prefix="/auth")
+    limiter.limit(
+        lambda: config.get("server", "rate_limit", {}).get("recover_api", "5 per minute"),
+    )(recover_bp)
     # Imported here rather than at module scope: admin.py imports back into this
     # module for `_authenticate_request`, and a top-level import would be a cycle.
     from web.api.admin import admin_bp

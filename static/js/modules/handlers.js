@@ -8,7 +8,7 @@ import { DOMCache, ErrorHandler, logError } from './dom.js';
 import { AppState } from './state.js';
 import { AuthView } from './auth-view.js';
 import { UI } from './ui.js';
-import { Services } from './services.js';
+import { Services, RECOVERY_STORAGE_KEY } from './services.js';
 import { ThemeManager } from './theme.js';
 import { RobotStateManager } from './robot.js';
 import { I18n } from './i18n.js';
@@ -98,6 +98,17 @@ function dropInFlightExchange(fragment) {
   if (question?.classList.contains('user-message')) question.remove();
 }
 
+/* Ticks down the advisory cooldown on the reset button. Advisory only: GoTrue
+   enforces one mail per address per minute and the server enforces its own rate
+   limit — this exists so the reader is told how long is left instead of pressing
+   a button that silently cannot work yet. */
+let resetCooldownTimer = null;
+
+/* Guards the one call in this flow that is not safe to repeat. Deliberately
+   module-scoped rather than a form attribute: the form is torn down on success
+   and the guard has to outlive it. */
+let recoverySubmitInFlight = false;
+
 export const Handlers = {
   bindEvents() {
     DOMCache.get(CONFIG.SELECTORS.LOGIN_FORM)?.addEventListener('submit', (e) => this.handleAuthFormSubmit(e, 'login'));
@@ -107,6 +118,12 @@ export const Handlers = {
       e.preventDefault();
       DOMCache.get(CONFIG.SELECTORS.LOGIN_FORM)?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     });
+
+    DOMCache.get(CONFIG.SELECTORS.FORGOT_LINK)?.addEventListener('click', () => this.showResetRequest(true));
+    DOMCache.get(CONFIG.SELECTORS.RESET_BACK)?.addEventListener('click', () => this.showResetRequest(false));
+    DOMCache.get(CONFIG.SELECTORS.RESET_REQUEST_FORM)?.addEventListener('submit', (e) => this.handleResetRequestSubmit(e));
+    DOMCache.get(CONFIG.SELECTORS.RECOVERY_FORM)?.addEventListener('submit', (e) => this.handleRecoverySubmit(e));
+    DOMCache.get(CONFIG.SELECTORS.RECOVERY_CANCEL)?.addEventListener('click', () => this.handleRecoveryCancel());
 
     DOMCache.get(CONFIG.SELECTORS.SEND_BTN)?.addEventListener('click', () => this.processQuery());
     DOMCache.get(CONFIG.SELECTORS.QUERY_INPUT)?.addEventListener('keydown', (e) => {
@@ -621,6 +638,197 @@ export const Handlers = {
     await this.processChatRequestInternal(questionText, selectedCategory);
   },
 
+  /** Swap the login pane between signing in and asking for a reset link. */
+  showResetRequest(show) {
+    ErrorHandler.clearErrors();
+    DOMCache.get(CONFIG.SELECTORS.LOGIN_FORM)?.classList.toggle(CONFIG.CLASSES.D_NONE, show);
+    DOMCache.get(CONFIG.SELECTORS.RESET_REQUEST_FORM)?.classList.toggle(CONFIG.CLASSES.D_NONE, !show);
+    DOMCache.get(CONFIG.SELECTORS.RESET_SENT)?.classList.add(CONFIG.CLASSES.D_NONE);
+    if (show) DOMCache.get(CONFIG.SELECTORS.RESET_EMAIL)?.focus();
+  },
+
+  /**
+   * Ask for a reset link.
+   *
+   * The success message is the same whether or not the address has an account,
+   * because the server answers the same way — saying "no such account" here
+   * would turn the form into a membership oracle. The reader is told to check
+   * spam and given a way to reach a human, because "nothing arrived" is
+   * otherwise a dead end by construction.
+   */
+  async handleResetRequestSubmit(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    ErrorHandler.clearErrors();
+
+    const form = event.target;
+    if (!form.checkValidity()) {
+      form.classList.add('was-validated');
+      return;
+    }
+
+    const email = DOMCache.get(CONFIG.SELECTORS.RESET_EMAIL)?.value?.trim();
+    if (!email) return;
+
+    const submit = form.querySelector('button[type="submit"]');
+    try {
+      await Services.requestPasswordReset(email, I18n.lang);
+      DOMCache.get(CONFIG.SELECTORS.RESET_SENT)?.classList.remove(CONFIG.CLASSES.D_NONE);
+      this.startResetCooldown(submit);
+    } catch (error) {
+      logError(error, 'handleResetRequestSubmit');
+      const key = error?.code === 'reset_quota_exhausted'
+        ? 'auth.emailUnavailable'
+        : error?.code === 'reset_rate_limited'
+          ? 'auth.tooSoon'
+          : 'auth.emailUnavailable';
+      ErrorHandler.showAuthError(I18n.t(key));
+      this.startResetCooldown(submit);
+    }
+  },
+
+  startResetCooldown(button) {
+    if (!button) return;
+    clearInterval(resetCooldownTimer);
+    let left = Math.round(CONFIG.RESET_COOLDOWN_MS / 1000);
+    const label = button.dataset.label || button.textContent.trim();
+    button.dataset.label = label;
+    button.disabled = true;
+
+    const tick = () => {
+      if (left <= 0) {
+        clearInterval(resetCooldownTimer);
+        resetCooldownTimer = null;
+        button.disabled = false;
+        button.textContent = label;
+        return;
+      }
+      button.textContent = I18n.t('auth.recovery.resendIn', { count: left });
+      left -= 1;
+    };
+    tick();
+    resetCooldownTimer = setInterval(tick, 1000);
+  },
+
+  /**
+   * Whether the recovery link actually produced a session.
+   *
+   * A marker with no session means expired, already used, or forged. The form is
+   * disabled and the expired notice shown, because accepting a password we can
+   * never save is a worse answer than saying so.
+   */
+  setRecoveryReady(ready) {
+    const form = DOMCache.get(CONFIG.SELECTORS.RECOVERY_FORM);
+    const expired = DOMCache.get(CONFIG.SELECTORS.RECOVERY_EXPIRED);
+    if (form) form.classList.toggle(CONFIG.CLASSES.D_NONE, !ready);
+    if (expired) expired.classList.toggle(CONFIG.CLASSES.D_NONE, ready);
+    if (ready) DOMCache.get(CONFIG.SELECTORS.RECOVERY_PASSWORD)?.focus();
+  },
+
+  /**
+   * Save the new password, then make them sign in with it.
+   *
+   * Not signed straight into chat, on purpose. OWASP's guidance is explicit that
+   * auto-login after a reset adds session-handling complexity for no gain, and
+   * making the reader use the new password now surfaces a password-manager
+   * mismatch immediately rather than in three months.
+   *
+   * The sign-out is global, so a session an attacker holds on another device
+   * dies here — Supabase does not do that on a password change by itself.
+   */
+  async handleRecoverySubmit(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    ErrorHandler.clearErrors();
+
+    const form = event.target;
+    if (!form.checkValidity()) {
+      form.classList.add('was-validated');
+      return;
+    }
+
+    const password = DOMCache.get(CONFIG.SELECTORS.RECOVERY_PASSWORD)?.value;
+    const confirm = DOMCache.get(CONFIG.SELECTORS.RECOVERY_CONFIRM)?.value;
+
+    if (password !== confirm) {
+      ErrorHandler.showRecoveryError(I18n.t('auth.recovery.mismatch'));
+      return;
+    }
+
+    /* One submission at a time, and the guard is never released on the success
+       path. A second submit that overlaps the first would call `updateUser` on a
+       session the first one has already invalidated by signing out globally —
+       so the password would be changed and the reader told it failed, which
+       sends them off to request another link they do not need. */
+    if (recoverySubmitInFlight) return;
+    recoverySubmitInFlight = true;
+
+    /* Say something during the call, not just go dead. `updateUser` is a network
+       round trip and the button is disabled for its duration, which without this
+       reads as the form having ignored the click. */
+    const submit = form.querySelector('button[type="submit"]');
+    const submitLabel = submit?.textContent;
+    if (submit) {
+      submit.disabled = true;
+      submit.textContent = I18n.t('auth.recovery.saving');
+    }
+
+    let email = null;
+    try {
+      const result = await Services.updatePassword(password);
+      email = result?.user?.email ?? null;
+    } catch (error) {
+      logError(error, 'handleRecoverySubmit');
+      ErrorHandler.showRecoveryError(I18n.t('auth.recovery.failed'));
+      recoverySubmitInFlight = false;
+      if (submit) {
+        submit.disabled = false;
+        submit.textContent = submitLabel;
+      }
+      return;
+    }
+
+    /* Past this line the password is already changed. Nothing below may report
+       failure — a reader told "that did not work" would go and request another
+       link for a password that is already theirs. */
+    try {
+      window.history.replaceState({}, '', '/');
+    } catch (error) {
+      logError(error, 'handleRecoverySubmit.replaceState');
+    }
+    await this.endRecovery();
+    ErrorHandler.showToast(I18n.t('auth.recovery.done'));
+
+    const loginEmail = document.getElementById('login-email');
+    if (loginEmail && email) loginEmail.value = email;
+    AppState.get('authModal')?.show();
+  },
+
+  /** Cancel: leave the view *and* end the session it was holding. */
+  async handleRecoveryCancel() {
+    await this.endRecovery();
+  },
+
+  /**
+   * Drop the recovery session and return to the landing.
+   *
+   * Driven from here rather than from the SIGNED_OUT event: that event never
+   * fires in the demo path, and may not fire if sign-out errors — either of
+   * which would leave the reader on a form whose work is done. The event handler
+   * in app.js still runs this path too, so both are idempotent.
+   */
+  async endRecovery() {
+    try {
+      await Services.logout();
+    } catch (error) {
+      logError(error, 'endRecovery.logout');
+    }
+    this.clearLocalAuthData();
+    AppState.set('recoveryMode', false);
+    AuthView.leaveRecovery(null);
+    this.clearSessionState();
+  },
+
   async handleProfileFormSubmit(event) {
     event.preventDefault();
     ErrorHandler.clearErrors();
@@ -777,6 +985,15 @@ export const Handlers = {
         logError(error, `clearLocalAuthData: ${key}`);
       }
     });
+
+    /* The recovery session lives in this tab's sessionStorage under its own key,
+       so the loop above cannot reach it. Missing this would leave a usable token
+       behind after cancel — which is the one thing cancel exists to prevent. */
+    try {
+      sessionStorage.removeItem(RECOVERY_STORAGE_KEY);
+    } catch (error) {
+      logError(error, 'clearLocalAuthData: recovery');
+    }
   },
 
   redirectToHomeIfNeeded() {

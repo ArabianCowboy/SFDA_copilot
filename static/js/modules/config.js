@@ -18,6 +18,10 @@ export const CONFIG = {
   API_TIMEOUT: 15000,
   RETRY_MAX_ATTEMPTS: 3,
   RETRY_DELAY_INITIAL: 1000,
+  /* Matches GoTrue's minimum interval between recovery mails to one address.
+     Advisory only — the server is what enforces it; this just stops the reader
+     hammering a button that cannot work yet, and says how long is left. */
+  RESET_COOLDOWN_MS: 60000,
 
   CLASSES: {
     HIDDEN: 'hidden',
@@ -78,6 +82,20 @@ export const CONFIG = {
     PROFILE_BTN_OFFCANVAS: '#profile-button-offcanvas',
     ADMIN_BTN: '#admin-button',
     ADMIN_BTN_OFFCANVAS: '#admin-button-offcanvas',
+    RECOVERY_VIEW: '#recovery-view',
+    RECOVERY_FORM: '#recovery-form',
+    RECOVERY_PASSWORD: '#recovery-password',
+    RECOVERY_CONFIRM: '#recovery-password-confirm',
+    RECOVERY_ERROR: '#recovery-error',
+    RECOVERY_HEADING: '#recovery-heading',
+    RECOVERY_EXPIRED: '#recovery-expired',
+    RECOVERY_CANCEL: '#recovery-cancel',
+    RESET_REQUEST_FORM: '#reset-request-form',
+    RESET_EMAIL: '#reset-email',
+    RESET_SENT: '#reset-sent',
+    FORGOT_LINK: '#forgot-password-link',
+    RESET_BACK: '#reset-back-to-login',
+    LOGIN_PANE_FORM: '#login-form',
   },
 };
 

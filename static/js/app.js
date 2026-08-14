@@ -15,7 +15,7 @@ import { AuthView } from './modules/auth-view.js';
 import { ThemeManager } from './modules/theme.js';
 import { UI } from './modules/ui.js';
 import { Effects } from './modules/effects.js';
-import { Services } from './modules/services.js';
+import { Services, isRecoveryCallback } from './modules/services.js';
 import { Handlers } from './modules/handlers.js';
 import { CustomDropdown } from './modules/dropdown.js';
 import { mountRobots, initLandingRobot, RobotCompanion } from './modules/robot.js';
@@ -158,37 +158,56 @@ const App = {
       return ErrorHandler.showToast(I18n.t('auth.initFailed'), true);
     }
 
-    if (window.location.search.includes('testing=true')) {
+    /* Recovery is decided before the testing bypass, and deliberately does not
+       return: the demo path must be able to show this view, and the bypass at
+       `handleTestingModeInit` would otherwise render a signed-in chat over it. */
+    const recovering = isRecoveryCallback();
+    if (recovering) {
+      AppState.set('recoveryMode', true);
+      AuthView.renderRecovery();
+      /* Nobody in particular yet. Settling to null takes the discard branch, so
+         the previous reader of this browser does not get their transcript
+         restored to whoever followed a link from an inbox. */
+      this.settleTranscript(null);
+    } else if (window.location.search.includes('testing=true')) {
       return this.handleTestingModeInit();
     }
 
     if (!Services.supabase) {
-      AuthView.render(null);
+      if (!recovering) AuthView.render(null);
       return;
     }
 
-    try {
-      const { data: { session: initialSession }, error: sessionError } = await Services.supabase.auth.getSession();
-
-      if (sessionError) {
-        logError(sessionError, 'App.init.initialSessionCheck');
-        AuthView.render(null);
-        this.settleTranscript(null);
-      } else if (initialSession?.user) {
-        AuthView.render(initialSession.user);
-        this.settleTranscript(initialSession.user);
-      } else {
-        AuthView.render(null);
-        this.settleTranscript(null);
-      }
-    } catch (error) {
-      logError(error, 'App.init.checkInitialSession');
-      AuthView.render(null);
-      this.settleTranscript(null);
-    }
-
+    /* Subscribed BEFORE the first await, not after it.
+       This used to sit below `getSession()`. Anything Supabase emitted while
+       that promise was in flight — including the PASSWORD_RECOVERY this flow
+       depends on, which `_initialize` fires from a setTimeout during
+       `Services.init()` — landed before there was a listener and was lost. The
+       marker above is what makes recovery work regardless; this ordering is what
+       makes the event a real second path rather than a decorative one. */
     Services.supabase.auth.onAuthStateChange(async (event, session) => {
       const user = session?.user ?? null;
+
+      if (event === 'PASSWORD_RECOVERY') {
+        AppState.set('recoveryMode', true);
+        AuthView.renderRecovery();
+        Handlers.setRecoveryReady(!!user);
+        return;
+      }
+
+      /* While recovering, no auth event may draw a signed-in shell. Supabase
+         emits SIGNED_IN first (supabase/auth-js#349) and a recovery session
+         carries a user, so this is the event that would otherwise open the chat.
+         SIGNED_OUT is the one that means the flow is over. */
+      if (AppState.get('recoveryMode')) {
+        if (event === 'SIGNED_OUT') {
+          AppState.set('recoveryMode', false);
+          AuthView.leaveRecovery(null);
+          Handlers.clearSessionState();
+        }
+        return;
+      }
+
       AuthView.render(user);
       /* No-op after startup has already settled it. Present so a session that
          resolves through this path rather than getSession() — a sign-in on a
@@ -240,6 +259,52 @@ const App = {
         }
       }
     });
+
+    if (recovering) {
+      /* The demo has no Supabase project behind it, so there is no session to
+         find and the expired notice would be the only thing it could ever show.
+         PRODUCT.md treats the demo as a shipping surface: `?testing=true&recovery=1`
+         renders the real form, and `Services.updatePassword` short-circuits to
+         success the same way `getSessionToken` and `logout` already do. */
+      if (window.location.search.includes('testing=true')) {
+        Handlers.setRecoveryReady(true);
+        console.log('[App] Recovery view shown in testing mode.');
+        return;
+      }
+
+      /* Whether the link actually produced a session. A marker with no session
+         means expired, already used, or forged — and the form must say so rather
+         than accept a password it can never save. */
+      try {
+        const { data: { session } } = await Services.supabase.auth.getSession();
+        Handlers.setRecoveryReady(!!session?.user);
+      } catch (error) {
+        logError(error, 'App.init.recoverySessionCheck');
+        Handlers.setRecoveryReady(false);
+      }
+      console.log('[App] SFDA Copilot initialized in recovery mode.');
+      return;
+    }
+
+    try {
+      const { data: { session: initialSession }, error: sessionError } = await Services.supabase.auth.getSession();
+
+      if (sessionError) {
+        logError(sessionError, 'App.init.initialSessionCheck');
+        AuthView.render(null);
+        this.settleTranscript(null);
+      } else if (initialSession?.user) {
+        AuthView.render(initialSession.user);
+        this.settleTranscript(initialSession.user);
+      } else {
+        AuthView.render(null);
+        this.settleTranscript(null);
+      }
+    } catch (error) {
+      logError(error, 'App.init.checkInitialSession');
+      AuthView.render(null);
+      this.settleTranscript(null);
+    }
 
     console.log('[App] SFDA Copilot initialized successfully.');
   },

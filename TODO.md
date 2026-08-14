@@ -13,7 +13,39 @@ says only what it wants is a wish, and the useful half is the cost.
 
 ## Known bugs
 
-### There is no password reset, so a forgotten password is an unrecoverable account
+### ~~There is no password reset~~ — FIXED 2026-08-14
+
+**Resolved.** Reader-facing recovery ships: a *forgot password* affordance in the
+login pane, `POST /auth/recover`, and a third view in the shell that receives the
+callback and calls `auth.updateUser({ password })`. Proven end to end against the
+live project — `midoxp@yahoo.com` went from never-signed-in and unconfirmed to
+confirmed and signed in through the real email.
+
+Three things the original entry did not know, kept because they cost a day to
+learn and are invisible in the finished code:
+
+- **Recovery mail is sent server-side, not from the browser.** A browser-issued
+  `resetPasswordForEmail` under `flowType: 'pkce'` stores its code verifier in
+  *that* browser's `localStorage`, so opening the mail on a phone can never
+  complete the exchange. A server-generated link returns tokens in the fragment
+  instead, which any device can consume.
+- **`flowType: 'pkce'` silently drops that fragment.** Measured against
+  gotrue-js 2.62.2: no session, no `PASSWORD_RECOVERY`, and no error, because
+  `_initialize` swallows the "Not a valid PKCE flow url" it raises. The client is
+  built with `'implicit'` when the recovery marker is present and `'pkce'`
+  otherwise.
+- **The `?recovery=1` marker is load-bearing twice.** Supabase emits `SIGNED_IN`
+  *before* `PASSWORD_RECOVERY` (supabase/auth-js#349), so the event cannot be
+  trusted to open the view; and the marker has to be readable before the client is
+  constructed, because it selects the flow type.
+
+The admin half — a *send reset* button on the account detail view — is still open;
+see *Account detail view* under Planned work. It is now one authorised call on top
+of this.
+
+---
+
+### (original entry, kept for the cost it records) There is no password reset, so a forgotten password is an unrecoverable account
 
 **Where:** `static/js/modules/services.js` exposes `signInWithPassword` (line
 222) and `signUp` (line 229) and nothing else — no `resetPasswordForEmail`, no
@@ -103,7 +135,23 @@ reader-facing password reset above: both return to the same recovery landing vie
 
 ---
 
-### The signup rate-limit message reaches the reader as raw English
+### ~~The signup rate-limit message reaches the reader as raw English~~ — FIXED 2026-08-14
+
+**Resolved.** `runtime.auth.tooSoon` and `runtime.auth.emailUnavailable` exist in
+both catalogues and are mapped in `ErrorHandler.formatAuthError`
+(`static/js/modules/dom.js`), which is the only path signup errors take. Recovery
+reaches the same two strings by status code from our own endpoint rather than by
+substring, because it does not go through Supabase directly.
+
+Worth recording: this was *claimed* fixed when the keys were added, and was not —
+the keys sat in both languages with no mapping, exactly the dead-string failure
+this file already records for `runtime.profile.*`. It was caught by an audit
+asking whether every added key was actually reached. There is now a test that
+fails if any `runtime.auth.recovery.*` key is drawn by nothing.
+
+---
+
+### (original entry) The signup rate-limit message reaches the reader as raw English
 
 **Where:** `static/js/modules/handlers.js` surfaces the Supabase error text
 verbatim; `runtime.auth.*` has no key for it in either catalogue.
@@ -132,7 +180,24 @@ Small, and blocked on nothing.
 
 ---
 
-### Email confirmation is disabled, so any address can register
+### ~~Email confirmation is disabled~~ — RESOLVED 2026-08-14 (outside this repo)
+
+**Turned back on at 12:05:17Z**, confirmed from `auth.users`: `mohifouda@gmail.com`
+has `confirmation_sent_at` set, unlike the auto-confirmed `midoxp@live.com` whose
+value is null. The open question the old entry left — *is a confirmed address
+required to chat?* — is answered and needs no code: GoTrue refuses to issue a
+session for an unconfirmed address, so `auth_required` never sees a token to
+accept. Enforcement sits at the session boundary, which is the strongest place
+available.
+
+One consequence this created and password recovery then cleared:
+`midoxp@yahoo.com` had `email_confirmed_at = null` and could no longer sign in at
+all. Completing a recovery confirms the address as a side effect, which is how
+that account was settled.
+
+---
+
+### (original entry) Email confirmation is disabled, so any address can register
 
 **Where:** The Supabase project's Auth settings, not this repo. Confirmed
 2026-08-14 from `auth.users`: the most recent account has
@@ -214,7 +279,22 @@ that found it — it is a feature-sized piece of frontend, not a repair.
 
 ---
 
-### An account with no profile row can chat but cannot be administered
+### An account with no profile row can chat but cannot be administered — PARTLY STALE
+
+**The instance is gone, the class is not, and the diagnosis was wrong.**
+`midoxp@yahoo.com` was backfilled and all four accounts now have profiles. But the
+entry below says `admin_list_users` "reads from `public.profiles`", and it does
+not: `20260814100500_user_management.sql:35-47` reads
+`from auth.users u left join public.profiles p`, so a profile-less account **is**
+listed. The real defect is `coalesce(p.role,'user')` / `coalesce(p.tier,'free')` /
+`coalesce(p.is_disabled,false)` at lines 37-40, which paint healthy defaults over
+a missing profile — so a broken account renders as a perfectly normal one. That is
+worse than being absent, because nothing looks wrong. The account detail view's
+`has_profile` is the fix.
+
+---
+
+### (original entry, diagnosis superseded above) An account with no profile row can chat but cannot be administered
 
 **Where:** `admin_list_users` reads from `public.profiles`; `auth_required`
 treats an unresolved profile as a non-admin reader rather than as a refusal.

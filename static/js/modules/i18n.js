@@ -46,6 +46,23 @@ export const I18n = {
     try { localStorage.setItem('lang', lang); } catch { /* private mode */ }
     document.cookie = `lang=${lang};path=/;max-age=31536000;samesite=lax`;
     Transcript.save();
+
+    /* `pick_lang` ranks `?lang=` above the cookie (web/utils/i18n.py), so a URL
+       carrying one reloads straight back into the language just left — the
+       cookie is written and then ignored. Rewrite the parameter in place rather
+       than stripping it, because everything else in the query has to survive:
+       `?recovery=1` exists precisely to be readable after a reload, and losing
+       it would drop a reader mid-recovery back onto the landing page.
+
+       `replace` rather than `reload`, so Back does not return to a URL pinning
+       the language they just left. */
+    const url = new URL(window.location.href);
+    if (url.searchParams.has('lang')) {
+      url.searchParams.set('lang', lang);
+      window.location.replace(url.toString());
+      return;
+    }
+
     window.location.reload();
   },
 
