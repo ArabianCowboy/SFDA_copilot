@@ -203,9 +203,14 @@ empty-profile reset (handlers.js:668) check `ThemeManager.getCurrent()` — the
 live `data-bs-theme` attribute — not `profile.preferences.theme`, so a reader
 who saved Dark is shown their *current* theme, not their saved one. And the
 surface is silently English-only while the `runtime.profile.*` keys written for
-exactly this sit unused. The immediate reason to touch it is downstairs: the
-admin controls (below) will need somewhere to live, and nothing but this modal
-exists to hang them from.
+exactly this sit unused.
+
+The reason to touch it has changed. It used to be that the admin controls needed
+somewhere to live and nothing but this modal existed to hang them from — that is
+no longer true; they live at `/admin`, on their own page, and this modal was
+never asked to carry them. What is left is the modal's own two bugs, below, and
+the question of whether a reader-facing profile deserves better than a Bootstrap
+modal bolted onto the chat shell.
 
 **Two live bugs to fix while you are in here.** Both are shipped today, both
 were confirmed by reading the code, and neither has a test that would catch it —
@@ -270,155 +275,83 @@ from it server-side?
 
 ---
 
-### Refactor authorization into two roles: admin and user
+### Give readers a quota, and limits worth having
 
-**Where:** `auth_required` in `web/api/app.py` (lines 203-242) is the only gate
-in the app: every authenticated route — `/api/chat/stream`, `/api/chat`,
-`/api/conversation/reset`, all decorated `@auth_required` — passes through it.
-Its TESTING-mode bypass (lines 208-213) admits any request whose
-`Authorization` header contains `fake_token` and binds it to
-`"test@example.com"`. Below that, the only identity handling is
-`_bind_session_to_identity` (lines 183-201) — the per-request check that calls
-`purge_conversation_state()` in `web/api/auth.py` (lines 31-54) when the reader
-changes — and `session.update`, which stores only `supabase_access_token` and
-`user_email` (app.py:235). The auth blueprint (`signup`, `login`, `logout` in
-`web/api/auth.py`) returns `{id, email}`; nothing in the repo ever reads a role.
-The profile projection (`Services.getProfile`, services.js:302) selects no role
-field either.
+**Where:** rate limiting is one global setting. `web/config.yaml` has
+`server.rate_limit` (`per_day: 200`, `per_hour: 50`, `per_minute: 10`,
+`chat_api: "15 per minute"`), and `web/api/app.py` builds a `Limiter` keyed by
+`get_remote_address` with `storage_uri="memory://"`. `chat_limit` is a *callable*
+limit, re-read per request, so the value is already live-tunable — what is not
+live is who it applies to. `public.profiles` gained a `tier` column
+(`20260814005509_lock_profile_privileges_and_repair_signup.sql`) that nothing
+reads: `IdentityFlags` carries it, and no code branches on it.
 
-**Why it is wanted.** Every authenticated reader is today equivalent — the same
-token gate, the same surface, the same rights, whatever the account. There is no
-notion of privilege anywhere: no role read from the Supabase `user` object that
-`auth_required` already resolves, no role column in the `profiles` projection, no
-endpoint or UI that lets an operator do something a reader cannot. The two
-entries that follow (admin operational control, per-user sessions) both need this
-distinction underneath, and a regulatory instrument needs the vocabulary for
-"who may stop a user or change the model" before it can exercise it.
+**Why it is wanted.** Every reader gets the same allowance, keyed to an IP —
+so an office behind one NAT shares a budget, and one person on two networks gets
+two. The console can now change the model and cut off an account, which are the
+blunt instruments; a quota is the one that lets an operator say "this is fine,
+but not unlimited" without a confrontation.
 
-**What it would disturb.** The decorator is exercised through nothing but the
-TESTING bypass: `test_auth_routes.py`, `test_session_isolation.py`,
-`test_new_chat.py`, `test_chat_api.py` and `test_chat_stream.py` all
-authenticate with the literal header `Bearer fake_token` and expect 200s — a role
-check has to ride inside the same bypass or the whole server suite goes 401. The
-browser mock in `web/tests/conftest.py` (`SUPABASE_BROWSER_MOCK`) seeds a user
-with no role, and `test_frontend.py` (`test_login_and_logout_flow`,
-`test_testing_mode_bypasses_auth`) pins what a signed-in reader sees. A role
-marker cached in the Flask session must invalidate exactly where
-`_bind_session_to_identity` purges: an elevated flag riding the cookie onto a
-shared machine's next reader is the precise leak that function exists to close,
-so the role needs the same rotation discipline as `conv_id`. And `auth_required`
-serves two masters — page requests (`is_page_request` redirects to `index`,
-app.py:216-219) and API requests (a 401) — so an admin-only route has to decide
-which response shape it wants, and the landing page's own authentication signal
-(`is_authenticated=bool(session.get("user_email"))`, app.py:558) does not
-distinguish roles.
+**What it would disturb.** The limiter's key function is the change with the
+widest blast radius: `_rate_key` would return the reader rather than the address,
+and the decorator order at the chat routes is load-bearing — `auth_required` runs
+outermost, so `g.identity` exists before the limit callable is evaluated, and
+reversing those two lines silently reverts to IP keying with no error. `memory://`
+loses counters on restart, which is acceptable for a burst limit and not for a
+daily budget: a monthly allowance that resets on every deploy is not an
+allowance. That means real persistence — a `usage_daily(user_id, day, used)` row
+and one atomic `insert ... on conflict ... where used < limit returning`, taken
+in the view body *before* the generator, so a denial is a 429 instead of an SSE
+stream that dies halfway.
 
-**Resolved on 2026-08-14 — and the earlier note here was wrong.** This entry
-previously said `public.users` was "populated by the signup trigger on every new
-account". Live inspection showed it held **zero rows** and had no foreign key to
-`auth.users`, while `public.profiles` already carried a `role` column that was
-populated and already had one account set to `admin`.
+The reader-facing half matters as much: a quota is a normal boundary, not a
+failure, so it wants an inline transcript notice in both languages styled with
+`--confidence`, never `--danger` — and `/api/identity` already returns enough
+shape to show a quiet counter before someone hits the wall, which beats being
+stopped at it.
 
-The explanation is dates: migration `20251207173359` (2025-12-07) is what added
-the `insert into public.users` to `handle_new_user`, and the most recent signup
-was 2025-11-16 — three weeks earlier. The trigger had never fired. That is also
-why the 2025-11-16 account had no `profiles` row: it was created under the
-*previous* trigger, the one that migration was written to fix.
+**Deliberately deferred once already.** Two independent reviews judged the full
+tier matrix — a `tiers` table with `label_en`/`label_ar`, per-user overrides,
+time-windowed access, token credits — premature for an instance with three
+accounts and one operator. Token credits in particular need exact provider usage
+first: the OpenAI stream currently ignores usage chunks, and tokenizer estimates
+are not a billing ledger. Start with one number per reader per day.
 
-`supabase/migrations/20260814005509_lock_profile_privileges_and_repair_signup.sql`
-therefore put identity on `profiles`,
-rewrote the trigger to write only `profiles` (idempotently, `search_path = ''`),
-and backfilled the missing row. `public.users` was dropped by `20260814024903_drop_unused_public_users.sql`.
-
-**It also closed a live privilege-escalation hole that no one had noticed.**
-`authenticated` held column-level `UPDATE` on `profiles.role`, and the
-`"Users can update own profile"` policy is `USING (auth.uid() = id)` with no
-`WITH CHECK` — so Postgres reuses `USING` as the check, and changing `role` does
-not change `id`. With the anon key published in the page and `updateProfile`
-already calling `.upsert({ id, ... })`, any signed-in reader could have run
-`supabase.from('profiles').upsert({ id: myUserId, role: 'admin' })`. It was inert
-only because nothing read `role`. **RLS cannot restrict columns** — the fix is a
-column-level `REVOKE` plus a `BEFORE UPDATE` trigger, and it had to land before
-any code that trusts a role, not after.
-
-**Open questions.** Where the role lives: a `profiles` column (an out-of-repo
-Supabase migration plus RLS — there are no `.sql` files in this repo to point
-at) versus something read off the Supabase auth user's `app_metadata`, which
-`auth_required` already has in hand. Whether the gate is one decorator that tags
-the session, or a second `admin_required` composed on top — and how either
-behaves in TESTING mode where the "user" is a literal string
-`"test@example.com"` with no database row. What a mid-session revocation does to
-a session that already holds the elevated marker.
+**A dormant start already exists.** `public.chatbot_settings` — `welcome_message`,
+`response_style`, `rate_limit_per_minute` — is still sitting in the database,
+RLS-enabled with zero policies and read by nothing. The admin console
+deliberately created `public.app_settings` rather than reuse it, because a
+global `rate_limit_per_minute` scalar belongs on a tier rather than on the
+instance. Worth deciding whether it is dropped or finally used.
 
 ---
 
-### Give admins operational control
+### Console follow-ups left after the admin work
 
-**Where:** The model is a static, deploy-time constant. `web/config.yaml` sets
-`openai.model: gpt-4o-mini` (with `temperature: 0.1` and `max_tokens: 16384`);
-`OpenAIHandler.__init__` reads it once into `self.model`, alongside
-`self.max_tokens`, `self.temperature` and `self.max_context_results`
-(`web/services/openai_app.py` lines 146-149), and derives
-`self.tokenizer = tiktoken.encoding_for_model(self.model)` (line 172);
-`self.model` is what `stream_response` and `generate_suggestions` pass to the
-OpenAI client (lines 268-272, 330-333) and what `/api/chat/stream` echoes to the
-browser in its `meta` frame — `"model": getattr(handler, "model", "unknown")`
-(`web/api/app.py:681`); the testing double mirrors the same read (app.py:382).
-No user-disable concept exists: `auth_required` trusts whatever
-`supabase.auth.get_user(token)` resolves (app.py:221-235), and no `profiles`
-field for a disabled flag is selected or consulted anywhere. There is no admin
-endpoint and no admin surface; the only chrome a signed-in reader has is the
-account block in `web/templates/partials/_sidebar.html` and the profile modal
-(the entry above).
+Three small things the admin console shipped without, each recorded rather than
+half-done. None blocks anything.
 
-**Why it is wanted.** The chatbot's model is changed by editing YAML and
-redeploying — there is no in-app path for an operator to fail a degraded model
-over to a cheaper or heavier one, and no way to cut off a specific account. The
-brief treats model switching and disabling a user as a starting list, not a
-closed one: the entry is about the class of thing, operational acts that a
-reader cannot, and should not, be able to perform.
+1. **"Revert to default" has a string and no control.** The API accepts `null`
+   to remove an override, both catalogues carry
+   `runtime.admin.settings.revert`, and the settings form renders only inputs
+   and Save. Typing the current default *pins* that value rather than restoring
+   inheritance — which is the distinction the whole overrides-only design
+   exists to preserve. Wants a per-field control that submits `{key: null}`.
 
-**What it would disturb.** A runtime model switch breaks an invariant
-`OpenAIHandler` keeps for itself: the tokenizer is bound to the model at
-construction and `_log_token_counts` depends on it, while `max_tokens: 16384`
-is pinned to gpt-4o-mini's ceiling (config.yaml:64) — swapping `self.model`
-without a rebind silently misreports token counts and can exceed a smaller
-model's cap. Tests pin the model by hand: `handler.model = "gpt-4o-mini"` in
-`test_session_isolation.py:46`, `test_new_chat.py:57` and
-`test_chat_stream.py:42`, and every SSE fixture in conftest.py carries
-`"model": "mock"` in its `meta` frame — a configurable or per-request model has
-to decide what those become. Disabling a user means a check inside
-`auth_required`, which is the same decorator the whole suite authenticates
-through, and the mock user in `test_auth_routes.py` has no disabled flag. Admin
-endpoints are new, authenticated, *gated* API surface that does not exist and
-must sit behind the role from the entry above — which also does not exist — so
-the honest cost of this feature is the cost of two. Any model change touches the
-answer-quality contract `BASE_SYSTEM_MESSAGE` and the citation scheme in
-`web/services/openai_app.py` are tuned to current behaviour, and the change is
-disclosed to the reader through the `meta` frame already. Everything new on
-screen is bilingual (`test_arabic_catalogue_covers_every_runtime_key`),
-logical-property CSS (`web/tests/test_css_contract.py`, zero violations today),
-and an `ASSET_VERSION` bump — no bundler means the build-step temptation should
-be counted as behind this too.
+2. **The console holds one token for its lifetime.** `admin.js` resolves a
+   bearer token once at init and the transport closes over it. Supabase refreshes
+   the underlying session, but the console keeps presenting the original, so a
+   long-open tab starts getting 401s and only a reload fixes it. Wants a token
+   *provider* rather than a token, and one refresh-and-retry on 401.
 
-**A dormant start already exists.** A 2026-08-13 Supabase audit found
-`public.chatbot_settings` — `welcome_message`, `response_style`,
-`rate_limit_per_minute` — already sitting in the database, RLS-enabled with
-zero policies, zero reads or writes anywhere in this repo's app code. It
-looks like unused groundwork for exactly this entry's config surface.
-Left untouched by that audit (adding a policy for a feature that doesn't
-exist yet was out of scope), but worth knowing it's there before building
-this from nothing.
-
-**Open questions.** Where the selection is stored so the change is durable:
-config.yaml is read once at process start with no live-reload seam, so a
-per-instance or per-account record is new persistence and sits adjacent to the
-saved-sessions work below. Whether the admin's choice is global to the instance
-or per conversation — per-conversation would have to ride `ConversationStore`
-entries or the `meta` frame. What "disable" means at the boundary — reject the
-token outright, or consult a flag alongside — and what the disabled reader is
-shown. And whether admin controls belong in the reader-facing modal or a
-separate admin surface, and how that surface is reached without a route change.
+3. **`app_settings.updated_at` is written as the string `"now()"`.** An
+   adversarial review inferred this would fail against PostgREST; tested against
+   the live project, Postgres accepts it as a timestamp literal and the row
+   updates correctly. It works, and depending on that parse is still fragile —
+   the settings path now goes through an RPC that calls `now()` server-side, so
+   what remains is the direct upsert in `InMemoryAdminBackend`'s production
+   twin. Wants a `BEFORE UPDATE` trigger like `handle_profile_update`, and then
+   the column drops out of the payload entirely.
 
 ---
 
