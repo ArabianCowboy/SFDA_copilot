@@ -228,6 +228,28 @@ def users() -> Response:
     })
 
 
+@admin_bp.route("/api/users/<user_id>")
+def user_detail(user_id: str) -> Response:
+    """One account in full: identity, standing, profile.
+
+    A **404** for an unknown account, unlike `PATCH`, which answers 409
+    `no_such_account`. The difference is deliberate rather than an
+    inconsistency: a refusal is something the server declined to do, and there
+    is nothing to decline about reading a resource that is not there. The
+    non-uuid case resolves to the same 404, because an id that cannot name an
+    account names no account.
+    """
+    backend = current_app.config["admin_backend"]()
+    if backend is None:
+        return jsonify({"error": "storage_unavailable"}), 503
+
+    account = backend.get_user(user_id)
+    if account is None:
+        return jsonify({"error": "no_such_account"}), 404
+
+    return jsonify({"user": account, "self_id": g.identity.user_id})
+
+
 @admin_bp.route("/api/users/<user_id>", methods=["PATCH"])
 def patch_user(user_id: str) -> Response:
     """Change a role or chat access.
@@ -318,8 +340,22 @@ def audit() -> Response:
     except (TypeError, ValueError):
         return jsonify({"error": "invalid_pagination"}), 400
 
+    # Optional filter, so the account detail view can show one account's history
+    # without a second route. Validated against a fixed set rather than passed
+    # through: these reach a query, and `target_type` is a small closed
+    # vocabulary that has no reason to grow from the client side.
+    target_type = request.args.get("target_type") or None
+    target_id = request.args.get("target_id") or None
+    if target_type is not None and target_type not in ("user", "settings"):
+        return jsonify({"error": "invalid_target"}), 422
+    if target_id is not None and len(target_id) > 64:
+        return jsonify({"error": "invalid_target"}), 422
+
     backend = current_app.config["admin_backend"]()
-    entries = list_entries(backend, limit=limit, offset=offset)
+    entries = list_entries(
+        backend, limit=limit, offset=offset,
+        target_type=target_type, target_id=target_id,
+    )
     return jsonify({
         "entries": [entry.as_dict() for entry in entries],
         "limit": limit,

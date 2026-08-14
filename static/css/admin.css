@@ -423,3 +423,65 @@ select.admin-input {
   font-size: var(--fs-100);
   max-inline-size: 28ch;
 }
+
+/* ── Account detail ──────────────────────────────────────────────────────────
+   An in-panel swap inside the People panel, so it inherits the panel's ground
+   rather than introducing a surface of its own. Logical properties throughout —
+   test_css_contract.py is at zero violations across every stylesheet. */
+.admin-people-search {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-block-end: 1rem;
+  max-inline-size: 22rem;
+}
+
+/* The email is the way into a detail view, so it has to read as a control while
+   staying a machine-reported fact: mono face, LTR, no colour change on its own. */
+.admin-account-open {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: var(--accent-ink, inherit);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.admin-definitions {
+  display: grid;
+  grid-template-columns: minmax(8rem, max-content) 1fr;
+  gap: 0.35rem 1rem;
+  margin-block: 0.5rem 1.5rem;
+}
+
+.admin-definitions dt {
+  color: var(--ink-secondary);
+  font-weight: 500;
+}
+
+.admin-definitions dd {
+  margin-inline-start: 0;
+}
+
+.admin-subheading {
+  font-size: 0.95rem;
+  font-weight: 600;
+  margin-block: 1.25rem 0.25rem;
+}
+
+/* A stated problem, not an alarm. The system has no danger variant by design,
+   so this carries weight through the sunken fill and the words. */
+.admin-notice {
+  background: var(--paper-100);
+  border: 1px solid var(--rule-200);
+  border-radius: 0.5rem;
+  padding: 0.75rem 1rem;
+  margin-block: 1rem;
+  max-inline-size: 70ch;
+}
+
+.admin-notice p {
+  margin-block-end: 0;
+}

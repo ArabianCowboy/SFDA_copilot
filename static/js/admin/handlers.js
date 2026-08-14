@@ -12,8 +12,11 @@ import { AdminRequestError } from './services.js';
 import {
   clearSettingsErrors,
   focusTab,
+  renderAccountDetail,
   renderAudit,
   renderUsers,
+  showAccountList,
+  showAccountMessage,
   showAuditMessage,
   showPeopleMessage,
   readSettingsForm,
@@ -125,21 +128,63 @@ export async function initPeopleTab(services) {
   const body = document.getElementById('people-body');
   if (!body) return;
 
+  const search = document.getElementById('people-search');
+  let searchTimer = null;
+
   async function load() {
     try {
-      renderUsers(await services.users());
+      showAccountList();
+      renderUsers(await services.users({ q: search?.value.trim() || '' }));
     } catch (error) {
       showPeopleMessage(I18n.t('admin.people.loadFailed'));
+    }
+  }
+
+  /* The detail view is reachable only from this list, and the list serves one
+     page of 50. Without a search box it is a door with no corridor the moment an
+     instance has more accounts than that — the API and the RPC have taken `q`
+     since they were written. */
+  search?.addEventListener('input', () => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(load, 300);
+  });
+
+  async function openAccount(userId) {
+    try {
+      const { user } = await services.user(userId);
+      // The activity is a second request and is allowed to fail on its own: a
+      // log outage should not stop an operator seeing who they are looking at.
+      let entries = [];
+      try {
+        entries = (await services.audit({ targetType: 'user', targetId: userId })).entries;
+      } catch (error) {
+        entries = null;
+      }
+      renderAccountDetail(user, entries);
+    } catch (error) {
+      showAccountMessage(I18n.t('admin.account.loadFailed'));
     }
   }
 
   await load();
 
   body.addEventListener('click', async (event) => {
+    if (event.target.closest('#account-back')) {
+      await load();
+      document.querySelector('.admin-account-open')?.focus();
+      return;
+    }
+
     const button = event.target.closest('.admin-row-action');
     if (!button || button.disabled) return;
 
     const { action, userId } = button.dataset;
+
+    if (action === 'open') {
+      await openAccount(userId);
+      return;
+    }
+
     const email = button.closest('tr')?.querySelector('.admin-cell-machine')?.textContent || '';
     let patch = null;
 

@@ -353,7 +353,7 @@ function actionButton(label, { danger = false, action, id, disabled = false }) {
 }
 
 export function renderUsers({ users, total, self_id: selfId }) {
-  const body = el('people-body');
+  const body = el('people-list');
   if (!body) return;
   body.textContent = '';
 
@@ -391,7 +391,18 @@ export function renderUsers({ users, total, self_id: selfId }) {
     const row = document.createElement('tr');
     row.dataset.userId = user.id;
 
-    const email = machineCell(user.email);
+    /* The email is the way in. A row that opens a detail view needs an
+       affordance a keyboard can reach, and the address is the thing an operator
+       is already looking for. `textContent` of the cell is unchanged, which the
+       confirmation copy in handlers.js reads. */
+    const email = machineCell('');
+    const open = document.createElement('button');
+    open.type = 'button';
+    open.className = 'admin-row-action admin-account-open';
+    open.dataset.action = 'open';
+    open.dataset.userId = user.id;
+    open.textContent = user.email;
+    email.appendChild(open);
     if (isSelf) {
       const you = document.createElement('span');
       you.className = 'admin-you';
@@ -460,7 +471,7 @@ export function renderUsers({ users, total, self_id: selfId }) {
 }
 
 export function showPeopleMessage(message) {
-  const body = el('people-body');
+  const body = el('people-list');
   if (!body) return;
   body.textContent = '';
   const p = document.createElement('p');
@@ -612,4 +623,181 @@ export function stageRevert(name, defaults) {
     origin.textContent = I18n.t('admin.settings.usingDefault');
   }
   row.querySelector('.admin-field-revert')?.remove();
+}
+
+// ── Account detail ────────────────────────────────────────────────────────────
+//
+// An in-panel swap, not a fifth tab. An account has no meaning without one being
+// selected, and a permanently-present tab that is empty until you pick somebody
+// is a lie the roving-tabindex model has to live with. `#tab-people` stays
+// selected throughout, so `aria-selected` stays honest.
+
+/** Machine-reported facts stay left-to-right even under `dir="rtl"`. */
+function machineValue(text) {
+  const span = document.createElement('span');
+  span.className = 'admin-cell-machine';
+  span.setAttribute('dir', 'ltr');
+  span.textContent = text;
+  return span;
+}
+
+function definition(list, label, value, { machine = false } = {}) {
+  const dt = document.createElement('dt');
+  dt.textContent = label;
+  const dd = document.createElement('dd');
+  if (machine && value) dd.appendChild(machineValue(value));
+  else dd.textContent = value || I18n.t('admin.account.notSet');
+  list.append(dt, dd);
+}
+
+function formatWhen(value) {
+  return value ? new Date(value).toLocaleString(I18n.lang) : null;
+}
+
+export function showAccountList() {
+  const list = el('people-list');
+  const detail = el('people-detail');
+  if (list) list.hidden = false;
+  if (detail) { detail.hidden = true; detail.textContent = ''; }
+  const search = el('people-search');
+  if (search) search.hidden = false;
+}
+
+export function renderAccountDetail(account, entries) {
+  const list = el('people-list');
+  const detail = el('people-detail');
+  if (!detail) return;
+
+  if (list) list.hidden = true;
+  // Searching a list you cannot see is a control with nothing behind it.
+  const search = el('people-search');
+  if (search) search.hidden = true;
+  detail.hidden = false;
+  detail.textContent = '';
+
+  const back = document.createElement('button');
+  back.type = 'button';
+  back.id = 'account-back';
+  back.className = 'admin-tab';
+  back.textContent = I18n.t('admin.account.back');
+  detail.appendChild(back);
+
+  const heading = document.createElement('h2');
+  heading.className = 'admin-heading';
+  heading.id = 'account-heading';
+  heading.tabIndex = -1;
+  heading.appendChild(machineValue(account.email));
+  detail.appendChild(heading);
+
+  /* Zone 1 — identity, read-only. Facts an operator needs before deciding
+     anything, none of which the list shows. */
+  const identity = document.createElement('h3');
+  identity.className = 'admin-subheading';
+  identity.textContent = I18n.t('admin.account.identityHeading');
+  detail.appendChild(identity);
+
+  const facts = document.createElement('dl');
+  facts.className = 'admin-definitions';
+  definition(facts, I18n.t('admin.account.created'), formatWhen(account.created_at), { machine: true });
+  definition(facts, I18n.t('admin.account.lastSignIn'),
+    formatWhen(account.last_sign_in_at) || I18n.t('admin.people.never'), { machine: true });
+  definition(facts, I18n.t('admin.account.confirmed'),
+    formatWhen(account.email_confirmed_at) || I18n.t('admin.account.notConfirmed'), { machine: true });
+
+  if (account.has_profile) {
+    definition(facts, I18n.t('admin.roleLabel'),
+      I18n.t(account.role === 'admin' ? 'admin.people.roleAdmin' : 'admin.people.roleUser'));
+    definition(facts, I18n.t('admin.account.standing'),
+      I18n.t(account.is_disabled ? 'admin.people.accessDisabled' : 'admin.people.accessAllowed'));
+    if (account.is_disabled) {
+      definition(facts, I18n.t('admin.account.disabledBy'), account.disabled_by_email, { machine: true });
+      definition(facts, I18n.t('admin.account.disabledReason'), account.disabled_reason);
+    }
+  }
+  detail.appendChild(facts);
+
+  /* The state the list cannot show at all: `admin_list_users` coalesces the
+     missing columns to healthy defaults, so a broken account reads there as an
+     ordinary reader. Said plainly here instead. */
+  if (!account.has_profile) {
+    const broken = document.createElement('div');
+    broken.className = 'admin-notice';
+    broken.id = 'account-broken';
+    const title = document.createElement('strong');
+    title.textContent = I18n.t('admin.account.brokenHeading');
+    const body = document.createElement('p');
+    body.textContent = I18n.t('admin.account.brokenBody');
+    broken.append(title, body);
+    detail.appendChild(broken);
+  }
+
+  /* Zone 2 — profile. Read-only in this step: showing it is most of the value,
+     and editing another person's own description of themselves is a change with
+     its own audit shape. */
+  if (account.has_profile) {
+    const profile = document.createElement('h3');
+    profile.className = 'admin-subheading';
+    profile.textContent = I18n.t('admin.account.profileHeading');
+    detail.appendChild(profile);
+
+    const fields = document.createElement('dl');
+    fields.className = 'admin-definitions';
+    definition(fields, I18n.t('admin.account.fullName'), account.full_name);
+    definition(fields, I18n.t('admin.account.organization'), account.organization);
+    definition(fields, I18n.t('admin.account.specialization'), account.specialization);
+    detail.appendChild(fields);
+  }
+
+  /* Zone 3 — what has been done to this account. The same query as the global
+     log with a filter, and this is the page it belongs on: "what happened to
+     this person" had no surface anywhere before. */
+  const activity = document.createElement('h3');
+  activity.className = 'admin-subheading';
+  activity.textContent = I18n.t('admin.account.activityHeading');
+  detail.appendChild(activity);
+  detail.appendChild(renderAccountActivity(entries));
+
+  heading.focus();
+}
+
+function renderAccountActivity(entries) {
+  if (!entries || !entries.length) {
+    const empty = document.createElement('p');
+    empty.className = 'admin-empty';
+    empty.id = 'account-activity-empty';
+    empty.textContent = I18n.t('admin.account.noActivity');
+    return empty;
+  }
+
+  const table = document.createElement('table');
+  table.className = 'admin-table';
+  table.id = 'account-activity';
+  const tbody = document.createElement('tbody');
+
+  entries.forEach((entry) => {
+    const row = document.createElement('tr');
+    row.append(
+      machineCell(new Date(entry.occurred_at).toLocaleString(I18n.lang)),
+      machineCell(entry.actor_email || ''),
+    );
+    const what = document.createElement('td');
+    what.textContent = describeAction(entry.action);
+    const why = document.createElement('td');
+    why.textContent = entry.note || '';
+    row.append(what, why);
+    tbody.appendChild(row);
+  });
+
+  table.appendChild(tbody);
+  return table;
+}
+
+export function showAccountMessage(message) {
+  const detail = el('people-detail');
+  if (!detail) return;
+  detail.textContent = '';
+  const p = document.createElement('p');
+  p.className = 'admin-empty';
+  p.textContent = message;
+  detail.appendChild(p);
 }

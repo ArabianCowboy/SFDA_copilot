@@ -120,7 +120,10 @@ class AuditEntry:
         }
 
 
-def list_entries(backend, *, limit: int = 50, offset: int = 0) -> List[AuditEntry]:
+def list_entries(
+    backend, *, limit: int = 50, offset: int = 0,
+    target_type: Optional[str] = None, target_id: Optional[str] = None,
+) -> List[AuditEntry]:
     """Most recent first. Paginated server-side.
 
     No client-side sorting: this is a window onto a larger table, and letting
@@ -129,5 +132,8 @@ def list_entries(backend, *, limit: int = 50, offset: int = 0) -> List[AuditEntr
     """
     if backend is None:
         return []
-    rows = backend.list_audit(limit=min(limit, 200), offset=max(offset, 0))
+    rows = backend.list_audit(
+        limit=min(limit, 200), offset=max(offset, 0),
+        target_type=target_type, target_id=target_id,
+    )
     return [AuditEntry.from_row(row) for row in rows]

@@ -152,7 +152,21 @@
             <section class="admin-panel" role="tabpanel" id="panel-people"
                 aria-labelledby="tab-people" tabindex="0" hidden>
                 <h1 class="admin-heading">{{ t('page.admin.tabs.people') }}</h1>
-                <div id="people-body" class="admin-panel-body"></div>
+                {# Two mutually exclusive children, not a fifth tab. An account
+                   has no meaning without one being selected, and the tablist's
+                   roving-tabindex model assumes every tab is always reachable
+                   and always has something behind it. #}
+                {# Server-rendered so it keeps its value and focus while the list
+                   below it reloads on every keystroke. Carries no data. #}
+                <div class="admin-people-search">
+                    <label class="admin-label" for="people-search">{{ t('page.admin.searchLabel') }}</label>
+                    <input type="search" id="people-search" class="admin-input"
+                        autocomplete="off" placeholder="{{ t('page.admin.searchLabel') }}">
+                </div>
+                <div id="people-body" class="admin-panel-body">
+                    <div id="people-list"></div>
+                    <div id="people-detail" hidden></div>
+                </div>
             </section>
 
             <section class="admin-panel" role="tabpanel" id="panel-audit"

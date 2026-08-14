@@ -77,12 +77,30 @@ class AdminBackend(Protocol):
         """
         ...
 
-    def list_audit(self, *, limit: int, offset: int) -> list:
-        """Recorded actions, most recent first."""
+    def list_audit(
+        self, *, limit: int, offset: int,
+        target_type: Optional[str] = None, target_id: Optional[str] = None,
+    ) -> list:
+        """Recorded actions, most recent first, optionally for one target.
+
+        Extended rather than given a sibling method: the audit surface stays at
+        exactly ``{list_audit, append_audit}``, which is what makes the
+        append-only assertion in the tests a tight statement instead of a
+        growing list of exceptions.
+        """
         ...
 
     def list_users(self, *, limit: int, offset: int, search: Optional[str]) -> tuple:
         """``(rows, total)``. Emails come from auth, standing from profiles."""
+        ...
+
+    def get_user(self, user_id: str) -> Optional[dict]:
+        """One account in full, or None when there is no such account.
+
+        Unlike the list, this does not invent defaults for a missing profile —
+        it reports ``has_profile`` and leaves the columns null, so a broken
+        account can be shown as broken rather than as an ordinary reader.
+        """
         ...
 
     def set_user_flags(
@@ -168,11 +186,21 @@ class SupabaseAdminBackend:
         ).execute()
         return getattr(response, "data", None) or {}
 
-    def list_audit(self, *, limit: int, offset: int) -> list:
+    def list_audit(
+        self, *, limit: int, offset: int,
+        target_type: Optional[str] = None, target_id: Optional[str] = None,
+    ) -> list:
+        query = self._client.table("audit_log").select("*")
+        # `audit_log_target_idx (target_type, target_id, occurred_at desc)`
+        # already exists for exactly this, so the per-account history needs no
+        # new index — see 20260814032447_audit_log.sql.
+        if target_type is not None:
+            query = query.eq("target_type", target_type)
+        if target_id is not None:
+            query = query.eq("target_id", target_id)
+
         response = (
-            self._client.table("audit_log")
-            .select("*")
-            .order("id", desc=True)
+            query.order("id", desc=True)
             .range(offset, offset + limit - 1)
             .execute()
         )
@@ -190,6 +218,20 @@ class SupabaseAdminBackend:
         # paginated view can say "12 of 400" without a second count query.
         total = rows[0]["total"] if rows else 0
         return [{k: v for k, v in row.items() if k != "total"} for row in rows], total
+
+    def get_user(self, user_id: str) -> Optional[dict]:
+        # Same reasoning as `set_user_flags` below: a non-uuid identifies no
+        # account, and that is a "not found", not a crash.
+        try:
+            uuid.UUID(str(user_id))
+        except (ValueError, AttributeError, TypeError):
+            return None
+
+        response = self._client.rpc(
+            "admin_get_user", {"p_user_id": user_id}
+        ).execute()
+        rows = getattr(response, "data", None) or []
+        return rows[0] if rows else None
 
     def set_user_flags(
         self, user_id: str, *, role=None, is_disabled=None, reason=None, actor
@@ -306,9 +348,16 @@ class InMemoryAdminBackend:
         })
         self._next_id += 1
 
-    def list_audit(self, *, limit: int, offset: int) -> list:
-        newest_first = list(reversed(self._audit))
-        return newest_first[offset:offset + limit]
+    def list_audit(
+        self, *, limit: int, offset: int,
+        target_type: Optional[str] = None, target_id: Optional[str] = None,
+    ) -> list:
+        rows = list(reversed(self._audit))
+        if target_type is not None:
+            rows = [r for r in rows if r.get("target_type") == target_type]
+        if target_id is not None:
+            rows = [r for r in rows if r.get("target_id") == target_id]
+        return rows[offset:offset + limit]
 
     # ── Accounts ──────────────────────────────────────────────────────────────
     #
@@ -331,6 +380,14 @@ class InMemoryAdminBackend:
              "tier": "free", "is_disabled": True, "disabled_at": "2026-08-01T00:00:00+00:00",
              "disabled_reason": "seeded", "created_at": "2026-03-01T00:00:00+00:00",
              "last_sign_in_at": None},
+            # An account in auth with no profile row. Rare in production now the
+            # signup trigger is repaired, and seeded here precisely because it is
+            # rare: it is the state the detail view exists to make visible, and
+            # without a fixture nothing would ever exercise that path.
+            {"id": "test-orphan-id", "email": "orphan@example.com", "role": "user",
+             "tier": "free", "is_disabled": False, "disabled_at": None,
+             "disabled_reason": None, "created_at": "2026-04-01T00:00:00+00:00",
+             "last_sign_in_at": None, "has_profile": False},
         ]
 
     def list_users(self, *, limit: int, offset: int, search: Optional[str]) -> tuple:
@@ -338,7 +395,37 @@ class InMemoryAdminBackend:
         if search:
             needle = search.lower()
             rows = [r for r in rows if needle in r["email"].lower()]
-        return rows[offset:offset + limit], len(rows)
+        # `has_profile` is detail-only; the list deliberately does not carry it,
+        # matching admin_list_users, which cannot distinguish the case at all.
+        listed = [{k: v for k, v in r.items() if k != "has_profile"} for r in rows]
+        return listed[offset:offset + limit], len(rows)
+
+    def get_user(self, user_id: str) -> Optional[dict]:
+        row = next((r for r in self._users if r["id"] == user_id), None)
+        if row is None:
+            return None
+
+        has_profile = row.get("has_profile", True)
+        detail = {
+            "id": row["id"],
+            "email": row["email"],
+            "created_at": row["created_at"],
+            "last_sign_in_at": row["last_sign_in_at"],
+            "email_confirmed_at": row.get("email_confirmed_at", row["created_at"]),
+            "banned_until": None,
+            "has_profile": has_profile,
+            "disabled_by_email": None,
+            "full_name": row.get("full_name"),
+            "organization": row.get("organization"),
+            "specialization": row.get("specialization"),
+            "last_seen_at": row.get("last_seen_at"),
+            "updated_at": row.get("updated_at", row["created_at"]),
+        }
+        # Null, not a default, when there is no profile — the whole point of the
+        # detail view is that it does not paint a healthy face on a broken row.
+        for key in ("role", "tier", "is_disabled", "disabled_at", "disabled_reason"):
+            detail[key] = row.get(key) if has_profile else None
+        return detail
 
     def set_user_flags(
         self, user_id: str, *, role=None, is_disabled=None, reason=None, actor

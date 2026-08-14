@@ -41,9 +41,32 @@ def backend():
 def test_accounts_are_listed_with_their_standing(client):
     body = client.get("/admin/api/users", headers=ADMIN).get_json()
 
-    assert body["total"] == 3
+    assert body["total"] == 4
     emails = {u["email"] for u in body["users"]}
-    assert emails == {"admin@example.com", "test@example.com", "disabled@example.com"}
+    assert emails == {
+        "admin@example.com", "test@example.com", "disabled@example.com",
+        # An account with no profile row. It appears in the list looking
+        # perfectly ordinary, which is the defect the detail view exists to
+        # surface — `admin_list_users` coalesces the missing columns to healthy
+        # defaults and cannot tell you otherwise.
+        "orphan@example.com",
+    }
+
+
+def test_the_list_cannot_tell_a_broken_account_from_a_healthy_one(client):
+    """Pins the limitation rather than the fix.
+
+    `admin_list_users` coalesces role/tier/is_disabled, so a profile-less
+    account is indistinguishable here. Asserted so that if someone later makes
+    the list honest, this test fails and points at the detail view that was
+    built to compensate.
+    """
+    body = client.get("/admin/api/users", headers=ADMIN).get_json()
+    orphan = next(u for u in body["users"] if u["email"] == "orphan@example.com")
+
+    assert orphan["role"] == "user"
+    assert orphan["is_disabled"] is False
+    assert "has_profile" not in orphan
 
 
 def test_the_list_says_which_account_is_yours(client):
@@ -242,3 +265,80 @@ def test_a_change_by_a_reader_is_refused(client):
         "/admin/api/users/test-user-id", json={"role": "admin"}, headers=AUTH
     )
     assert response.status_code == 403
+
+
+# ── Account detail ────────────────────────────────────────────────────────────
+
+
+def test_an_account_detail_shows_identity_standing_and_profile(client):
+    body = client.get("/admin/api/users/test-user-id", headers=ADMIN).get_json()
+    account = body["user"]
+
+    assert account["email"] == "test@example.com"
+    assert account["role"] == "user"
+    assert account["is_disabled"] is False
+    assert account["has_profile"] is True
+    # Facts an operator needs before deciding anything, none of which the People
+    # table shows.
+    for field in ("created_at", "last_sign_in_at", "email_confirmed_at", "updated_at"):
+        assert field in account
+    assert body["self_id"] == "test-admin-id"
+
+
+def test_a_profile_less_account_is_shown_as_broken_rather_than_ordinary(client):
+    """The whole reason the detail view reads from a left join without coalescing.
+
+    In the People list this account looks like any other reader. Here it has to
+    say what is actually true, or an operator will spend their time wondering
+    why a perfectly normal-looking account behaves strangely.
+    """
+    account = client.get("/admin/api/users/test-orphan-id", headers=ADMIN).get_json()["user"]
+
+    assert account["has_profile"] is False
+    assert account["email"] == "orphan@example.com"
+    # Null, not a manufactured default.
+    assert account["role"] is None
+    assert account["tier"] is None
+    assert account["is_disabled"] is None
+
+
+def test_an_unknown_account_is_a_404_not_a_500(client):
+    response = client.get("/admin/api/users/test-nobody-id", headers=ADMIN)
+
+    assert response.status_code == 404
+    assert response.get_json() == {"error": "no_such_account"}
+
+
+def test_an_id_that_cannot_name_an_account_is_also_a_404(client):
+    """A non-uuid names no account. Left to the driver it surfaces as a 500 for
+    what is really a not-found."""
+    assert client.get("/admin/api/users/not-a-uuid", headers=ADMIN).status_code == 404
+
+
+def test_the_detail_is_gated_like_every_other_console_read(client):
+    assert client.get("/admin/api/users/test-user-id").status_code == 401
+    assert client.get("/admin/api/users/test-user-id", headers=AUTH).status_code == 403
+
+
+def test_the_activity_log_can_be_filtered_to_one_account(client):
+    """"What has happened to this person" had no surface at all before this —
+    /admin/api/audit is global and newest-first."""
+    client.patch("/admin/api/users/test-user-id", headers=ADMIN,
+                 json={"is_disabled": True, "reason": "for the record"})
+    client.patch("/admin/api/users/test-disabled-id", headers=ADMIN,
+                 json={"is_disabled": False})
+
+    entries = client.get(
+        "/admin/api/audit?target_type=user&target_id=test-user-id", headers=ADMIN
+    ).get_json()["entries"]
+
+    assert entries, "the filter returned nothing for an account that was just changed"
+    assert {e["target_id"] for e in entries} == {"test-user-id"}
+
+
+@pytest.mark.parametrize("query", [
+    "target_type=conversations",
+    "target_type=user&target_id=" + "x" * 65,
+])
+def test_a_target_the_log_does_not_recognise_is_refused(client, query):
+    assert client.get(f"/admin/api/audit?{query}", headers=ADMIN).status_code == 422

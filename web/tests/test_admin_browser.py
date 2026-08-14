@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import re
+from urllib.parse import parse_qs, urlparse
 
 import pytest
 from playwright.sync_api import Page, expect
@@ -421,3 +422,127 @@ def test_a_staged_revert_is_sent_as_null(browser_page: Page):
 
     expect(browser_page.locator("#settings-save")).to_be_enabled()
     assert sent and sent[0]["temperature"] is None
+
+
+# ── Account detail ────────────────────────────────────────────────────────────
+
+
+# Mirrors the shapes InMemoryAdminBackend seeds. Stubbed rather than served,
+# following this file's convention: `?testing=true` authenticates as a plain
+# reader, so every console endpoint 403s unless the test fulfils it. The server
+# side of these routes is covered by test_admin_users.py.
+ACCOUNTS = [
+    {"id": "test-admin-id", "email": "admin@example.com", "role": "admin",
+     "tier": "internal", "is_disabled": False, "last_sign_in_at": None},
+    {"id": "test-user-id", "email": "test@example.com", "role": "user",
+     "tier": "free", "is_disabled": False, "last_sign_in_at": None},
+    {"id": "test-disabled-id", "email": "disabled@example.com", "role": "user",
+     "tier": "free", "is_disabled": True, "last_sign_in_at": None},
+    {"id": "test-orphan-id", "email": "orphan@example.com", "role": "user",
+     "tier": "free", "is_disabled": False, "last_sign_in_at": None},
+]
+
+DETAILS = {
+    "test-user-id": {
+        "id": "test-user-id", "email": "test@example.com", "has_profile": True,
+        "role": "user", "tier": "free", "is_disabled": False,
+        "created_at": "2026-02-01T00:00:00+00:00", "last_sign_in_at": None,
+        "email_confirmed_at": "2026-02-01T00:00:00+00:00", "updated_at": None,
+        "disabled_at": None, "disabled_by_email": None, "disabled_reason": None,
+        "full_name": "Test User", "organization": "Test Organization",
+        "specialization": "Regulatory Affairs", "last_seen_at": None,
+    },
+    "test-orphan-id": {
+        "id": "test-orphan-id", "email": "orphan@example.com", "has_profile": False,
+        "role": None, "tier": None, "is_disabled": None,
+        "created_at": "2026-04-01T00:00:00+00:00", "last_sign_in_at": None,
+        "email_confirmed_at": None, "updated_at": None,
+        "disabled_at": None, "disabled_by_email": None, "disabled_reason": None,
+        "full_name": None, "organization": None, "specialization": None,
+        "last_seen_at": None,
+    },
+}
+
+
+def _json(route, body):
+    route.fulfill(status=200, content_type="application/json", body=json.dumps(body))
+
+
+def _open_people(page: Page, *, lang: str = "") -> None:
+    _route_identity(page, status=200, body=ADMIN_IDENTITY)
+
+    def users_or_detail(route):
+        url = route.request.url
+        match = re.search(r"/admin/api/users/([^?]+)", url)
+        if match:
+            account = DETAILS.get(match.group(1))
+            if account is None:
+                route.fulfill(status=404, content_type="application/json",
+                              body=json.dumps({"error": "no_such_account"}))
+                return
+            _json(route, {"user": account, "self_id": "test-admin-id"})
+            return
+
+        needle = (parse_qs(urlparse(url).query).get("q") or [""])[0].lower()
+        rows = [a for a in ACCOUNTS if needle in a["email"].lower()]
+        _json(route, {"users": rows, "total": len(rows), "limit": 50,
+                      "offset": 0, "self_id": "test-admin-id"})
+
+    page.route("**/admin/api/users*", users_or_detail)
+    page.route("**/admin/api/users/*", users_or_detail)
+    page.route("**/admin/api/audit*",
+               lambda route: _json(route, {"entries": [], "limit": 50, "offset": 0}))
+
+    page.goto(f"/admin?testing=true{lang}")
+    page.locator("#tab-people").click()
+
+
+def test_opening_an_account_swaps_the_people_panel(browser_page: Page):
+    """An in-panel swap, not a fifth tab — so People stays selected and the
+    tablist's roving tabindex is untouched."""
+    _open_people(browser_page)
+    browser_page.locator(".admin-account-open", has_text="test@example.com").click()
+
+    expect(browser_page.locator("#people-detail")).to_be_visible()
+    expect(browser_page.locator("#people-list")).to_be_hidden()
+    expect(browser_page.locator("#account-heading")).to_contain_text("test@example.com")
+    # The tab it belongs to stays selected, so aria-selected stays honest.
+    expect(browser_page.locator("#tab-people")).to_have_attribute("aria-selected", "true")
+
+
+def test_going_back_returns_to_the_list_and_restores_focus(browser_page: Page):
+    _open_people(browser_page)
+    browser_page.locator(".admin-account-open", has_text="test@example.com").click()
+    browser_page.locator("#account-back").click()
+
+    expect(browser_page.locator("#people-list")).to_be_visible()
+    expect(browser_page.locator("#people-detail")).to_be_hidden()
+    expect(browser_page.locator(".admin-account-open").first).to_be_focused()
+
+
+def test_an_account_with_no_profile_is_shown_as_broken(browser_page: Page):
+    """The state the People table cannot express at all: `admin_list_users`
+    coalesces the missing columns, so there it reads as an ordinary reader."""
+    _open_people(browser_page)
+    browser_page.locator(".admin-account-open", has_text="orphan@example.com").click()
+
+    expect(browser_page.locator("#account-broken")).to_be_visible()
+
+
+def test_the_detail_keeps_machine_values_left_to_right_in_arabic(browser_page: Page):
+    _open_people(browser_page, lang="&lang=ar")
+    browser_page.locator(".admin-account-open", has_text="test@example.com").click()
+
+    expect(browser_page.locator("html")).to_have_attribute("dir", "rtl")
+    expect(browser_page.locator("#account-heading .admin-cell-machine")).to_have_attribute("dir", "ltr")
+
+
+def test_the_people_list_can_be_searched(browser_page: Page):
+    """The detail view is reachable only from this list, and the list serves one
+    page of 50 — the search box is what makes it reachable at all past that."""
+    _open_people(browser_page)
+    expect(browser_page.locator(".admin-account-open")).to_have_count(4)
+
+    browser_page.locator("#people-search").fill("orphan")
+    expect(browser_page.locator(".admin-account-open")).to_have_count(1)
+    expect(browser_page.locator(".admin-account-open")).to_contain_text("orphan@example.com")

@@ -112,8 +112,21 @@ export function createAdminServices(getToken) {
     setUserFlags: (id, patch) =>
       request(`users/${encodeURIComponent(id)}`, { method: 'PATCH', body: patch }),
 
-    /** Recorded actions, newest first. Paginated server-side. */
-    audit: ({ limit = 50, offset = 0 } = {}) =>
-      request(`audit?limit=${limit}&offset=${offset}`),
+    /** One account in full. 404 when there is no such account. */
+    user: (id) => request(`users/${encodeURIComponent(id)}`),
+
+    /**
+     * Recorded actions, newest first. Paginated server-side.
+     *
+     * `targetType`/`targetId` narrow it to one account, which is the same query
+     * with a filter rather than a second endpoint — "what has happened to this
+     * person" had no surface at all before the detail view.
+     */
+    audit: ({ limit = 50, offset = 0, targetType = '', targetId = '' } = {}) => {
+      const query = new URLSearchParams({ limit, offset });
+      if (targetType) query.set('target_type', targetType);
+      if (targetId) query.set('target_id', targetId);
+      return request(`audit?${query}`);
+    },
   };
 }
