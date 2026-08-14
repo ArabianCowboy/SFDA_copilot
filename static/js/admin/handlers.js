@@ -156,7 +156,15 @@ export async function initPeopleTab(services) {
       // decision nobody can review later, including the person who made it.
       const reason = window.prompt(I18n.t('admin.people.reasonPrompt'));
       if (reason === null) return;
-      patch = { is_disabled: true, reason };
+      // The server requires one. Catching it here means an operator is told
+      // before the round trip rather than after it, and the two agree about
+      // what "required" means — an empty prompt used to normalise to NULL and
+      // be accepted.
+      if (!reason.trim()) {
+        ErrorHandler.showToast(I18n.t('admin.people.reason_required'), true);
+        return;
+      }
+      patch = { is_disabled: true, reason: reason.trim() };
     }
     if (!patch) return;
 
@@ -172,7 +180,8 @@ export async function initPeopleTab(services) {
       // "you cannot demote yourself" is actionable and "something went wrong"
       // is not.
       const code = error instanceof AdminRequestError ? error.code : null;
-      const known = ['cannot_change_own_access', 'would_leave_no_administrator', 'no_such_account'];
+      const known = ['cannot_change_own_access', 'would_leave_no_administrator',
+                     'no_such_account', 'actor_no_longer_administrator', 'reason_required'];
       ErrorHandler.showToast(
         known.includes(code)
           ? I18n.t(`admin.people.${code}`)

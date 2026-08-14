@@ -76,10 +76,14 @@ def test_an_administrator_cannot_demote_themselves(client):
 
 
 def test_an_administrator_cannot_disable_themselves(client):
+    """Sent with a reason, because the route validates the payload before the
+    database applies the rule — and a console always sends one."""
     response = client.patch(
-        "/admin/api/users/test-admin-id", json={"is_disabled": True}, headers=ADMIN
+        "/admin/api/users/test-admin-id",
+        json={"is_disabled": True, "reason": "tidying up"}, headers=ADMIN,
     )
     assert response.status_code == 409
+    assert response.get_json() == {"error": "cannot_change_own_access"}
 
 
 def test_the_last_administrator_cannot_be_removed(backend):
@@ -119,6 +123,54 @@ def test_a_reader_can_be_promoted_and_demoted(client):
         "/admin/api/users/test-user-id", json={"role": "user"}, headers=ADMIN
     ).get_json()
     assert demoted["user"]["role"] == "user"
+
+
+def test_a_disable_without_a_reason_is_refused(client):
+    """Asking for a reason is not enforcing one. An empty prompt normalised to
+    NULL, so the accountability it exists for was optional in practice."""
+    for payload in ({"is_disabled": True}, {"is_disabled": True, "reason": "   "}):
+        response = client.patch(
+            "/admin/api/users/test-user-id", json=payload, headers=ADMIN
+        )
+        assert response.status_code == 422
+        assert response.get_json() == {"error": "reason_required"}
+
+
+def test_restoring_access_needs_no_justification(client):
+    """The burden belongs on the restrictive act, not on undoing it."""
+    client.patch(
+        "/admin/api/users/test-user-id",
+        json={"is_disabled": True, "reason": "spam"}, headers=ADMIN,
+    )
+    response = client.patch(
+        "/admin/api/users/test-user-id", json={"is_disabled": False}, headers=ADMIN
+    )
+    assert response.status_code == 200
+
+
+def test_a_non_string_reason_is_a_400_rather_than_a_crash(client):
+    """`.strip()` on a number raised, and the client saw a 500."""
+    response = client.patch(
+        "/admin/api/users/test-user-id",
+        json={"is_disabled": True, "reason": 12}, headers=ADMIN,
+    )
+    assert response.status_code == 400
+
+
+def test_an_actor_who_lost_access_mid_request_cannot_act(backend):
+    """The other half of the write-skew fix.
+
+    Two administrators removing each other simultaneously both passed the route
+    gate before either removal committed. The database revalidates the actor
+    inside the serialized transaction, so the second one is refused — verified
+    against the live project, where exactly this ordering now leaves one
+    enabled administrator instead of none.
+    """
+    other = AuditActor("test-user-id", "test@example.com")   # a reader, not an admin
+
+    with pytest.raises(AdminActionRefused) as refused:
+        backend.set_user_flags("test-disabled-id", role="admin", actor=other)
+    assert refused.value.code == "actor_no_longer_administrator"
 
 
 def test_disabling_and_restoring_chat_access(client):

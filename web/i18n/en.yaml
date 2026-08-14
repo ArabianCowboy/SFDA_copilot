@@ -167,8 +167,12 @@ runtime:
       columnWho: "Who"
       columnWhat: "What"
       columnChange: "Change"
+      columnReason: "Reason"
       more: "Load more"
       actionSettingsUpdate: "Changed settings"
+      actionUserDisable: "Disabled chat access"
+      actionUserEnable: "Restored chat access"
+      actionUserRoleChange: "Changed a role"
     people:
       hint: "Accounts on this instance. Disabling chat access stops new questions; a conversation already streaming finishes, and the person can still sign in."
       empty: "No accounts found."
@@ -197,6 +201,8 @@ runtime:
       cannot_change_own_access: "You cannot change your own role or access."
       would_leave_no_administrator: "That would leave no administrator. Promote someone else first."
       no_such_account: "That account no longer exists."
+      actor_no_longer_administrator: "Your administrator access changed while you were working. Reload and try again."
+      reason_required: "A reason is required to disable chat access."
 page:
   meta:
     title: "SFDA Copilot"

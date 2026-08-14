@@ -20,6 +20,7 @@ today there is one implementation.
 from __future__ import annotations
 
 import logging
+import uuid
 from dataclasses import replace
 from typing import Optional, Protocol
 
@@ -49,6 +50,7 @@ _REFUSAL_CODES = {
     "AD001": "cannot_change_own_access",
     "AD002": "would_leave_no_administrator",
     "AD003": "no_such_account",
+    "AD004": "actor_no_longer_administrator",
 }
 
 # The columns that describe a reader's standing. Named once so the query and
@@ -192,6 +194,15 @@ class SupabaseAdminBackend:
     def set_user_flags(
         self, user_id: str, *, role=None, is_disabled=None, reason=None, actor
     ) -> dict:
+        # A uuid is what THIS storage requires, so it is checked here rather
+        # than in the route — the route's contract is about the payload, and an
+        # id that is not a uuid simply identifies no account. Left to the driver
+        # it would surface as a 500 for what is really a 404-shaped mistake.
+        try:
+            uuid.UUID(str(user_id))
+        except (ValueError, AttributeError, TypeError):
+            raise AdminActionRefused("no_such_account") from None
+
         try:
             response = self._client.rpc(
                 "admin_set_user_flags",
@@ -210,9 +221,24 @@ class SupabaseAdminBackend:
             # The guards come back as PostgREST errors carrying the SQLSTATE.
             # Matched on the code rather than the message, because the message
             # is prose and prose gets edited.
-            text = str(exception)
-            for sqlstate, code in _REFUSAL_CODES.items():
-                if sqlstate in text:
+            # Matched against the structured code where the SDK exposes one,
+            # falling back to a bounded search of the message rather than the
+            # whole exception repr. Searching the repr meant a user id
+            # containing "AD001" was reported as a self-change refusal — the
+            # target's own identifier deciding what the refusal was.
+            sqlstate = (
+                getattr(exception, "code", None)
+                or (exception.args[0].get("code") if exception.args
+                    and isinstance(exception.args[0], dict) else None)
+            )
+            if sqlstate in _REFUSAL_CODES:
+                raise AdminActionRefused(_REFUSAL_CODES[sqlstate]) from exception
+
+            message = ""
+            if exception.args and isinstance(exception.args[0], dict):
+                message = str(exception.args[0].get("message") or "")
+            for state, code in _REFUSAL_CODES.items():
+                if state in message:
                     raise AdminActionRefused(code) from exception
             raise
 
@@ -319,6 +345,15 @@ class InMemoryAdminBackend:
     ) -> dict:
         if actor.user_id and actor.user_id == user_id:
             raise AdminActionRefused("cannot_change_own_access")
+
+        # Mirrors the actor revalidation the database does inside its
+        # serialized transaction: an actor demoted or disabled in the meantime
+        # cannot act, and that is what actually catches two administrators
+        # removing each other at the same moment.
+        if actor.user_id:
+            acting = next((r for r in self._users if r["id"] == actor.user_id), None)
+            if acting is not None and (acting["role"] != "admin" or acting["is_disabled"]):
+                raise AdminActionRefused("actor_no_longer_administrator")
 
         row = next((r for r in self._users if r["id"] == user_id), None)
         if row is None:

@@ -412,3 +412,14 @@ select.admin-input {
 .admin-field-revert:hover {
   color: var(--signal);
 }
+
+/* A stated reason, under the state it explains. Quiet: it is context for the
+   row, not a second column competing with it. */
+.admin-cell-note {
+  display: inline-block;
+  margin-block-start: var(--space-1);
+  color: var(--fg-muted);
+  font-family: var(--font-sans);
+  font-size: var(--fs-100);
+  max-inline-size: 28ch;
+}

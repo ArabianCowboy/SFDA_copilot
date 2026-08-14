@@ -161,8 +161,12 @@ runtime:
       columnWho: "المستخدم"
       columnWhat: "الإجراء"
       columnChange: "التغيير"
+      columnReason: "السبب"
       more: "تحميل المزيد"
       actionSettingsUpdate: "غيّر الإعدادات"
+      actionUserDisable: "عطّل الوصول للمحادثة"
+      actionUserEnable: "استعاد الوصول للمحادثة"
+      actionUserRoleChange: "غيّر دوراً"
     people:
       hint: "الحسابات على هذه النسخة. تعطيل الوصول يوقف الأسئلة الجديدة؛ المحادثة الجارية تُكمل، ويظل بإمكان الشخص تسجيل الدخول."
       empty: "لا توجد حسابات."
@@ -191,6 +195,8 @@ runtime:
       cannot_change_own_access: "لا يمكنك تغيير دورك أو وصولك."
       would_leave_no_administrator: "لن يتبقى أي مسؤول. عيّن شخصاً آخر أولاً."
       no_such_account: "لم يعد هذا الحساب موجوداً."
+      actor_no_longer_administrator: "تغيّرت صلاحيتك أثناء العمل. أعد التحميل ثم حاول مجدداً."
+      reason_required: "يلزم ذكر سبب لتعطيل الوصول للمحادثة."
 page:
   meta:
     title: "مساعد الهيئة العامة للغذاء والدواء"

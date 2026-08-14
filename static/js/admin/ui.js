@@ -408,7 +408,17 @@ export function renderUsers({ users, total, self_id: selfId }) {
     access.textContent = I18n.t(
       user.is_disabled ? 'admin.people.accessDisabled' : 'admin.people.accessAllowed',
     );
-    if (user.is_disabled) access.classList.add('admin-flag-off');
+    if (user.is_disabled) {
+      access.classList.add('admin-flag-off');
+      // The stated reason, beside the state it explains. Asking for one and
+      // then never showing it is how a required field becomes theatre.
+      if (user.disabled_reason) {
+        const why = document.createElement('span');
+        why.className = 'admin-cell-note';
+        why.textContent = user.disabled_reason;
+        access.append(document.createElement('br'), why);
+      }
+    }
 
     const seen = machineCell(
       user.last_sign_in_at
@@ -462,12 +472,19 @@ export function showPeopleMessage(message) {
 /* ── Activity ────────────────────────────────────────────────────────────── */
 
 /** A recorded action as one sentence, rather than a raw action code. */
+const ACTION_KEYS = {
+  'settings.update': 'admin.audit.actionSettingsUpdate',
+  'user.disable': 'admin.audit.actionUserDisable',
+  'user.enable': 'admin.audit.actionUserEnable',
+  'user.role_change': 'admin.audit.actionUserRoleChange',
+};
+
 function describeAction(action) {
-  // Explicit rather than derived from the code string. An unknown action
-  // showing its raw identifier is honest; guessing a translation from a dotted
-  // name would produce confident nonsense in Arabic.
-  if (action === 'settings.update') return I18n.t('admin.audit.actionSettingsUpdate');
-  return action;
+  // A lookup rather than a derivation. An unknown action showing its raw
+  // identifier is honest; guessing a translation from a dotted name would
+  // produce confident nonsense in Arabic.
+  const key = ACTION_KEYS[action];
+  return key ? I18n.t(key) : action;
 }
 
 /** The changed keys, as `key: from → to`. */
@@ -508,7 +525,7 @@ export function renderAudit(entries, { append = false } = {}) {
     table.id = 'audit-table';
     const head = document.createElement('thead');
     const headRow = document.createElement('tr');
-    ['columnWhen', 'columnWho', 'columnWhat', 'columnChange'].forEach((key) => {
+    ['columnWhen', 'columnWho', 'columnWhat', 'columnChange', 'columnReason'].forEach((key) => {
       const th = document.createElement('th');
       th.scope = 'col';
       th.textContent = I18n.t(`admin.audit.${key}`);
@@ -545,7 +562,10 @@ export function renderAudit(entries, { append = false } = {}) {
     change.setAttribute('dir', 'ltr');
     change.textContent = describeChange(entry.before, entry.after) || '—';
 
-    row.append(when, who, what, change);
+    const note = document.createElement('td');
+    note.textContent = entry.note || '—';
+
+    row.append(when, who, what, change, note);
     tbody.appendChild(row);
   });
 }

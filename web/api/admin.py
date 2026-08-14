@@ -246,14 +246,26 @@ def patch_user(user_id: str) -> Response:
 
     role = payload.get("role")
     is_disabled = payload.get("is_disabled")
-    reason = (payload.get("reason") or "").strip() or None
+    reason = payload.get("reason")
 
     if role is not None and role not in ("user", "admin"):
         return jsonify({"error": "invalid_role"}), 422
     if is_disabled is not None and not isinstance(is_disabled, bool):
         return jsonify({"error": "invalid_payload"}), 400
+    # Checked before `.strip()`, which raises on anything that is not a string —
+    # a number here used to reach the client as a 500.
+    if reason is not None and not isinstance(reason, str):
+        return jsonify({"error": "invalid_payload"}), 400
+    reason = (reason or "").strip() or None
     if role is None and is_disabled is None:
         return jsonify({"error": "nothing_to_change"}), 400
+
+    # Required for a disable, and only for a disable. The console asks for one,
+    # but asking is not enforcing: an empty prompt normalised to NULL, so the
+    # accountability the reason exists for was optional in practice. Restoring
+    # access needs no justification — the burden belongs on the restrictive act.
+    if is_disabled is True and not reason:
+        return jsonify({"error": "reason_required"}), 422
 
     backend = current_app.config["admin_backend"]()
     if backend is None:

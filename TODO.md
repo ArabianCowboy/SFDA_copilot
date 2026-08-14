@@ -326,6 +326,37 @@ instance. Worth deciding whether it is dropped or finally used.
 
 ---
 
+### The browser suite flakes intermittently in test_source_panel.py
+
+**Where:** `web/tests/test_source_panel.py`, only under a full `-m browser` run.
+Seen twice on 2026-08-14 across roughly five full runs, on different tests each
+time — once as a teardown ERROR on
+`test_a_restored_answer_cannot_open_another_answers_sources`, once as an
+`ERROR at setup of test_a_citation_marker_opens_the_panel_on_its_passage`.
+
+**What is wrong.** Unknown. It is an error rather than an assertion failure, so
+it is the Playwright fixture rather than the assertion — the page or context is
+gone by the time the test wants it. It does not reproduce running the file alone
+(36 passed) or on a repeat of the full suite (131 passed both times).
+
+**Who it reaches.** CI, as a red build on a green branch. `.github/workflows/tests.yml`
+runs the browser suite as a separate merge gate, so an intermittent error there
+is a merge blocked for no reason — and the fix people reach for is "re-run it",
+which is how a real failure eventually gets waved through.
+
+**Why it is written down rather than fixed.** Nothing was diagnosed. The
+plausible causes are resource contention across ~36 browser contexts in one
+session, or a fixture that outlives its page — `sourced_page` and friends layer
+`page.route` handlers over the shared `browser_page`, and Playwright matches the
+most recently added handler first, which is order-dependent by construction.
+Chasing it needs a reproduction, and it did not reproduce on demand.
+
+**Where to start.** Run the browser suite with `-p no:randomly` if ordering is
+suspected, or `--tracing retain-on-failure` to capture the context state at the
+moment it dies. If it recurs in CI, that trace is the thing worth having.
+
+---
+
 ### Save chat sessions per user
 
 **Where:** Today a conversation is keyed to a cookie, not to an account.
