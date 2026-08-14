@@ -128,12 +128,17 @@ def get_settings() -> Response:
     value someone chose from a value that merely happens to be the deployed
     default — the two look identical and revert differently.
     """
-    from web.services.settings_service import allowed_models
+    from web.services.settings_service import allowed_models, deployed_defaults
 
     service = current_app.config["settings_service"]
     return jsonify({
         "settings": service.snapshot(),
         "overrides": service.overrides(),
+        # What each value reverts TO. An overridden field hides its own default
+        # — the effective value *is* the override — so without this the console
+        # cannot offer "revert" without guessing, and a guess that happens to
+        # equal the default would pin it instead of restoring inheritance.
+        "defaults": deployed_defaults(),
         "allowed_models": allowed_models(),
     })
 
@@ -185,9 +190,12 @@ def put_settings() -> Response:
     if not applied:
         logger.error("Settings were stored but could not be applied to generation.")
 
+    from web.services.settings_service import deployed_defaults
+
     return jsonify({
         "settings": service.snapshot(),
         "overrides": service.overrides(),
+        "defaults": deployed_defaults(),
         "applied": applied,
     })
 

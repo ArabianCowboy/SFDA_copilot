@@ -50,6 +50,10 @@ const Admin = {
 
     try {
       Services.init();
+
+      // Resolved once here only to decide whether anyone is signed in at all.
+      // The transport gets the provider, not this value, so it always presents
+      // the current token rather than this one.
       const token = await Services.getSessionToken();
       if (!token) {
         // No session at all. Raised as the same type the server would have
@@ -60,7 +64,7 @@ const Admin = {
         return;
       }
 
-      const services = createAdminServices(token);
+      const services = createAdminServices(() => Services.getSessionToken());
       const identity = await services.identity();
       revealConsole(identity);
 

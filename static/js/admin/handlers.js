@@ -21,6 +21,7 @@ import {
   selectTab,
   setSettingsSaving,
   showGateMessage,
+  stageRevert,
   showSettingsErrors,
   showSettingsMessage,
   tabIds,
@@ -203,11 +204,15 @@ export async function initSettingsTab(services) {
   // Held so a re-render on model change keeps showing which values were
   // actually chosen rather than resetting every marker to "default".
   let currentOverrides = {};
+  // What each field reverts TO. An overridden field hides its own default,
+  // so the console cannot offer reversion without being told.
+  let currentDefaults = {};
 
   try {
     const loaded = await services.settings();
     allowedModels = loaded.allowed_models || [];
     currentOverrides = loaded.overrides || {};
+    currentDefaults = loaded.defaults || {};
     renderSettings(loaded);
   } catch (error) {
     showSettingsMessage(I18n.t('admin.settings.loadFailed'));
@@ -219,11 +224,17 @@ export async function initSettingsTab(services) {
   // model has an effort level and no temperature, an ordinary one the reverse.
   // Re-rendering on change means the form always shows what this model accepts,
   // rather than making an operator save once to discover the second control.
+  body.addEventListener('click', (event) => {
+    const revert = event.target.closest('.admin-field-revert');
+    if (revert) stageRevert(revert.dataset.revert, currentDefaults);
+  });
+
   body.addEventListener('change', (event) => {
     if (event.target.name !== 'model') return;
     renderSettings({
       settings: { ...readSettingsForm(), model: event.target.value },
       overrides: currentOverrides,
+      defaults: currentDefaults,
       allowed_models: allowedModels,
     });
   });
@@ -242,7 +253,8 @@ export async function initSettingsTab(services) {
       // the response is what is actually stored, and it also refreshes the
       // "changed here" markers, which a local update would leave stale.
       currentOverrides = saved.overrides || {};
-      renderSettings({ ...saved, allowed_models: allowedModels });
+      currentDefaults = saved.defaults || currentDefaults;
+      renderSettings({ ...saved, defaults: currentDefaults, allowed_models: allowedModels });
 
       // `applied: false` means the values were stored but the generation
       // handler could not be rebuilt from them, so answers are still coming

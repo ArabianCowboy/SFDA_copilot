@@ -351,3 +351,73 @@ def test_model_default_is_offered_as_a_distinct_choice(browser_page: Page):
     browser_page.locator("#setting-model").select_option("gpt-5.6-luna")
 
     expect(browser_page.locator("#setting-reasoning_effort")).to_have_value("")
+
+
+# ── Reverting an override ─────────────────────────────────────────────────────
+
+OVERRIDDEN = {
+    "settings": {"model": "gpt-4o", "temperature": 0.9, "max_tokens": 16384,
+                 "max_context_results": 8, "reasoning_effort": None},
+    "overrides": {"temperature": 0.9},
+    "defaults": {"model": "gpt-4o-mini", "temperature": 0.1, "max_tokens": 16384,
+                 "max_context_results": 8, "reasoning_effort": None},
+    "allowed_models": [
+        {"id": "gpt-4o-mini", "label": "GPT-4o mini", "max_output_tokens": 16384},
+        {"id": "gpt-4o", "label": "GPT-4o", "max_output_tokens": 16384},
+    ],
+}
+
+
+def test_only_an_overridden_field_offers_reversion(browser_page: Page):
+    """A revert control on a field already inheriting the default would be a
+    control that does nothing."""
+    _admin_console(browser_page, settings=OVERRIDDEN)
+    browser_page.locator("#tab-settings").click()
+
+    expect(browser_page.locator(".admin-field-revert")).to_have_count(1)
+    expect(
+        browser_page.locator('.admin-field[data-field="temperature"] .admin-field-revert')
+    ).to_be_visible()
+
+
+def test_reverting_is_staged_rather_than_written_immediately(browser_page: Page):
+    """The form submits whole. An immediate per-key write would discard whatever
+    else was being edited — so the input shows what it will become, and Save
+    sends it."""
+    _admin_console(browser_page, settings=OVERRIDDEN)
+    browser_page.locator("#tab-settings").click()
+
+    browser_page.locator('.admin-field[data-field="temperature"] .admin-field-revert').click()
+
+    # Shows the value it will revert TO, and stops claiming to be a choice.
+    expect(browser_page.locator("#setting-temperature")).to_have_value("0.1")
+    expect(
+        browser_page.locator('.admin-field[data-field="temperature"] .admin-field-origin')
+    ).to_have_text("Deployed default")
+    # The control is gone: there is nothing left to revert.
+    expect(browser_page.locator(".admin-field-revert")).to_have_count(0)
+
+
+def test_a_staged_revert_is_sent_as_null(browser_page: Page):
+    """null removes the override. Writing the default's current value instead
+    would pin it against a future deploy — the distinction the whole
+    overrides-only design exists to preserve."""
+    sent = []
+    _admin_console(browser_page, settings=OVERRIDDEN)
+    browser_page.locator("#tab-settings").click()
+
+    def capture(route):
+        if route.request.method == "PUT":
+            sent.append(route.request.post_data_json)
+            route.fulfill(status=200, content_type="application/json",
+                          body=json.dumps({**OVERRIDDEN, "overrides": {}, "applied": True}))
+        else:
+            route.fulfill(status=200, content_type="application/json",
+                          body=json.dumps(OVERRIDDEN))
+
+    browser_page.route("**/admin/api/settings", capture)
+    browser_page.locator('.admin-field[data-field="temperature"] .admin-field-revert').click()
+    browser_page.locator("#settings-save").click()
+
+    expect(browser_page.locator("#settings-save")).to_be_enabled()
+    assert sent and sent[0]["temperature"] is None

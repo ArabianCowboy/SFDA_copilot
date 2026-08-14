@@ -33,15 +33,42 @@ export class AdminRequestError extends Error {
   }
 }
 
-export function createAdminServices(token) {
-  if (!token) throw new Error('createAdminServices requires a bearer token');
+/**
+ * @param getToken async () => string|null — resolved PER REQUEST, not once.
+ *
+ * A provider rather than a token, because Supabase refreshes the underlying
+ * session while the console stays open. Capturing one string at init meant a
+ * tab left open past expiry kept presenting a token the server had stopped
+ * accepting, and only a reload fixed it — on the surface an operator is most
+ * likely to leave open.
+ */
+export function createAdminServices(getToken) {
+  if (typeof getToken !== 'function') {
+    throw new Error('createAdminServices requires a token provider');
+  }
 
-  async function request(path, { method = 'GET', body } = {}) {
-    const response = await fetch(`/admin/api/${path}`, {
+  async function send(path, method, body, token) {
+    return fetch(`/admin/api/${path}`, {
       method,
       headers: { ...JSON_HEADERS, Authorization: `Bearer ${token}` },
       body: body === undefined ? undefined : JSON.stringify(body),
+      // The gate answers JSON for every /admin/api/* route, so a redirect here
+      // would mean something upstream intercepted us. Following it would turn a
+      // login page into a parsed-as-null success.
+      redirect: 'error',
     });
+  }
+
+  async function request(path, { method = 'GET', body } = {}) {
+    let response = await send(path, method, body, await getToken());
+
+    // One retry, and only on 401. A token that expired between resolution and
+    // arrival is the ordinary case here; anything else repeated would just be
+    // sending a rejected request twice.
+    if (response.status === 401) {
+      const refreshed = await getToken();
+      if (refreshed) response = await send(path, method, body, refreshed);
+    }
 
     let payload = null;
     try {

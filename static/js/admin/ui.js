@@ -159,7 +159,7 @@ function buildControl(field, value, allowedModels, currentModel) {
 }
 
 /** Render the settings form. Returns nothing; read it back with readSettingsForm. */
-export function renderSettings({ settings, overrides, allowed_models: allowedModels }) {
+export function renderSettings({ settings, overrides, defaults, allowed_models: allowedModels }) {
   const body = el('settings-body');
   if (!body) return;
   body.textContent = '';
@@ -218,6 +218,18 @@ export function renderSettings({ settings, overrides, allowed_models: allowedMod
     control.setAttribute('aria-describedby', error.id);
 
     row.append(label, control, origin, error);
+
+    // Only an overridden field has anything to revert. Offering it on a field
+    // already inheriting the default would be a control that does nothing.
+    if (isOverride && defaults && name in defaults) {
+      const revert = document.createElement('button');
+      revert.type = 'button';
+      revert.className = 'btn btn-sm btn-ghost admin-field-revert';
+      revert.dataset.revert = name;
+      revert.textContent = I18n.t('admin.settings.revert');
+      row.appendChild(revert);
+    }
+
     form.appendChild(row);
   });
 
@@ -248,6 +260,14 @@ export function readSettingsForm() {
     // rather than sent as null: null means "revert this override", and a model
     // switch should not silently clear a setting the operator never touched.
     if (!control) return;
+    // Marked for reversion by the control below. Sent as null, which removes
+    // the override — distinct from writing the default's current value, which
+    // would pin it against a future deploy.
+    const row = control.closest('.admin-field');
+    if (row?.dataset.reverting === 'true') {
+      patch[name] = null;
+      return;
+    }
     if (field.kind === 'effort') {
       // Empty is "model default", which is a removal — distinct from any level.
       patch[name] = control.value || null;
@@ -548,4 +568,28 @@ export function showSettingsMessage(message) {
   p.className = 'admin-empty';
   p.textContent = message;
   body.appendChild(p);
+}
+
+/**
+ * Stage a field for reversion.
+ *
+ * Staged rather than written immediately, because the form is submitted whole:
+ * an operator midway through editing three fields should not lose two of them
+ * to reverting the third. The input shows what it will become, the marker says
+ * so, and Save sends null for it.
+ */
+export function stageRevert(name, defaults) {
+  const row = document.querySelector(`.admin-field[data-field="${name}"]`);
+  if (!row) return;
+
+  row.dataset.reverting = 'true';
+  const control = row.querySelector('.admin-input');
+  if (control) control.value = defaults?.[name] ?? '';
+
+  const origin = row.querySelector('.admin-field-origin');
+  if (origin) {
+    origin.classList.remove('is-override');
+    origin.textContent = I18n.t('admin.settings.usingDefault');
+  }
+  row.querySelector('.admin-field-revert')?.remove();
 }

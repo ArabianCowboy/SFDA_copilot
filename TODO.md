@@ -326,35 +326,6 @@ instance. Worth deciding whether it is dropped or finally used.
 
 ---
 
-### Console follow-ups left after the admin work
-
-Three small things the admin console shipped without, each recorded rather than
-half-done. None blocks anything.
-
-1. **"Revert to default" has a string and no control.** The API accepts `null`
-   to remove an override, both catalogues carry
-   `runtime.admin.settings.revert`, and the settings form renders only inputs
-   and Save. Typing the current default *pins* that value rather than restoring
-   inheritance — which is the distinction the whole overrides-only design
-   exists to preserve. Wants a per-field control that submits `{key: null}`.
-
-2. **The console holds one token for its lifetime.** `admin.js` resolves a
-   bearer token once at init and the transport closes over it. Supabase refreshes
-   the underlying session, but the console keeps presenting the original, so a
-   long-open tab starts getting 401s and only a reload fixes it. Wants a token
-   *provider* rather than a token, and one refresh-and-retry on 401.
-
-3. **`app_settings.updated_at` is written as the string `"now()"`.** An
-   adversarial review inferred this would fail against PostgREST; tested against
-   the live project, Postgres accepts it as a timestamp literal and the row
-   updates correctly. It works, and depending on that parse is still fragile —
-   the settings path now goes through an RPC that calls `now()` server-side, so
-   what remains is the direct upsert in `InMemoryAdminBackend`'s production
-   twin. Wants a `BEFORE UPDATE` trigger like `handle_profile_update`, and then
-   the column drops out of the payload entirely.
-
----
-
 ### Save chat sessions per user
 
 **Where:** Today a conversation is keyed to a cookie, not to an account.

@@ -143,10 +143,14 @@ class SupabaseAdminBackend:
 
         The previous implementation upserted the row directly and would have
         needed a second statement for the audit entry — two statements that can
-        half-succeed, and the half that fails is always the record. It also sent
-        `updated_at: "now()"` as a JSON string, which Postgres happens to accept
-        as a timestamp literal; the function calls `now()` server-side instead,
-        so that is no longer a quirk anything depends on.
+        half-succeed, and the half that fails is always the record.
+
+        It also sent `updated_at: "now()"` as a JSON string. Postgres accepts
+        that as a timestamp literal, so it worked — but a caller able to write
+        any value it likes into a field whose job is to say when the row
+        actually changed is a field that cannot be trusted. A BEFORE trigger
+        now sets it, matching how public.profiles has always done it, and the
+        column is not in any payload.
         """
         response = self._client.rpc(
             "admin_write_settings",

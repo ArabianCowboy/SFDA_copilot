@@ -393,3 +393,22 @@ select.admin-input {
   color: var(--fg-muted);
   font-weight: var(--fw-medium);
 }
+
+/* Reverting is staged, not immediate — the form submits whole. The control sits
+   with the field it belongs to rather than in the actions row, because it acts
+   on one value and Save acts on all of them. */
+.admin-field-revert {
+  grid-column: 1 / -1;
+  justify-self: start;
+  padding-inline: 0;
+  font-size: var(--fs-100);
+  color: var(--fg-muted);
+  border: 0;
+  background: none;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.admin-field-revert:hover {
+  color: var(--signal);
+}
