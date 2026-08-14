@@ -29,6 +29,7 @@ from flask import (
     Flask,
     Response,
     current_app,
+    g,
     jsonify,
     make_response,
     redirect,
@@ -90,7 +91,14 @@ for module, default_level in [
 # ──────────────────────────────────────────────────────────
 # Application-Specific Imports (after logger setup)
 # ──────────────────────────────────────────────────────────
-from web.api.auth import auth_bp, purge_conversation_state
+from web.api.auth import (
+    IDENTITY_MARKER_KEYS,
+    auth_bp,
+    purge_conversation_state,
+    rotate_session_for_new_identity,
+)
+from web.services.admin_store import resolve_identity_flags
+from web.services.identity_cache import IdentityFlags, IdentityFlagsCache
 from web.services.citations import (
     build_source_payload,
     extract_cited_indices,
@@ -177,6 +185,12 @@ def clear_auth_session() -> None:
     """Purge authentication data from the Flask session."""
     session.pop("supabase_access_token", None)
     session.pop("user_email", None)
+    # The admin render hint is authentication data too. Leaving it behind on the
+    # 401 path would strand an elevated marker on a shared machine's cookie —
+    # the precise leak the identity rotation exists to prevent, and no less real
+    # for the marker being cosmetic.
+    for key in IDENTITY_MARKER_KEYS:
+        session.pop(key, None)
 
 
 def _bind_session_to_identity(identity: str) -> None:
@@ -194,28 +208,88 @@ def _bind_session_to_identity(identity: str) -> None:
     """
     previous = session.get("auth_identity")
     if previous is not None and previous != identity:
-        purge_conversation_state()
+        rotate_session_for_new_identity()
         logging.info("Authenticated identity changed for this session; conversation purged.")
     session["auth_identity"] = identity
 
 
-def auth_required(view_func):
-    """Decorator that enforces Supabase authentication for a route."""
+# Identities the TESTING bypass can present, most specific match first.
+#
+# ORDER IS LOAD-BEARING. Not because these three collide — "fake_token" is not a
+# contiguous substring of "fake_admin_token" — but because a future marker such
+# as `fake_token_admin` would contain it, and a plain-reader entry checked first
+# would silently shadow the privileged one. Most privileged, most specific, first.
+#
+# The plain `fake_token` row is the literal five server test files send, and its
+# resolution must not change: `user_email` stays "test@example.com" because that
+# is what existing assertions read.
+_TESTING_IDENTITIES: Tuple[Tuple[str, IdentityFlags], ...] = (
+    (
+        "fake_admin_token",
+        IdentityFlags("test-admin-id", "admin@example.com", "admin", "internal", False),
+    ),
+    (
+        "fake_disabled_token",
+        IdentityFlags("test-disabled-id", "disabled@example.com", "user", "free", True),
+    ),
+    (
+        "fake_token",
+        IdentityFlags("test-user-id", "test@example.com", "user", "free", False),
+    ),
+)
 
-    @wraps(view_func)
-    def wrapper(*args, **kwargs):
-        if current_app.config["TESTING"]:
-            if "fake_token" in request.headers.get("Authorization", ""):
-                _bind_session_to_identity("test@example.com")
-                session["user_email"] = "test@example.com"
-                return view_func(*args, **kwargs)
-            return jsonify({"error": "Invalid or missing test token"}), 401
 
+def _testing_identity() -> Optional[IdentityFlags]:
+    """Resolve the TESTING bypass token to an identity, or None if absent."""
+    header = request.headers.get("Authorization", "")
+    return next((flags for marker, flags in _TESTING_IDENTITIES if marker in header), None)
+
+
+def _is_page_request() -> bool:
+    """True for a browser navigating to a page, false for an API call.
+
+    Decides whether a rejection is a redirect or a JSON error. Previously this
+    only ever matched `index`, which is not decorated with `@auth_required` —
+    so the redirect branch was unreachable. The admin blueprint's page route is
+    the first gated GET the app has had.
+    """
+    if request.method != "GET":
+        return False
+    return request.endpoint == "index" or request.blueprint == "admin"
+
+
+def _account_disabled_response() -> Tuple[Response, int]:
+    """403, deliberately, rather than 401.
+
+    401 means "your credentials are missing or invalid", and `_handle_unauthorized`
+    acts on that by clearing the session. A disabled reader would then be logged
+    out, log back in successfully, and be bounced again — a loop that reads as a
+    bug in the product rather than a decision about their account.
+
+    403 says the opposite and the true thing: we know exactly who you are, and
+    the answer is still no. The body carries a machine code, not a sentence —
+    the client already owns every reader-facing string, in both languages, and a
+    localized message from the server would be a second translation path nothing
+    else in this app has.
+    """
+    return jsonify({"error": "account_disabled"}), 403
+
+
+def _authenticate_request() -> Tuple[Optional[IdentityFlags], Optional[Any]]:
+    """Resolve the caller. Returns (flags, early_response); exactly one is None.
+
+    Extracted from `auth_required` so the admin blueprint's `before_request` can
+    reuse it verbatim rather than reimplementing token handling next door to it.
+    """
+    if current_app.config["TESTING"]:
+        identity = _testing_identity()
+        if identity is None:
+            return None, (jsonify({"error": "Invalid or missing test token"}), 401)
+        token = None
+    else:
         token = _get_token_from_request()
-        is_page_request = request.method == "GET" and request.endpoint == "index"
-
         if not token:
-            return _handle_unauthorized(is_page_request)
+            return None, _handle_unauthorized(_is_page_request())
 
         try:
             supabase = get_supabase()
@@ -225,18 +299,41 @@ def auth_required(view_func):
 
             if not user:
                 logging.warning("Token validation failed for %s – no user found.", request.endpoint)
-                return _handle_unauthorized(is_page_request)
+                return None, _handle_unauthorized(_is_page_request())
 
             # The user id is the stable identity; email can be changed by the
-            # account holder and is only a fallback for a provider that
-            # omits it.
-            _bind_session_to_identity(str(getattr(user, "id", None) or user.email))
-            session.update({"supabase_access_token": token, "user_email": user.email})
-            return view_func(*args, **kwargs)
-
+            # account holder and is only a fallback for a provider that omits it.
+            user_id = str(getattr(user, "id", None) or user.email)
+            identity = resolve_identity_flags(
+                current_app.config["identity_flags"], user_id, user.email
+            )
         except Exception as exception:
             logging.error("Authentication error at endpoint %s: %s", request.endpoint, exception, exc_info=True)
-            return _handle_unauthorized(is_page_request)
+            return None, _handle_unauthorized(_is_page_request())
+
+    _bind_session_to_identity(identity.user_id)
+    session["user_email"] = identity.email
+    if token is not None:
+        session["supabase_access_token"] = token
+    # Render hint only. Never an authorization input — see IDENTITY_MARKER_KEYS.
+    session["is_admin_hint"] = identity.is_admin
+    g.identity = identity
+
+    if identity.is_disabled:
+        return None, _account_disabled_response()
+
+    return identity, None
+
+
+def auth_required(view_func):
+    """Decorator that enforces Supabase authentication for a route."""
+
+    @wraps(view_func)
+    def wrapper(*args, **kwargs):
+        _, early_response = _authenticate_request()
+        if early_response is not None:
+            return early_response
+        return view_func(*args, **kwargs)
 
     return wrapper
 
@@ -540,6 +637,9 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
     """Register all application routes and blueprints."""
     app.config["FREQUENT_QUESTIONS"] = _load_faq_data()
     app.config["conversations"] = ConversationStore()
+    # Process-local, same scope contract as ConversationStore above: a cache,
+    # never the authority. The database decides who is an administrator.
+    app.config["identity_flags"] = IdentityFlagsCache()
     app.register_blueprint(auth_bp, url_prefix="/auth")
 
     workers = os.getenv("WEB_CONCURRENCY", "1")
@@ -641,6 +741,30 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
             if isinstance(block, dict)
         }
         return jsonify(selected)
+
+    @app.route("/api/identity")
+    @auth_required
+    def identity() -> Response:
+        """What the server believes about the caller.
+
+        The authoritative answer to "am I an administrator", as opposed to the
+        `is_admin_hint` cookie value, which only decides whether a link is drawn
+        on a page rendered without validating a token. The client asks this once
+        after sign-in and reveals admin chrome from the answer — which is also
+        the only thing that works on a first sign-in in a fresh browser, where
+        there is no hint yet because no authenticated request has been made.
+
+        Deliberately says nothing a reader may not know about themselves: no
+        other accounts, no counts, no settings.
+        """
+        flags: IdentityFlags = g.identity
+        return jsonify({
+            "user_id": flags.user_id,
+            "email": flags.email,
+            "role": flags.role,
+            "tier": flags.tier,
+            "is_admin": flags.is_admin,
+        })
 
     # Shared across both chat routes so a client cannot double its allowance by
     # alternating between the streaming and blocking endpoints.
