@@ -76,5 +76,9 @@ export function createAdminServices(token) {
      * prose at the top of a form.
      */
     saveSettings: (patch) => request('settings', { method: 'PUT', body: patch }),
+
+    /** Recorded actions, newest first. Paginated server-side. */
+    audit: ({ limit = 50, offset = 0 } = {}) =>
+      request(`audit?limit=${limit}&offset=${offset}`),
   };
 }

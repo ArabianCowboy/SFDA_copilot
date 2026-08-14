@@ -16,11 +16,16 @@ from unittest.mock import MagicMock
 import pytest
 
 from web.api.app import create_app
+from web.services.audit import AuditActor
 from web.services.openai_app import OpenAIHandler
 from web.services.result_combiner import SearchResult
 
 
 ADMIN = {"Authorization": "Bearer fake_admin_token"}
+
+# Settings writes now carry who made them, because the change and its audit
+# row are written together — there is no way to store one without the other.
+ACTOR = AuditActor("admin-id", "admin@example.com", "127.0.0.1", "pytest")
 AUTH = {"Authorization": "Bearer fake_token"}
 
 
@@ -69,7 +74,7 @@ def test_applying_settings_replaces_the_handler_object(app):
     """
     with app.app_context():
         before = app.config["openai_handler"]
-        app.config["settings_service"].update({"model": "gpt-4o"}, actor_id="t")
+        app.config["settings_service"].update({"model": "gpt-4o"}, actor=ACTOR)
         app.config["apply_generation_settings"]()
         after = app.config["openai_handler"]
 
@@ -84,7 +89,7 @@ def test_a_reference_captured_before_the_swap_is_unaffected(app):
     in-flight answer survives a settings change."""
     with app.app_context():
         captured = app.config["openai_handler"]
-        app.config["settings_service"].update({"model": "gpt-4o"}, actor_id="t")
+        app.config["settings_service"].update({"model": "gpt-4o"}, actor=ACTOR)
         app.config["apply_generation_settings"]()
 
     assert captured.model == "gpt-4o-mini"
@@ -178,14 +183,16 @@ def test_stored_overrides_are_adopted_at_startup(app):
     """A model chosen in the console must survive a restart, or an operator
     fixes a degraded model at 2am and loses it on the next deploy."""
     with app.app_context():
-        app.config["settings_service"].update({"model": "gpt-4o"}, actor_id="t")
+        app.config["settings_service"].update({"model": "gpt-4o"}, actor=ACTOR)
         stored = app.config["admin_backend"]().get_settings()
 
     assert stored == {"model": "gpt-4o"}
 
     # A fresh app sharing that store: this is what a restart looks like.
     restarted = create_app(testing=True)
-    restarted.config["_testing_admin_backend"].put_settings(stored, actor_id="t")
+    restarted.config["_testing_admin_backend"].put_settings(
+        stored, actor=ACTOR, before={}, after=stored
+    )
     with restarted.app_context():
         restarted.config["settings_service"].snapshot(force=True)
         restarted.config["apply_generation_settings"]()

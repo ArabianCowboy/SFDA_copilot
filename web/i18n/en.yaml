@@ -153,6 +153,17 @@ runtime:
       not_a_positive_integer: "Must be a whole number above zero."
       unknown_setting: "Not a setting this console recognises."
       storage_unavailable: "Settings storage is unavailable, so nothing was saved."
+    audit:
+      heading: "Activity"
+      hint: "Every change made here, newest first. Records cannot be edited or removed."
+      empty: "No changes recorded yet."
+      loadFailed: "Could not load the activity log."
+      columnWhen: "When"
+      columnWho: "Who"
+      columnWhat: "What"
+      columnChange: "Change"
+      more: "Load more"
+      actionSettingsUpdate: "Changed settings"
 page:
   meta:
     title: "SFDA Copilot"
@@ -272,3 +283,4 @@ page:
       overview: "Overview"
       settings: "Settings"
       people: "People"
+      audit: "Activity"

@@ -12,6 +12,8 @@ import { AdminRequestError } from './services.js';
 import {
   clearSettingsErrors,
   focusTab,
+  renderAudit,
+  showAuditMessage,
   readSettingsForm,
   renderSettings,
   selectTab,
@@ -90,6 +92,23 @@ export function bindConsoleEvents() {
 }
 
 /**
+ * Load the activity log.
+ *
+ * Loaded when the console opens rather than lazily on tab click: it is small,
+ * and an operator who is checking what changed wants it there, not one
+ * interaction away. Re-read after a save, because the save just added to it.
+ */
+export async function loadAudit(services) {
+  if (!document.getElementById('audit-body')) return;
+  try {
+    const { entries } = await services.audit();
+    renderAudit(entries);
+  } catch (error) {
+    showAuditMessage(I18n.t('admin.audit.loadFailed'));
+  }
+}
+
+/**
  * Load the settings tab and wire its save.
  *
  * The form is submitted whole rather than per-field. Partial saves would let an
@@ -142,6 +161,10 @@ export async function initSettingsTab(services) {
       } else {
         ErrorHandler.showToast(I18n.t('admin.settings.saved'));
       }
+
+      // The save just wrote an audit row; showing a stale log next to a change
+      // that is already live is the one moment the record looks untrustworthy.
+      loadAudit(services);
     } catch (error) {
       setSettingsSaving(false);
       if (error instanceof AdminRequestError && error.errors?.length) {

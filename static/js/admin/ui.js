@@ -18,6 +18,7 @@ const TABS = [
   { tab: 'tab-overview', panel: 'panel-overview' },
   { tab: 'tab-settings', panel: 'panel-settings' },
   { tab: 'tab-people', panel: 'panel-people' },
+  { tab: 'tab-audit', panel: 'panel-audit' },
 ];
 
 const el = (id) => document.getElementById(id);
@@ -249,6 +250,107 @@ export function setSettingsSaving(isSaving) {
   if (!save) return;
   save.disabled = isSaving;
   save.textContent = I18n.t(isSaving ? 'admin.settings.saving' : 'admin.settings.save');
+}
+
+/* ── Activity ────────────────────────────────────────────────────────────── */
+
+/** A recorded action as one sentence, rather than a raw action code. */
+function describeAction(action) {
+  // Explicit rather than derived from the code string. An unknown action
+  // showing its raw identifier is honest; guessing a translation from a dotted
+  // name would produce confident nonsense in Arabic.
+  if (action === 'settings.update') return I18n.t('admin.audit.actionSettingsUpdate');
+  return action;
+}
+
+/** The changed keys, as `key: from → to`. */
+function describeChange(before, after) {
+  const keys = new Set([...Object.keys(before || {}), ...Object.keys(after || {})]);
+  const parts = [];
+  keys.forEach((key) => {
+    const from = before?.[key];
+    const to = after?.[key];
+    if (JSON.stringify(from) === JSON.stringify(to)) return;
+    parts.push(`${key}: ${from === undefined ? '—' : from} → ${to === undefined ? '—' : to}`);
+  });
+  return parts.join('\n');
+}
+
+export function renderAudit(entries, { append = false } = {}) {
+  const body = el('audit-body');
+  if (!body) return;
+
+  if (!append) {
+    body.textContent = '';
+
+    const hint = document.createElement('p');
+    hint.className = 'admin-form-hint';
+    hint.textContent = I18n.t('admin.audit.hint');
+    body.appendChild(hint);
+
+    if (!entries.length) {
+      const empty = document.createElement('p');
+      empty.className = 'admin-empty';
+      empty.textContent = I18n.t('admin.audit.empty');
+      body.appendChild(empty);
+      return;
+    }
+
+    const table = document.createElement('table');
+    table.className = 'admin-table';
+    table.id = 'audit-table';
+    const head = document.createElement('thead');
+    const headRow = document.createElement('tr');
+    ['columnWhen', 'columnWho', 'columnWhat', 'columnChange'].forEach((key) => {
+      const th = document.createElement('th');
+      th.scope = 'col';
+      th.textContent = I18n.t(`admin.audit.${key}`);
+      headRow.appendChild(th);
+    });
+    head.appendChild(headRow);
+    table.append(head, document.createElement('tbody'));
+    body.appendChild(table);
+  }
+
+  const tbody = el('audit-table')?.querySelector('tbody');
+  if (!tbody) return;
+
+  entries.forEach((entry) => {
+    const row = document.createElement('tr');
+
+    const when = document.createElement('td');
+    // A timestamp is a machine-reported fact: mono, and LTR even in Arabic,
+    // where bidi would otherwise reorder the parts of the date.
+    when.className = 'admin-cell-machine';
+    when.setAttribute('dir', 'ltr');
+    when.textContent = new Date(entry.occurred_at).toLocaleString(I18n.lang);
+
+    const who = document.createElement('td');
+    who.className = 'admin-cell-machine';
+    who.setAttribute('dir', 'ltr');
+    who.textContent = entry.actor_email || '—';
+
+    const what = document.createElement('td');
+    what.textContent = describeAction(entry.action);
+
+    const change = document.createElement('td');
+    change.className = 'admin-cell-machine';
+    change.setAttribute('dir', 'ltr');
+    change.textContent = describeChange(entry.before, entry.after) || '—';
+
+    row.append(when, who, what, change);
+    tbody.appendChild(row);
+  });
+}
+
+export function showAuditMessage(message) {
+  const body = el('audit-body');
+  if (!body) return;
+  body.textContent = '';
+  const p = document.createElement('p');
+  p.className = 'admin-empty';
+  p.textContent = message;
+  body.appendChild(p);
 }
 
 export function showSettingsMessage(message) {

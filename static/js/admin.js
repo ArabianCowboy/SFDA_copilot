@@ -25,7 +25,12 @@ import { ThemeManager } from './modules/theme.js';
 import { initLanguageToggle } from './modules/i18n.js';
 import { AdminRequestError, createAdminServices } from './admin/services.js';
 import { revealConsole, selectTab } from './admin/ui.js';
-import { bindConsoleEvents, initSettingsTab, showAccessFailure } from './admin/handlers.js';
+import {
+  bindConsoleEvents,
+  initSettingsTab,
+  loadAudit,
+  showAccessFailure,
+} from './admin/handlers.js';
 
 const Admin = {
   async init() {
@@ -62,6 +67,7 @@ const Admin = {
       // panel that fails to load should leave the rest of the console usable
       // rather than take the page down with it.
       initSettingsTab(services);
+      loadAudit(services);
     } catch (error) {
       showAccessFailure(error);
     }

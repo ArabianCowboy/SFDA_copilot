@@ -219,3 +219,78 @@ def test_the_settings_form_is_translated(browser_page: Page):
     expect(browser_page.locator('label[for="setting-model"]')).to_have_text("النموذج")
     # A number keeps its own direction inside an RTL page.
     expect(browser_page.locator("#setting-max_tokens")).to_have_attribute("dir", "ltr")
+
+
+# ── Activity log ──────────────────────────────────────────────────────────────
+
+AUDIT = {
+    "entries": [
+        {
+            "id": 2, "occurred_at": "2026-08-14T03:20:00+00:00",
+            "actor_email": "admin@example.com", "action": "settings.update",
+            "target_type": "settings", "target_id": "app_settings",
+            "before": {"model": "gpt-4o-mini"}, "after": {"model": "gpt-4o"},
+            "request_ip": "127.0.0.1", "note": None,
+        },
+    ],
+    "limit": 50, "offset": 0,
+}
+
+
+def _with_audit(page: Page, lang: str = "") -> None:
+    page.route(
+        "**/admin/api/audit*",
+        lambda route: route.fulfill(
+            status=200, content_type="application/json", body=json.dumps(AUDIT)
+        ),
+    )
+    _admin_console(page, lang=lang)
+
+
+def test_the_activity_log_renders_what_changed(browser_page: Page):
+    _with_audit(browser_page)
+    browser_page.locator("#tab-audit").click()
+
+    expect(browser_page.locator("#audit-table")).to_be_visible()
+    expect(browser_page.locator("#audit-table tbody tr")).to_have_count(1)
+    expect(browser_page.locator("#audit-table")).to_contain_text("Changed settings")
+    # The diff, not the whole document.
+    expect(browser_page.locator("#audit-table")).to_contain_text("model: gpt-4o-mini → gpt-4o")
+
+
+def test_an_empty_log_says_so_rather_than_rendering_an_empty_table(browser_page: Page):
+    browser_page.route(
+        "**/admin/api/audit*",
+        lambda route: route.fulfill(
+            status=200, content_type="application/json",
+            body=json.dumps({"entries": [], "limit": 50, "offset": 0}),
+        ),
+    )
+    _admin_console(browser_page)
+    browser_page.locator("#tab-audit").click()
+
+    expect(browser_page.locator("#panel-audit")).to_contain_text("No changes recorded yet.")
+    expect(browser_page.locator("#audit-table")).to_have_count(0)
+
+
+def test_machine_values_stay_left_to_right_in_arabic(browser_page: Page):
+    """A timestamp, an email and a diff are machine-reported facts. Outer
+    dir="rtl" would reorder the parts of a date and mangle an address."""
+    _with_audit(browser_page, lang="&lang=ar")
+    browser_page.locator("#tab-audit").click()
+
+    expect(browser_page.locator("#audit-table")).to_be_visible()
+    cells = browser_page.locator("#audit-table tbody td.admin-cell-machine")
+    expect(cells).to_have_count(3)
+    for index in range(3):
+        expect(cells.nth(index)).to_have_attribute("dir", "ltr")
+
+
+def test_the_activity_tab_is_reachable_by_keyboard(browser_page: Page):
+    _with_audit(browser_page)
+    browser_page.locator("#tab-overview").focus()
+    for _ in range(3):
+        browser_page.keyboard.press("ArrowRight")
+
+    expect(browser_page.locator("#tab-audit")).to_be_focused()
+    expect(browser_page.locator("#panel-audit")).to_be_visible()

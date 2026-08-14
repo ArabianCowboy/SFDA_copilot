@@ -286,6 +286,58 @@ select.admin-input {
   gap: var(--space-3);
 }
 
+/* ── Tables ──────────────────────────────────────────────────────────────── */
+
+/* Wide content scrolls inside its own container. The page body must never
+   scroll sideways — a horizontal scrollbar on the document is how a table
+   takes the whole layout with it on a narrow screen. */
+.admin-panel-body:has(.admin-table) {
+  overflow-x: auto;
+}
+
+.admin-table {
+  inline-size: 100%;
+  border-collapse: collapse;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  font-size: var(--fs-200);
+}
+
+.admin-table th,
+.admin-table td {
+  /* `start`, not `left`: this table carries emails and timestamps and has to
+     mirror wholesale under RTL. */
+  text-align: start;
+  padding: var(--space-3) var(--space-4);
+  border-block-end: 1px solid var(--hairline);
+  vertical-align: top;
+}
+
+.admin-table thead th {
+  background: var(--bg-sunken);
+  color: var(--fg-secondary);
+  font-weight: var(--fw-medium);
+  font-size: var(--fs-100);
+  letter-spacing: var(--track-caps);
+  text-transform: uppercase;
+}
+
+.admin-table tbody tr:last-child td {
+  border-block-end: 0;
+}
+
+/* Machine-reported values: timestamps, addresses, the diff. Mono with tabular
+   figures so digits do not jitter between rows, and each cell carries its own
+   dir="ltr" because bidi reorders an address or a date dropped into Arabic. */
+.admin-cell-machine {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-secondary);
+  white-space: pre-line;
+  unicode-bidi: isolate;
+}
+
 /* ── Footer ──────────────────────────────────────────────────────────────── */
 
 .admin-footer {

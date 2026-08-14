@@ -255,7 +255,7 @@ class SettingsService:
         """What has actually been changed, for the console to show as such."""
         return {k: v for k, v in self._overrides().items() if k in GENERATION_KEYS}
 
-    def update(self, patch: Dict[str, Any], *, actor_id: Optional[str]) -> List[ValidationError]:
+    def update(self, patch: Dict[str, Any], *, actor) -> List[ValidationError]:
         """Apply a patch. Returns errors; an empty list means it was written.
 
         A key set to None is removed, which is how an operator reverts to the
@@ -286,11 +286,12 @@ class SettingsService:
         # process would need a database-level compare-and-swap.
         with self._write_lock:
             try:
-                stored = dict(self._read_overrides())
+                original = dict(self._read_overrides())
             except Exception:
                 logger.error("Settings read failed during update; refusing to write.", exc_info=True)
                 return [ValidationError("_", "storage_unavailable")]
 
+            stored = dict(original)
             stored.update(changes)
             for key in removals:
                 stored.pop(key, None)
@@ -305,6 +306,10 @@ class SettingsService:
             if errors:
                 return errors
 
-            self._backend.put_settings(stored, actor_id=actor_id)
+            # The diff is recorded from the override documents, not the
+            # effective settings: "somebody set the model" and "the model
+            # happens to differ from the default" are different facts, and only
+            # the first is an action anyone took.
+            backend.put_settings(stored, actor=actor, before=original, after=dict(stored))
             self.snapshot(force=True)
         return []

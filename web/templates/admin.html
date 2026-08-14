@@ -131,6 +131,10 @@
                     id="tab-people" aria-controls="panel-people" aria-selected="false" tabindex="-1">
                     {{ icon('users', 15) }}<span>{{ t('page.admin.tabs.people') }}</span>
                 </button>
+                <button class="admin-tab" role="tab" type="button"
+                    id="tab-audit" aria-controls="panel-audit" aria-selected="false" tabindex="-1">
+                    {{ icon('clipboard', 15) }}<span>{{ t('page.admin.tabs.audit') }}</span>
+                </button>
             </nav>
 
             <section class="admin-panel" role="tabpanel" id="panel-overview"
@@ -149,6 +153,12 @@
                 aria-labelledby="tab-people" tabindex="0" hidden>
                 <h1 class="admin-heading">{{ t('page.admin.tabs.people') }}</h1>
                 <div id="people-body" class="admin-panel-body"></div>
+            </section>
+
+            <section class="admin-panel" role="tabpanel" id="panel-audit"
+                aria-labelledby="tab-audit" tabindex="0" hidden>
+                <h1 class="admin-heading">{{ t('page.admin.tabs.audit') }}</h1>
+                <div id="audit-body" class="admin-panel-body"></div>
             </section>
         </div>
     </main>

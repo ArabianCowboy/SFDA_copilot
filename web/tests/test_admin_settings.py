@@ -11,6 +11,7 @@ from __future__ import annotations
 import pytest
 
 from web.api.app import create_app
+from web.services.audit import AuditActor
 from web.services.admin_store import InMemoryAdminBackend
 from web.services.settings_service import (
     SettingsService,
@@ -20,6 +21,10 @@ from web.services.settings_service import (
 
 
 ADMIN = {"Authorization": "Bearer fake_admin_token"}
+
+# Settings writes now carry who made them, because the change and its audit
+# row are written together — there is no way to store one without the other.
+ACTOR = AuditActor("admin-id", "admin@example.com", "127.0.0.1", "pytest")
 AUTH = {"Authorization": "Bearer fake_token"}
 
 
@@ -49,7 +54,7 @@ def test_an_untouched_instance_stores_nothing(service):
 
 
 def test_only_what_changed_is_stored(service):
-    service.update({"model": "gpt-4o"}, actor_id="admin")
+    service.update({"model": "gpt-4o"}, actor=ACTOR)
 
     assert service.overrides() == {"model": "gpt-4o"}
     assert service.snapshot()["model"] == "gpt-4o"
@@ -60,8 +65,8 @@ def test_only_what_changed_is_stored(service):
 
 def test_setting_a_key_to_null_reverts_it(service):
     """Distinct from writing the default's current value, which would pin it."""
-    service.update({"model": "gpt-4o"}, actor_id="admin")
-    service.update({"model": None}, actor_id="admin")
+    service.update({"model": "gpt-4o"}, actor=ACTOR)
+    service.update({"model": None}, actor=ACTOR)
 
     assert service.overrides() == {}
     assert service.snapshot()["model"] == deployed_defaults()["model"]
@@ -69,7 +74,7 @@ def test_setting_a_key_to_null_reverts_it(service):
 
 def test_a_write_is_visible_immediately(service):
     """An operator must never see their own change lag behind the TTL."""
-    service.update({"temperature": 0.7}, actor_id="admin")
+    service.update({"temperature": 0.7}, actor=ACTOR)
     assert service.snapshot()["temperature"] == 0.7
 
 
@@ -77,7 +82,7 @@ def test_a_write_is_visible_immediately(service):
 
 
 def test_a_model_outside_the_allowlist_is_refused(service):
-    errors = service.update({"model": "gpt-does-not-exist"}, actor_id="admin")
+    errors = service.update({"model": "gpt-does-not-exist"}, actor=ACTOR)
     assert [e.code for e in errors] == ["not_allowed"]
     assert service.overrides() == {}, "a refused patch must not be partly applied"
 
@@ -85,7 +90,7 @@ def test_a_model_outside_the_allowlist_is_refused(service):
 def test_an_unknown_setting_is_refused_rather_than_ignored(service):
     """Silently dropping it would tell an operator who mistyped a key that
     their change was saved."""
-    errors = service.update({"tempreature": 0.5}, actor_id="admin")
+    errors = service.update({"tempreature": 0.5}, actor=ACTOR)
     assert [e.code for e in errors] == ["unknown_setting"]
 
 
@@ -94,7 +99,7 @@ def test_max_tokens_above_the_model_ceiling_is_refused_with_the_ceiling(service)
 
     An operator corrected behind their back stops trusting the control.
     """
-    errors = service.update({"max_tokens": 999_999}, actor_id="admin")
+    errors = service.update({"max_tokens": 999_999}, actor=ACTOR)
     assert len(errors) == 1
     assert errors[0].code == "above_ceiling"
     assert errors[0].limit == 16384
@@ -116,8 +121,8 @@ def test_switching_model_is_validated_against_the_resulting_state(service):
         {"id": "tiny-model", "label": "tiny", "max_output_tokens": 1024},
     ]
     try:
-        service.update({"max_tokens": 16384}, actor_id="admin")
-        errors = service.update({"model": "tiny-model"}, actor_id="admin")
+        service.update({"max_tokens": 16384}, actor=ACTOR)
+        errors = service.update({"model": "tiny-model"}, actor=ACTOR)
     finally:
         settings_service.allowed_models = original
 
@@ -128,20 +133,20 @@ def test_switching_model_is_validated_against_the_resulting_state(service):
 def test_passages_cannot_exceed_the_retriever(service):
     """Not a taste limit: retrieved[i] must be the same passage as prompt block
     [i], and the retriever cannot return more than k."""
-    errors = service.update({"max_context_results": 500}, actor_id="admin")
+    errors = service.update({"max_context_results": 500}, actor=ACTOR)
     assert [e.code for e in errors] == ["above_ceiling"]
 
 
 @pytest.mark.parametrize("value", [-0.5, 2.5])
 def test_temperature_outside_its_range_is_refused(service, value):
-    errors = service.update({"temperature": value}, actor_id="admin")
+    errors = service.update({"temperature": value}, actor=ACTOR)
     assert [e.code for e in errors] == ["out_of_range"]
 
 
 def test_a_boolean_is_not_a_number(service):
     """bool is an int in Python, so `max_tokens: true` would otherwise pass a
     naive isinstance check and reach the provider as 1."""
-    errors = service.update({"max_tokens": True}, actor_id="admin")
+    errors = service.update({"max_tokens": True}, actor=ACTOR)
     assert [e.code for e in errors] == ["not_a_positive_integer"]
 
 
@@ -190,7 +195,7 @@ def test_a_failed_read_during_an_update_does_not_delete_the_other_overrides():
     backend.get_settings = flaky
     reads["n"] = 1
 
-    errors = service.update({"max_tokens": 8192}, actor_id="admin")
+    errors = service.update({"max_tokens": 8192}, actor=ACTOR)
 
     assert [e.code for e in errors] == ["storage_unavailable"]
     assert backend._settings == {"model": "gpt-4o", "temperature": 0.7}, (
@@ -202,7 +207,7 @@ def test_an_unknown_key_set_to_null_is_still_refused(service):
     """Splitting removals out before the unknown-key check let
     `{"nonsense": null}` through as a removal of something that was never a
     setting — and reported it as saved."""
-    errors = service.update({"nonsense": None}, actor_id="admin")
+    errors = service.update({"nonsense": None}, actor=ACTOR)
     assert [e.code for e in errors] == ["unknown_setting"]
 
 
@@ -228,10 +233,10 @@ def test_a_removal_is_validated_against_the_default_that_replaces_it(service):
     ]
     try:
         # Legal together: a small model with a small ceiling.
-        assert service.update({"model": "tiny", "max_tokens": 512}, actor_id="a") == []
+        assert service.update({"model": "tiny", "max_tokens": 512}, actor=ACTOR) == []
         # Removing max_tokens reverts it to the deployed 16384, which the tiny
         # model cannot accept. Validating the patch alone would miss this.
-        errors = service.update({"max_tokens": None}, actor_id="a")
+        errors = service.update({"max_tokens": None}, actor=ACTOR)
     finally:
         settings_service.allowed_models = original
 
@@ -242,7 +247,7 @@ def test_a_write_with_no_storage_is_refused_rather_than_reported_as_saved():
     """Reporting success for a write that went nowhere is worse than the outage
     it is reporting."""
     service = SettingsService(lambda: None)
-    errors = service.update({"model": "gpt-4o"}, actor_id="admin")
+    errors = service.update({"model": "gpt-4o"}, actor=ACTOR)
     assert [e.code for e in errors] == ["storage_unavailable"]
 
 

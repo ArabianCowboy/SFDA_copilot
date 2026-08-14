@@ -147,6 +147,17 @@ runtime:
       not_a_positive_integer: "يجب أن يكون عدداً صحيحاً أكبر من صفر."
       unknown_setting: "ليس إعداداً تعرفه وحدة التحكم."
       storage_unavailable: "تخزين الإعدادات غير متاح، لم يُحفظ شيء."
+    audit:
+      heading: "النشاط"
+      hint: "كل تغيير أُجري هنا، الأحدث أولاً. لا يمكن تعديل السجلات أو حذفها."
+      empty: "لم يُسجَّل أي تغيير بعد."
+      loadFailed: "تعذّر تحميل سجل النشاط."
+      columnWhen: "الوقت"
+      columnWho: "المستخدم"
+      columnWhat: "الإجراء"
+      columnChange: "التغيير"
+      more: "تحميل المزيد"
+      actionSettingsUpdate: "غيّر الإعدادات"
 page:
   meta:
     title: "مساعد الهيئة العامة للغذاء والدواء"
@@ -265,3 +276,4 @@ page:
       overview: "نظرة عامة"
       settings: "الإعدادات"
       people: "المستخدمون"
+      audit: "النشاط"

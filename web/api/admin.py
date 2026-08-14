@@ -139,8 +139,10 @@ def put_settings() -> Response:
     if not isinstance(payload, dict):
         return jsonify({"error": "invalid_payload"}), 400
 
+    from web.services.audit import actor_from_request
+
     service = current_app.config["settings_service"]
-    errors = service.update(payload, actor_id=g.identity.user_id)
+    errors = service.update(payload, actor=actor_from_request(g.identity))
 
     if errors:
         return jsonify({
@@ -164,6 +166,32 @@ def put_settings() -> Response:
         "settings": service.snapshot(),
         "overrides": service.overrides(),
         "applied": applied,
+    })
+
+
+@admin_bp.route("/api/audit")
+def audit() -> Response:
+    """Recorded actions, newest first.
+
+    Reading the log is deliberately not itself recorded. Auditing reads of a
+    surface only administrators can reach produces noise that buries the
+    signal; the line is drawn at state changes, plus any access to a reader's
+    own content.
+    """
+    from web.services.audit import list_entries
+
+    try:
+        limit = min(max(int(request.args.get("limit", 50)), 1), 200)
+        offset = max(int(request.args.get("offset", 0)), 0)
+    except (TypeError, ValueError):
+        return jsonify({"error": "invalid_pagination"}), 400
+
+    backend = current_app.config["admin_backend"]()
+    entries = list_entries(backend, limit=limit, offset=offset)
+    return jsonify({
+        "entries": [entry.as_dict() for entry in entries],
+        "limit": limit,
+        "offset": offset,
     })
 
 

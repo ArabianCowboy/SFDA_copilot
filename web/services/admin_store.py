@@ -44,8 +44,16 @@ class AdminBackend(Protocol):
         """The stored override document. Empty when nothing has been changed."""
         ...
 
-    def put_settings(self, settings: dict, *, actor_id: Optional[str]) -> None:
-        """Replace the override document wholesale."""
+    def put_settings(self, settings: dict, *, actor, before: dict, after: dict) -> dict:
+        """Replace the override document and record the change, atomically.
+
+        Returns the committed document — what is actually stored, rather than
+        what the caller hoped it stored.
+        """
+        ...
+
+    def list_audit(self, *, limit: int, offset: int) -> list:
+        """Recorded actions, most recent first."""
         ...
 
 
@@ -93,19 +101,39 @@ class SupabaseAdminBackend:
         rows = getattr(response, "data", None) or []
         return (rows[0].get("settings") if rows else {}) or {}
 
-    def put_settings(self, settings: dict, *, actor_id: Optional[str]) -> None:
-        # Upsert rather than update: the row is seeded by the migration, but a
-        # restored or freshly provisioned project might not have it, and losing
-        # a settings write to a missing row would be a silent no-op.
-        self._client.table("app_settings").upsert(
+    def put_settings(self, settings: dict, *, actor, before: dict, after: dict) -> dict:
+        """Through the RPC, so the change and its audit row share a transaction.
+
+        The previous implementation upserted the row directly and would have
+        needed a second statement for the audit entry — two statements that can
+        half-succeed, and the half that fails is always the record. It also sent
+        `updated_at: "now()"` as a JSON string, which Postgres happens to accept
+        as a timestamp literal; the function calls `now()` server-side instead,
+        so that is no longer a quirk anything depends on.
+        """
+        response = self._client.rpc(
+            "admin_write_settings",
             {
-                "id": 1,
-                "settings": settings,
-                "updated_at": "now()",
-                "updated_by": actor_id,
+                "p_settings": settings,
+                "p_actor_id": actor.user_id,
+                "p_actor_email": actor.email,
+                "p_before": before,
+                "p_after": after,
+                "p_request_ip": actor.request_ip,
+                "p_user_agent": actor.user_agent,
             },
-            on_conflict="id",
         ).execute()
+        return getattr(response, "data", None) or {}
+
+    def list_audit(self, *, limit: int, offset: int) -> list:
+        response = (
+            self._client.table("audit_log")
+            .select("*")
+            .order("id", desc=True)
+            .range(offset, offset + limit - 1)
+            .execute()
+        )
+        return getattr(response, "data", None) or []
 
 
 class InMemoryAdminBackend:
@@ -123,6 +151,8 @@ class InMemoryAdminBackend:
 
     def __init__(self, settings: Optional[dict] = None) -> None:
         self._settings = dict(settings or {})
+        self._audit: list = []
+        self._next_id = 1
 
     def fetch_identity(self, user_id: str, email: Optional[str]) -> Optional[IdentityFlags]:
         # Identity in TESTING comes from _TESTING_IDENTITIES before any backend
@@ -133,8 +163,42 @@ class InMemoryAdminBackend:
     def get_settings(self) -> dict:
         return dict(self._settings)
 
-    def put_settings(self, settings: dict, *, actor_id: Optional[str]) -> None:
+    def put_settings(self, settings: dict, *, actor, before: dict, after: dict) -> dict:
+        # Both writes together, mirroring the RPC — so a test that asserts the
+        # audit row exists is asserting the same property production relies on.
         self._settings = dict(settings)
+        self._record(
+            action="settings.update",
+            target_type="settings",
+            target_id="app_settings",
+            actor=actor,
+            before=before,
+            after=after,
+        )
+        return dict(self._settings)
+
+    def _record(self, *, action, target_type, target_id, actor, before=None, after=None, note=None):
+        from datetime import datetime, timezone
+
+        self._audit.append({
+            "id": self._next_id,
+            "occurred_at": datetime.now(timezone.utc).isoformat(),
+            "actor_id": actor.user_id,
+            "actor_email": actor.email,
+            "action": action,
+            "target_type": target_type,
+            "target_id": target_id,
+            "before": before,
+            "after": after,
+            "request_ip": actor.request_ip,
+            "user_agent": actor.user_agent,
+            "note": note,
+        })
+        self._next_id += 1
+
+    def list_audit(self, *, limit: int, offset: int) -> list:
+        newest_first = list(reversed(self._audit))
+        return newest_first[offset:offset + limit]
 
 
 def get_admin_backend() -> Optional[AdminBackend]:
