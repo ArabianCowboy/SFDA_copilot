@@ -192,6 +192,95 @@ def put_settings() -> Response:
     })
 
 
+@admin_bp.route("/api/users")
+def users() -> Response:
+    """Accounts, newest first, with their standing."""
+    try:
+        limit = min(max(int(request.args.get("limit", 50)), 1), 200)
+        offset = max(int(request.args.get("offset", 0)), 0)
+    except (TypeError, ValueError):
+        return jsonify({"error": "invalid_pagination"}), 400
+
+    backend = current_app.config["admin_backend"]()
+    if backend is None:
+        return jsonify({"error": "storage_unavailable"}), 503
+
+    rows, total = backend.list_users(
+        limit=limit, offset=offset, search=request.args.get("q") or None
+    )
+    return jsonify({
+        "users": rows,
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        # So the console can mark "you" in the list and grey out the controls it
+        # knows the server will refuse. The refusal is still enforced server-side;
+        # this only stops the operator discovering it by being told no.
+        "self_id": g.identity.user_id,
+    })
+
+
+@admin_bp.route("/api/users/<user_id>", methods=["PATCH"])
+def patch_user(user_id: str) -> Response:
+    """Change a role or chat access.
+
+    "Chat access disabled" is named for what it actually does. The flag stops
+    new requests through `auth_required`; it does NOT end a stream already
+    running, revoke a Supabase refresh token, or prevent signing in. Calling it
+    "account suspended" would promise all three.
+    """
+    from web.services.admin_store import AdminActionRefused
+    from web.services.audit import actor_from_request
+
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return jsonify({"error": "invalid_payload"}), 400
+
+    role = payload.get("role")
+    is_disabled = payload.get("is_disabled")
+    reason = (payload.get("reason") or "").strip() or None
+
+    if role is not None and role not in ("user", "admin"):
+        return jsonify({"error": "invalid_role"}), 422
+    if is_disabled is not None and not isinstance(is_disabled, bool):
+        return jsonify({"error": "invalid_payload"}), 400
+    if role is None and is_disabled is None:
+        return jsonify({"error": "nothing_to_change"}), 400
+
+    backend = current_app.config["admin_backend"]()
+    if backend is None:
+        return jsonify({"error": "storage_unavailable"}), 503
+
+    try:
+        updated = backend.set_user_flags(
+            user_id,
+            role=role,
+            is_disabled=is_disabled,
+            reason=reason,
+            actor=actor_from_request(g.identity),
+        )
+    except AdminActionRefused as refused:
+        # Declined on principle rather than failed. 409: the request was
+        # understood and is in conflict with a rule that exists to stop an
+        # instance nobody can administer.
+        logger.warning(
+            "Refused %s on %s by %s: %s",
+            request.method, user_id, g.identity.email, refused.code,
+        )
+        return jsonify({"error": refused.code}), 409
+
+    # Before returning, not after: the cache is a latency optimisation and an
+    # operator must never watch their own change fail to take effect. Chat
+    # requests re-read within the TTL; console requests never use the cache.
+    current_app.config["identity_flags"].invalidate(user_id)
+
+    logger.info(
+        "%s changed %s (role=%s disabled=%s)",
+        g.identity.email, user_id, role, is_disabled,
+    )
+    return jsonify({"user": {"id": user_id, **updated}})
+
+
 @admin_bp.route("/api/audit")
 def audit() -> Response:
     """Recorded actions, newest first.

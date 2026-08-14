@@ -13,7 +13,9 @@ import {
   clearSettingsErrors,
   focusTab,
   renderAudit,
+  renderUsers,
   showAuditMessage,
+  showPeopleMessage,
   readSettingsForm,
   renderSettings,
   selectTab,
@@ -106,6 +108,79 @@ export async function loadAudit(services) {
   } catch (error) {
     showAuditMessage(I18n.t('admin.audit.loadFailed'));
   }
+}
+
+/**
+ * Load the People tab and wire its actions.
+ *
+ * Every destructive action is CONFIRMED rather than undoable. The reader app
+ * uses an undo toast for New chat, and that is right there — clearing a
+ * transcript is reversible and low-stakes. Disabling someone's access is
+ * neither: they may already have been turned away by the time an undo window
+ * closed, and "it was undone within eight seconds" is not something the person
+ * affected experiences. So it asks first, and the record carries the reason.
+ */
+export async function initPeopleTab(services) {
+  const body = document.getElementById('people-body');
+  if (!body) return;
+
+  async function load() {
+    try {
+      renderUsers(await services.users());
+    } catch (error) {
+      showPeopleMessage(I18n.t('admin.people.loadFailed'));
+    }
+  }
+
+  await load();
+
+  body.addEventListener('click', async (event) => {
+    const button = event.target.closest('.admin-row-action');
+    if (!button || button.disabled) return;
+
+    const { action, userId } = button.dataset;
+    const email = button.closest('tr')?.querySelector('.admin-cell-machine')?.textContent || '';
+    let patch = null;
+
+    if (action === 'promote') {
+      patch = { role: 'admin' };
+    } else if (action === 'demote') {
+      if (!window.confirm(I18n.t('admin.people.confirmDemote', { email }))) return;
+      patch = { role: 'user' };
+    } else if (action === 'enable') {
+      patch = { is_disabled: false };
+    } else if (action === 'disable') {
+      if (!window.confirm(I18n.t('admin.people.confirmDisable', { email }))) return;
+      // Asked for, not optional: a disabled account with no stated reason is a
+      // decision nobody can review later, including the person who made it.
+      const reason = window.prompt(I18n.t('admin.people.reasonPrompt'));
+      if (reason === null) return;
+      patch = { is_disabled: true, reason };
+    }
+    if (!patch) return;
+
+    button.disabled = true;
+    try {
+      await services.setUserFlags(userId, patch);
+      ErrorHandler.showToast(I18n.t('admin.people.changed'));
+      await load();
+      loadAudit(services);
+    } catch (error) {
+      // A 409 is the system refusing on principle — it understood perfectly.
+      // It gets the specific sentence rather than a generic failure, because
+      // "you cannot demote yourself" is actionable and "something went wrong"
+      // is not.
+      const code = error instanceof AdminRequestError ? error.code : null;
+      const known = ['cannot_change_own_access', 'would_leave_no_administrator', 'no_such_account'];
+      ErrorHandler.showToast(
+        known.includes(code)
+          ? I18n.t(`admin.people.${code}`)
+          : I18n.t('admin.people.changeFailed'),
+        true,
+      );
+      button.disabled = false;
+    }
+  });
 }
 
 /**

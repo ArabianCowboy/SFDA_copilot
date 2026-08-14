@@ -77,6 +77,14 @@ export function createAdminServices(token) {
      */
     saveSettings: (patch) => request('settings', { method: 'PUT', body: patch }),
 
+    /** Accounts and their standing. */
+    users: ({ limit = 50, offset = 0, q = '' } = {}) =>
+      request(`users?limit=${limit}&offset=${offset}&q=${encodeURIComponent(q)}`),
+
+    /** Change a role or chat access. Refusals arrive as 409 with a code. */
+    setUserFlags: (id, patch) =>
+      request(`users/${encodeURIComponent(id)}`, { method: 'PATCH', body: patch }),
+
     /** Recorded actions, newest first. Paginated server-side. */
     audit: ({ limit = 50, offset = 0 } = {}) =>
       request(`audit?limit=${limit}&offset=${offset}`),

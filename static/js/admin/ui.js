@@ -302,6 +302,143 @@ export function setSettingsSaving(isSaving) {
   save.textContent = I18n.t(isSaving ? 'admin.settings.saving' : 'admin.settings.save');
 }
 
+/* ── People ──────────────────────────────────────────────────────────────── */
+
+function machineCell(text, { mono = true } = {}) {
+  const td = document.createElement('td');
+  if (mono) {
+    // Emails, dates and ids are machine-reported facts. Each cell carries its
+    // own dir="ltr" because an outer dir="rtl" reorders an address.
+    td.className = 'admin-cell-machine';
+    td.setAttribute('dir', 'ltr');
+  }
+  td.textContent = text;
+  return td;
+}
+
+function actionButton(label, { danger = false, action, id, disabled = false }) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'btn btn-sm btn-ghost admin-row-action';
+  button.dataset.action = action;
+  button.dataset.userId = id;
+  button.textContent = label;
+  button.disabled = disabled;
+  // The design system has no danger button variant — logout, the one genuinely
+  // irreversible control in the reader app, is a quiet ghost. So a destructive
+  // action here is a quiet ghost too, and the weight is carried by the
+  // confirmation and the record rather than by colour.
+  if (danger) button.classList.add('is-destructive');
+  return button;
+}
+
+export function renderUsers({ users, total, self_id: selfId }) {
+  const body = el('people-body');
+  if (!body) return;
+  body.textContent = '';
+
+  const hint = document.createElement('p');
+  hint.className = 'admin-form-hint';
+  hint.textContent = I18n.t('admin.people.hint');
+  body.appendChild(hint);
+
+  if (!users.length) {
+    const empty = document.createElement('p');
+    empty.className = 'admin-empty';
+    empty.textContent = I18n.t('admin.people.empty');
+    body.appendChild(empty);
+    return;
+  }
+
+  const table = document.createElement('table');
+  table.className = 'admin-table';
+  table.id = 'people-table';
+
+  const head = document.createElement('thead');
+  const headRow = document.createElement('tr');
+  ['columnEmail', 'columnRole', 'columnAccess', 'columnLastSeen', 'columnActions']
+    .forEach((key) => {
+      const th = document.createElement('th');
+      th.scope = 'col';
+      th.textContent = I18n.t(`admin.people.${key}`);
+      headRow.appendChild(th);
+    });
+  head.appendChild(headRow);
+
+  const tbody = document.createElement('tbody');
+  users.forEach((user) => {
+    const isSelf = user.id === selfId;
+    const row = document.createElement('tr');
+    row.dataset.userId = user.id;
+
+    const email = machineCell(user.email);
+    if (isSelf) {
+      const you = document.createElement('span');
+      you.className = 'admin-you';
+      you.textContent = ` (${I18n.t('admin.people.you')})`;
+      email.appendChild(you);
+    }
+
+    const role = document.createElement('td');
+    role.textContent = I18n.t(
+      user.role === 'admin' ? 'admin.people.roleAdmin' : 'admin.people.roleUser',
+    );
+
+    const access = document.createElement('td');
+    access.textContent = I18n.t(
+      user.is_disabled ? 'admin.people.accessDisabled' : 'admin.people.accessAllowed',
+    );
+    if (user.is_disabled) access.classList.add('admin-flag-off');
+
+    const seen = machineCell(
+      user.last_sign_in_at
+        ? new Date(user.last_sign_in_at).toLocaleDateString(I18n.lang)
+        : I18n.t('admin.people.never'),
+    );
+
+    const actions = document.createElement('td');
+    actions.className = 'admin-row-actions';
+    // Disabled for yourself rather than hidden: an operator should be able to
+    // see the control exists and why it is not available to them, instead of
+    // wondering whether the console forgot to draw it.
+    actions.append(
+      actionButton(
+        I18n.t(user.role === 'admin' ? 'admin.people.demote' : 'admin.people.promote'),
+        { action: user.role === 'admin' ? 'demote' : 'promote', id: user.id,
+          danger: user.role === 'admin', disabled: isSelf },
+      ),
+      actionButton(
+        I18n.t(user.is_disabled ? 'admin.people.enable' : 'admin.people.disable'),
+        { action: user.is_disabled ? 'enable' : 'disable', id: user.id,
+          danger: !user.is_disabled, disabled: isSelf },
+      ),
+    );
+
+    row.append(email, role, access, seen, actions);
+    tbody.appendChild(row);
+  });
+
+  table.append(head, tbody);
+  body.appendChild(table);
+
+  if (total > users.length) {
+    const count = document.createElement('p');
+    count.className = 'admin-form-hint';
+    count.textContent = `${users.length} / ${total}`;
+    body.appendChild(count);
+  }
+}
+
+export function showPeopleMessage(message) {
+  const body = el('people-body');
+  if (!body) return;
+  body.textContent = '';
+  const p = document.createElement('p');
+  p.className = 'admin-empty';
+  p.textContent = message;
+  body.appendChild(p);
+}
+
 /* ── Activity ────────────────────────────────────────────────────────────── */
 
 /** A recorded action as one sentence, rather than a raw action code. */

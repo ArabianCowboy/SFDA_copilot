@@ -27,6 +27,7 @@ import { AdminRequestError, createAdminServices } from './admin/services.js';
 import { revealConsole, selectTab } from './admin/ui.js';
 import {
   bindConsoleEvents,
+  initPeopleTab,
   initSettingsTab,
   loadAudit,
   showAccessFailure,
@@ -67,6 +68,7 @@ const Admin = {
       // panel that fails to load should leave the rest of the console usable
       // rather than take the page down with it.
       initSettingsTab(services);
+      initPeopleTab(services);
       loadAudit(services);
     } catch (error) {
       showAccessFailure(error);

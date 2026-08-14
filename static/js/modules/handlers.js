@@ -234,6 +234,19 @@ export const Handlers = {
       }
 
       logError(error, 'processChatRequestInternal');
+
+      /* A disabled account is not a fault. The server understood perfectly and
+         the answer is no, so the reader gets an explanation in their own
+         language rather than "something went wrong" — which would send them
+         retrying a thing that will never work. No error toast and no error
+         face for the same reason: this is a decision about their account, not
+         a malfunction. */
+      if (error?.code === 'account_disabled') {
+        UI.addMessage(I18n.t('auth.accountDisabled'), 'bot');
+        RobotStateManager.resetToIdle();
+        return;
+      }
+
       UI.addMessage(I18n.t('chat.genericError'), 'bot');
       ErrorHandler.showToast(I18n.t('chat.sendFailed'), true);
       RobotStateManager.showError();

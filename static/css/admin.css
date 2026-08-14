@@ -355,3 +355,41 @@ select.admin-input {
   font-size: var(--fs-200);
   text-align: center;
 }
+
+/* ── Row actions ─────────────────────────────────────────────────────────── */
+
+.admin-row-actions {
+  white-space: nowrap;
+}
+
+.admin-row-action + .admin-row-action {
+  margin-inline-start: var(--space-2);
+}
+
+.admin-row-action:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* The design system has no danger button variant — logout, the one genuinely
+   irreversible control in the reader app, is a quiet ghost. A destructive
+   action here stays a ghost too and takes the alert ramp only on hover, so a
+   table of accounts does not read as a wall of warnings. The weight is carried
+   by the confirmation and the record. */
+.admin-row-action.is-destructive:hover:not(:disabled) {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+/* "you", beside your own address. Not a badge: it is an aside, not a status. */
+.admin-you {
+  color: var(--fg-faint);
+  font-family: var(--font-sans);
+}
+
+/* A withdrawn permission is a state, not an error — the alert ramp would make
+   a deliberate decision look like a fault in the table. */
+.admin-flag-off {
+  color: var(--fg-muted);
+  font-weight: var(--fw-medium);
+}

@@ -104,7 +104,13 @@ export const Services = {
 
     if (!response.ok) {
       const errorJson = await response.json().catch(() => ({}));
-      throw new Error(errorJson.error || `Network error (${response.status})`);
+      // Status and code ride along. Flattening to a message string loses the
+      // difference between "you are blocked" and "the network failed", and the
+      // reader is owed different words for each.
+      const failure = new Error(errorJson.error || `Network error (${response.status})`);
+      failure.status = response.status;
+      failure.code = errorJson.error;
+      throw failure;
     }
     return response.json();
   },
@@ -140,7 +146,10 @@ export const Services = {
     // caller can distinguish them from an in-band `error` event.
     if (!response.ok) {
       const errorJson = await response.json().catch(() => ({}));
-      throw new Error(errorJson.error || `Network error (${response.status})`);
+      const failure = new Error(errorJson.error || `Network error (${response.status})`);
+      failure.status = response.status;
+      failure.code = errorJson.error;
+      throw failure;
     }
     if (!response.body) throw new Error('STREAM_UNSUPPORTED');
 
