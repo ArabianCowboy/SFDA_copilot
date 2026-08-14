@@ -96,6 +96,11 @@ account-takeover primitive when paired with a reset, so it wants confirmation to
 the *new* address rather than `email_confirm: true`, and it wants the old address
 kept in the audit row — otherwise the log cannot show what the account used to be.
 
+**Where it goes:** on the account detail view, not in the People table — see
+*Account detail view* under Planned work, which is the agreed home for
+per-account management. Note the reset button there is mostly built by the
+reader-facing password reset above: both return to the same recovery landing view.
+
 ---
 
 ### The signup rate-limit message reaches the reader as raw English
@@ -661,27 +666,78 @@ answers, which on a regulatory surface is the more expensive mistake.
 
 ---
 
-### Account detail view in the console
+### Account detail view — the home for everything done to one account
+
+**Decided 2026-08-14:** this is where per-account management lives. Email
+changes, password recovery, role, chat access and session revocation all land
+here rather than being scattered across the People table. The entries above that
+describe those actions individually describe *what* to build; this describes
+*where*, and they should not grow separate surfaces.
 
 **Where:** `/admin` People renders one row per account — email, role, standing.
 `public.profiles` already holds `full_name`, `organization`, `specialization`
-and `preferences`, and `auth.users` holds `created_at`, `last_sign_in_at` and
-`email_confirmed_at`. None of it is shown.
+and `preferences`; `auth.users` holds `created_at`, `last_sign_in_at` and
+`email_confirmed_at`. None of it is shown anywhere.
 
-**Why it is wanted.** An operator deciding whether to disable an account is
-currently deciding from an email address. The data that would inform that
-decision is already stored and already reachable by the service role — the
-console simply never asks for it. It also gives the audit log somewhere to
-land: "what else happened to this account" is a per-account question and there
-is no per-account page to ask it on.
+**Why it is the right container, and not merely a convenient one.** A table
+answers "who exists"; it is the wrong shape for "what about this person". Three
+consequences follow from putting the actions on a per-account page instead of in
+a row:
 
-**What it would disturb.** Little structurally — a route, a panel, and the
-existing bearer-only gate. Two things need deciding rather than defaulting. It
-is a new bilingual surface with mixed Latin/Arabic content and machine
-identifiers, so it needs `<bdi dir="ltr">` discipline and the `page.admin.*` /
-`runtime.admin.*` parity test. And it draws the line that the entry above is
-about: profile fields and sign-in timestamps are operational data and belong
-here; what the person *asked* is not, and does not.
+- **Sensitive actions get room to be confirmed properly.** Changing an email and
+  revoking sessions both need explicit confirmation copy, and `DESIGN.md:278`
+  gives the system no danger-button variant to lean on — the weight has to come
+  from words. There is no space for that in a table cell, and a modal per row is
+  worse than either.
+- **The audit log gets a per-account home.** `/admin/api/audit` is global and
+  newest-first, so "what has happened to this account" currently has no surface
+  at all. It is the same query with a filter, and this is the page it belongs on.
+- **It can show a broken account instead of hiding it.** The profile-less account
+  bug above exists because People lists from `profiles`. A detail view loading
+  `auth.users` left-joined to `profiles` renders that state as a visible problem
+  rather than an absence.
+
+**Three zones, in increasing severity — the page should read that way.**
+
+1. **Identity, read-only.** Created, last sign-in, email confirmed, role,
+   standing, and the reason if disabled. Facts an operator needs before deciding
+   anything.
+2. **Profile.** `full_name`, `organization`, `specialization`. Worth deciding
+   deliberately whether these are editable or merely visible — showing them is
+   most of the value, and editing another person's own description of themselves
+   wants a reason better than "we could".
+3. **Account actions.** Email change, send password reset, role, disable/enable,
+   revoke sessions. Every one audited; the last three confirmed.
+
+**What stays off this page.** What the reader asked. That line was drawn when
+transcript browsing was declined in favour of an identity-free question log, and
+a detail view is exactly where it would erode — "while we're here, show their
+conversations" is the natural next request and the answer is still no.
+
+**The dependency worth knowing before sequencing.** The admin's *send password
+reset* button and the reader's *forgot password* link need the same thing: a
+landing view that receives Supabase's recovery redirect, handles the
+`PASSWORD_RECOVERY` event, and calls `auth.updateUser({ password })`. Whether the
+link comes from `resetPasswordForEmail` or from `auth.admin.generateLink({ type:
+'recovery' })`, it returns to the same place. So the reader-facing reset is not a
+detour on the way to this page — it *is* the hard half of one of its buttons, and
+building it first means the console's version is a single API call on top of
+finished work.
+
+**Suggested order, each step shippable.** (a) The recovery landing view plus the
+reader's forgot-password link — the foundation, and the thing that fixes a live
+outage. (b) This page read-only: identity, profile, per-account audit. (c) The
+actions, moving role and disable here from the table rather than duplicating them.
+
+**What it would disturb.** Structurally little — a route, a panel, the existing
+bearer-only gate. Two things need deciding rather than defaulting. It is a new
+bilingual surface carrying emails, UUIDs, and timestamps in mixed Latin/Arabic
+context, so it needs `<bdi dir="ltr">` discipline and coverage by the
+`page.admin.*` / `runtime.admin.*` parity test. And once it can change an email
+and trigger credential recovery, an admin session's blast radius grows
+considerably — which is an argument for the severity zoning above, and for
+`auth.admin.*` calls using the intent-then-outcome audit shape, since they cannot
+share a transaction with their audit row.
 
 ---
 
