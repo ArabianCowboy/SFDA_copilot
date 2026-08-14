@@ -117,6 +117,20 @@ def make_translator(catalog: dict[str, Any]) -> Callable[..., str]:
     return t
 
 
-def runtime_subset(catalog: dict[str, Any]) -> dict[str, Any]:
-    """The slice of the catalogue the browser needs."""
-    return catalog.get("runtime", {})
+def runtime_subset(catalog: dict[str, Any], *, include_admin: bool = False) -> dict[str, Any]:
+    """The slice of the catalogue the browser needs.
+
+    ``runtime.admin`` is withheld by default. It is the largest block in the
+    file and it enumerates operator capabilities, so inlining it into the
+    anonymous landing page would advertise the console's whole surface to
+    anyone who views source — for strings that page can never use.
+
+    The returned mapping is always a **copy**. ``load_catalog`` is
+    ``lru_cache``d and hands back the same dict to every request, so popping
+    from it in place would strip the admin block from the cached catalogue and
+    every later render would silently lose it.
+    """
+    runtime = dict(catalog.get("runtime", {}))
+    if not include_admin:
+        runtime.pop("admin", None)
+    return runtime

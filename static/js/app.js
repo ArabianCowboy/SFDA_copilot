@@ -209,6 +209,18 @@ const App = {
             if (profileData) AppState.set('userProfile', profileData);
           })
           .catch(err => logError(err, 'loadProfileWithTimeout'));
+
+        /* Ask the server whether this reader is an administrator, and reveal
+           the console link from the answer rather than from anything the page
+           already held. Fire-and-forget: the link is an affordance, and a
+           reader who never learns about it has lost nothing, while a failed
+           check must not delay or break the chat. Defaults to hidden. */
+        Services.getIdentity()
+          .then(identity => AuthView.renderAdminAffordance(!!identity?.is_admin))
+          .catch(err => {
+            AuthView.renderAdminAffordance(false);
+            logError(err, 'getIdentity');
+          });
       } else {
         AppState.set('userProfile', null);
         /* Only on an actual sign-out — revoked, expired, or the logout button

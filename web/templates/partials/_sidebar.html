@@ -60,6 +60,14 @@
             data-bs-toggle="modal" data-bs-target="#profileModal">
       {{ icon('user-circle', 14) }} {{ t('page.profile.button') }}
     </button>
+    {# Hidden until /api/identity says otherwise — deliberately NOT revealed by
+       the signed-in toggle below, which knows only logged-in from logged-out.
+       Hiding it is courtesy, not security: /admin/api/* is gated server-side,
+       so a reader who unhides this gets a page that tells them nothing. #}
+    <a id="admin-button{{ suffix }}" class="btn btn-sm btn-ghost d-none"
+       href="{{ url_for('admin.console') }}">
+      {{ icon('sliders', 14) }} {{ t('page.admin.consoleLabel') }}
+    </a>
     <button id="logout-button{{ suffix }}" class="btn btn-sm btn-ghost d-none" type="button">
       {{ icon('logout', 14) }} {{ t('page.auth.logout') }}
     </button>

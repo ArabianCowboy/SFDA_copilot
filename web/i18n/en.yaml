@@ -119,6 +119,16 @@ runtime:
     toArabic: "التبديل إلى العربية"
     toEnglish: "Switch to English"
 
+  # Console strings the browser draws. Kept apart from page.admin because only
+  # the runtime slice is inlined as window.__I18N — and this block ships to
+  # /admin alone, never to the anonymous landing page.
+  admin:
+    accessDenied: "This console is for administrators."
+    accessCheckFailed: "Could not confirm your access. Reload to try again."
+    signedOut: "You are not signed in. Sign in on the chat page first."
+    signedInAs: "Signed in as {email}"
+    roleLabel: "Role"
+    empty: "Nothing here yet."
 page:
   meta:
     title: "SFDA Copilot"
@@ -223,3 +233,18 @@ page:
     pharmacovigilance: "Pharmacovigilance"
     veterinary: "Veterinary Medicines"
     biological: "Biological Products"
+
+  # The operator console. Server-rendered chrome only — page.* never reaches
+  # the browser (test_rtl.py asserts it), so anything JS must draw belongs
+  # under runtime.admin instead.
+  admin:
+    title: "Administration · SFDA Copilot"
+    consoleLabel: "Administration"
+    skipToContent: "Skip to console"
+    backToChat: "Back to chat"
+    checking: "Checking your access…"
+    sectionsAria: "Console sections"
+    tabs:
+      overview: "Overview"
+      settings: "Settings"
+      people: "People"

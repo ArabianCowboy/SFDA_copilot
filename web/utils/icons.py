@@ -29,7 +29,14 @@ from __future__ import annotations
 
 from markupsafe import Markup, escape
 
-__all__ = ["ICONS", "CATEGORY_ICONS", "RUNTIME_ICON_NAMES", "icon", "runtime_icons"]
+__all__ = [
+    "ICONS",
+    "CATEGORY_ICONS",
+    "RUNTIME_ICON_NAMES",
+    "ADMIN_RUNTIME_ICON_NAMES",
+    "icon",
+    "runtime_icons",
+]
 
 
 # Raw path data, keyed by the name the rest of the codebase uses. Values are
@@ -327,6 +334,40 @@ ICONS: dict[str, str] = {
         '<path d="M8 13.4a2.65 2.65 0 0 1-2.65-2.65.5.5 0 0 1 1 0A1.65 1.65 0 '
         '0 0 8 12.4a.5.5 0 0 1 0 1"/>'
     ),
+
+    # ── Administration ───────────────────────────────────────────────
+    # Only the console draws these. They are the operator's vocabulary, not the
+    # reader's, which is why they ship in ADMIN_RUNTIME_ICON_NAMES rather than
+    # the runtime subset every page pays for.
+    #
+    # Two solid knobs on two tracks, at different positions: a slider set reads
+    # as "values someone chose" where a cog reads as "preferences", and what
+    # this console does is choose values.
+    "sliders": (
+        '<path d="M2.5 5h11a.5.5 0 0 1 0 1h-11a.5.5 0 0 1 0-1"/>'
+        '<path d="M2.5 10h11a.5.5 0 0 1 0 1h-11a.5.5 0 0 1 0-1"/>'
+        '<path d="M5.5 3.5a2 2 0 1 0 0 4 2 2 0 0 0 0-4"/>'
+        '<path d="M10.5 8.5a2 2 0 1 0 0 4 2 2 0 0 0 0-4"/>'
+    ),
+    # Two figures, the second smaller and behind, so it reads as "accounts"
+    # rather than "profile" — which `user` already means elsewhere.
+    "users": (
+        '<path d="M6 7.5a2.75 2.75 0 1 0 0-5.5 2.75 2.75 0 0 0 0 5.5m0 1c-2.49 '
+        "0-4.5 1.46-4.5 3.25V13a.5.5 0 0 0 .5.5h8a.5.5 0 0 0 .5-.5v-1.25C10.5 "
+        '9.96 8.49 8.5 6 8.5"/>'
+        '<path d="M11.02 3.02a.5.5 0 0 1 .6-.37 2.75 2.75 0 0 1 0 5.33.5.5 0 1 '
+        "1-.24-.97 1.75 1.75 0 0 0 0-3.39.5.5 0 0 1-.36-.6m.53 6.03a.5.5 0 0 1 "
+        ".6-.37c1.72.42 2.85 1.63 2.85 3.07V13a.5.5 0 0 1-.5.5h-1.5a.5.5 0 0 1 "
+        '0-1H14v-.75c0-.9-.72-1.79-2.08-2.12a.5.5 0 0 1-.37-.6"/>'
+    ),
+    # A dial with a needle. The instrument that reports a reading, which is what
+    # the overview does — it measures, it does not control.
+    "gauge": (
+        '<path d="M8 2.5a6.5 6.5 0 0 0-5.63 9.75.5.5 0 0 1-.87.5A7.5 7.5 0 1 1 '
+        '15.5 12a.5.5 0 1 1-.87-.5A6.5 6.5 0 0 0 8 2.5"/>'
+        '<path d="M11.35 5.6a.5.5 0 0 1 .05.7l-2.4 2.87a1.3 1.3 0 1 1-.77-.64l'
+        '2.41-2.88a.5.5 0 0 1 .71-.06"/>'
+    ),
 }
 
 
@@ -358,6 +399,25 @@ RUNTIME_ICON_NAMES: tuple[str, ...] = (
     # would cost a close button its glyph and nothing would say why.
     "close",
     *CATEGORY_ICONS.values(),
+)
+
+
+# Shipped only to /admin, appended to the set above by
+# ``runtime_icons(include_admin=True)``.
+#
+# The failure mode here is asymmetric and worth knowing: server-side
+# ``{{ icon('x') }}`` *raises* on an unknown name, so a typo in a template fails
+# loudly at render. Browser-side ``iconMarkup`` returns ``''`` for anything
+# outside the runtime subset, so a glyph a JS module draws but nobody listed
+# here renders as an empty cell and nothing says why. A test greps the admin
+# modules for iconMarkup literals and asserts each one appears below.
+ADMIN_RUNTIME_ICON_NAMES: tuple[str, ...] = (
+    "sliders",
+    "users",
+    "gauge",
+    "shield-check",
+    "check",
+    "info",
 )
 
 
@@ -393,6 +453,12 @@ def icon(name: str, size: int = 16, cls: str = "", title: str = "") -> Markup:
     )
 
 
-def runtime_icons() -> dict[str, str]:
-    """The path-data subset inlined as ``window.__ICONS``."""
-    return {name: ICONS[name] for name in RUNTIME_ICON_NAMES}
+def runtime_icons(*, include_admin: bool = False) -> dict[str, str]:
+    """The path-data subset inlined as ``window.__ICONS``.
+
+    The admin glyphs ship only to ``/admin``. They are no use to the reader
+    surface and the same argument applies as to the admin strings: do not
+    inline what a page cannot draw.
+    """
+    names = RUNTIME_ICON_NAMES + (ADMIN_RUNTIME_ICON_NAMES if include_admin else ())
+    return {name: ICONS[name] for name in names}

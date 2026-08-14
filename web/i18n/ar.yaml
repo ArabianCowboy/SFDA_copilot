@@ -114,6 +114,15 @@ runtime:
     toArabic: "التبديل إلى العربية"
     toEnglish: "Switch to English"
 
+  # نصوص وحدة التحكم التي يرسمها المتصفح. منفصلة عن page.admin لأن شريحة
+  # runtime وحدها تُضمَّن في window.__I18N — وهذه الكتلة تُشحن إلى /admin فقط.
+  admin:
+    accessDenied: "وحدة التحكم هذه مخصّصة للمسؤولين."
+    accessCheckFailed: "تعذّر التأكد من صلاحيتك. أعد التحميل للمحاولة مرة أخرى."
+    signedOut: "لم تسجّل الدخول. سجّل الدخول من صفحة المحادثة أولاً."
+    signedInAs: "مسجّل الدخول باسم {email}"
+    roleLabel: "الدور"
+    empty: "لا يوجد شيء هنا بعد."
 page:
   meta:
     title: "مساعد الهيئة العامة للغذاء والدواء"
@@ -218,3 +227,17 @@ page:
     pharmacovigilance: "التيقظ الدوائي"
     veterinary: "الأدوية البيطرية"
     biological: "المنتجات الحيوية"
+
+  # وحدة تحكم المشغّل. عناصر مُصيَّرة من الخادم فقط — مفاتيح page.* لا تصل إلى
+  # المتصفح، لذا أي نص يرسمه جافاسكربت يوضع تحت runtime.admin بدلاً من هنا.
+  admin:
+    title: "الإدارة · مساعد الهيئة"
+    consoleLabel: "الإدارة"
+    skipToContent: "تخطَّ إلى وحدة التحكم"
+    backToChat: "العودة إلى المحادثة"
+    checking: "جارٍ التحقق من صلاحيتك…"
+    sectionsAria: "أقسام وحدة التحكم"
+    tabs:
+      overview: "نظرة عامة"
+      settings: "الإعدادات"
+      people: "المستخدمون"

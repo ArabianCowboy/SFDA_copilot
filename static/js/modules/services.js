@@ -296,6 +296,31 @@ export const Services = {
     return { signedOut: true, sessionMissing: false };
   },
 
+  /**
+   * What the server believes about the signed-in reader.
+   *
+   * The authoritative answer to "is this an administrator" — as opposed to the
+   * `is_admin_hint` cookie, which only decides whether a link is drawn on a
+   * page the server renders without validating a token. It is also the only
+   * thing that works on a first sign-in in a fresh browser, where no hint
+   * exists yet because no authenticated request has been made.
+   *
+   * Returns null when the answer is simply "nobody" or "not allowed" — those
+   * are answers, not faults, and the caller's safe default for both is the
+   * same. A network failure still throws, because that is a fault.
+   */
+  async getIdentity() {
+    const token = await this.getSessionToken();
+    if (!token) return null;
+
+    const response = await fetch('/api/identity', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (response.status === 401 || response.status === 403) return null;
+    if (!response.ok) throw new Error(`Identity check failed (${response.status})`);
+    return response.json();
+  },
+
   async getProfile(userId) {
     if (!this.supabase) throw new Error('Supabase client not initialized.');
     const { data, error } = await this.supabase

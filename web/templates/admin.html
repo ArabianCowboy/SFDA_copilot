@@ -1,0 +1,168 @@
+{# The operator console.
+
+   The head duplicates index.html's rather than sharing a partial. That is a
+   deliberate, temporary trade: index.html carries several browser-test
+   contracts, and refactoring the working reader page inside a new-feature
+   branch buys drift-avoidance at the cost of the one thing this work is
+   supposed to protect. Extracting _head.html is its own commit, later.
+
+   Nothing privileged is rendered here. The shell is reachable without a role
+   because a document navigation cannot carry a bearer header — see
+   web/api/admin.py. Every value on this page arrives later, over an
+   authenticated fetch, or not at all. #}<!DOCTYPE html>
+<html lang="{{ lang }}" dir="{{ text_dir }}">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="theme-color" content="#0F5E63">
+    <title>{{ t('page.admin.title') }}</title>
+
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
+    <link rel="alternate icon" href="{{ url_for('static', filename='favicon.ico') }}">
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Azeret+Mono:wght@400;500&family=Readex+Pro:wght@200..700&family=Zain:wght@300;400;700;800;900&display=swap"
+        rel="stylesheet">
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"
+        integrity="sha384-9ndCyUaIbzAi2FUVXJi0CjmCapSmO7SnpJef0486qhLnuZ2cdeRhO02iuK6FUUVM" crossorigin="anonymous">
+
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}?v={{ asset_version }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}?v={{ asset_version }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components.css') }}?v={{ asset_version }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}?v={{ asset_version }}">
+
+    <!-- Prevent FOUC. Runs before first paint. Same reconciliation as the
+         reader page: the server picks the language from a cookie that can be
+         stale while localStorage holds the real preference. -->
+    <script>
+        (function() {
+            try {
+                var t = localStorage.getItem('theme');
+                if (!t) t = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+                document.documentElement.setAttribute('data-bs-theme', t);
+
+                var l = localStorage.getItem('lang');
+                if (l === 'ar' || l === 'en') {
+                    if (document.documentElement.lang !== l) {
+                        if (!sessionStorage.getItem('__langfix')) {
+                            sessionStorage.setItem('__langfix', '1');
+                            document.cookie = 'lang=' + l + ';path=/;max-age=31536000;samesite=lax';
+                            location.reload();
+                            return;
+                        }
+                        localStorage.setItem('lang', document.documentElement.lang);
+                    }
+                }
+                sessionStorage.removeItem('__langfix');
+            } catch(e) {}
+        })();
+    </script>
+
+    <script>
+        /* The anon key, exactly as the reader page ships it. The console needs a
+           Supabase client to read the signed-in session out of localStorage and
+           turn it into a bearer token; it never queries a table with it. The
+           service-role key is server-side only and appears in no template. */
+        window.SUPABASE_URL = {{ SUPABASE_URL | tojson }};
+        window.SUPABASE_ANON_KEY = {{ SUPABASE_ANON_KEY | tojson }};
+        window.__I18N = {{ i18n_runtime | tojson }};
+        window.__LANG = {{ lang | tojson }};
+        window.__ICONS = {{ icons_runtime | tojson }};
+    </script>
+
+    <script type="importmap">{{ module_import_map | tojson }}</script>
+</head>
+
+<body class="admin-body">
+    <a class="skip-link" href="#admin-main">{{ t('page.admin.skipToContent') }}</a>
+
+    <header class="admin-bar">
+        <a class="admin-brand" href="{{ url_for('index') }}">
+            {{ icon('shield-check', 18) }}
+            <span class="admin-brand-name">{{ t('page.brand.name') }}</span>
+            <span class="admin-brand-sep" aria-hidden="true">·</span>
+            <span class="admin-brand-role">{{ t('page.admin.consoleLabel') }}</span>
+        </a>
+
+        <div class="admin-bar-actions">
+            <span id="admin-whoami" class="admin-whoami" hidden></span>
+
+            <a class="btn btn-sm btn-ghost" href="{{ url_for('index') }}">
+                {{ t('page.admin.backToChat') }}
+            </a>
+
+            <button class="lang-toggle-btn btn btn-sm" type="button"
+                data-lang="{{ 'en' if lang == 'ar' else 'ar' }}"
+                aria-label="{{ t('runtime.lang.switchAria') }}">
+                <span class="lang-code">{{ 'EN' if lang == 'ar' else 'ع' }}</span>
+            </button>
+
+            {# Exactly one on this page. test_theme_toggle.py asserts three on the
+               reader page; a fourth there would break it, but this is a different
+               document and gets its own single control. #}
+            <button class="theme-toggle-btn btn btn-sm" type="button"
+                aria-label="{{ t('page.nav.toggleTheme') }}" aria-pressed="false"></button>
+        </div>
+    </header>
+
+    {# Everything below is empty until /admin/api/identity confirms an
+       administrator. The gate is the server; this is only what the server's
+       answer is allowed to reveal. #}
+    <main id="admin-main" class="admin-main">
+        <div id="admin-gate" class="admin-gate" role="status" aria-live="polite">
+            <p class="admin-gate-text">{{ t('page.admin.checking') }}</p>
+        </div>
+
+        <div id="admin-console" class="admin-console" hidden>
+            <nav class="admin-tabs" role="tablist" aria-label="{{ t('page.admin.sectionsAria') }}">
+                <button class="admin-tab" role="tab" type="button"
+                    id="tab-overview" aria-controls="panel-overview" aria-selected="true">
+                    {{ icon('gauge', 15) }}<span>{{ t('page.admin.tabs.overview') }}</span>
+                </button>
+                <button class="admin-tab" role="tab" type="button"
+                    id="tab-settings" aria-controls="panel-settings" aria-selected="false" tabindex="-1">
+                    {{ icon('sliders', 15) }}<span>{{ t('page.admin.tabs.settings') }}</span>
+                </button>
+                <button class="admin-tab" role="tab" type="button"
+                    id="tab-people" aria-controls="panel-people" aria-selected="false" tabindex="-1">
+                    {{ icon('users', 15) }}<span>{{ t('page.admin.tabs.people') }}</span>
+                </button>
+            </nav>
+
+            <section class="admin-panel" role="tabpanel" id="panel-overview"
+                aria-labelledby="tab-overview" tabindex="0">
+                <h1 class="admin-heading">{{ t('page.admin.tabs.overview') }}</h1>
+                <div id="overview-body" class="admin-panel-body"></div>
+            </section>
+
+            <section class="admin-panel" role="tabpanel" id="panel-settings"
+                aria-labelledby="tab-settings" tabindex="0" hidden>
+                <h1 class="admin-heading">{{ t('page.admin.tabs.settings') }}</h1>
+                <div id="settings-body" class="admin-panel-body"></div>
+            </section>
+
+            <section class="admin-panel" role="tabpanel" id="panel-people"
+                aria-labelledby="tab-people" tabindex="0" hidden>
+                <h1 class="admin-heading">{{ t('page.admin.tabs.people') }}</h1>
+                <div id="people-body" class="admin-panel-body"></div>
+            </section>
+        </div>
+    </main>
+
+    {# The independence notice is carried on every surface (DESIGN.md). The name
+       contains "SFDA"; no page may imply endorsement, and an operator console is
+       exactly the surface where that could read as official. #}
+    <footer class="admin-footer">
+        <p class="admin-independence">{{ t('page.landing.notice') | safe }}</p>
+    </footer>
+
+    <div id="toast" class="toast-notification hidden" role="alert" aria-live="assertive"></div>
+
+    <script src="{{ url_for('static', filename='js/admin.js') }}?v={{ asset_version }}" type="module"></script>
+</body>
+
+</html>

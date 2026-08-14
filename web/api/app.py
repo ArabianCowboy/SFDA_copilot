@@ -139,7 +139,7 @@ SUPPORTED_FAQ_LANGS = ("en", "ar")
 # that mixes a fresh template with a stale module is worse than a stale page —
 # post-icon-migration it would render an <i class="bi"> with no icon font behind
 # it, or print a glyph NAME as text. MODULE_IMPORT_MAP below closes that.
-ASSET_VERSION = "warm15"
+ASSET_VERSION = "warm16"
 
 # Product release, rendered in the landing footer. Kept as one constant so
 # the number cannot drift between the page and the module headers.
@@ -159,6 +159,17 @@ APP_VERSION = "3.0.0"
 # behaviour before this existed — so this degrades rather than breaks.
 MODULE_FILENAMES: Tuple[str, ...] = tuple(
     sorted(p.name for p in (PROJECT_ROOT / "static" / "js" / "modules").glob("*.js"))
+)
+
+# The console's own modules live in static/js/admin/ rather than alongside the
+# reader's, and the separation is not tidiness. `index()` inlines an import-map
+# entry for *every* name in MODULE_FILENAMES, so a module dropped in beside the
+# others would publish its filename on the anonymous landing page — an
+# inventory of the operator surface, rendered for people who cannot reach it.
+# A second directory and a second map keeps each page declaring only what it
+# can actually load.
+ADMIN_MODULE_FILENAMES: Tuple[str, ...] = tuple(
+    sorted(p.name for p in (PROJECT_ROOT / "static" / "js" / "admin").glob("*.js"))
 )
 
 # ──────────────────────────────────────────────────────────
@@ -641,6 +652,15 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
     # never the authority. The database decides who is an administrator.
     app.config["identity_flags"] = IdentityFlagsCache()
     app.register_blueprint(auth_bp, url_prefix="/auth")
+    # Imported here rather than at module scope: admin.py imports back into this
+    # module for `_authenticate_request`, and a top-level import would be a cycle.
+    from web.api.admin import admin_bp
+    app.register_blueprint(admin_bp)
+    # The console is chrome and a handful of JSON reads, but the global default
+    # of 200/day would lock an operator out of their own instance after an
+    # afternoon of refreshes. Exempting it entirely would let a loop hammer the
+    # database instead.
+    limiter.limit("60 per minute")(admin_bp)
 
     workers = os.getenv("WEB_CONCURRENCY", "1")
     if workers != "1":
@@ -662,12 +682,34 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
             "category_icon": lambda key: CATEGORY_ICONS.get(key, "globe"),
         }
 
-    @app.route("/")
-    def index():
+    def _import_map(subdir: str, filenames: Sequence[str]) -> Dict[str, Any]:
+        """Map each module's bare URL to its versioned one."""
+        return {
+            "imports": {
+                url_for("static", filename=f"js/{subdir}/{name}"):
+                url_for("static", filename=f"js/{subdir}/{name}", v=ASSET_VERSION)
+                for name in filenames
+            }
+        }
+
+    app.jinja_env.globals["_import_map"] = _import_map
+
+    def base_render_context(lang: Optional[str] = None, *, admin: bool = False) -> Dict[str, Any]:
+        """Everything any full page render needs, shared by / and /admin.
+
+        Deliberately a function rather than a context processor. ``t`` and
+        ``i18n_runtime`` depend on the language negotiated for *this* request,
+        which a processor cannot see without redoing the negotiation, and the
+        import map must not be built for a partial render that will never use
+        it. Two callers, one definition.
+
+        ``admin`` widens the inlined catalogue and glyph set. It defaults to
+        False so the anonymous landing page keeps shipping exactly what it
+        shipped before.
+        """
         supabase_url = os.getenv("SUPABASE_URL")
         supabase_anon_key = os.getenv("SUPABASE_ANON_KEY")
 
-        # Validate Supabase configuration
         if not supabase_url or not supabase_anon_key:
             logging.warning(
                 "Supabase configuration missing: URL=%s, Key=%s",
@@ -677,36 +719,39 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
 
         # Rendering the page strings server-side means an Arabic reader never
         # sees a flash of English while the JS boots.
-        lang = pick_lang(request)
+        lang = lang or pick_lang(request)
         catalog = load_catalog(lang)
 
-        response = make_response(render_template(
-            "index.html",
-            SUPABASE_URL=supabase_url or "",
-            SUPABASE_ANON_KEY=supabase_anon_key or "",
-            is_authenticated=bool(session.get("user_email")),
-            user_email=session.get("user_email"),
-            lang=lang,
-            text_dir=text_direction(lang),
-            t=make_translator(catalog),
-            i18n_runtime=runtime_subset(catalog),
-            icons_runtime=runtime_icons(),
+        return {
+            "SUPABASE_URL": supabase_url or "",
+            "SUPABASE_ANON_KEY": supabase_anon_key or "",
+            "lang": lang,
+            "text_dir": text_direction(lang),
+            "t": make_translator(catalog),
+            "i18n_runtime": runtime_subset(catalog, include_admin=admin),
+            "icons_runtime": runtime_icons(include_admin=admin),
             # The one category->glyph mapping, shared with the browser rather
             # than restated there. DESIGN.md: the same mapping written down
             # twice is the same mapping drifting eventually.
-            category_icons=CATEGORY_ICONS,
-            module_import_map={
-                "imports": {
-                    url_for("static", filename=f"js/modules/{name}"):
-                    url_for("static", filename=f"js/modules/{name}", v=ASSET_VERSION)
-                    for name in MODULE_FILENAMES
-                }
-            },
+            "category_icons": CATEGORY_ICONS,
+        }
+
+    app.config["base_render_context"] = base_render_context
+
+    @app.route("/")
+    def index():
+        context = base_render_context()
+        response = make_response(render_template(
+            "index.html",
+            **context,
+            is_authenticated=bool(session.get("user_email")),
+            user_email=session.get("user_email"),
+            module_import_map=_import_map("modules", MODULE_FILENAMES),
         ))
         # Persist an explicit ?lang= so the choice survives the next visit.
         if request.args.get("lang"):
             response.set_cookie(
-                "lang", lang, max_age=31_536_000, samesite="Lax", path="/"
+                "lang", context["lang"], max_age=31_536_000, samesite="Lax", path="/"
             )
         return response
 

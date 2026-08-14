@@ -1,0 +1,203 @@
+/* ============================================================================
+   Console — the operator surface.
+
+   Layer 3 semantic names only. If a primitive is wanted here, the semantic
+   layer is missing a name; add it to tokens.css instead. Dark mode gets no
+   rules in this file at all — the ramps beneath these names already flipped.
+
+   Logical properties throughout. test_css_contract.py fails the build on a
+   physical property that cannot mirror, and the five shipped stylesheets are
+   at zero violations. This is the sixth and stays there.
+
+   Restraint is the brief. This is the same instrument as the reader surface,
+   seen from behind: porcelain ground, hairlines, one teal. An operator console
+   that looks like a different product would be a different product.
+   ========================================================================= */
+
+.admin-body {
+  min-block-size: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-page);
+  color: var(--fg-primary);
+  font-family: var(--font-sans);
+}
+
+/* Visible only on focus. A console is a keyboard surface before it is a mouse
+   one, and the tablist is several stops in. */
+.skip-link {
+  position: absolute;
+  inset-block-start: var(--space-2);
+  inset-inline-start: var(--space-2);
+  z-index: var(--z-toast);
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  color: var(--fg-primary);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-200%);
+}
+
+.skip-link:focus-visible {
+  transform: translateY(0);
+}
+
+/* ── Top bar ─────────────────────────────────────────────────────────────── */
+
+.admin-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  padding: var(--space-3) var(--gutter);
+  background: var(--bg-surface);
+  border-block-end: 1px solid var(--hairline);
+}
+
+.admin-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  text-decoration: none;
+  color: var(--fg-primary);
+  font-weight: var(--fw-display);
+}
+
+.admin-brand .icon {
+  color: var(--signal);
+}
+
+.admin-brand-sep,
+.admin-brand-role {
+  color: var(--fg-muted);
+  font-weight: var(--fw-body);
+}
+
+.admin-bar-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-inline-start: auto;
+}
+
+/* An email address is a machine-reported fact, so it takes the mono face and
+   is isolated LTR — the element also carries dir="ltr", because bidi reorders
+   an address dropped into an Arabic bar. */
+.admin-whoami {
+  font-family: var(--font-mono);
+  font-size: var(--fs-200);
+  color: var(--fg-secondary);
+  unicode-bidi: isolate;
+}
+
+/* ── Main ────────────────────────────────────────────────────────────────── */
+
+.admin-main {
+  flex: 1 1 auto;
+  inline-size: 100%;
+  max-inline-size: var(--page-max);
+  margin-inline: auto;
+  padding: var(--space-6) var(--gutter);
+}
+
+.admin-gate {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-block-size: 40vh;
+}
+
+.admin-gate-text {
+  margin: 0;
+  color: var(--fg-secondary);
+  text-align: center;
+  max-inline-size: 48ch;
+}
+
+/* ── Tabs ────────────────────────────────────────────────────────────────── */
+
+.admin-tabs {
+  display: flex;
+  gap: var(--space-1);
+  flex-wrap: wrap;
+  border-block-end: 1px solid var(--hairline);
+  margin-block-end: var(--space-5);
+}
+
+.admin-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border: 0;
+  background: none;
+  color: var(--fg-secondary);
+  font: inherit;
+  font-weight: var(--fw-medium);
+  cursor: pointer;
+  /* The 2px weight is the system's one meaningful rule, and an active tab is
+     exactly what it is reserved for. Transparent at rest so selecting a tab
+     shifts nothing. */
+  border-block-end: 2px solid transparent;
+  margin-block-end: -1px;
+}
+
+.admin-tab .icon {
+  color: var(--fg-muted);
+}
+
+.admin-tab:hover {
+  color: var(--fg-primary);
+}
+
+.admin-tab[aria-selected="true"] {
+  color: var(--fg-primary);
+  border-block-end-color: var(--signal);
+}
+
+.admin-tab[aria-selected="true"] .icon {
+  color: var(--signal);
+}
+
+/* ── Panels ──────────────────────────────────────────────────────────────── */
+
+.admin-heading {
+  font-family: var(--font-display);
+  font-size: var(--fs-500);
+  font-weight: var(--fw-display);
+  margin-block: 0 var(--space-4);
+}
+
+.admin-panel-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.admin-empty {
+  margin: 0;
+  padding: var(--space-6);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+  color: var(--fg-muted);
+  text-align: center;
+}
+
+/* ── Footer ──────────────────────────────────────────────────────────────── */
+
+.admin-footer {
+  padding: var(--space-5) var(--gutter);
+  border-block-start: 1px solid var(--hairline);
+}
+
+.admin-independence {
+  margin: 0 auto;
+  max-inline-size: 70ch;
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--bg-sunken);
+  color: var(--fg-secondary);
+  font-size: var(--fs-200);
+  text-align: center;
+}
