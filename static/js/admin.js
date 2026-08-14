@@ -25,7 +25,7 @@ import { ThemeManager } from './modules/theme.js';
 import { initLanguageToggle } from './modules/i18n.js';
 import { AdminRequestError, createAdminServices } from './admin/services.js';
 import { revealConsole, selectTab } from './admin/ui.js';
-import { bindConsoleEvents, showAccessFailure } from './admin/handlers.js';
+import { bindConsoleEvents, initSettingsTab, showAccessFailure } from './admin/handlers.js';
 
 const Admin = {
   async init() {
@@ -54,8 +54,14 @@ const Admin = {
         return;
       }
 
-      const identity = await createAdminServices(token).identity();
+      const services = createAdminServices(token);
+      const identity = await services.identity();
       revealConsole(identity);
+
+      // Only after the console is revealed, and deliberately not awaited: a
+      // panel that fails to load should leave the rest of the console usable
+      // rather than take the page down with it.
+      initSettingsTab(services);
     } catch (error) {
       showAccessFailure(error);
     }

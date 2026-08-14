@@ -97,8 +97,13 @@ from web.api.auth import (
     purge_conversation_state,
     rotate_session_for_new_identity,
 )
-from web.services.admin_store import resolve_identity_flags
+from web.services.admin_store import (
+    InMemoryAdminBackend,
+    get_admin_backend,
+    resolve_identity_flags,
+)
 from web.services.identity_cache import IdentityFlags, IdentityFlagsCache
+from web.services.settings_service import SettingsService
 from web.services.citations import (
     build_source_payload,
     extract_cited_indices,
@@ -139,7 +144,7 @@ SUPPORTED_FAQ_LANGS = ("en", "ar")
 # that mixes a fresh template with a stale module is worse than a stale page —
 # post-icon-migration it would render an <i class="bi"> with no icon font behind
 # it, or print a glyph NAME as text. MODULE_IMPORT_MAP below closes that.
-ASSET_VERSION = "warm16"
+ASSET_VERSION = "warm17"
 
 # Product release, rendered in the landing footer. Kept as one constant so
 # the number cannot drift between the page and the module headers.
@@ -651,6 +656,25 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
     # Process-local, same scope contract as ConversationStore above: a cache,
     # never the authority. The database decides who is an administrator.
     app.config["identity_flags"] = IdentityFlagsCache()
+
+    # One in-memory backend per process under TESTING, so a setting changed by
+    # a request is visible to the next one within the same test — and nothing
+    # survives the process, which is what makes tests independent.
+    app.config["_testing_admin_backend"] = InMemoryAdminBackend()
+
+    def admin_backend():
+        """Resolved per call, never at startup.
+
+        `get_admin_backend()` builds a Supabase client, and doing that here
+        would put a network dependency in front of a process whose search index
+        takes minutes to load — for a surface most deployments never open.
+        """
+        if app.config["TESTING"]:
+            return app.config["_testing_admin_backend"]
+        return get_admin_backend()
+
+    app.config["admin_backend"] = admin_backend
+    app.config["settings_service"] = SettingsService(admin_backend)
     app.register_blueprint(auth_bp, url_prefix="/auth")
     # Imported here rather than at module scope: admin.py imports back into this
     # module for `_authenticate_request`, and a top-level import would be a cycle.

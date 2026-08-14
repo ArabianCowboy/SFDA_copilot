@@ -23,11 +23,13 @@ const JSON_HEADERS = { 'Content-Type': 'application/json' };
  * without matching prose.
  */
 export class AdminRequestError extends Error {
-  constructor(status, code, message) {
+  constructor(status, code, message, errors) {
     super(message || code || `Request failed (${status})`);
     this.name = 'AdminRequestError';
     this.status = status;
     this.code = code;
+    /** Per-field validation failures, when the server sent any. */
+    this.errors = errors || [];
   }
 }
 
@@ -50,7 +52,9 @@ export function createAdminServices(token) {
     }
 
     if (!response.ok) {
-      throw new AdminRequestError(response.status, payload?.error, payload?.message);
+      throw new AdminRequestError(
+        response.status, payload?.error, payload?.message, payload?.errors,
+      );
     }
     return payload;
   }
@@ -58,5 +62,19 @@ export function createAdminServices(token) {
   return {
     /** Confirms the caller is an administrator. Reaching it at all is the answer. */
     identity: () => request('identity'),
+
+    /** Effective settings, which of them are overrides, and the model allowlist. */
+    settings: () => request('settings'),
+
+    /**
+     * Apply a patch. A key set to null is removed, reverting to the deployed
+     * default — which is not the same as writing the default's current value,
+     * because that would pin it against a future deploy.
+     *
+     * A 422 arrives as an AdminRequestError carrying `errors`, so the caller
+     * can put each one beside the field it belongs to instead of stacking
+     * prose at the top of a form.
+     */
+    saveSettings: (patch) => request('settings', { method: 'PUT', body: patch }),
   };
 }

@@ -13,6 +13,7 @@ file — and the failure mode is CI's backend job trying to run Playwright.
 from __future__ import annotations
 
 import json
+import re
 
 import pytest
 from playwright.sync_api import Page, expect
@@ -129,3 +130,92 @@ def test_the_console_has_exactly_one_theme_toggle(browser_page: Page):
     """The reader page asserts three; this document gets one."""
     browser_page.goto("/admin")
     expect(browser_page.locator(".theme-toggle-btn")).to_have_count(1)
+
+
+# ── Settings ──────────────────────────────────────────────────────────────────
+
+SETTINGS = {
+    "settings": {
+        "model": "gpt-4o-mini",
+        "temperature": 0.1,
+        "max_tokens": 16384,
+        "max_context_results": 8,
+    },
+    "overrides": {"temperature": 0.1},
+    "allowed_models": [
+        {"id": "gpt-4o-mini", "label": "GPT-4o mini", "max_output_tokens": 16384},
+        {"id": "gpt-4o", "label": "GPT-4o", "max_output_tokens": 16384},
+    ],
+}
+
+
+def _admin_console(page: Page, *, settings=SETTINGS, lang: str = "") -> None:
+    _route_identity(page, status=200, body=ADMIN_IDENTITY)
+    page.route(
+        "**/admin/api/settings",
+        lambda route: route.fulfill(
+            status=200, content_type="application/json", body=json.dumps(settings)
+        ),
+    )
+    page.goto(f"/admin?testing=true{lang}")
+    expect(page.locator("#admin-console")).to_be_visible()
+
+
+def test_the_settings_form_renders_the_allowlist_and_current_values(browser_page: Page):
+    _admin_console(browser_page)
+    browser_page.locator("#tab-settings").click()
+
+    expect(browser_page.locator("#setting-model")).to_have_value("gpt-4o-mini")
+    expect(browser_page.locator("#setting-max_tokens")).to_have_value("16384")
+    # Exactly the allowlist, so the console cannot offer what the server refuses.
+    expect(browser_page.locator("#setting-model option")).to_have_count(2)
+
+
+def test_a_changed_setting_is_marked_as_changed(browser_page: Page):
+    """A value someone chose and a value that happens to equal the default look
+    identical in the input, and revert differently."""
+    _admin_console(browser_page)
+    browser_page.locator("#tab-settings").click()
+
+    rows = browser_page.locator(".admin-field")
+    expect(rows.filter(has=browser_page.locator(".admin-field-origin.is-override"))).to_have_count(1)
+    expect(
+        browser_page.locator('.admin-field[data-field="temperature"] .admin-field-origin')
+    ).to_have_text("Changed here")
+
+
+def test_a_rejected_save_puts_the_message_beside_its_field(browser_page: Page):
+    """Not a pile of prose at the top of the form."""
+    _admin_console(browser_page)
+    browser_page.locator("#tab-settings").click()
+
+    browser_page.route(
+        "**/admin/api/settings",
+        lambda route: route.fulfill(
+            status=422,
+            content_type="application/json",
+            body=json.dumps({
+                "error": "validation_failed",
+                "errors": [
+                    {"field": "max_tokens", "code": "above_ceiling", "limit": 16384}
+                ],
+            }),
+        ),
+    )
+    browser_page.locator("#settings-save").click()
+
+    error = browser_page.locator("#error-max_tokens")
+    expect(error).to_be_visible()
+    expect(error).to_have_text("Too large. The most this allows is 16384.")
+    expect(browser_page.locator('.admin-field[data-field="max_tokens"]')).to_have_class(
+        re.compile(r"has-error")
+    )
+
+
+def test_the_settings_form_is_translated(browser_page: Page):
+    _admin_console(browser_page, lang="&lang=ar")
+    browser_page.locator("#tab-settings").click()
+
+    expect(browser_page.locator('label[for="setting-model"]')).to_have_text("النموذج")
+    # A number keeps its own direction inside an RTL page.
+    expect(browser_page.locator("#setting-max_tokens")).to_have_attribute("dir", "ltr")

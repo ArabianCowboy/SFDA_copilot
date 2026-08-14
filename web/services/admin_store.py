@@ -33,10 +33,18 @@ _IDENTITY_COLUMNS = "id, role, tier, is_disabled"
 
 
 class AdminBackend(Protocol):
-    """Privileged account reads. Implementations must not raise for "not found"."""
+    """Privileged reads and writes. Implementations must not raise for "not found"."""
 
     def fetch_identity(self, user_id: str, email: Optional[str]) -> Optional[IdentityFlags]:
         """Return the reader's flags, or None when they have no profile row."""
+        ...
+
+    def get_settings(self) -> dict:
+        """The stored override document. Empty when nothing has been changed."""
+        ...
+
+    def put_settings(self, settings: dict, *, actor_id: Optional[str]) -> None:
+        """Replace the override document wholesale."""
         ...
 
 
@@ -69,6 +77,63 @@ class SupabaseAdminBackend:
             tier=row.get("tier") or "free",
             is_disabled=bool(row.get("is_disabled")),
         )
+
+
+    # ── Settings ──────────────────────────────────────────────────────────────
+
+    def get_settings(self) -> dict:
+        response = (
+            self._client.table("app_settings")
+            .select("settings")
+            .eq("id", 1)
+            .limit(1)
+            .execute()
+        )
+        rows = getattr(response, "data", None) or []
+        return (rows[0].get("settings") if rows else {}) or {}
+
+    def put_settings(self, settings: dict, *, actor_id: Optional[str]) -> None:
+        # Upsert rather than update: the row is seeded by the migration, but a
+        # restored or freshly provisioned project might not have it, and losing
+        # a settings write to a missing row would be a silent no-op.
+        self._client.table("app_settings").upsert(
+            {
+                "id": 1,
+                "settings": settings,
+                "updated_at": "now()",
+                "updated_by": actor_id,
+            },
+            on_conflict="id",
+        ).execute()
+
+
+class InMemoryAdminBackend:
+    """A backend with no database behind it.
+
+    Serves ``?testing=true`` and the browser suite, where the console must work
+    end to end without Supabase — PRODUCT.md treats the demo as a shipping
+    surface, and a console that only exists against a live project cannot be
+    shown or tested. Also what a deployment without a service-role key falls
+    back to for reads.
+
+    Deliberately mutable and per-process: a test that changes a setting sees the
+    change, and nothing survives a restart.
+    """
+
+    def __init__(self, settings: Optional[dict] = None) -> None:
+        self._settings = dict(settings or {})
+
+    def fetch_identity(self, user_id: str, email: Optional[str]) -> Optional[IdentityFlags]:
+        # Identity in TESTING comes from _TESTING_IDENTITIES before any backend
+        # is consulted, so this is only reached by a caller that bypassed the
+        # bypass. Unprivileged is the right answer for that.
+        return None
+
+    def get_settings(self) -> dict:
+        return dict(self._settings)
+
+    def put_settings(self, settings: dict, *, actor_id: Optional[str]) -> None:
+        self._settings = dict(settings)
 
 
 def get_admin_backend() -> Optional[AdminBackend]:

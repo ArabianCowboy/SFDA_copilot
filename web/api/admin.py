@@ -109,6 +109,54 @@ def console() -> Response:
     return render_template("admin.html", **context, module_import_map=import_map)
 
 
+@admin_bp.route("/api/settings", methods=["GET"])
+def get_settings() -> Response:
+    """The effective settings, plus what an operator is allowed to choose.
+
+    `overrides` is sent alongside `settings` so the console can distinguish a
+    value someone chose from a value that merely happens to be the deployed
+    default — the two look identical and revert differently.
+    """
+    from web.services.settings_service import allowed_models
+
+    service = current_app.config["settings_service"]
+    return jsonify({
+        "settings": service.snapshot(),
+        "overrides": service.overrides(),
+        "allowed_models": allowed_models(),
+    })
+
+
+@admin_bp.route("/api/settings", methods=["PUT"])
+def put_settings() -> Response:
+    """Apply a patch. 422 with per-field codes, or 200 with the new state.
+
+    A key set to null is removed, reverting to the deployed default. That is
+    distinct from setting it to the default's current value, which would pin it
+    against a future deploy — a difference worth having a gesture for.
+    """
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return jsonify({"error": "invalid_payload"}), 400
+
+    service = current_app.config["settings_service"]
+    errors = service.update(payload, actor_id=g.identity.user_id)
+
+    if errors:
+        return jsonify({
+            "error": "validation_failed",
+            "errors": [error.as_dict() for error in errors],
+        }), 422
+
+    logger.info(
+        "Settings updated by %s: %s", g.identity.email, sorted(payload)
+    )
+    return jsonify({
+        "settings": service.snapshot(),
+        "overrides": service.overrides(),
+    })
+
+
 @admin_bp.route("/api/identity")
 def identity() -> Response:
     """Confirms the caller is an administrator.

@@ -184,6 +184,108 @@
   text-align: center;
 }
 
+/* ── Forms ───────────────────────────────────────────────────────────────── */
+
+.admin-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  max-inline-size: 34rem;
+}
+
+.admin-form-hint {
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: var(--fs-200);
+  max-inline-size: 60ch;
+}
+
+.admin-field {
+  display: grid;
+  /* Label and origin marker share a row; the control spans beneath both, so a
+     long Arabic label never squeezes the input. */
+  grid-template-columns: 1fr auto;
+  gap: var(--space-1) var(--space-3);
+  align-items: baseline;
+  padding-block-end: var(--space-4);
+  border-block-end: 1px solid var(--hairline);
+}
+
+.admin-field-label {
+  font-weight: var(--fw-medium);
+  margin: 0;
+}
+
+.admin-input {
+  grid-column: 1 / -1;
+  /* background-COLOR, not the shorthand: `.form-select` carries its chevron as
+     a background-image, and the shorthand would clear it — leaving a select
+     that looks exactly like a text input and gives no sign it can be opened. */
+  background-color: var(--bg-surface);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-sm);
+  color: var(--fg-primary);
+  padding: var(--space-2) var(--space-3);
+  font: inherit;
+}
+
+/* Machine-reported values take the mono face with tabular figures, so a digit
+   does not shift as it changes. */
+.admin-input[type="number"] {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Room for the chevron. The rule above sets padding symmetrically, which would
+   otherwise run a long model name underneath it. */
+select.admin-input {
+  padding-inline-end: var(--space-7);
+}
+
+/* Bootstrap pins the chevron with a physical `right` and we load the LTR
+   build, so under RTL it stays on the right — over the text, which is now
+   right-aligned. Moved to the other side, and the padding with it.
+   background-position takes no logical keywords, so this is the mirror. */
+[dir="rtl"] select.admin-input {
+  background-position: left var(--space-3) center; /* physical-ok: background-position has no logical form; this IS the RTL branch */
+  padding-inline-end: var(--space-3);
+  padding-inline-start: var(--space-7);
+}
+
+.admin-input:focus {
+  outline: none;
+  border-color: var(--signal);
+  box-shadow: 0 0 0 3px var(--focus-ring-shadow);
+}
+
+/* Whether this value was chosen or merely inherited. Quiet by default, because
+   most settings are defaults and a page of badges says nothing. */
+.admin-field-origin {
+  font-size: var(--fs-100);
+  color: var(--fg-faint);
+  text-align: end;
+}
+
+.admin-field-origin.is-override {
+  color: var(--signal);
+}
+
+.admin-field-error {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: var(--fs-200);
+  color: var(--danger);
+}
+
+.admin-field.has-error .admin-input {
+  border-color: var(--danger);
+}
+
+.admin-form-actions {
+  display: flex;
+  gap: var(--space-3);
+}
+
 /* ── Footer ──────────────────────────────────────────────────────────────── */
 
 .admin-footer {

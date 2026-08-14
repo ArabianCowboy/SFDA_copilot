@@ -9,7 +9,18 @@
 import { ErrorHandler } from '../modules/dom.js';
 import { I18n } from '../modules/i18n.js';
 import { AdminRequestError } from './services.js';
-import { focusTab, selectTab, showGateMessage, tabIds } from './ui.js';
+import {
+  clearSettingsErrors,
+  focusTab,
+  readSettingsForm,
+  renderSettings,
+  selectTab,
+  setSettingsSaving,
+  showGateMessage,
+  showSettingsErrors,
+  showSettingsMessage,
+  tabIds,
+} from './ui.js';
 
 /**
  * Turn a failed access check into one sentence.
@@ -75,5 +86,64 @@ export function bindConsoleEvents() {
     const target = ids[(next + ids.length) % ids.length];
     selectTab(target);
     focusTab(target);
+  });
+}
+
+/**
+ * Load the settings tab and wire its save.
+ *
+ * The form is submitted whole rather than per-field. Partial saves would let an
+ * operator leave the instance in a combination neither of them chose — a model
+ * with a lower output ceiling saved before the token limit that has to come
+ * down with it — and the server validates the resulting state for exactly that
+ * reason. One submit, one decision.
+ */
+export async function initSettingsTab(services) {
+  const body = document.getElementById('settings-body');
+  if (!body) return;
+
+  // Held here rather than re-fetched after each save: the allowlist comes from
+  // config.yaml and cannot change without a deploy, which would reload this
+  // page anyway.
+  let allowedModels = [];
+
+  try {
+    const loaded = await services.settings();
+    allowedModels = loaded.allowed_models || [];
+    renderSettings(loaded);
+  } catch (error) {
+    showSettingsMessage(I18n.t('admin.settings.loadFailed'));
+    ErrorHandler.showToast(I18n.t('admin.settings.loadFailed'), true);
+    return;
+  }
+
+  // Delegated from the panel, so the listener survives the form being
+  // re-rendered after every save.
+  body.addEventListener('submit', async (event) => {
+    if (event.target.id !== 'settings-form') return;
+    event.preventDefault();
+
+    clearSettingsErrors();
+    setSettingsSaving(true);
+    try {
+      const saved = await services.saveSettings(readSettingsForm());
+      // Re-render from the server's answer rather than from what was typed:
+      // the response is what is actually stored, and it also refreshes the
+      // "changed here" markers, which a local update would leave stale.
+      renderSettings({ ...saved, allowed_models: allowedModels });
+      ErrorHandler.showToast(I18n.t('admin.settings.saved'));
+    } catch (error) {
+      setSettingsSaving(false);
+      if (error instanceof AdminRequestError && error.errors?.length) {
+        showSettingsErrors(error.errors);
+        // A failure with no field of its own — storage unavailable — has
+        // nowhere to sit in the form, so it is spoken aloud instead.
+        const homeless = error.errors.filter((entry) => entry.field === '_');
+        homeless.forEach((entry) =>
+          ErrorHandler.showToast(I18n.t(`admin.errors.${entry.code}`), true));
+        return;
+      }
+      ErrorHandler.showToast(I18n.t('admin.settings.saveFailed'), true);
+    }
   });
 }

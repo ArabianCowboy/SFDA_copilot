@@ -1,0 +1,33 @@
+-- 0002 · Drop public.users.
+--
+-- DESTRUCTIVE. Deliberately separated from 0001 so the security fix could be
+-- applied without waiting on approval for a table drop.
+--
+-- WHAT WAS CHECKED BEFORE WRITING THIS
+-- ------------------------------------
+-- * Row count: 0. The table has never held a row.
+-- * Foreign keys: none, in either direction. Nothing references it and it
+--   references nothing — unlike public.profiles, which has a real FK to
+--   auth.users(id).
+-- * Application code: zero references. Verified by grep across *.py, *.js,
+--   *.html and *.yaml for `from('users')`, `public.users` and `table('users')`,
+--   excluding .venv/.git/node_modules. The only mentions anywhere in the repo
+--   were in TODO.md, which described it inaccurately.
+-- * Last writer: handle_new_user, whose insert into this table was removed in
+--   0001. Nothing writes here any more.
+--
+-- WHY IT EXISTED
+-- --------------
+-- Migration 20251207173359 (fix_auth_triggers_and_policies, 2025-12-07) added
+-- an `insert into public.users` to the signup trigger. The most recent signup
+-- was 2025-11-16, three weeks earlier, so that insert never once ran. The table
+-- duplicated `role`, `organization` and `tier` that public.profiles either
+-- already carried or gained in 0001, and it carried an `is_admin` boolean that
+-- would have been a second, disagreeing source of truth next to `role`.
+--
+-- ROLLBACK
+-- --------
+-- Recreating it is the DDL in 20251207173359 plus its own-row select policy.
+-- No data is lost, because there is none.
+
+drop table if exists public.users;
