@@ -112,6 +112,14 @@ export function createAdminServices(getToken) {
     setUserFlags: (id, patch) =>
       request(`users/${encodeURIComponent(id)}`, { method: 'PATCH', body: patch }),
 
+    /** Send this account a recovery link. Returns no link, by design. */
+    sendPasswordReset: (id) =>
+      request(`users/${encodeURIComponent(id)}/reset-password`, { method: 'POST' }),
+
+    /** Rewrite the three profile fields an operator may touch. */
+    updateProfile: (id, patch) =>
+      request(`users/${encodeURIComponent(id)}/profile`, { method: 'PATCH', body: patch }),
+
     /** One account in full. 404 when there is no such account. */
     user: (id) => request(`users/${encodeURIComponent(id)}`),
 

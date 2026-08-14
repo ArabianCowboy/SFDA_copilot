@@ -250,6 +250,156 @@ def user_detail(user_id: str) -> Response:
     return jsonify({"user": account, "self_id": g.identity.user_id})
 
 
+# The three profile fields an operator may rewrite, and nothing else. An exact
+# key set rather than a filter: an unknown key is a mistake worth reporting, not
+# something to quietly drop, and this is the route that pins the design position
+# that the console can never send a password.
+_PROFILE_FIELDS = ("full_name", "organization", "specialization")
+
+# Bounded because every value is duplicated into `before` AND `after` of an
+# append-only row that nothing can ever delete. Unbounded free text here is a
+# way to grow a table that has no eviction story.
+_PROFILE_MAX_LENGTH = 200
+
+
+@admin_bp.route("/api/users/<user_id>/reset-password", methods=["POST"])
+def send_password_reset(user_id: str) -> Response:
+    """Send this account a recovery link. Never return one.
+
+    The console's whole thesis is that an operator helps without ever learning a
+    credential, so this deliberately does not use ``auth.admin.generateLink``:
+    that call's return value *is* a bearer credential — whoever holds the URL can
+    set the password — and it would then exist in this process, in tracebacks,
+    and one careless ``jsonify`` from an operator's screen. The same dispatcher
+    the reader's own forgot-password uses sends the mail and returns nothing.
+
+    **Two audit rows, correlated.** A database mutation and its audit row share a
+    transaction; an outbound HTTP call cannot. So the intent is recorded first
+    and the outcome after, which is what makes the failure this shape exists for
+    — the process dying between the send and the record — visible as a dangling
+    `requested` rather than as silence. `operation_id` pairs them, carried in
+    `after` so no schema change is needed.
+
+    The outcome is named `accepted`, not `sent`: the dispatcher establishes that
+    GoTrue accepted the request, not that anything was delivered. Delivery lives
+    in the provider's log, and claiming more than was observed on the one surface
+    whose entire purpose is to be trustworthy later would be the wrong trade.
+    """
+    import uuid as _uuid
+
+    from web.services.account_recovery import RecoveryRefused, recovery_redirect_url
+    from web.services.audit import actor_from_request
+
+    # This action takes no input at all: the account is in the path, and the
+    # link is built server-side. Ignoring a body would be enough to make it
+    # behave correctly, and is not enough to make the design position true — a
+    # caller that sends `{"password": …}` here must be told no, not quietly
+    # succeed. See test_no_console_route_accepts_a_password, which found exactly
+    # this by sending one to every mutation route.
+    payload = request.get_json(silent=True)
+    if payload not in (None, {}):
+        return jsonify({"error": "unknown_field",
+                        "fields": sorted(payload) if isinstance(payload, dict) else []}), 422
+
+    backend = current_app.config["admin_backend"]()
+    if backend is None:
+        return jsonify({"error": "storage_unavailable"}), 503
+
+    account = backend.get_user(user_id)
+    if account is None:
+        return jsonify({"error": "no_such_account"}), 404
+    if not account.get("email"):
+        return jsonify({"error": "reset_no_email"}), 409
+
+    actor = actor_from_request(g.identity)
+    operation_id = str(_uuid.uuid4())
+    backend.append_audit(
+        action="user.password_reset_requested", target_type="user",
+        target_id=user_id, actor=actor,
+        after={"status": "requested", "operation_id": operation_id},
+    )
+
+    dispatcher = current_app.config.get("recovery_dispatcher")
+    dispatcher = dispatcher() if callable(dispatcher) else dispatcher
+
+    try:
+        if dispatcher is None:
+            raise RecoveryRefused("reset_not_configured", "no dispatcher available")
+        dispatcher.send_recovery(account["email"], recovery_redirect_url())
+    except RecoveryRefused as refusal:
+        backend.append_audit(
+            action="user.password_reset_failed", target_type="user",
+            target_id=user_id, actor=actor,
+            after={"status": "failed", "operation_id": operation_id},
+            # The code, never the provider's message body and never a link.
+            note=refusal.code,
+        )
+        status = 429 if refusal.code in (
+            "reset_rate_limited", "reset_quota_exhausted"
+        ) else 502
+        return jsonify({"error": refusal.code}), status
+
+    backend.append_audit(
+        action="user.password_reset_accepted", target_type="user",
+        target_id=user_id, actor=actor,
+        after={"status": "accepted", "operation_id": operation_id},
+    )
+    # 200, not 202: nothing further happens on our side after this returns, and
+    # 202 would imply queued work this application controls.
+    return jsonify({"accepted": True, "operation_id": operation_id})
+
+
+@admin_bp.route("/api/users/<user_id>/profile", methods=["PATCH"])
+def patch_profile(user_id: str) -> Response:
+    """Rewrite a reader's own description of themselves, and record the diff.
+
+    Its own route and its own RPC rather than a widening of `PATCH /users/<id>`.
+    That one carries membership invariants — the advisory lock, the last-admin
+    count — and profile text carries none of them; one endpoint whose refusal
+    semantics differ per field is worse than two endpoints.
+    """
+    # Imported inside the view, matching the other handlers here: web.services
+    # .audit is not needed to import this module, and the console is a surface
+    # most deployments never open.
+    from web.services.admin_store import AdminActionRefused
+    from web.services.audit import actor_from_request
+
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return jsonify({"error": "invalid_payload"}), 400
+
+    unknown = set(payload) - set(_PROFILE_FIELDS) - {"expected_updated_at"}
+    if unknown:
+        # Named explicitly. A console that sends `password` here should be told
+        # so, not silently ignored — see test_no_console_route_accepts_a_password.
+        return jsonify({"error": "unknown_field", "fields": sorted(unknown)}), 422
+
+    values = {}
+    for field in _PROFILE_FIELDS:
+        value = payload.get(field)
+        if value is not None and not isinstance(value, str):
+            return jsonify({"error": "invalid_payload"}), 400
+        if isinstance(value, str) and len(value) > _PROFILE_MAX_LENGTH:
+            return jsonify({"error": "too_long", "field": field}), 422
+        values[field] = value
+
+    backend = current_app.config["admin_backend"]()
+    if backend is None:
+        return jsonify({"error": "storage_unavailable"}), 503
+
+    try:
+        updated = backend.update_profile(
+            user_id,
+            expected_updated_at=payload.get("expected_updated_at"),
+            actor=actor_from_request(g.identity),
+            **values,
+        )
+    except AdminActionRefused as refusal:
+        return jsonify({"error": refusal.code}), 409
+
+    return jsonify({"profile": updated})
+
+
 @admin_bp.route("/api/users/<user_id>", methods=["PATCH"])
 def patch_user(user_id: str) -> Response:
     """Change a role or chat access.

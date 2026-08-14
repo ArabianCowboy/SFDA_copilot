@@ -130,12 +130,23 @@ export async function initPeopleTab(services) {
 
   const search = document.getElementById('people-search');
   let searchTimer = null;
+  /* Which view the operator last asked for. Every render checks it before
+     touching the DOM, so a request that resolves late cannot redraw a panel the
+     operator has already moved on from — typing and then opening a result
+     within the debounce window otherwise let the list replace the detail. */
+  let generation = 0;
 
   async function load() {
+    clearTimeout(searchTimer);
+    const mine = ++generation;
     try {
+      const result = await services.users({ q: search?.value.trim() || '' });
+      if (mine !== generation) return;
       showAccountList();
-      renderUsers(await services.users({ q: search?.value.trim() || '' }));
+      renderUsers(result);
     } catch (error) {
+      if (mine !== generation) return;
+      showAccountList();
       showPeopleMessage(I18n.t('admin.people.loadFailed'));
     }
   }
@@ -150,8 +161,10 @@ export async function initPeopleTab(services) {
   });
 
   async function openAccount(userId) {
+    clearTimeout(searchTimer);
+    const mine = ++generation;
     try {
-      const { user } = await services.user(userId);
+      const { user, self_id: selfId } = await services.user(userId);
       // The activity is a second request and is allowed to fail on its own: a
       // log outage should not stop an operator seeing who they are looking at.
       let entries = [];
@@ -160,8 +173,10 @@ export async function initPeopleTab(services) {
       } catch (error) {
         entries = null;
       }
-      renderAccountDetail(user, entries);
+      if (mine !== generation) return;
+      renderAccountDetail(user, entries, selfId);
     } catch (error) {
+      if (mine !== generation) return;
       showAccountMessage(I18n.t('admin.account.loadFailed'));
     }
   }
@@ -181,6 +196,34 @@ export async function initPeopleTab(services) {
     const { action, userId } = button.dataset;
 
     if (action === 'open') {
+      await openAccount(userId);
+      return;
+    }
+
+    if (action === 'send-reset') {
+      /* Confirmed, because it puts a credential-recovery link in somebody's
+         inbox. `DESIGN.md` gives the system no danger button to lean on, so the
+         weight has to come from the words and from the record. */
+      const email = document.getElementById('account-heading')?.textContent || '';
+      if (!window.confirm(I18n.t('admin.account.confirmReset', { email }))) return;
+
+      button.disabled = true;
+      try {
+        await services.sendPasswordReset(userId);
+        ErrorHandler.showToast(I18n.t('admin.account.resetAccepted'));
+      } catch (error) {
+        const code = error instanceof AdminRequestError ? error.code : null;
+        const known = ['reset_rate_limited', 'reset_quota_exhausted', 'reset_no_email'];
+        ErrorHandler.showToast(
+          known.includes(code)
+            ? I18n.t(`admin.account.${code}`)
+            : I18n.t('admin.account.resetFailed'),
+          true,
+        );
+      } finally {
+        button.disabled = false;
+      }
+      // Reload so the two new audit rows appear in this account's own history.
       await openAccount(userId);
       return;
     }
@@ -213,11 +256,17 @@ export async function initPeopleTab(services) {
     }
     if (!patch) return;
 
+    // Where the operator acted from decides where they end up. Acting on the
+    // detail view and being returned to the list would lose the account they
+    // were working on, and the change they just made is only visible there.
+    const fromDetail = !document.getElementById('people-detail')?.hidden;
+
     button.disabled = true;
     try {
       await services.setUserFlags(userId, patch);
       ErrorHandler.showToast(I18n.t('admin.people.changed'));
-      await load();
+      if (fromDetail) await openAccount(userId);
+      else await load();
       loadAudit(services);
     } catch (error) {
       // A 409 is the system refusing on principle — it understood perfectly.

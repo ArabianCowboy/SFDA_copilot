@@ -546,3 +546,125 @@ def test_the_people_list_can_be_searched(browser_page: Page):
     browser_page.locator("#people-search").fill("orphan")
     expect(browser_page.locator(".admin-account-open")).to_have_count(1)
     expect(browser_page.locator(".admin-account-open")).to_contain_text("orphan@example.com")
+
+
+def test_an_activity_outage_is_not_shown_as_an_empty_history(browser_page: Page):
+    """`null` is "we could not tell"; `[]` is "nothing happened".
+
+    Collapsing them tells an operator an account has a clean record when the
+    truth is that the log was unreachable — the same false absence the server
+    answers with a 503 rather than an empty list.
+    """
+    _open_people(browser_page)
+    # Added after the list route, so it wins: Playwright matches the most
+    # recently registered handler first.
+    browser_page.route("**/admin/api/audit*", lambda route: route.fulfill(status=503))
+    browser_page.locator(".admin-account-open", has_text="test@example.com").click()
+
+    expect(browser_page.locator("#account-activity-failed")).to_be_visible()
+    expect(browser_page.locator("#account-activity-empty")).to_have_count(0)
+    # The account still loaded; a log outage must not take the page with it.
+    expect(browser_page.locator("#account-heading")).to_contain_text("test@example.com")
+
+
+def test_a_failed_account_load_says_so_instead_of_showing_nothing(browser_page: Page):
+    """The failure message used to be written into a panel that was still
+    hidden, because the swap only happened on a successful render."""
+    _open_people(browser_page)
+    browser_page.route("**/admin/api/users/*", lambda route: route.fulfill(status=503))
+    browser_page.locator(".admin-account-open", has_text="test@example.com").click()
+
+    expect(browser_page.locator("#account-error")).to_be_visible()
+    # And there is a way back out of the failure.
+    expect(browser_page.locator("#account-back")).to_be_visible()
+
+
+def test_a_pending_search_does_not_replace_an_open_account(browser_page: Page):
+    """Type, then open a result inside the 300ms debounce: the queued list
+    request used to resolve last and swap the detail back to the list."""
+    _open_people(browser_page)
+    browser_page.locator("#people-search").fill("test")
+    # No wait — the debounce is still pending when this click lands.
+    browser_page.locator(".admin-account-open", has_text="test@example.com").click()
+
+    expect(browser_page.locator("#account-heading")).to_contain_text("test@example.com")
+    browser_page.wait_for_timeout(600)
+    expect(browser_page.locator("#people-detail")).to_be_visible()
+    expect(browser_page.locator("#people-list")).to_be_hidden()
+
+
+# ── Account actions ───────────────────────────────────────────────────────────
+
+
+def test_the_detail_says_a_password_can_never_be_set(browser_page: Page):
+    """The design position on the surface, not only in a commit message.
+
+    The support outcome people want from "set their password" is "get them back
+    in", and a reset link delivers that without anyone learning a secret.
+    """
+    _open_people(browser_page)
+    browser_page.locator(".admin-account-open", has_text="test@example.com").click()
+
+    expect(browser_page.locator("#account-no-password-hint")).to_be_visible()
+    expect(browser_page.locator("#account-send-reset")).to_be_visible()
+
+
+def test_the_detail_says_what_it_deliberately_cannot_do(browser_page: Page):
+    """An operator mid-incident should not have to work out for themselves that
+    the console cannot end a session — disabling chat does not sign anyone out."""
+    _open_people(browser_page)
+    browser_page.locator(".admin-account-open", has_text="test@example.com").click()
+
+    absent = browser_page.locator("#account-absent")
+    expect(absent).to_be_visible()
+    expect(absent).to_contain_text("session", ignore_case=True)
+
+
+def test_sending_a_reset_asks_first_and_reports_the_outcome(browser_page: Page):
+    _open_people(browser_page)
+    browser_page.route(
+        "**/admin/api/users/*/reset-password",
+        lambda route: route.fulfill(
+            status=200, content_type="application/json",
+            body=json.dumps({"accepted": True, "operation_id": "op-1"})),
+    )
+    browser_page.locator(".admin-account-open", has_text="test@example.com").click()
+
+    browser_page.once("dialog", lambda dialog: dialog.accept())
+    browser_page.locator("#account-send-reset").click()
+
+    expect(browser_page.locator("#toast")).to_contain_text("accepted", ignore_case=True)
+
+
+def test_a_rate_limited_reset_gets_its_own_sentence(browser_page: Page):
+    """Distinct from the project-wide allowance: an operator who does not know a
+    project ceiling exists will conclude the account is broken."""
+    _open_people(browser_page)
+    browser_page.route(
+        "**/admin/api/users/*/reset-password",
+        lambda route: route.fulfill(
+            status=429, content_type="application/json",
+            body=json.dumps({"error": "reset_quota_exhausted"})),
+    )
+    browser_page.locator(".admin-account-open", has_text="test@example.com").click()
+
+    browser_page.once("dialog", lambda dialog: dialog.accept())
+    browser_page.locator("#account-send-reset").click()
+
+    expect(browser_page.locator("#toast")).to_contain_text("allowance", ignore_case=True)
+
+
+def test_declining_the_confirmation_sends_nothing(browser_page: Page):
+    sent = []
+    _open_people(browser_page)
+    browser_page.route(
+        "**/admin/api/users/*/reset-password",
+        lambda route: (sent.append(1), route.fulfill(status=200, body="{}")),
+    )
+    browser_page.locator(".admin-account-open", has_text="test@example.com").click()
+
+    browser_page.once("dialog", lambda dialog: dialog.dismiss())
+    browser_page.locator("#account-send-reset").click()
+    browser_page.wait_for_timeout(300)
+
+    assert not sent, "a dismissed confirmation still sent the reset"

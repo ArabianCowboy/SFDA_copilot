@@ -149,14 +149,56 @@ def test_a_negative_offset_does_not_reach_the_query(client):
 
 def test_the_backend_offers_no_way_to_change_a_recorded_entry():
     """Append-only is enforced by database privileges; this pins that no code
-    path even asks. A method to update an entry would be the first step toward
-    something calling it."""
+    path even asks.
+
+    Amended when `append_audit` was added, and amended deliberately rather than
+    evaded. The original stated the rule by proxy — no method name containing
+    "audit" other than `list_audit` — so the cheap way past it was to name the
+    new method something else, which would have left this test passing and
+    meaning nothing.
+
+    Appending is not the danger. `append_audit` exists because an outbound email
+    cannot share a transaction with its record, so the intent and the outcome are
+    two inserts. **Changing** an entry is the danger, and that is what is
+    asserted: an exact surface, plus a check that no audit method is named for
+    mutation.
+    """
     surface = {name for name in dir(AdminBackend) if not name.startswith("_")}
-    assert not {n for n in surface if "audit" in n and n != "list_audit"}
+    assert {n for n in surface if "audit" in n} == {"list_audit", "append_audit"}
+
+    forbidden = ("update", "edit", "delete", "remove", "amend", "rewrite", "purge", "set")
+    assert not {
+        n for n in surface if "audit" in n and any(verb in n for verb in forbidden)
+    }
 
     backend = InMemoryAdminBackend()
     methods = {name for name in dir(backend) if "audit" in name and not name.startswith("_")}
-    assert methods == {"list_audit"}
+    assert methods == {"list_audit", "append_audit"}
+
+
+def test_an_appended_entry_is_never_revisited():
+    """Carries the weight the assertion above used to.
+
+    The intent row must survive the outcome row untouched — if the second write
+    could amend the first, the whole reason for writing two would be gone.
+    """
+    backend = InMemoryAdminBackend()
+    actor = AuditActor("test-admin-id", "admin@example.com")
+
+    backend.append_audit(action="user.password_reset_requested", target_type="user",
+                         target_id="test-user-id", actor=actor,
+                         after={"status": "requested", "operation_id": "op-1"})
+    intent = backend.list_audit(limit=10, offset=0)[0]
+    snapshot = dict(intent)
+
+    backend.append_audit(action="user.password_reset_accepted", target_type="user",
+                         target_id="test-user-id", actor=actor,
+                         after={"status": "accepted", "operation_id": "op-1"})
+
+    rows = backend.list_audit(limit=10, offset=0)
+    assert len(rows) == 2
+    unchanged = next(r for r in rows if r["action"] == "user.password_reset_requested")
+    assert unchanged == snapshot
 
 
 # ── The diff helper ───────────────────────────────────────────────────────────

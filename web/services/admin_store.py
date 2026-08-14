@@ -51,11 +51,43 @@ _REFUSAL_CODES = {
     "AD002": "would_leave_no_administrator",
     "AD003": "no_such_account",
     "AD004": "actor_no_longer_administrator",
+    # Raised by admin_update_profile when the row moved under the operator's
+    # feet. Not a failure — a refusal to overwrite somebody else's edit.
+    "AD005": "profile_changed_since_loaded",
 }
 
 # The columns that describe a reader's standing. Named once so the query and
 # the dataclass cannot drift apart.
 _IDENTITY_COLUMNS = "id, role, tier, is_disabled"
+
+
+def _refusal_from(exception: Exception) -> Exception:
+    """Turn a PostgREST error carrying one of our SQLSTATEs into a refusal.
+
+    Matched on the code rather than the message, because the message is prose
+    and prose gets edited. Where the SDK exposes no structured code, the search
+    is bounded to the message rather than the whole exception repr: searching
+    the repr meant a user id containing "AD001" was reported as a self-change
+    refusal — the target's own identifier deciding what the refusal was.
+
+    Returns the exception to raise, so the caller keeps `raise ... from` and the
+    original traceback when this is not a refusal at all.
+    """
+    sqlstate = (
+        getattr(exception, "code", None)
+        or (exception.args[0].get("code") if exception.args
+            and isinstance(exception.args[0], dict) else None)
+    )
+    if sqlstate in _REFUSAL_CODES:
+        return AdminActionRefused(_REFUSAL_CODES[sqlstate])
+
+    message = ""
+    if exception.args and isinstance(exception.args[0], dict):
+        message = str(exception.args[0].get("message") or "")
+    for state, code in _REFUSAL_CODES.items():
+        if state in message:
+            return AdminActionRefused(code)
+    return exception
 
 
 class AdminBackend(Protocol):
@@ -110,6 +142,35 @@ class AdminBackend(Protocol):
 
         Raises :class:`AdminActionRefused` for the guards that stop an operator
         locking everyone out.
+        """
+        ...
+
+    def update_profile(
+        self, user_id: str, *, full_name, organization, specialization,
+        expected_updated_at, actor,
+    ) -> dict:
+        """Rewrite a reader's profile text, recording the diff.
+
+        Records nothing when nothing changed, and refuses rather than clobbers
+        when the row has moved since the operator loaded it.
+        """
+        ...
+
+    def append_audit(
+        self, *, action: str, target_type: str, target_id: str, actor,
+        after: Optional[dict] = None, note: Optional[str] = None,
+    ) -> None:
+        """Record one action that could not share a transaction with its effect.
+
+        Every other audit row in this system is written by the Postgres function
+        that performs the change, inside the same transaction — which is why the
+        record cannot disagree with what happened. An outbound email has no such
+        option: the send is an HTTP call to somebody else. So the intent is
+        recorded, the call is made, and the outcome is recorded, and the pair is
+        correlated by an ``operation_id`` carried in ``after``.
+
+        Appending is not the danger this system guards against. **Changing** a
+        recorded entry is, and no implementation offers a way to.
         """
         ...
 
@@ -219,6 +280,58 @@ class SupabaseAdminBackend:
         total = rows[0]["total"] if rows else 0
         return [{k: v for k, v in row.items() if k != "total"} for row in rows], total
 
+    def update_profile(
+        self, user_id: str, *, full_name, organization, specialization,
+        expected_updated_at, actor,
+    ) -> dict:
+        try:
+            uuid.UUID(str(user_id))
+        except (ValueError, AttributeError, TypeError):
+            raise AdminActionRefused("no_such_account") from None
+
+        try:
+            response = self._client.rpc(
+                "admin_update_profile",
+                {
+                    "p_user_id": user_id,
+                    "p_full_name": full_name,
+                    "p_organization": organization,
+                    "p_specialization": specialization,
+                    "p_expected_updated_at": expected_updated_at,
+                    "p_actor_id": actor.user_id,
+                    "p_actor_email": actor.email,
+                    "p_request_ip": actor.request_ip,
+                    "p_user_agent": actor.user_agent,
+                },
+            ).execute()
+        except Exception as exception:
+            raise _refusal_from(exception) from exception
+
+        return getattr(response, "data", None) or {}
+
+    def append_audit(
+        self, *, action: str, target_type: str, target_id: str, actor,
+        after: Optional[dict] = None, note: Optional[str] = None,
+    ) -> None:
+        # A direct insert rather than an RPC: there is no accompanying mutation
+        # to share a transaction with, which is the entire reason this exists.
+        # `service_role` already holds insert on audit_log (20260814032447), so
+        # this needs no new privilege.
+        self._client.table("audit_log").insert({
+            "actor_id": actor.user_id,
+            "actor_email": actor.email,
+            "action": action,
+            "target_type": target_type,
+            "target_id": target_id,
+            "after": after,
+            # None rather than "": the RPCs guard with `nullif(...)::inet` and a
+            # direct insert has no such guard, so an empty string would fail the
+            # cast instead of storing NULL.
+            "request_ip": actor.request_ip or None,
+            "user_agent": actor.user_agent,
+            "note": note,
+        }).execute()
+
     def get_user(self, user_id: str) -> Optional[dict]:
         # Same reasoning as `set_user_flags` below: a non-uuid identifies no
         # account, and that is a "not found", not a crash.
@@ -261,28 +374,7 @@ class SupabaseAdminBackend:
             ).execute()
         except Exception as exception:
             # The guards come back as PostgREST errors carrying the SQLSTATE.
-            # Matched on the code rather than the message, because the message
-            # is prose and prose gets edited.
-            # Matched against the structured code where the SDK exposes one,
-            # falling back to a bounded search of the message rather than the
-            # whole exception repr. Searching the repr meant a user id
-            # containing "AD001" was reported as a self-change refusal — the
-            # target's own identifier deciding what the refusal was.
-            sqlstate = (
-                getattr(exception, "code", None)
-                or (exception.args[0].get("code") if exception.args
-                    and isinstance(exception.args[0], dict) else None)
-            )
-            if sqlstate in _REFUSAL_CODES:
-                raise AdminActionRefused(_REFUSAL_CODES[sqlstate]) from exception
-
-            message = ""
-            if exception.args and isinstance(exception.args[0], dict):
-                message = str(exception.args[0].get("message") or "")
-            for state, code in _REFUSAL_CODES.items():
-                if state in message:
-                    raise AdminActionRefused(code) from exception
-            raise
+            raise _refusal_from(exception) from exception
 
         return getattr(response, "data", None) or {}
 
@@ -399,6 +491,47 @@ class InMemoryAdminBackend:
         # matching admin_list_users, which cannot distinguish the case at all.
         listed = [{k: v for k, v in r.items() if k != "has_profile"} for r in rows]
         return listed[offset:offset + limit], len(rows)
+
+    def append_audit(
+        self, *, action: str, target_type: str, target_id: str, actor,
+        after: Optional[dict] = None, note: Optional[str] = None,
+    ) -> None:
+        self._record(action=action, target_type=target_type, target_id=target_id,
+                     actor=actor, after=after, note=note)
+
+    def update_profile(
+        self, user_id: str, *, full_name, organization, specialization,
+        expected_updated_at, actor,
+    ) -> dict:
+        # Mirrors admin_update_profile, including the parts that are easy to
+        # leave out of a double and then never test: the actor revalidation, the
+        # stale-write refusal, and writing NO audit row for an empty diff.
+        if actor.user_id:
+            acting = next((r for r in self._users if r["id"] == actor.user_id), None)
+            if not acting or acting.get("role") != "admin" or acting.get("is_disabled"):
+                raise AdminActionRefused("actor_no_longer_administrator")
+
+        row = next((r for r in self._users if r["id"] == user_id), None)
+        if row is None or not row.get("has_profile", True):
+            raise AdminActionRefused("no_such_account")
+
+        if (expected_updated_at is not None
+                and expected_updated_at != row.get("updated_at", row["created_at"])):
+            raise AdminActionRefused("profile_changed_since_loaded")
+
+        before = {k: row.get(k) for k in ("full_name", "organization", "specialization")}
+        after = {"full_name": full_name, "organization": organization,
+                 "specialization": specialization}
+        if before == after:
+            return after
+
+        row.update(after)
+        row["updated_at"] = f"{row.get('updated_at', row['created_at'])}+"
+        self._record(
+            action="user.profile_change", target_type="user", target_id=user_id,
+            actor=actor, before=before, after=after,
+        )
+        return after
 
     def get_user(self, user_id: str) -> Optional[dict]:
         row = next((r for r in self._users if r["id"] == user_id), None)

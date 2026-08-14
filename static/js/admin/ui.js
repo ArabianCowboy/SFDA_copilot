@@ -488,6 +488,10 @@ const ACTION_KEYS = {
   'user.disable': 'admin.audit.actionUserDisable',
   'user.enable': 'admin.audit.actionUserEnable',
   'user.role_change': 'admin.audit.actionUserRoleChange',
+  'user.profile_change': 'admin.audit.actionUserProfileChange',
+  'user.password_reset_requested': 'admin.audit.actionResetRequested',
+  'user.password_reset_accepted': 'admin.audit.actionResetAccepted',
+  'user.password_reset_failed': 'admin.audit.actionResetFailed',
 };
 
 function describeAction(action) {
@@ -663,7 +667,10 @@ export function showAccountList() {
   if (search) search.hidden = false;
 }
 
-export function renderAccountDetail(account, entries) {
+let currentSelfId = null;
+
+export function renderAccountDetail(account, entries, selfId = null) {
+  currentSelfId = selfId ?? currentSelfId;
   const list = el('people-list');
   const detail = el('people-detail');
   if (!detail) return;
@@ -703,6 +710,11 @@ export function renderAccountDetail(account, entries) {
     formatWhen(account.last_sign_in_at) || I18n.t('admin.people.never'), { machine: true });
   definition(facts, I18n.t('admin.account.confirmed'),
     formatWhen(account.email_confirmed_at) || I18n.t('admin.account.notConfirmed'), { machine: true });
+  // Fetched and previously not drawn. An operator deciding whether an account is
+  // dormant wants this, and a field returned but never shown is privileged data
+  // carried for no reason.
+  definition(facts, I18n.t('admin.account.lastSeen'),
+    formatWhen(account.last_seen_at) || I18n.t('admin.people.never'), { machine: true });
 
   if (account.has_profile) {
     definition(facts, I18n.t('admin.roleLabel'),
@@ -710,6 +722,8 @@ export function renderAccountDetail(account, entries) {
     definition(facts, I18n.t('admin.account.standing'),
       I18n.t(account.is_disabled ? 'admin.people.accessDisabled' : 'admin.people.accessAllowed'));
     if (account.is_disabled) {
+      definition(facts, I18n.t('admin.account.disabledAt'),
+        formatWhen(account.disabled_at), { machine: true });
       definition(facts, I18n.t('admin.account.disabledBy'), account.disabled_by_email, { machine: true });
       definition(facts, I18n.t('admin.account.disabledReason'), account.disabled_reason);
     }
@@ -748,7 +762,68 @@ export function renderAccountDetail(account, entries) {
     detail.appendChild(fields);
   }
 
-  /* Zone 3 — what has been done to this account. The same query as the global
+  /* Zone 3 — actions, in increasing severity. Last on the page on purpose:
+     an operator reads who this is and what state they are in before they get
+     the controls that change it. */
+  const actionsHeading = document.createElement('h3');
+  actionsHeading.className = 'admin-subheading';
+  actionsHeading.textContent = I18n.t('admin.account.actionsHeading');
+  detail.appendChild(actionsHeading);
+
+  const actions = document.createElement('div');
+  actions.className = 'admin-row-actions';
+  actions.id = 'account-actions';
+
+  const reset = document.createElement('button');
+  reset.type = 'button';
+  reset.className = 'admin-row-action';
+  reset.id = 'account-send-reset';
+  reset.dataset.action = 'send-reset';
+  reset.dataset.userId = account.id;
+  reset.textContent = I18n.t('admin.account.sendReset');
+  actions.appendChild(reset);
+
+  if (account.has_profile) {
+    const isSelf = account.id === currentSelfId;
+    actions.append(
+      actionButton(
+        I18n.t(account.role === 'admin' ? 'admin.people.demote' : 'admin.people.promote'),
+        { action: account.role === 'admin' ? 'demote' : 'promote', id: account.id,
+          danger: account.role === 'admin', disabled: isSelf },
+      ),
+      actionButton(
+        I18n.t(account.is_disabled ? 'admin.people.enable' : 'admin.people.disable'),
+        { action: account.is_disabled ? 'enable' : 'disable', id: account.id,
+          danger: !account.is_disabled, disabled: isSelf },
+      ),
+    );
+  }
+  detail.appendChild(actions);
+
+  const hint = document.createElement('p');
+  hint.className = 'admin-form-hint';
+  hint.id = 'account-no-password-hint';
+  hint.textContent = I18n.t('admin.account.noPasswordHint');
+  detail.appendChild(hint);
+
+  /* And what is deliberately missing. An operator mid-incident should not have
+     to work out for themselves that the console cannot end a session. */
+  const absent = document.createElement('div');
+  absent.className = 'admin-notice';
+  absent.id = 'account-absent';
+  const absentTitle = document.createElement('strong');
+  absentTitle.textContent = I18n.t('admin.account.absentHeading');
+  const absentList = document.createElement('ul');
+  [I18n.t('admin.account.absentRevoke'), I18n.t('admin.account.absentEmailChange')]
+    .forEach((text) => {
+      const li = document.createElement('li');
+      li.textContent = text;
+      absentList.appendChild(li);
+    });
+  absent.append(absentTitle, absentList);
+  detail.appendChild(absent);
+
+  /* Zone 4 — what has been done to this account. The same query as the global
      log with a filter, and this is the page it belongs on: "what happened to
      this person" had no surface anywhere before. */
   const activity = document.createElement('h3');
@@ -761,7 +836,19 @@ export function renderAccountDetail(account, entries) {
 }
 
 function renderAccountActivity(entries) {
-  if (!entries || !entries.length) {
+  /* null is "we could not tell", [] is "nothing happened". Collapsing the two
+     tells an operator that an account has a clean history when the truth is
+     that the log was unreachable — the same false-absence the server side
+     answers with a 503 rather than an empty list. */
+  if (entries === null) {
+    const failed = document.createElement('p');
+    failed.className = 'admin-empty';
+    failed.id = 'account-activity-failed';
+    failed.textContent = I18n.t('admin.account.activityFailed');
+    return failed;
+  }
+
+  if (!entries.length) {
     const empty = document.createElement('p');
     empty.className = 'admin-empty';
     empty.id = 'account-activity-empty';
@@ -795,9 +882,25 @@ function renderAccountActivity(entries) {
 export function showAccountMessage(message) {
   const detail = el('people-detail');
   if (!detail) return;
+
+  /* The panel only swaps on a SUCCESSFUL render, so without these two lines the
+     failure message is written into an element that is still hidden and the
+     operator is told nothing at all. */
+  const list = el('people-list');
+  if (list) list.hidden = true;
+  detail.hidden = false;
   detail.textContent = '';
+
+  const back = document.createElement('button');
+  back.type = 'button';
+  back.id = 'account-back';
+  back.className = 'admin-tab';
+  back.textContent = I18n.t('admin.account.back');
+  detail.appendChild(back);
+
   const p = document.createElement('p');
   p.className = 'admin-empty';
+  p.id = 'account-error';
   p.textContent = message;
   detail.appendChild(p);
 }

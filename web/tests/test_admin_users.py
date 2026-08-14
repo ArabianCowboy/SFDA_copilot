@@ -342,3 +342,188 @@ def test_the_activity_log_can_be_filtered_to_one_account(client):
 ])
 def test_a_target_the_log_does_not_recognise_is_refused(client, query):
     assert client.get(f"/admin/api/audit?{query}", headers=ADMIN).status_code == 422
+
+
+# ── Profile editing ───────────────────────────────────────────────────────────
+
+
+def test_a_profile_edit_is_recorded_with_before_and_after(client):
+    """A free-text overwrite is unrecoverable without the diff, which is the
+    whole reason this is audited rather than just permitted."""
+    response = client.patch(
+        "/admin/api/users/test-user-id/profile", headers=ADMIN,
+        json={"full_name": "New Name", "organization": "New Org",
+              "specialization": "Regulatory"},
+    )
+    assert response.status_code == 200
+
+    entry = client.get(
+        "/admin/api/audit?target_type=user&target_id=test-user-id", headers=ADMIN
+    ).get_json()["entries"][0]
+    assert entry["action"] == "user.profile_change"
+    assert entry["after"]["full_name"] == "New Name"
+    assert "full_name" in entry["before"]
+
+
+def test_a_no_op_profile_edit_records_nothing(client):
+    """TODO.md files the opposite behaviour as a bug against the sibling RPC: a
+    patch that sets a field to the value it already holds recording a change
+    that did not occur. There is no reason to reproduce it here."""
+    payload = {"full_name": "Same", "organization": "Same", "specialization": "Same"}
+    client.patch("/admin/api/users/test-user-id/profile", headers=ADMIN, json=payload)
+    before = len(client.get("/admin/api/audit", headers=ADMIN).get_json()["entries"])
+
+    client.patch("/admin/api/users/test-user-id/profile", headers=ADMIN, json=payload)
+
+    after = len(client.get("/admin/api/audit", headers=ADMIN).get_json()["entries"])
+    assert after == before, "an unchanged save wrote an audit row"
+
+
+def test_a_stale_edit_is_refused_rather_than_clobbering(client):
+    """A row lock protects execution time, not the minutes an operator spends
+    typing. Two people editing the same account otherwise last-write-wins."""
+    response = client.patch(
+        "/admin/api/users/test-user-id/profile", headers=ADMIN,
+        json={"full_name": "A", "organization": "B", "specialization": "C",
+              "expected_updated_at": "1999-01-01T00:00:00+00:00"},
+    )
+    assert response.status_code == 409
+    assert response.get_json() == {"error": "profile_changed_since_loaded"}
+
+
+def test_an_account_with_no_profile_cannot_have_one_edited(client):
+    response = client.patch(
+        "/admin/api/users/test-orphan-id/profile", headers=ADMIN,
+        json={"full_name": "X", "organization": "Y", "specialization": "Z"},
+    )
+    assert response.status_code == 409
+    assert response.get_json() == {"error": "no_such_account"}
+
+
+@pytest.mark.parametrize("payload, status", [
+    ({"full_name": 12}, 400),
+    ({"full_name": "x" * 201}, 422),
+    ({"role": "admin"}, 422),
+    ({"is_disabled": True}, 422),
+    ({"password": "hunter2"}, 422),
+])
+def test_the_profile_route_accepts_only_the_three_fields_it_owns(client, payload, status):
+    assert client.patch(
+        "/admin/api/users/test-user-id/profile", headers=ADMIN, json=payload
+    ).status_code == status
+
+
+def test_the_profile_route_is_gated_like_every_other_mutation(client):
+    body = {"full_name": "X", "organization": "Y", "specialization": "Z"}
+    assert client.patch("/admin/api/users/test-user-id/profile", json=body).status_code == 401
+    assert client.patch(
+        "/admin/api/users/test-user-id/profile", headers=AUTH, json=body
+    ).status_code == 403
+
+
+def test_no_console_route_accepts_a_password(client, app):
+    """The design position, pinned rather than documented.
+
+    An operator may send a reset link and may never set a credential — a shared
+    password breaks attribution for every row in the audit log, not just its own.
+
+    Restricted to MUTATION methods on purpose: an earlier draft of this test sent
+    a body to every admin route and asserted no 2xx, which cannot work, because
+    GET handlers ignore request bodies and correctly answer 200. The real
+    property is that no route that CHANGES anything will act on a password, and
+    that only means something because each one rejects unknown keys outright.
+    """
+    mutations = [
+        (rule.rule.replace("<user_id>", "test-user-id"), method)
+        for rule in app.url_map.iter_rules()
+        if str(rule.endpoint).startswith("admin.")
+        for method in ("POST", "PATCH", "PUT")
+        if method in rule.methods
+    ]
+    assert mutations, "expected the console to have mutation routes to check"
+
+    for path, method in mutations:
+        response = client.open(path, method=method, headers=ADMIN,
+                               json={"password": "hunter2"})
+        assert response.status_code >= 400, (
+            f"{method} {path} accepted a password field ({response.status_code})"
+        )
+
+
+# ── Sending a reset ───────────────────────────────────────────────────────────
+
+
+def test_a_reset_records_intent_before_the_send_and_the_outcome_after(client, app):
+    """Two rows, correlated. The failure this shape exists for is the process
+    dying between the send and the record — which leaves a dangling `requested`
+    rather than silence, and that is the point."""
+    response = client.post(
+        "/admin/api/users/test-user-id/reset-password", headers=ADMIN
+    )
+    assert response.status_code == 200
+
+    entries = client.get(
+        "/admin/api/audit?target_type=user&target_id=test-user-id", headers=ADMIN
+    ).get_json()["entries"]
+    actions = [e["action"] for e in entries]
+    assert "user.password_reset_requested" in actions
+    assert "user.password_reset_accepted" in actions
+
+    ids = {e["after"]["operation_id"] for e in entries if e.get("after")}
+    assert len(ids) == 1, "the pair must share one operation_id"
+    assert response.get_json()["operation_id"] in ids
+
+
+def test_the_outcome_is_named_accepted_rather_than_sent(client):
+    """The dispatcher establishes that GoTrue accepted the request, not that
+    anything was delivered. Delivery lives in the provider's log."""
+    client.post("/admin/api/users/test-user-id/reset-password", headers=ADMIN)
+    actions = [
+        e["action"] for e in
+        client.get("/admin/api/audit", headers=ADMIN).get_json()["entries"]
+    ]
+    assert "user.password_reset_accepted" in actions
+    assert "user.password_reset_sent" not in actions
+
+
+def test_a_failed_send_is_recorded_as_failed_not_accepted(client, app):
+    app.config["_testing_recovery_dispatcher"].refuse_with = "reset_rate_limited"
+
+    response = client.post(
+        "/admin/api/users/test-user-id/reset-password", headers=ADMIN
+    )
+    assert response.status_code == 429
+    assert response.get_json() == {"error": "reset_rate_limited"}
+
+    actions = [
+        e["action"] for e in
+        client.get("/admin/api/audit", headers=ADMIN).get_json()["entries"]
+    ]
+    assert "user.password_reset_failed" in actions
+    assert "user.password_reset_accepted" not in actions
+    # The intent still stands: something was attempted, and the log says so.
+    assert "user.password_reset_requested" in actions
+
+
+def test_the_console_never_returns_a_recovery_link(client):
+    """The design position in one assertion. A body carrying the link would put
+    a bearer credential on whatever screen called this."""
+    body = client.post(
+        "/admin/api/users/test-user-id/reset-password", headers=ADMIN
+    ).get_data(as_text=True)
+
+    assert "http" not in body
+    assert "token" not in body.lower()
+
+
+def test_a_reset_for_an_unknown_account_is_refused(client):
+    assert client.post(
+        "/admin/api/users/test-nobody-id/reset-password", headers=ADMIN
+    ).status_code == 404
+
+
+def test_sending_a_reset_is_gated(client):
+    assert client.post("/admin/api/users/test-user-id/reset-password").status_code == 401
+    assert client.post(
+        "/admin/api/users/test-user-id/reset-password", headers=AUTH
+    ).status_code == 403

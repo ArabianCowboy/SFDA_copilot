@@ -190,6 +190,12 @@ runtime:
       actionUserDisable: "Disabled chat access"
       actionUserEnable: "Restored chat access"
       actionUserRoleChange: "Changed a role"
+      actionUserProfileChange: "Edited a profile"
+      # "requested" then "accepted", never "sent": the code observes that GoTrue
+      # took the request, not that anything was delivered.
+      actionResetRequested: "Started a password reset"
+      actionResetAccepted: "Password reset accepted for sending"
+      actionResetFailed: "Password reset could not be sent"
     account:
       back: "Back to all users"
       identityHeading: "Identity"
@@ -197,6 +203,8 @@ runtime:
       activityHeading: "Activity on this account"
       created: "Created"
       lastSignIn: "Last signed in"
+      lastSeen: "Last active"
+      disabledAt: "Disabled at"
       confirmed: "Email confirmed"
       notConfirmed: "Not confirmed"
       standing: "Standing"
@@ -209,6 +217,27 @@ runtime:
       noActivity: "Nothing has been done to this account yet."
       loadFailed: "Could not load this account."
       activityFailed: "Could not load this account's activity."
+      actionsHeading: "Account actions"
+      sendReset: "Send password reset"
+      confirmReset: "Send a password reset link to {email}?"
+      resetAccepted: "Reset link accepted for sending."
+      resetFailed: "The reset link could not be sent."
+      reset_rate_limited: "A link was requested for this account less than a minute ago."
+      reset_quota_exhausted: "This project's email allowance is used up for now. Nothing was sent."
+      reset_no_email: "This account has no email address to send to."
+      # Stated on the surface, not just in a commit message. The support outcome
+      # people want from "set their password" is "get them back in", and a link
+      # delivers that without anyone learning a secret.
+      noPasswordHint: "An operator can send a reset link. Nobody here can set or see a password."
+      # What is deliberately absent, said out loud — an operator mid-incident
+      # should not have to work out that the console cannot do these yet.
+      absentHeading: "Not available here yet"
+      absentRevoke: "Ending existing sessions. Disabling chat does not sign anyone out, and a password reset does not end other sessions either — use the Supabase dashboard."
+      absentEmailChange: "Changing an email address. With confirmation on, an address typed wrongly at signup cannot be reached by a reset either; that reader has to register again."
+      saveProfile: "Save profile"
+      profileSaved: "Profile saved."
+      profileSaveFailed: "Could not save this profile."
+      profile_changed_since_loaded: "Somebody else changed this profile while you were editing. Reload before saving."
       brokenHeading: "This account has no profile"
       brokenBody: "It exists in authentication but has no profile row, so its role and access cannot be read or changed. It was most likely created before the signup trigger was repaired."
     people:
