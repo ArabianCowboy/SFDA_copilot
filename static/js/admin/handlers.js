@@ -131,7 +131,17 @@ export async function initSettingsTab(services) {
       // the response is what is actually stored, and it also refreshes the
       // "changed here" markers, which a local update would leave stale.
       renderSettings({ ...saved, allowed_models: allowedModels });
-      ErrorHandler.showToast(I18n.t('admin.settings.saved'));
+
+      // `applied: false` means the values were stored but the generation
+      // handler could not be rebuilt from them, so answers are still coming
+      // from the previous settings. Saying only "saved" there would be true
+      // and misleading — an operator switching away from a degraded model
+      // needs to know it has not actually happened yet.
+      if (saved.applied === false) {
+        ErrorHandler.showToast(I18n.t('admin.settings.savedNotApplied'), true);
+      } else {
+        ErrorHandler.showToast(I18n.t('admin.settings.saved'));
+      }
     } catch (error) {
       setSettingsSaving(false);
       if (error instanceof AdminRequestError && error.errors?.length) {

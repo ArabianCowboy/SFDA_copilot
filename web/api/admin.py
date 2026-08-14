@@ -151,9 +151,19 @@ def put_settings() -> Response:
     logger.info(
         "Settings updated by %s: %s", g.identity.email, sorted(payload)
     )
+
+    # Apply to generation immediately. Reported rather than raised: the settings
+    # are already stored, so a handler that would not build is a reason to tell
+    # the operator their change is not live yet — not a reason to fail a write
+    # that succeeded, and certainly not a reason to take the chatbot down.
+    applied = current_app.config["apply_generation_settings"]()
+    if not applied:
+        logger.error("Settings were stored but could not be applied to generation.")
+
     return jsonify({
         "settings": service.snapshot(),
         "overrides": service.overrides(),
+        "applied": applied,
     })
 
 

@@ -144,7 +144,7 @@ SUPPORTED_FAQ_LANGS = ("en", "ar")
 # that mixes a fresh template with a stale module is worse than a stale page —
 # post-icon-migration it would render an <i class="bi"> with no icon font behind
 # it, or print a glyph NAME as text. MODULE_IMPORT_MAP below closes that.
-ASSET_VERSION = "warm17"
+ASSET_VERSION = "warm18"
 
 # Product release, rendered in the landing footer. Kept as one constant so
 # the number cannot drift between the page and the module headers.
@@ -523,6 +523,33 @@ def _register_testing_doubles(app: Flask) -> None:
     handler.max_context_results = config.get("openai", "max_context_results", 8)
     handler.model = config.get("openai", "model", "gpt-4o-mini")
 
+    def build_testing_handler(settings=None):
+        """The factory the settings swap uses under TESTING.
+
+        A model change must be exercisable without an OpenAI key, and replacing
+        the double with a real OpenAIHandler would break every test that leans
+        on it. So the swap builds another double carrying the requested values —
+        the mechanism under test is the atomic rebind, not what the handler
+        talks to.
+        """
+        settings = settings or {}
+        replacement = MagicMock(spec=OpenAIHandler)
+        replacement.max_context_results = settings.get(
+            "max_context_results", handler.max_context_results
+        )
+        replacement.model = settings.get("model", handler.model)
+        replacement.max_tokens = settings.get("max_tokens")
+        replacement.temperature = settings.get("temperature")
+        replacement.tokenizer_exact = True
+        # Carry the demo behaviour across, or a model switch would leave the
+        # ?testing=true console answering with bare MagicMocks.
+        replacement.stream_response.side_effect = handler.stream_response.side_effect
+        replacement.generate_response.return_value = handler.generate_response.return_value
+        replacement.generate_suggestions.return_value = handler.generate_suggestions.return_value
+        return replacement
+
+    app.config["openai_handler_factory"] = build_testing_handler
+
     demo_answer = (
         "Applications for drug registration must be submitted through the SFDA electronic "
         "portal [1]. The dossier follows the **eCTD** structure, and the manufacturing site "
@@ -589,6 +616,7 @@ def _initialize_services(app: Flask, testing: bool) -> None:
         _register_testing_doubles(app)
         return
 
+    app.config["openai_handler_factory"] = OpenAIHandler
     app.config["openai_handler"] = OpenAIHandler()
     try:
         search_engine = ImprovedSearchEngine()
@@ -675,6 +703,59 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
 
     app.config["admin_backend"] = admin_backend
     app.config["settings_service"] = SettingsService(admin_backend)
+
+    def apply_generation_settings() -> bool:
+        """Rebuild the OpenAI handler from current settings and swap it in.
+
+        **Replacement, not mutation.** A handler is either wholly the old one or
+        wholly the new one: the model, the token ceiling, the temperature and
+        the tokenizer are established together in the constructor, and each
+        request captures one reference at the top of its view and keeps it for
+        its lifetime. So a request that is already streaming finishes on the
+        handler it started with, and the next one gets the new handler — there
+        is no moment at which any thread can observe a half-applied change.
+
+        That property is why nothing in the request path needed changing for
+        this feature. `handle_chat_stream` captures `handler` once and its
+        generator closes over that local; the blocking route does the same.
+
+        Returns False and leaves the running handler in place if construction
+        fails — a bad setting must not be able to take the chatbot down. The
+        caller reports that; it does not raise.
+        """
+        settings = app.config["settings_service"].snapshot()
+        factory = app.config.get("openai_handler_factory")
+        if factory is None:
+            return False
+
+        try:
+            replacement = factory(settings)
+        except Exception:
+            logging.error(
+                "Could not build an OpenAI handler from the stored settings; "
+                "keeping the running one. Settings: %r",
+                settings,
+                exc_info=True,
+            )
+            return False
+
+        # The whole swap: one attribute rebind, atomic under the GIL.
+        app.config["openai_handler"] = replacement
+        logging.info(
+            "Generation settings applied: model=%s max_tokens=%s temperature=%s passages=%s",
+            settings.get("model"), settings.get("max_tokens"),
+            settings.get("temperature"), settings.get("max_context_results"),
+        )
+        return True
+
+    app.config["apply_generation_settings"] = apply_generation_settings
+
+    # Adopt any stored overrides at startup, so a model chosen in the console
+    # survives a restart. Deliberately best-effort and after the handler already
+    # exists: a settings-store outage during boot leaves the deployed defaults
+    # running rather than preventing the app from serving at all.
+    if app.config["settings_service"].overrides():
+        apply_generation_settings()
     app.register_blueprint(auth_bp, url_prefix="/auth")
     # Imported here rather than at module scope: admin.py imports back into this
     # module for `_authenticate_request`, and a top-level import would be a cycle.

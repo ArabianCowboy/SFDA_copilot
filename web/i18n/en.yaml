@@ -139,6 +139,7 @@ runtime:
       save: "Save changes"
       saving: "Saving…"
       saved: "Settings saved."
+      savedNotApplied: "Saved, but not applied to answers yet. The previous settings are still live."
       usingDefault: "Deployed default"
       overridden: "Changed here"
       revert: "Revert to default"
