@@ -125,16 +125,33 @@ export async function initSettingsTab(services) {
   // config.yaml and cannot change without a deploy, which would reload this
   // page anyway.
   let allowedModels = [];
+  // Held so a re-render on model change keeps showing which values were
+  // actually chosen rather than resetting every marker to "default".
+  let currentOverrides = {};
 
   try {
     const loaded = await services.settings();
     allowedModels = loaded.allowed_models || [];
+    currentOverrides = loaded.overrides || {};
     renderSettings(loaded);
   } catch (error) {
     showSettingsMessage(I18n.t('admin.settings.loadFailed'));
     ErrorHandler.showToast(I18n.t('admin.settings.loadFailed'), true);
     return;
   }
+
+  // Changing the model changes which controls are even valid — a reasoning
+  // model has an effort level and no temperature, an ordinary one the reverse.
+  // Re-rendering on change means the form always shows what this model accepts,
+  // rather than making an operator save once to discover the second control.
+  body.addEventListener('change', (event) => {
+    if (event.target.name !== 'model') return;
+    renderSettings({
+      settings: { ...readSettingsForm(), model: event.target.value },
+      overrides: currentOverrides,
+      allowed_models: allowedModels,
+    });
+  });
 
   // Delegated from the panel, so the listener survives the form being
   // re-rendered after every save.
@@ -149,6 +166,7 @@ export async function initSettingsTab(services) {
       // Re-render from the server's answer rather than from what was typed:
       // the response is what is actually stored, and it also refreshes the
       // "changed here" markers, which a local update would leave stale.
+      currentOverrides = saved.overrides || {};
       renderSettings({ ...saved, allowed_models: allowedModels });
 
       // `applied: false` means the values were stored but the generation

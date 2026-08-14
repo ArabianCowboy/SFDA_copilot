@@ -95,14 +95,46 @@ export const tabIds = () => TABS.map((entry) => entry.tab);
  */
 const FIELDS = [
   { key: 'model', kind: 'select' },
+  { key: 'reasoningEffort', name: 'reasoning_effort', kind: 'effort' },
   { key: 'temperature', kind: 'number', step: '0.1', numeric: true },
   { key: 'maxTokens', name: 'max_tokens', kind: 'number', step: '1', numeric: true },
   { key: 'maxContextResults', name: 'max_context_results', kind: 'number', step: '1', numeric: true },
 ];
 
+/** The selected model's contract, from the allowlist the server sent. */
+function specFor(modelId, allowedModels) {
+  return (allowedModels || []).find((m) => m.id === modelId) || {};
+}
+
 const fieldName = (field) => field.name || field.key;
 
-function buildControl(field, value, allowedModels) {
+function buildControl(field, value, allowedModels, currentModel) {
+  if (field.kind === 'effort') {
+    // Populated from the SELECTED model's own list, because the levels differ
+    // per model — Luna offers `none`, Nano's floor is `minimal`. A shared list
+    // would offer a value the server would then refuse.
+    const efforts = specFor(currentModel, allowedModels).reasoning_efforts || [];
+    const select = document.createElement('select');
+    select.className = 'form-select admin-input';
+
+    const unset = document.createElement('option');
+    unset.value = '';
+    // Not a synonym for "medium": sending nothing lets the model apply its own
+    // documented default, which is not ours to guess at.
+    unset.textContent = I18n.t('admin.settings.reasoningDefault');
+    unset.selected = !value;
+    select.appendChild(unset);
+
+    efforts.forEach((level) => {
+      const option = document.createElement('option');
+      option.value = level;
+      option.textContent = level;
+      option.selected = level === value;
+      select.appendChild(option);
+    });
+    return select;
+  }
+
   if (field.kind === 'select') {
     const select = document.createElement('select');
     select.className = 'form-select admin-input';
@@ -142,8 +174,18 @@ export function renderSettings({ settings, overrides, allowed_models: allowedMod
   hint.textContent = I18n.t('admin.settings.hint');
   form.appendChild(hint);
 
+  const spec = specFor(settings.model, allowedModels);
+  const isReasoning = (spec.reasoning_efforts || []).length > 0;
+
   FIELDS.forEach((field) => {
     const name = fieldName(field);
+
+    // A reasoning model rejects `temperature` outright, and an ordinary one
+    // rejects `reasoning_effort`. Showing a control the server would refuse is
+    // an invitation to a 422 that nobody could have predicted from the form.
+    if (field.kind === 'effort' && !isReasoning) return;
+    if (name === 'temperature' && spec.supports_temperature === false) return;
+
     const row = document.createElement('div');
     row.className = 'admin-field';
     row.dataset.field = name;
@@ -153,7 +195,7 @@ export function renderSettings({ settings, overrides, allowed_models: allowedMod
     label.htmlFor = `setting-${name}`;
     label.textContent = I18n.t(`admin.settings.${field.key}`);
 
-    const control = buildControl(field, settings[name], allowedModels || []);
+    const control = buildControl(field, settings[name], allowedModels || [], settings.model);
     control.id = `setting-${name}`;
     control.name = name;
 
@@ -202,7 +244,15 @@ export function readSettingsForm() {
   FIELDS.forEach((field) => {
     const name = fieldName(field);
     const control = form.elements[name];
+    // Absent because the selected model does not accept it. Omitted entirely
+    // rather than sent as null: null means "revert this override", and a model
+    // switch should not silently clear a setting the operator never touched.
     if (!control) return;
+    if (field.kind === 'effort') {
+      // Empty is "model default", which is a removal — distinct from any level.
+      patch[name] = control.value || null;
+      return;
+    }
     if (field.kind === 'number') {
       const raw = control.value.trim();
       // An empty box is not zero. Sending it as a number would silently write

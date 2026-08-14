@@ -18,6 +18,7 @@ from openai import OpenAI
 from openai.types.chat import ChatCompletionMessageParam
 
 from web.services.citations import strip_citation_markers
+from web.services.settings_service import model_spec
 from web.utils.config_loader import config
 
 logging.basicConfig(level=logging.INFO)
@@ -170,6 +171,12 @@ class OpenAIHandler:
         self.max_context_results = setting(
             "max_context_results", config.get("openai", "max_context_results", 5)
         )
+        # None means "do not send it", which is correct both for a model that
+        # has no such parameter and for a reasoning model whose own default we
+        # have no reason to override.
+        self.reasoning_effort = (settings or {}).get("reasoning_effort") or config.get(
+            "openai", "reasoning_effort", None
+        )
 
         # The citation scheme depends on prompt block [i] and sources[i] being
         # the same passage. They are today (both 8), but if someone lowers
@@ -220,6 +227,37 @@ class OpenAIHandler:
             )
             self.tokenizer = tiktoken.get_encoding("o200k_base")
             self.tokenizer_exact = False
+
+    def _request_kwargs(self, token_budget: int, temperature: float) -> dict:
+        """The parameters this model will actually accept.
+
+        The OpenAI families do not share a request shape, and the differences
+        are hard failures rather than degradations:
+
+        * a reasoning model rejects ``max_tokens`` and needs
+          ``max_completion_tokens`` — which also counts reasoning tokens, so
+          the same number buys less visible output;
+        * a reasoning model rejects ``temperature`` outright;
+        * ``reasoning_effort`` is meaningless to everything else.
+
+        Hardcoding the old shape is why adding one of these models would have
+        400'd on every single request. The contract lives in config.yaml beside
+        the model, because that is where someone deciding to allow a model can
+        see what allowing it commits them to.
+        """
+        spec = model_spec(self.model)
+
+        kwargs: dict = {
+            "model": self.model,
+            spec["token_param"]: token_budget,
+        }
+        if spec["supports_temperature"]:
+            kwargs["temperature"] = temperature
+        # Absent means "use the model's own default", which is the right thing
+        # to send when nobody has chosen — not a guess at what medium means.
+        if self.reasoning_effort and spec["reasoning_efforts"]:
+            kwargs["reasoning_effort"] = self.reasoning_effort
+        return kwargs
 
     # ── Prompt construction ────────────────────────────────────────────────
 
@@ -316,11 +354,9 @@ class OpenAIHandler:
         # generator gets GeneratorExit, and closing the stream here releases
         # the upstream HTTP connection instead of leaking it.
         with self.client.chat.completions.create(
-            model=self.model,
             messages=cast(List[ChatCompletionMessageParam], messages),
-            max_tokens=self.max_tokens,
-            temperature=self.temperature,
             stream=True,
+            **self._request_kwargs(self.max_tokens, self.temperature),
         ) as stream:
             for chunk in stream:
                 if not chunk.choices:  # usage-only final chunk
@@ -378,10 +414,12 @@ class OpenAIHandler:
 
         try:
             response = self.client.chat.completions.create(
-                model=self.model,
                 messages=cast(List[ChatCompletionMessageParam], [{"role": "user", "content": prompt}]),
-                max_tokens=100,
-                temperature=0.5,
+                # Suggestions are three short questions, so they get their own
+                # small budget rather than the answer's — but they go through
+                # the same contract, because the model rejects the same
+                # parameters here as anywhere else.
+                **self._request_kwargs(100, 0.5),
             )
             content = response.choices[0].message.content
             if not content:

@@ -130,6 +130,9 @@ runtime:
       temperature: "درجة التنويع"
       maxTokens: "أقصى طول للإجابة"
       maxContextResults: "عدد المقاطع لكل إجابة"
+      reasoningEffort: "مستوى الاستدلال"
+      reasoningNotSupported: "هذا النموذج لا يستخدم الاستدلال."
+      reasoningDefault: "افتراضي النموذج"
       save: "حفظ التغييرات"
       saving: "جارٍ الحفظ…"
       saved: "تم حفظ الإعدادات."
@@ -146,6 +149,7 @@ runtime:
       not_a_number: "يجب أن يكون رقماً."
       not_a_positive_integer: "يجب أن يكون عدداً صحيحاً أكبر من صفر."
       unknown_setting: "ليس إعداداً تعرفه وحدة التحكم."
+      reasoning_not_supported: "النموذج المختار لا يقبل مستوى استدلال."
       storage_unavailable: "تخزين الإعدادات غير متاح، لم يُحفظ شيء."
     audit:
       heading: "النشاط"

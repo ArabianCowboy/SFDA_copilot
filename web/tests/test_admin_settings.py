@@ -259,9 +259,23 @@ def test_settings_are_readable_by_an_administrator(client):
 
     assert body["settings"]["model"] == deployed_defaults()["model"]
     assert body["overrides"] == {}
+
     # The console renders exactly this list and the server refuses anything
-    # outside it, so the two cannot disagree.
-    assert [m["id"] for m in body["allowed_models"]] == ["gpt-4o-mini", "gpt-4o"]
+    # outside it, so the two cannot disagree. Asserted by shape rather than by
+    # a literal list: enabling a model is a config decision, and a test that
+    # names them turns every such decision into a test edit for no safety.
+    models = body["allowed_models"]
+    assert models, "the console needs at least one selectable model"
+    assert deployed_defaults()["model"] in {m["id"] for m in models}, (
+        "the deployed default must itself be selectable, or the console cannot "
+        "show what is currently running"
+    )
+    for entry in models:
+        assert entry["id"] and entry["label"]
+        assert isinstance(entry["max_output_tokens"], int), (
+            f"{entry['id']} has no verified output ceiling; the ceiling is the "
+            f"only thing standing between a wrong value and a 400 per request"
+        )
 
 
 def test_settings_are_not_readable_by_a_reader(client):
@@ -331,3 +345,78 @@ def test_every_error_code_has_a_string_in_both_catalogues():
             catalog = yaml.safe_load(handle)
         available = set(catalog["runtime"]["admin"]["errors"])
         assert codes <= available, f"{name}.yaml is missing {sorted(codes - available)}"
+
+
+# ── Model parameter contracts ────────────────────────────────────────────────
+
+
+def test_a_reasoning_model_sends_neither_max_tokens_nor_temperature(monkeypatch):
+    """The incompatibility that would have 400'd every request.
+
+    Reasoning models reject `max_tokens` (they need `max_completion_tokens`,
+    which also counts reasoning tokens) and reject `temperature` outright.
+    Hardcoding the old shape is why adding one would have taken generation down.
+    """
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    from web.services.openai_app import OpenAIHandler
+
+    kwargs = OpenAIHandler({"model": "gpt-5.6-luna"})._request_kwargs(4096, 0.3)
+
+    assert "max_tokens" not in kwargs
+    assert kwargs["max_completion_tokens"] == 4096
+    assert "temperature" not in kwargs
+
+
+def test_an_ordinary_model_keeps_the_shape_it_always_had(monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    from web.services.openai_app import OpenAIHandler
+
+    kwargs = OpenAIHandler({"model": "gpt-4o-mini"})._request_kwargs(4096, 0.3)
+
+    assert kwargs["max_tokens"] == 4096
+    assert kwargs["temperature"] == 0.3
+    assert "max_completion_tokens" not in kwargs
+    assert "reasoning_effort" not in kwargs
+
+
+def test_reasoning_effort_is_only_sent_when_chosen(monkeypatch):
+    """Absent means "use the model's own default", which is not ours to guess."""
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    from web.services.openai_app import OpenAIHandler
+
+    unset = OpenAIHandler({"model": "gpt-5.6-luna"})._request_kwargs(100, 0.1)
+    chosen = OpenAIHandler(
+        {"model": "gpt-5.6-luna", "reasoning_effort": "none"}
+    )._request_kwargs(100, 0.1)
+
+    assert "reasoning_effort" not in unset
+    assert chosen["reasoning_effort"] == "none"
+
+
+def test_an_effort_level_the_model_does_not_offer_is_refused(service):
+    """The levels differ per model — Luna has `none`, Nano's floor is `minimal`.
+    A shared list would offer a value the API then rejects."""
+    errors = service.update(
+        {"model": "gpt-5.6-luna", "reasoning_effort": "minimal"}, actor=ACTOR
+    )
+    assert [e.code for e in errors] == ["not_allowed"]
+    assert "none" in errors[0].limit
+
+
+def test_effort_on_a_non_reasoning_model_is_refused(service):
+    errors = service.update(
+        {"model": "gpt-4o-mini", "reasoning_effort": "high"}, actor=ACTOR
+    )
+    assert [e.code for e in errors] == ["reasoning_not_supported"]
+
+
+def test_switching_away_from_a_reasoning_model_catches_the_stale_effort(service):
+    """Another invalid pair assembled from two individually valid values: the
+    effort was fine for the old model and is meaningless to the new one."""
+    assert service.update(
+        {"model": "gpt-5.6-luna", "reasoning_effort": "high", "max_tokens": 4096},
+        actor=ACTOR,
+    ) == []
+
+    errors = service.update({"model": "gpt-4o-mini"}, actor=ACTOR)
+    assert [e.code for e in errors] == ["reasoning_not_supported"]

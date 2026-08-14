@@ -136,6 +136,9 @@ runtime:
       temperature: "Temperature"
       maxTokens: "Maximum answer length"
       maxContextResults: "Passages per answer"
+      reasoningEffort: "Reasoning effort"
+      reasoningNotSupported: "This model does not use reasoning."
+      reasoningDefault: "Model default"
       save: "Save changes"
       saving: "Saving…"
       saved: "Settings saved."
@@ -152,6 +155,7 @@ runtime:
       not_a_number: "Must be a number."
       not_a_positive_integer: "Must be a whole number above zero."
       unknown_setting: "Not a setting this console recognises."
+      reasoning_not_supported: "The selected model does not accept a reasoning effort."
       storage_unavailable: "Settings storage is unavailable, so nothing was saved."
     audit:
       heading: "Activity"

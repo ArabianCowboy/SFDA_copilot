@@ -82,6 +82,97 @@ public `EXECUTE` on the `handle_new_user` signup trigger, pinning
 
 ## Planned work
 
+### Answer from a second provider — and why the code is the easy half
+
+**Where:** `web/services/openai_app.py` builds one `OpenAI(api_key=...)` client
+in `__init__` and calls `client.chat.completions.create(...)`. The model
+allowlist lives in `web/config.yaml` under `openai.allowed_models`, and each
+entry already describes that model's parameter contract (`token_param`,
+`supports_temperature`, `reasoning_efforts`) because the OpenAI families do not
+share one. `web/services/settings_service.py` validates a selection against
+that list; `apply_generation_settings` in `web/api/app.py` builds a replacement
+handler and swaps it.
+
+**Why it is wanted.** Much cheaper models exist and some are free. DeepSeek V4
+Flash is roughly $0.14/$0.28 per 1M tokens against gpt-4o-mini's $0.15/$0.60;
+NVIDIA's Nemotron 3.5 Lightning is about $0.05/$0.20 on DeepInfra and free on
+`build.nvidia.com`. For a project that is also a demonstration piece, being able
+to fail over to a free model when a key runs dry has obvious value.
+
+**The integration is genuinely small.** Both are OpenAI-SDK drop-ins: DeepSeek
+at `https://api.deepseek.com` (models `deepseek-v4-flash`, `deepseek-v4-pro` —
+note `deepseek-chat` was deprecated 2026-07-24), NVIDIA at
+`https://integrate.api.nvidia.com/v1` (`nvidia/nemotron-3.5-lightning-30b-a3b`).
+An allowlist entry would gain `provider`, and the handler would pick a
+`base_url` and an API key per provider. Perhaps an afternoon.
+
+**What it would disturb — and this is the actual cost.** PRODUCT.md's first
+principle is that provenance is the product: "An answer without a resolvable
+source is a liability, not a feature." `BASE_SYSTEM_MESSAGE` in
+`openai_app.py:35-59` is tuned so that every claim carries a `[n]` marker, no
+number is ever invented, and a refusal carries no markers at all. The API
+decides whether an answer gets a source panel by counting those markers
+(`extract_cited_indices`), so a model that follows those instructions *less
+reliably* does not fail loudly — it produces a confident answer with citations
+that do not support it, on a regulatory question, for a professional who will
+quote it to an auditor.
+
+**So the prerequisite is a citation-fidelity harness, not the client change.**
+`scripts/eval_retrieval.py` and `web/tests/data/retrieval_eval.yaml` measure
+retrieval, not whether the model cites what it actually used. Something has to
+answer, per model: what share of factual sentences carry a marker; how often a
+marker points at a passage that does not support the sentence; and whether a
+refusal stays clean. Without that, switching providers is a change to the
+product's central claim made on the basis of price.
+
+Two smaller consequences: `tiktoken` does not apply to a non-OpenAI model, so
+`tokenizer_exact` is permanently False and logged token counts stop meaning
+much; and cost metadata becomes per-provider rather than per-model.
+
+**Open questions.** Whether a second provider is a per-instance choice or a
+per-request fallback when the primary errors. Whether the Arabic half holds —
+the corpus is bilingual and a cheaper model's Arabic regulatory register is a
+separate question from its English one, which the harness has to measure in both.
+
+---
+
+### OpenRouter as one integration instead of several
+
+**Where:** the same seam as the entry above.
+
+**Why it is wanted.** It subsumes that work rather than competing with it. One
+OpenAI-compatible endpoint (`https://openrouter.ai/api/v1`), one key, and model
+ids of the form `deepseek/deepseek-v4-flash` or
+`nvidia/nemotron-3.5-lightning:free` — so DeepSeek, Nemotron and a few hundred
+others arrive together, including a free tier. Optional `HTTP-Referer` and
+`X-Title` headers attribute usage. Compared with wiring each provider
+separately, this is one `base_url`, one secret, and an allowlist that can grow
+without code.
+
+**What it would disturb.** Everything in the entry above still applies — the
+citation-fidelity question is about the *model*, and routing through OpenRouter
+does not answer it. Three things are specific to the aggregator:
+
+- **A router is not a model.** The same id can be served by different providers
+  with different quantisation and context handling, so behaviour can move
+  without the id changing. `provider.order` / `allow_fallbacks` pin it; unpinned,
+  the thing the harness measured is not necessarily the thing that answers.
+- **Free tiers carry their own limits** — roughly 50 requests/day, and 20/minute
+  on `:free` variants at the time of writing. That is below this app's own
+  15/minute chat limit, so a free model would need the quota work to know about
+  a *provider* ceiling as well as a per-reader one.
+- **A third party sees the prompts.** Every question includes retrieved SFDA
+  passages and the reader's own words. Sending those to an aggregator that
+  routes to an undisclosed provider is a disclosure decision, not a technical
+  one, and it belongs with whoever owns the deployment — the same conversation
+  as the conversation-persistence privacy posture.
+
+**Open questions.** Whether OpenRouter replaces the direct OpenAI client or sits
+beside it as a second provider — keeping the direct path means the primary model
+never depends on a third party's uptime. And whether free models are usable at
+all given the rate limits, or whether their real role is a demonstration of
+failover rather than a way to serve readers.
+
 ### Refactor the profile page
 
 **Where:** All of it lives browser-side; there is no Flask route and no

@@ -294,3 +294,60 @@ def test_the_activity_tab_is_reachable_by_keyboard(browser_page: Page):
 
     expect(browser_page.locator("#tab-audit")).to_be_focused()
     expect(browser_page.locator("#panel-audit")).to_be_visible()
+
+
+# ── Reasoning models change which controls exist ─────────────────────────────
+
+REASONING_SETTINGS = {
+    "settings": {
+        "model": "gpt-4o-mini", "temperature": 0.1,
+        "max_tokens": 16384, "max_context_results": 8, "reasoning_effort": None,
+    },
+    "overrides": {},
+    "allowed_models": [
+        {"id": "gpt-4o-mini", "label": "GPT-4o mini", "max_output_tokens": 16384},
+        {"id": "gpt-5.6-luna", "label": "GPT-5.6 Luna", "max_output_tokens": 128000,
+         "token_param": "max_completion_tokens", "supports_temperature": False,
+         "reasoning_efforts": ["none", "low", "medium", "high", "xhigh", "max"]},
+    ],
+}
+
+
+def test_choosing_a_reasoning_model_swaps_the_controls(browser_page: Page):
+    """A reasoning model rejects temperature and accepts an effort level; an
+    ordinary one is the reverse. Showing a control the server would refuse is an
+    invitation to a 422 nobody could have predicted from the form."""
+    _admin_console(browser_page, settings=REASONING_SETTINGS)
+    browser_page.locator("#tab-settings").click()
+
+    expect(browser_page.locator("#setting-temperature")).to_be_visible()
+    expect(browser_page.locator("#setting-reasoning_effort")).to_have_count(0)
+
+    browser_page.locator("#setting-model").select_option("gpt-5.6-luna")
+
+    expect(browser_page.locator("#setting-reasoning_effort")).to_be_visible()
+    expect(browser_page.locator("#setting-temperature")).to_have_count(0)
+
+
+def test_the_effort_levels_come_from_the_selected_model(browser_page: Page):
+    """Luna offers `none`; Nano's floor is `minimal`. A shared list would offer
+    a value the server then refuses."""
+    _admin_console(browser_page, settings=REASONING_SETTINGS)
+    browser_page.locator("#tab-settings").click()
+    browser_page.locator("#setting-model").select_option("gpt-5.6-luna")
+
+    options = browser_page.locator("#setting-reasoning_effort option")
+    # Six levels plus the "model default" entry.
+    expect(options).to_have_count(7)
+    expect(options.nth(0)).to_have_text("Model default")
+    expect(options.nth(1)).to_have_text("none")
+
+
+def test_model_default_is_offered_as_a_distinct_choice(browser_page: Page):
+    """Sending nothing lets the model apply its own documented default, which is
+    not the same as picking medium on its behalf."""
+    _admin_console(browser_page, settings=REASONING_SETTINGS)
+    browser_page.locator("#tab-settings").click()
+    browser_page.locator("#setting-model").select_option("gpt-5.6-luna")
+
+    expect(browser_page.locator("#setting-reasoning_effort")).to_have_value("")

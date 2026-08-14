@@ -30,6 +30,7 @@ GENERATION_KEYS: Tuple[str, ...] = (
     "temperature",
     "max_tokens",
     "max_context_results",
+    "reasoning_effort",
 )
 
 TEMPERATURE_RANGE = (0.0, 2.0)
@@ -62,11 +63,28 @@ def allowed_models() -> List[Dict[str, Any]]:
     return [m for m in models if isinstance(m, dict) and m.get("id")]
 
 
+def model_spec(model_id: str) -> Dict[str, Any]:
+    """The model's parameter contract, with the defaults filled in.
+
+    One place decides what a request to a given model may carry, because the
+    OpenAI families do not agree: a reasoning model rejects `max_tokens` and
+    `temperature` outright, and its accepted effort levels differ from the next
+    model's. An unknown id gets the conservative shape — the one every model
+    has always accepted.
+    """
+    entry = next((m for m in allowed_models() if m["id"] == model_id), {})
+    return {
+        "id": model_id,
+        "label": entry.get("label", model_id),
+        "max_output_tokens": entry.get("max_output_tokens"),
+        "token_param": entry.get("token_param", "max_tokens"),
+        "supports_temperature": entry.get("supports_temperature", True),
+        "reasoning_efforts": list(entry.get("reasoning_efforts") or []),
+    }
+
+
 def _model_ceiling(model_id: str) -> Optional[int]:
-    for entry in allowed_models():
-        if entry["id"] == model_id:
-            return entry.get("max_output_tokens")
-    return None
+    return model_spec(model_id)["max_output_tokens"]
 
 
 def deployed_defaults() -> Dict[str, Any]:
@@ -76,6 +94,10 @@ def deployed_defaults() -> Dict[str, Any]:
         "temperature": config.get("openai", "temperature", 0.1),
         "max_tokens": config.get("openai", "max_tokens", 4096),
         "max_context_results": config.get("openai", "max_context_results", 8),
+        # None means "do not send it". Absent is the only correct default: a
+        # non-reasoning model rejects the parameter, and a reasoning model has
+        # its own documented default that we should not second-guess.
+        "reasoning_effort": config.get("openai", "reasoning_effort", None),
     }
 
 
@@ -151,6 +173,19 @@ def validate(patch: Dict[str, Any], current: Dict[str, Any]) -> List[ValidationE
         errors.append(ValidationError("max_context_results", "not_a_positive_integer"))
     elif passages > ceiling:
         errors.append(ValidationError("max_context_results", "above_ceiling", limit=ceiling))
+
+    # Reasoning effort is validated against the RESULTING model, which is why
+    # this reads from `merged`. Switching from a reasoning model to an ordinary
+    # one, without clearing the effort, would otherwise leave a parameter set
+    # that the new model rejects outright — an invalid pair assembled from two
+    # individually valid values, exactly like the token ceiling above.
+    effort = merged.get("reasoning_effort")
+    if effort is not None:
+        supported = model_spec(model)["reasoning_efforts"] if model else []
+        if not supported:
+            errors.append(ValidationError("reasoning_effort", "reasoning_not_supported"))
+        elif effort not in supported:
+            errors.append(ValidationError("reasoning_effort", "not_allowed", limit=supported))
 
     return errors
 
