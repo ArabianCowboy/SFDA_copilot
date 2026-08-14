@@ -13,6 +13,45 @@ says only what it wants is a wish, and the useful half is the cost.
 
 ## Known bugs
 
+### Signup email runs on Supabase's built-in SMTP, which is capped at ~2/hour
+
+**Where:** The Supabase project's Auth settings, not this repo. Surfaced on
+2026-08-14 while testing the rewritten signup trigger: three signups in seven
+minutes produced one `mail.send` and two `429 over_email_send_rate_limit`.
+
+**What is wrong.** Email confirmation is enabled and mail goes out through
+`noreply@mail.app.supabase.io`, Supabase's shared built-in sender. It is
+documented as being for testing rather than production, and its per-hour
+allowance is small — observed here as one confirmation delivered and the next
+two rejected. GoTrue rolls the account back when the send fails, so the reader
+gets no account **and** no email, and the address stays free.
+
+**Who it reaches.** Every new registration on the live deployment
+(`sfda-copilot.aifoudahub.com`). The third person to sign up within an hour is
+turned away. There is nothing wrong with their details and nothing they can do
+except wait, which the surface does not tell them.
+
+**It is worse than a failed signup.** `Handlers` surfaces the raw Supabase
+message, so the reader sees "email rate limit exceeded" — English-only, and
+phrased as though *they* exceeded a limit. `runtime.auth.*` has no key for it.
+Whatever else is decided, the message needs a key in both catalogues and wording
+that says the service is busy rather than blaming the reader.
+
+**The fix, and why it was not made here.** Configure a custom SMTP sender
+(Resend, SES, Postmark, or the SFDA-side mail relay) under Authentication →
+Emails. That is a project-settings and DNS change — a sending domain with SPF
+and DKIM — not a code change, and it belongs to whoever owns the domain. It was
+found during unrelated work on the signup trigger and recorded rather than
+half-done. Until then, treat the deployment as unable to onboard more than a
+couple of people an hour.
+
+**Related, same session:** email confirmation is on, yet only one of the three
+existing accounts has `email_confirmed_at` set. Worth deciding deliberately
+whether confirmation is required to chat, because right now the answer is
+implicit.
+
+---
+
 ### Leaked-password protection is disabled in Supabase Auth
 
 **Where:** The Supabase project itself (`yjjuudnsnjzhyqllsqrd`), not this
