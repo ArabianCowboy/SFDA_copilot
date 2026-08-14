@@ -183,15 +183,32 @@ which response shape it wants, and the landing page's own authentication signal
 (`is_authenticated=bool(session.get("user_email"))`, app.py:558) does not
 distinguish roles.
 
-**A dormant start already exists.** The same 2026-08-13 Supabase audit found
-a `public.users` table — separate from `public.profiles` — with `role`
-(text, default `'user'`), `is_admin` (bool, default `false`), and `tier`
-columns, populated by the signup trigger on every new account but never
-read by any app code (only `public.profiles` is queried, client-side). It
-duplicates `organization`/`role` that `profiles` already carries. Looks
-like abandoned groundwork for role storage. The audit left it as-is —
-restructuring it is exactly the architecture decision this entry is about,
-so it wasn't touched piecemeal.
+**Resolved on 2026-08-14 — and the earlier note here was wrong.** This entry
+previously said `public.users` was "populated by the signup trigger on every new
+account". Live inspection showed it held **zero rows** and had no foreign key to
+`auth.users`, while `public.profiles` already carried a `role` column that was
+populated and already had one account set to `admin`.
+
+The explanation is dates: migration `20251207173359` (2025-12-07) is what added
+the `insert into public.users` to `handle_new_user`, and the most recent signup
+was 2025-11-16 — three weeks earlier. The trigger had never fired. That is also
+why the 2025-11-16 account had no `profiles` row: it was created under the
+*previous* trigger, the one that migration was written to fix.
+
+`supabase/migrations/20260814_0001_…sql` therefore put identity on `profiles`,
+rewrote the trigger to write only `profiles` (idempotently, `search_path = ''`),
+and backfilled the missing row. `public.users` is dropped by `0002`.
+
+**It also closed a live privilege-escalation hole that no one had noticed.**
+`authenticated` held column-level `UPDATE` on `profiles.role`, and the
+`"Users can update own profile"` policy is `USING (auth.uid() = id)` with no
+`WITH CHECK` — so Postgres reuses `USING` as the check, and changing `role` does
+not change `id`. With the anon key published in the page and `updateProfile`
+already calling `.upsert({ id, ... })`, any signed-in reader could have run
+`supabase.from('profiles').upsert({ id: myUserId, role: 'admin' })`. It was inert
+only because nothing read `role`. **RLS cannot restrict columns** — the fix is a
+column-level `REVOKE` plus a `BEFORE UPDATE` trigger, and it had to land before
+any code that trusts a role, not after.
 
 **Open questions.** Where the role lives: a `profiles` column (an out-of-repo
 Supabase migration plus RLS — there are no `.sql` files in this repo to point
