@@ -192,6 +192,101 @@ def test_the_cache_is_bounded():
 # ── Failure is unprivileged, and is not remembered ────────────────────────────
 
 
+def test_a_disabled_account_stays_disabled_through_a_lookup_failure(monkeypatch, app):
+    """The hole this closes: an outage used to readmit every suspended account.
+
+    "We could not check" and "we checked, they are fine" were the same value —
+    `is_disabled=False` — so nothing downstream could tell them apart, and a
+    Supabase hiccup silently let a disabled reader back in.
+    """
+    from web.services import admin_store
+
+    # ttl=0 so the entry is immediately stale: resolve() must take the fetch
+    # path, fail, and fall back to what it last knew.
+    cache = IdentityFlagsCache(ttl_seconds=0)
+    cache.put(IdentityFlags("u1", "u1@example.com", "user", "free", is_disabled=True))
+
+    class Broken:
+        def fetch_identity(self, user_id, email):
+            raise RuntimeError("supabase is down")
+
+    monkeypatch.setattr(admin_store, "get_admin_backend", lambda: Broken())
+
+    with app.app_context():
+        flags = admin_store.resolve_identity_flags(cache, "u1", "u1@example.com")
+
+    assert flags.is_disabled is True, "a known-disabled reader must not be readmitted"
+    assert flags.is_resolved is False, "and the answer must be marked as stale"
+
+
+def test_an_unresolved_identity_is_never_an_administrator(monkeypatch, app):
+    """Privilege requires an answer, not the absence of one.
+
+    Even a remembered admin, republished after a failed lookup, loses the
+    console — the safe reading of "we could not check" is the unprivileged one.
+    """
+    from web.services import admin_store
+
+    cache = IdentityFlagsCache(ttl_seconds=0)
+    cache.put(IdentityFlags("u1", "u1@example.com", "admin", "internal", False))
+
+    class Broken:
+        def fetch_identity(self, user_id, email):
+            raise RuntimeError("down")
+
+    monkeypatch.setattr(admin_store, "get_admin_backend", lambda: Broken())
+
+    with app.app_context():
+        flags = admin_store.resolve_identity_flags(cache, "u1", "u1@example.com")
+
+    assert flags.role == "admin"
+    assert flags.is_resolved is False
+    assert flags.is_admin is False, "an unconfirmed admin is not an admin"
+
+
+def test_a_slow_older_lookup_cannot_overwrite_a_newer_one(monkeypatch):
+    """Two concurrent misses can finish out of order.
+
+    Without ordering by when the fetch STARTED, the older answer wins and is
+    given a full fresh TTL — so a demotion observed by the newer request is
+    undone by the older one.
+    """
+    clock = {"t": 1000.0}
+    monkeypatch.setattr(IdentityFlagsCache, "_now", staticmethod(lambda: clock["t"]))
+    cache = IdentityFlagsCache()
+
+    old_started = cache.begin_fetch()
+    clock["t"] += 1
+    new_started = cache.begin_fetch()
+
+    # The newer fetch lands first.
+    assert cache.put(_flags("u1", "user"), fetched_at=new_started) is True
+    # The older one arrives late carrying the pre-demotion answer.
+    assert cache.put(_flags("u1", "admin"), fetched_at=old_started) is False
+
+    assert cache.get("u1").role == "user"
+
+
+def test_invalidating_beats_a_lookup_already_in_flight(monkeypatch):
+    """`invalidate()` cannot stop a SELECT that has already been issued.
+
+    Without this, the console demotes someone, and a request that was mid-lookup
+    republishes their old role with a fresh TTL — restoring exactly what was
+    just revoked.
+    """
+    clock = {"t": 1000.0}
+    monkeypatch.setattr(IdentityFlagsCache, "_now", staticmethod(lambda: clock["t"]))
+    cache = IdentityFlagsCache()
+
+    started = cache.begin_fetch()   # a lookup begins
+    clock["t"] += 1
+    cache.invalidate("u1")          # an operator demotes them meanwhile
+    clock["t"] += 1
+
+    assert cache.put(_flags("u1", "admin"), fetched_at=started) is False
+    assert cache.get("u1") is None
+
+
 def test_a_failed_lookup_serves_a_reader_and_is_not_cached(monkeypatch, app):
     """Fails open on access, closed on privilege.
 

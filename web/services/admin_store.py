@@ -20,6 +20,7 @@ today there is one implementation.
 from __future__ import annotations
 
 import logging
+from dataclasses import replace
 from typing import Optional, Protocol
 
 from web.services.identity_cache import IdentityFlags
@@ -148,8 +149,34 @@ def get_admin_backend() -> Optional[AdminBackend]:
     return SupabaseAdminBackend(client)
 
 
-def resolve_identity_flags(cache, user_id: str, email: Optional[str] = None) -> IdentityFlags:
+def _fallback(cache, user_id: str, email: Optional[str]) -> IdentityFlags:
+    """What to serve when the lookup could not be made.
+
+    Prefers the last answer we had, **specifically so that a disabled account
+    stays disabled through an outage**. Mapping "we could not check" onto
+    "ordinary enabled reader" is how a suspended account quietly gets back in
+    the moment the database hiccups, and it is the same value, so nothing
+    downstream could tell the two apart.
+
+    Nothing here can grant privilege: a stale entry is republished with
+    ``is_resolved=False``, and ``is_admin`` requires a resolved answer.
+    """
+    remembered = cache.last_known(user_id)
+    if remembered is not None:
+        return replace(remembered, email=email or remembered.email, is_resolved=False)
+    return IdentityFlags.unknown(user_id, email)
+
+
+def resolve_identity_flags(
+    cache, user_id: str, email: Optional[str] = None, *, fresh: bool = False
+) -> IdentityFlags:
     """Resolve a reader's standing, preferring the cache.
+
+    ``fresh=True`` skips the cache entirely. Used for every console
+    authorization decision: the TTL is a latency optimisation for chat, where
+    being thirty seconds behind a demotion costs nothing, and it is exactly the
+    wrong trade for the surface that can change a model or disable an account.
+    Console requests are rare, so the round trip is free where it matters.
 
     **Fails open on access, closed on privilege.** If the lookup cannot be made
     — no service-role key, Supabase unreachable, a malformed row — the reader is
@@ -162,28 +189,35 @@ def resolve_identity_flags(cache, user_id: str, email: Optional[str] = None) -> 
     rather than inheriting a 30-second-old failure. A genuinely missing row is
     cached, because that is a stable fact about the account.
     """
-    if (hit := cache.get(user_id)) is not None:
+    if not fresh and (hit := cache.get(user_id)) is not None:
         return hit
 
     backend = get_admin_backend()
     if backend is None:
-        return IdentityFlags.unprivileged(user_id, email)
+        # No service-role key. An expected, configured absence rather than a
+        # failure — but still not an answer, so it cannot confer privilege.
+        return _fallback(cache, user_id, email)
+
+    # Taken before the lookup: publication is ordered by when a fetch started,
+    # so a slow older SELECT cannot overwrite a newer one.
+    started = cache.begin_fetch()
 
     try:
         flags = backend.fetch_identity(user_id, email)
     except Exception:
         logger.error(
-            "Identity lookup failed for %s; serving unprivileged defaults.",
+            "Identity lookup failed for %s; falling back to the last known answer.",
             user_id,
             exc_info=True,
         )
-        return IdentityFlags.unprivileged(user_id, email)
+        return _fallback(cache, user_id, email)
 
     if flags is None:
         # No profile row. The signup trigger should have made one, so this is
-        # worth a log line — but it is not this request's problem to fix.
+        # worth a log line — but it is not this request's problem to fix. It is
+        # a resolved fact, so it caches.
         logger.warning("No profile row for authenticated user %s.", user_id)
         flags = IdentityFlags.unprivileged(user_id, email)
 
-    cache.put(flags)
+    cache.put(flags, fetched_at=started)
     return flags

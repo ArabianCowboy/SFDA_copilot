@@ -13,6 +13,7 @@ test before anything on the answer path starts reading them.
 from __future__ import annotations
 
 import logging
+import math
 import threading
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
@@ -88,6 +89,23 @@ def _context_ceiling() -> int:
     return int(config.get("search_engine", "k", 8))
 
 
+def _in_range(value: Any, low: float, high: float) -> bool:
+    """Range check that survives absurd input.
+
+    ``float()`` on a Python int of a few thousand digits raises OverflowError,
+    and JSON has no integer limit — so a pasted number turned a 422 into a 500.
+    Bounds are compared before any conversion, and a NaN fails every comparison
+    and is therefore rejected, which is what we want.
+    """
+    if isinstance(value, int) and not isinstance(value, bool):
+        return low <= value <= high
+    try:
+        as_float = float(value)
+    except (OverflowError, ValueError, TypeError):
+        return False
+    return math.isfinite(as_float) and low <= as_float <= high
+
+
 def validate(patch: Dict[str, Any], current: Dict[str, Any]) -> List[ValidationError]:
     """Validate the **resulting** settings, not the patch in isolation.
 
@@ -112,7 +130,7 @@ def validate(patch: Dict[str, Any], current: Dict[str, Any]) -> List[ValidationE
     low, high = TEMPERATURE_RANGE
     if not isinstance(temperature, (int, float)) or isinstance(temperature, bool):
         errors.append(ValidationError("temperature", "not_a_number"))
-    elif not low <= float(temperature) <= high:
+    elif not _in_range(temperature, low, high):
         errors.append(ValidationError("temperature", "out_of_range", limit=[low, high]))
 
     max_tokens = merged.get("max_tokens")
@@ -158,6 +176,9 @@ class SettingsService:
         self._backend_provider = backend_provider
         self._ttl = ttl_seconds
         self._lock = threading.Lock()
+        # Separate from the cache lock: a write holds this across I/O, and
+        # holding the cache lock across a network call would block every reader.
+        self._write_lock = threading.Lock()
         self._cached: Optional[Dict[str, Any]] = None
         self._loaded_at = 0.0
 
@@ -170,16 +191,30 @@ class SettingsService:
     def _backend(self):
         return self._backend_provider()
 
-    def _overrides(self) -> Dict[str, Any]:
+    def _read_overrides(self) -> Dict[str, Any]:
+        """Strict read. Raises if the store cannot answer.
+
+        Used by :meth:`update`, which replaces the whole document: if a failed
+        read were flattened to ``{}`` there, a one-key patch during a transient
+        outage would write ``{}`` plus that key — silently deleting every other
+        override. The lenient path below is only safe for reads.
+        """
         backend = self._backend
         if backend is None:
-            return {}
+            raise RuntimeError("no settings backend configured")
+        return backend.get_settings() or {}
+
+    def _overrides(self) -> Dict[str, Any]:
+        """Lenient read for display and snapshots.
+
+        Serves the deployed defaults rather than failing the request. A settings
+        outage should cost an operator their overrides, not cost every reader
+        their answer — but see :meth:`_read_overrides` for why a write must not
+        use this.
+        """
         try:
-            return backend.get_settings() or {}
+            return self._read_overrides()
         except Exception:
-            # Serve the deployed defaults rather than failing the request. A
-            # settings outage should cost an operator their overrides, not cost
-            # every reader their answer.
             logger.error("Settings read failed; serving deployed defaults.", exc_info=True)
             return {}
 
@@ -227,13 +262,15 @@ class SettingsService:
         deployed default — distinct from setting it to the default's current
         value, which would pin it against a future deploy.
         """
+        # Unknown keys are checked against the ORIGINAL patch, before None
+        # entries are filtered out. Splitting first meant `{"nonsense": null}`
+        # became a removal of a key that was never a setting, and was accepted.
+        unknown = sorted(set(patch) - set(GENERATION_KEYS))
+        if unknown:
+            return [ValidationError(field=key, code="unknown_setting") for key in unknown]
+
         removals = {k for k, v in patch.items() if v is None}
         changes = {k: v for k, v in patch.items() if v is not None}
-
-        current = self.snapshot()
-        errors = validate(changes, current)
-        if errors:
-            return errors
 
         backend = self._backend
         if backend is None:
@@ -242,11 +279,32 @@ class SettingsService:
             # than the outage it is reporting.
             return [ValidationError("_", "storage_unavailable")]
 
-        stored = dict(self._overrides())
-        stored.update(changes)
-        for key in removals:
-            stored.pop(key, None)
+        # One writer at a time. The lock spans read, merge, validate and write,
+        # because two operators saving disjoint patches would otherwise each
+        # read the same document and the later write would silently discard the
+        # earlier one. This covers the stated single-worker deployment; a second
+        # process would need a database-level compare-and-swap.
+        with self._write_lock:
+            try:
+                stored = dict(self._read_overrides())
+            except Exception:
+                logger.error("Settings read failed during update; refusing to write.", exc_info=True)
+                return [ValidationError("_", "storage_unavailable")]
 
-        backend.put_settings(stored, actor_id=actor_id)
-        self.snapshot(force=True)
+            stored.update(changes)
+            for key in removals:
+                stored.pop(key, None)
+
+            # Validate the state that will actually result, defaults included —
+            # a removal reverts to the deployed default, which is not the value
+            # that was there before it. Harmless while every allowed model
+            # shares a ceiling; unsafe the moment one does not.
+            defaults = deployed_defaults()
+            resulting = {**defaults, **{k: v for k, v in stored.items() if k in GENERATION_KEYS}}
+            errors = validate(resulting, defaults)
+            if errors:
+                return errors
+
+            self._backend.put_settings(stored, actor_id=actor_id)
+            self.snapshot(force=True)
         return []

@@ -167,6 +167,77 @@ def test_a_read_failure_serves_the_deployed_defaults():
     assert SettingsService(lambda: Broken()).snapshot() == deployed_defaults()
 
 
+def test_a_failed_read_during_an_update_does_not_delete_the_other_overrides():
+    """The data-loss bug: a lenient read reused on the write path.
+
+    `update()` replaces the whole document. If a failed read is flattened to
+    `{}` there, saving one key during a transient outage writes `{}` plus that
+    key — silently deleting every other override the operator had set.
+    """
+    backend = InMemoryAdminBackend({"model": "gpt-4o", "temperature": 0.7})
+
+    reads = {"n": 0}
+    real_get = backend.get_settings
+
+    def flaky():
+        reads["n"] += 1
+        if reads["n"] > 1:          # the read inside update()
+            raise RuntimeError("supabase blipped")
+        return real_get()
+
+    service = SettingsService(lambda: backend)
+    service.snapshot()               # first read succeeds and warms the cache
+    backend.get_settings = flaky
+    reads["n"] = 1
+
+    errors = service.update({"max_tokens": 8192}, actor_id="admin")
+
+    assert [e.code for e in errors] == ["storage_unavailable"]
+    assert backend._settings == {"model": "gpt-4o", "temperature": 0.7}, (
+        "a refused write must leave the stored overrides untouched"
+    )
+
+
+def test_an_unknown_key_set_to_null_is_still_refused(service):
+    """Splitting removals out before the unknown-key check let
+    `{"nonsense": null}` through as a removal of something that was never a
+    setting — and reported it as saved."""
+    errors = service.update({"nonsense": None}, actor_id="admin")
+    assert [e.code for e in errors] == ["unknown_setting"]
+
+
+def test_an_absurd_number_is_a_422_rather_than_a_crash(client):
+    """JSON has no integer limit, and float() on a few thousand digits raises
+    OverflowError — which reached the client as a 500."""
+    response = client.put(
+        "/admin/api/settings", json={"temperature": int("9" * 4000)}, headers=ADMIN
+    )
+    assert response.status_code == 422
+    assert response.get_json()["errors"][0]["field"] == "temperature"
+
+
+def test_a_removal_is_validated_against_the_default_that_replaces_it(service):
+    """Reverting restores the deployed default, which is not the value that was
+    there before — so the resulting state is what must be checked."""
+    from web.services import settings_service
+
+    original = settings_service.allowed_models
+    settings_service.allowed_models = lambda: [
+        {"id": "gpt-4o-mini", "label": "mini", "max_output_tokens": 16384},
+        {"id": "tiny", "label": "tiny", "max_output_tokens": 512},
+    ]
+    try:
+        # Legal together: a small model with a small ceiling.
+        assert service.update({"model": "tiny", "max_tokens": 512}, actor_id="a") == []
+        # Removing max_tokens reverts it to the deployed 16384, which the tiny
+        # model cannot accept. Validating the patch alone would miss this.
+        errors = service.update({"max_tokens": None}, actor_id="a")
+    finally:
+        settings_service.allowed_models = original
+
+    assert [e.code for e in errors] == ["above_ceiling"]
+
+
 def test_a_write_with_no_storage_is_refused_rather_than_reported_as_saved():
     """Reporting success for a write that went nowhere is worse than the outage
     it is reporting."""

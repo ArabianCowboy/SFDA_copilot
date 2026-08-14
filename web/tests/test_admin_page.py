@@ -129,6 +129,27 @@ def test_the_api_requires_an_explicit_bearer_header(client):
     assert response.get_json() == {"error": "bearer_required"}
 
 
+def test_the_api_answers_json_and_never_redirects(client):
+    """A redirect here is worse than it looks.
+
+    `_is_page_request` used to match the whole admin blueprint, so an invalid
+    bearer on a JSON endpoint answered 302 to `/`. `fetch()` follows redirects
+    by default, so the console received 200 OK and a page of HTML, parsed it as
+    null, and carried on as though identity had been confirmed.
+    """
+    for path in ("/admin/api/identity", "/admin/api/settings"):
+        response = client.get(path, headers={"Authorization": "Bearer wrong-token"})
+        assert response.status_code in (401, 403), f"{path} answered {response.status_code}"
+        assert response.is_json, f"{path} did not answer JSON"
+        assert "text/html" not in response.content_type
+
+
+def test_the_console_page_still_renders_rather_than_erroring(client):
+    """The page is the one admin GET that is not an API call, so it keeps its
+    own behaviour: a shell, for anyone, with nothing in it."""
+    assert client.get("/admin").status_code == 200
+
+
 def test_a_reader_is_refused_the_api(client):
     response = client.get("/admin/api/identity", headers=AUTH)
     assert response.status_code == 403

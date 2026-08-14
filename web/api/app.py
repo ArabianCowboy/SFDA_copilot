@@ -271,7 +271,12 @@ def _is_page_request() -> bool:
     """
     if request.method != "GET":
         return False
-    return request.endpoint == "index" or request.blueprint == "admin"
+    # Endpoints, not the blueprint. `request.blueprint == "admin"` matched every
+    # console route including /admin/api/*, so an invalid bearer on a JSON
+    # endpoint answered with a 302 to `/`. `fetch()` follows redirects by
+    # default, so the console received 200 OK and a page of HTML, parsed it as
+    # null, and carried on as though identity had been confirmed.
+    return request.endpoint in ("index", "admin.console")
 
 
 def _account_disabled_response() -> Tuple[Response, int]:
@@ -321,7 +326,14 @@ def _authenticate_request() -> Tuple[Optional[IdentityFlags], Optional[Any]]:
             # account holder and is only a fallback for a provider that omits it.
             user_id = str(getattr(user, "id", None) or user.email)
             identity = resolve_identity_flags(
-                current_app.config["identity_flags"], user_id, user.email
+                current_app.config["identity_flags"],
+                user_id,
+                user.email,
+                # Console requests re-read the database rather than trusting the
+                # TTL. Being thirty seconds behind a demotion is free on the
+                # chat path and unacceptable on the one that can change a model
+                # or disable an account.
+                fresh=(request.blueprint == "admin"),
             )
         except Exception as exception:
             logging.error("Authentication error at endpoint %s: %s", request.endpoint, exception, exc_info=True)
