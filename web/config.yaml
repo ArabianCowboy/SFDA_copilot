@@ -28,7 +28,22 @@ server:
   #
   # The newest exchange is never dropped to satisfy this (see
   # ConversationStore._truncate); an over-long message is clamped instead.
-  chat_history_char_budget: 24000
+  #
+  # Sized so that `chat_history_length` above is the limit that USUALLY BINDS.
+  # That is the whole point of the number: a pair count is a window a reader can
+  # predict ("the last ten exchanges"), whereas a character budget is one they
+  # cannot, because it silently depends on how long the answers happened to be.
+  # At 24,000 the budget still bound first — ten exchanges of this corpus's
+  # answers run past it — so the pair count remained decorative and history
+  # sawtoothed at roughly six or seven exchanges.
+  #
+  # Not larger, and the ceiling is cost rather than memory: 500 conversations
+  # times this budget is ~30MB of RAM, which is nothing, but every stored
+  # character is re-sent as INPUT TOKENS on every subsequent turn of that
+  # conversation. 60,000 chars is ~10-15k tokens of history on top of ~3,900 of
+  # retrieved context. Tripling it would triple the per-request bill to make
+  # eviction rare in conversations that are already unusually long.
+  chat_history_char_budget: 60000
 
 
   # Rate limiting

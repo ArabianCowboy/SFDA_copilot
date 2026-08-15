@@ -14,7 +14,6 @@ os.environ.setdefault("MKL_NUM_THREADS", "1")
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 
 import logging
-import re
 import sys
 import uuid
 from functools import wraps
@@ -62,6 +61,19 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_talisman import Talisman
 
+# This module's own logger, rather than the `logging.info(...)` module functions
+# that used to be called throughout. Those route to the ROOT logger, and the
+# root-logger functions call `basicConfig()` themselves when no handler is
+# installed yet — so the very first one, at import time on the line below,
+# configured the root logger with library defaults and left the deliberate
+# `basicConfig(level=..., format=...)` a few lines further down guarded behind
+# `if not logging.getLogger().handlers` — already false, never applied.
+#
+# A named logger does not do that. It also means these records carry
+# "web.api.app" instead of "root", which is what LOG_LEVEL_* per-module tuning
+# and every other module in this app already assume.
+logger = logging.getLogger(__name__)
+
 # ──────────────────────────────────────────────────────────
 # Project Path & Environment Setup
 # ──────────────────────────────────────────────────────────
@@ -72,7 +84,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 DOTENV_PATH = PROJECT_ROOT / ".env"
 load_dotenv(dotenv_path=DOTENV_PATH, override=True)
-logging.info("Loaded .env from %s", DOTENV_PATH)
+logger.info("Loaded .env from %s", DOTENV_PATH)
 
 # ──────────────────────────────────────────────────────────
 # Logging Configuration
@@ -165,9 +177,18 @@ from web.utils.supabase_client import get_supabase
 # What bounds it now is server memory: this ceiling times ConversationStore's
 # 500 conversations, so ~12MB of history at worst. It is a soft budget — see
 # _truncate, which will exceed it rather than drop the newest exchange.
-DEFAULT_CHAT_HISTORY_CHAR_BUDGET = 24_000
+DEFAULT_CHAT_HISTORY_CHAR_BUDGET = 60_000
 DEFAULT_MAX_CHAT_MESSAGES_COUNT = 5
-ALLOWED_CHAT_CATEGORIES = {"all", "regulatory", "pharmacovigilance", "veterinary", "biological"}
+# Ordered, because this tuple is also what the 400 for a bad category lists back
+# to the caller. Joining the set below instead — which is what that message used
+# to do — reordered the allowed categories on every process start, since set
+# iteration order follows string hashes and PYTHONHASHSEED is random. An error
+# message that reads differently each restart is one nobody can grep a log for.
+CHAT_CATEGORIES = ("all", "regulatory", "pharmacovigilance", "veterinary", "biological")
+ALLOWED_CHAT_CATEGORIES = frozenset(CHAT_CATEGORIES)
+# The chat routes negotiate their own languages and the FAQ negotiates its own.
+# They agree today; they are named separately because nothing requires them to.
+SUPPORTED_CHAT_LANGS = frozenset(("en", "ar"))
 SUPPORTED_FAQ_LANGS = ("en", "ar")
 
 # Cache-buster appended to every static CSS/JS URL. Bump this in any commit that
@@ -261,7 +282,7 @@ def _bind_session_to_identity(identity: str) -> None:
     previous = session.get("auth_identity")
     if previous is not None and previous != identity:
         rotate_session_for_new_identity()
-        logging.info("Authenticated identity changed for this session; conversation purged.")
+        logger.info("Authenticated identity changed for this session; conversation purged.")
     session["auth_identity"] = identity
 
 
@@ -446,7 +467,7 @@ def _authenticate_request() -> Tuple[Optional[IdentityFlags], Optional[Any]]:
             user = getattr(response, "user", None) or getattr(getattr(response, "data", None), "user", None)
 
             if not user:
-                logging.warning("Token validation failed for %s – no user found.", request.endpoint)
+                logger.warning("Token validation failed for %s – no user found.", request.endpoint)
                 return None, _handle_unauthorized(_is_page_request())
 
             # The user id is the stable identity; email can be changed by the
@@ -467,7 +488,7 @@ def _authenticate_request() -> Tuple[Optional[IdentityFlags], Optional[Any]]:
                 # Not a refusal. Log it as the outage it is, leave the session
                 # intact, and let the caller retry — the credential in the
                 # reader's hands is still perfectly good.
-                logging.error(
+                logger.error(
                     "Identity provider unreachable at endpoint %s: %s",
                     request.endpoint, exception, exc_info=True,
                 )
@@ -479,12 +500,12 @@ def _authenticate_request() -> Tuple[Optional[IdentityFlags], Optional[Any]]:
                 # It still denies the request — but it says so as our failure
                 # rather than blaming the reader's credential, and it leaves
                 # the session alone.
-                logging.exception(
+                logger.exception(
                     "Unexpected failure while authenticating at endpoint %s", request.endpoint
                 )
                 return None, (jsonify({"error": "identity_check_failed"}), 500)
 
-            logging.error("Authentication error at endpoint %s: %s", request.endpoint, exception, exc_info=True)
+            logger.error("Authentication error at endpoint %s: %s", request.endpoint, exception, exc_info=True)
             return None, _handle_unauthorized(_is_page_request())
 
     _bind_session_to_identity(identity.user_id)
@@ -557,6 +578,44 @@ def _migrate_legacy_undo_history(store: ConversationStore) -> None:
         session["prev_conv_id"] = prev_id
 
 
+def _retrieve_for_prompt(
+    engine: ImprovedSearchEngine,
+    query: str,
+    category: str,
+    handler: OpenAIHandler,
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """Search once, and return the two shapes a chat request needs from it.
+
+    `llm_context` is what the model is shown; `retrieved` is what the API can
+    cite back. They come from ONE search call and are cut to the SAME limit on
+    purpose: the citation scheme is positional, so prompt block [i] and
+    retrieved[i] must be the same passage or a marker resolves to the wrong
+    document. Both routes built this pair independently — the invariant is
+    easier to hold in one place than to restate correctly in two.
+    """
+    results = engine.search(query, category)
+    llm_context = [
+        {"text": r.text, "document": r.document, "category": r.category, "page": r.page}
+        for r in results
+    ]
+    return llm_context, build_source_payload(results, limit=handler.max_context_results)
+
+
+def _finalize_answer(
+    answer: str, retrieved: List[Dict[str, Any]]
+) -> Tuple[str, List[int], List[Dict[str, Any]]]:
+    """Normalize the answer's citations, then keep only the passages it cited.
+
+    `sources` is strictly what the answer cited and nothing else, so an answer
+    that cited nothing ships an empty list and no source control renders at
+    all. Both routes must agree on that, which is the argument for them sharing
+    the three lines rather than each keeping a copy.
+    """
+    answer = normalize_legacy_citations(answer, retrieved)
+    cited = extract_cited_indices(answer, retrieved)
+    return answer, cited, [s for s in retrieved if s["index"] in cited]
+
+
 # ──────────────────────────────────────────────────────────
 # Flask Application Factory Components
 # ──────────────────────────────────────────────────────────
@@ -564,7 +623,7 @@ def _configure_app(app: Flask, testing: bool) -> None:
     """Apply basic configuration and secret key to the Flask app."""
     app.secret_key = config.flask_secret_key or os.urandom(24)
     if not config.flask_secret_key and not testing:
-        logging.warning("Using a temporary secret key. Set FLASK_SECRET_KEY in .env for production.")
+        logger.warning("Using a temporary secret key. Set FLASK_SECRET_KEY in .env for production.")
 
     app.config.update(
         TESTING=testing,
@@ -597,17 +656,17 @@ def _init_extensions(app: Flask, testing: bool) -> Limiter:
             x_host=1,      # Trust X-Forwarded-Host
             x_prefix=1     # Trust X-Forwarded-Prefix
         )
-        logging.info("ProxyFix middleware enabled for reverse proxy deployment.")
+        logger.info("ProxyFix middleware enabled for reverse proxy deployment.")
     
     # CORS
     is_debug_mode = config.is_debug() or testing
     if is_debug_mode:
         CORS(app, supports_credentials=True)
-        logging.info("CORS initialized in debug mode (all origins allowed).")
+        logger.info("CORS initialized in debug mode (all origins allowed).")
     else:
         origins = config.get("server", "allowed_origins", [])
         CORS(app, origins=origins, supports_credentials=True)
-        logging.info("CORS initialized for specific origins: %s", origins)
+        logger.info("CORS initialized for specific origins: %s", origins)
 
     # Talisman (Security Headers)
     # Build connect-src list for Supabase
@@ -644,7 +703,7 @@ def _init_extensions(app: Flask, testing: bool) -> Limiter:
         csp["font-src"] = ["'self'", "https:", "data:"]
         # Allow connections to any HTTPS/WSS (for development and browser extensions)
         csp["connect-src"] = ["'self'", "https:", "wss:"] + impeccable_live_dev
-        logging.info("CSP configured in permissive debug mode for development")
+        logger.info("CSP configured in permissive debug mode for development")
     
     # Disable force_https when:
     # 1. Debug mode (local development)
@@ -657,7 +716,7 @@ def _init_extensions(app: Flask, testing: bool) -> Limiter:
         force_https=should_force_https,
         content_security_policy=csp
     )
-    logging.info(
+    logger.info(
         "Talisman initialized. force_https=%s (debug=%s, testing=%s, behind_proxy=%s)",
         should_force_https, is_debug_mode, testing, is_behind_proxy
     )
@@ -670,7 +729,7 @@ def _init_extensions(app: Flask, testing: bool) -> Limiter:
         f"{rate_limit_config.get('per_minute', 10)} per minute",
     ]
     limiter = Limiter(get_remote_address, app=app, default_limits=default_limits, storage_uri="memory://")
-    logging.info("Flask-Limiter initialized with limits: %s", default_limits)
+    logger.info("Flask-Limiter initialized with limits: %s", default_limits)
     return limiter
 
 
@@ -774,7 +833,7 @@ def _register_testing_doubles(app: Flask) -> None:
 
     app.config["openai_handler"] = handler
     app.config["search_engine"] = search_engine
-    logging.info("Mock services registered for testing.")
+    logger.info("Mock services registered for testing.")
 
 
 def _initialize_services(app: Flask, testing: bool) -> None:
@@ -791,9 +850,9 @@ def _initialize_services(app: Flask, testing: bool) -> None:
         if not search_engine.is_initialized():
             initialized = search_engine.initialize()
             if initialized:
-                logging.info("Search engine initialized successfully.")
+                logger.info("Search engine initialized successfully.")
             else:
-                logging.error(
+                logger.error(
                     "Search engine failed to initialize — chat requests will "
                     "return 503 until this is fixed. See the error logged "
                     "above from SearchEngine for the underlying cause."
@@ -806,14 +865,14 @@ def _initialize_services(app: Flask, testing: bool) -> None:
         # a stale or mismatched index must never degrade quietly, so this is
         # deliberately re-raised to crash application startup instead of
         # being caught by the broad `except Exception` below.
-        logging.critical(
+        logger.critical(
             "FATAL: search index manifest validation failed — refusing to "
             "start with a mismatched index. %s", exc,
         )
         raise
     except Exception as e:
         app.config["search_engine"] = None
-        logging.error("Search engine initialization failed: %s", e, exc_info=True)
+        logger.error("Search engine initialization failed: %s", e, exc_info=True)
 
 
 def _load_faq_data() -> Dict[str, Any]:
@@ -828,17 +887,17 @@ def _load_faq_data() -> Dict[str, Any]:
         with faq_path.open("r", encoding="utf-8") as f:
             faq_data = yaml.safe_load(f) or {}
     except FileNotFoundError:
-        logging.error("faq.yaml not found. FAQ feature will be disabled.")
+        logger.error("faq.yaml not found. FAQ feature will be disabled.")
         return {}
     except Exception as e:
-        logging.error("Error parsing faq.yaml: %s", e)
+        logger.error("Error parsing faq.yaml: %s", e)
         return {}
 
     if not set(faq_data) & set(SUPPORTED_FAQ_LANGS):
-        logging.info("faq.yaml is in the legacy flat shape; treating it as English.")
+        logger.info("faq.yaml is in the legacy flat shape; treating it as English.")
         faq_data = {"en": faq_data}
 
-    logging.info(
+    logger.info(
         "FAQ data loaded for %s.", ", ".join(sorted(faq_data)) or "no languages"
     )
     return faq_data
@@ -897,7 +956,7 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
         try:
             landing = recovery_redirect_url()
         except RecoveryRefused as refusal:
-            logging.error(
+            logger.error(
                 "PUBLIC_BASE_URL is not usable (%s); password recovery is DISABLED. "
                 "Every reset request will answer 202 and send nothing. Set it to a "
                 "bare origin (scheme + host + port) that is also on Supabase's "
@@ -913,7 +972,7 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
             served_port = str(config.get("server", "port", 5001))
             link_port = urlparse(landing).port
             if link_port is not None and str(link_port) != served_port:
-                logging.warning(
+                logger.warning(
                     "PUBLIC_BASE_URL points at port %s but this app serves on %s. "
                     "Recovery mail will be sent with a link nobody is listening on.",
                     link_port,
@@ -947,7 +1006,7 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
         try:
             replacement = factory(settings)
         except Exception:
-            logging.error(
+            logger.error(
                 "Could not build an OpenAI handler from the stored settings; "
                 "keeping the running one. Settings: %r",
                 settings,
@@ -957,7 +1016,7 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
 
         # The whole swap: one attribute rebind, atomic under the GIL.
         app.config["openai_handler"] = replacement
-        logging.info(
+        logger.info(
             "Generation settings applied: model=%s max_tokens=%s temperature=%s passages=%s",
             settings.get("model"), settings.get("max_tokens"),
             settings.get("temperature"), settings.get("max_context_results"),
@@ -994,7 +1053,7 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
 
     workers = os.getenv("WEB_CONCURRENCY", "1")
     if workers != "1":
-        logging.warning(
+        logger.warning(
             "WEB_CONCURRENCY=%s but ConversationStore is process-local — conversations "
             "will split across workers and users will randomly lose context. This app "
             "must run single-worker anyway (in-RAM FAISS index); use --workers 1 --threads 8.",
@@ -1041,7 +1100,7 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
         supabase_anon_key = os.getenv("SUPABASE_ANON_KEY")
 
         if not supabase_url or not supabase_anon_key:
-            logging.warning(
+            logger.warning(
                 "Supabase configuration missing: URL=%s, Key=%s",
                 "present" if supabase_url else "missing",
                 "present" if supabase_anon_key else "missing"
@@ -1159,19 +1218,19 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
             return None, (jsonify(error="Query cannot be empty"), 400)
         if category not in ALLOWED_CHAT_CATEGORIES:
             return None, (
-                jsonify(error=f"Invalid category. Allowed: {', '.join(ALLOWED_CHAT_CATEGORIES)}"),
+                jsonify(error=f"Invalid category. Allowed: {', '.join(CHAT_CATEGORIES)}"),
                 400,
             )
 
         engine = current_app.config.get("search_engine")
         if not engine or not engine.is_initialized():
-            logging.error("Search engine unavailable for chat request.")
+            logger.error("Search engine unavailable for chat request.")
             return None, (jsonify(error="Search service is currently unavailable."), 503)
 
         return {
             "query": query,
             "category": category,
-            "lang": lang if lang in ("en", "ar") else "en",
+            "lang": lang if lang in SUPPORTED_CHAT_LANGS else "en",
             "engine": engine,
         }, None
 
@@ -1212,8 +1271,9 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
                 })
                 yield sse("stage", {"stage": "searching"})
 
-                results = engine.search(query, category)
-                retrieved = build_source_payload(results, limit=handler.max_context_results)
+                llm_context, retrieved = _retrieve_for_prompt(
+                    engine, query, category, handler
+                )
                 yield sse("stage", {"stage": "retrieved", "count": len(retrieved)})
 
                 # No "sources" frame here any more. It used to be emitted at
@@ -1223,10 +1283,6 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
                 # reader gets mid-stream is the count above; the passages
                 # themselves ride on "final", once there is an answer to judge
                 # them against.
-                llm_context = [
-                    {"text": r.text, "document": r.document, "category": r.category, "page": r.page}
-                    for r in results
-                ]
 
                 yield sse("stage", {"stage": "drafting"})
                 parts: List[str] = []
@@ -1234,9 +1290,7 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
                     parts.append(token)
                     yield sse("delta", {"t": token})
 
-                answer = normalize_legacy_citations("".join(parts).strip(), retrieved)
-                cited = extract_cited_indices(answer, retrieved)
-                sources = [s for s in retrieved if s["index"] in cited]
+                answer, cited, sources = _finalize_answer("".join(parts).strip(), retrieved)
 
                 yield sse("stage", {"stage": "finalizing"})
 
@@ -1302,19 +1356,19 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
                 # turn already recorded — also right, since by then the reader
                 # has the whole answer on screen and their next question may
                 # refer to it.
-                logging.info("Client disconnected mid-stream (conv=%s)", conversation_id)
+                logger.info("Client disconnected mid-stream (conv=%s)", conversation_id)
                 raise
             except SearchEngineError:
                 # Retrieval failed. Reported as its own code rather than folded
                 # into "internal", because the alternative — treating it as an
                 # empty result set — would render as a confident refusal.
-                logging.error("Retrieval failed (conv=%s)", conversation_id, exc_info=True)
+                logger.error("Retrieval failed (conv=%s)", conversation_id, exc_info=True)
                 yield sse("error", {
                     "error": "Search service is currently unavailable.",
                     "code": "search_unavailable",
                 })
             except Exception:
-                logging.error("Streaming chat failed (conv=%s)", conversation_id, exc_info=True)
+                logger.error("Streaming chat failed (conv=%s)", conversation_id, exc_info=True)
                 # The 200 status line is already sent, so failures after the
                 # first yield can only be reported in-band.
                 yield sse("error", {"error": "An internal server error occurred.", "code": "internal"})
@@ -1328,25 +1382,20 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
     @chat_limit
     def handle_chat() -> Union[Response, Tuple[Response, int]]:
         try:
-            payload = request.get_json(force=True)
-            query = payload.get("query", "").strip()
-            category = payload.get("category", "all").lower()
-            # Was never read, so an Arabic reader on a browser without
-            # streaming bodies got an English answer while the streaming path
-            # answered in Arabic.
-            lang = (payload.get("lang") or "en").lower()
-            if lang not in ("en", "ar"):
-                lang = "en"
+            # The same validator the streaming route uses. This route used to
+            # carry its own copy — same three rules, independently written, and
+            # already drifting: it parsed with `get_json(force=True)` and no
+            # `silent=True`, so a malformed body raised inside the `try` below
+            # and was reported as a 500 "internal server error". A request whose
+            # JSON the client got wrong is a 400, and the streaming route has
+            # always said so. Two validators for one contract is how the two
+            # endpoints came to disagree about what a bad request even is.
+            payload, error = _validate_chat_request()
+            if error:
+                return error
 
-            if not query:
-                return jsonify(error="Query cannot be empty"), 400
-            if category not in ALLOWED_CHAT_CATEGORIES:
-                return jsonify(error=f"Invalid category. Allowed: {', '.join(ALLOWED_CHAT_CATEGORIES)}"), 400
-
-            search_engine: ImprovedSearchEngine = current_app.config["search_engine"]
-            if not search_engine or not search_engine.is_initialized():
-                logging.error("Search engine unavailable for chat request.")
-                return jsonify(error="Search service is currently unavailable."), 503
+            query, category, lang = payload["query"], payload["category"], payload["lang"]
+            search_engine: ImprovedSearchEngine = payload["engine"]
 
             # Captured BEFORE retrieval, not after. Search can block for a
             # noticeable time, and a settings change landing during it would
@@ -1357,12 +1406,14 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
             # introduced the swap actually true.
             openai_handler: OpenAIHandler = current_app.config["openai_handler"]
 
-            search_results: List[SearchResult] = search_engine.search(query, category)
-            llm_context = [{"text": r.text, "document": r.document, "category": r.category, "page": r.page} for r in search_results]
-
-            # retrieved[i] must be the same passage as prompt block [i], so both
-            # are cut to the same limit.
-            retrieved = build_source_payload(search_results, limit=openai_handler.max_context_results)
+            # Retrieval stays AHEAD of conversation setup, deliberately. A
+            # SearchEngineError below returns 503 without ever having minted a
+            # `conv_id`, so a failed question does not leave a conversation
+            # behind in the reader's cookie. Pinned by
+            # test_a_retrieval_failure_does_not_start_a_conversation.
+            llm_context, retrieved = _retrieve_for_prompt(
+                search_engine, query, category, openai_handler
+            )
 
             store: ConversationStore = current_app.config["conversations"]
             max_pairs = current_app.config["MAX_CHAT_HISTORY_MESSAGE_PAIRS"]
@@ -1389,12 +1440,9 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
             answer, suggested_questions = openai_handler.generate_response(
                 query, llm_context, category, chat_history, lang=lang,
             )
-            answer = normalize_legacy_citations(answer, retrieved)
-
-            # Same contract as the streaming path's "final" frame — see the
-            # comment there. `sources` is strictly what the answer cited.
-            cited = extract_cited_indices(answer, retrieved)
-            sources = [s for s in retrieved if s["index"] in cited]
+            # Same contract as the streaming path's "final" frame — both routes
+            # go through `_finalize_answer`, so they cannot drift.
+            answer, cited, sources = _finalize_answer(answer, retrieved)
 
             store.append_turn(conversation_id, query, answer, max_pairs, max_chars)
 
@@ -1407,11 +1455,11 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
             )
 
         except SearchEngineError:
-            logging.error("Retrieval failed in /api/chat", exc_info=True)
+            logger.error("Retrieval failed in /api/chat", exc_info=True)
             return jsonify(error="Search service is currently unavailable."), 503
 
         except Exception as exception:
-            logging.error("Unhandled error in /api/chat: %s", exception, exc_info=True)
+            logger.error("Unhandled error in /api/chat: %s", exception, exc_info=True)
             return jsonify(error="An internal server error occurred."), 500
 
     @app.route("/api/conversation/reset", methods=["POST"])
@@ -1537,8 +1585,8 @@ if __name__ == "__main__":
     server_port = int(config.get("server", "port", 5000))
 
     if is_debug_mode:
-        logging.warning("Flask is running in DEBUG MODE. Not for production deployment.")
+        logger.warning("Flask is running in DEBUG MODE. Not for production deployment.")
     else:
-        logging.info("Flask is running in production configuration.")
+        logger.info("Flask is running in production configuration.")
 
     flask_app.run(debug=is_debug_mode, host=server_host, port=server_port)

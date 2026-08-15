@@ -135,6 +135,37 @@ def test_a_retrieval_failure_is_an_error_not_a_refusal(app, client):
     assert app.config["llm_calls"] == []
 
 
+def test_a_retrieval_failure_does_not_start_a_conversation(app, client):
+    """Retrieval runs BEFORE conversation setup, and that ordering is load-bearing.
+
+    A question that never reached the model must not leave a `conv_id` behind
+    in the reader's cookie: the next successful question would then continue a
+    conversation whose first turn does not exist. Pinning it because the
+    ordering reads like an accident and a tidy-up would move it.
+    """
+    app.config["search_engine"].search.side_effect = SearchEngineError("index unreadable")
+    assert client.post("/api/chat", json={"query": "hello"}, headers=AUTH).status_code == 503
+
+    with client.session_transaction() as flask_session:
+        assert "conv_id" not in flask_session
+
+
+def test_a_malformed_body_is_a_400_not_a_500(app, client):
+    """The client got its JSON wrong; that is not an internal server error.
+
+    This route used to parse with `get_json(force=True)` and no `silent=True`,
+    inside a broad `except Exception` that answered 500 — so a bad body was
+    reported as our fault while the streaming route, sharing the contract,
+    correctly called the same body a 400.
+    """
+    response = client.post(
+        "/api/chat", data="{not json at all", content_type="application/json", headers=AUTH
+    )
+
+    assert response.status_code == 400
+    assert app.config["llm_calls"] == []
+
+
 # ── Happy path ──────────────────────────────────────────────────────────────
 
 def test_chat_returns_answer_and_suggestions(client):
