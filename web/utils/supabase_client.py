@@ -2,10 +2,48 @@ import logging
 import os
 from typing import Optional
 
+import httpx
 from supabase import create_client, Client
+# SyncClientOptions, not the base ClientOptions. Only the sync subclass carries
+# `httpx_client`; the base accepts it as no keyword at all, so importing the
+# wrong one is a TypeError at client construction — which is to say, at the
+# first authenticated request in production, and nowhere in the test suite,
+# because SupabaseClient returns None under TESTING and never builds one.
+from supabase.lib.client_options import SyncClientOptions
 from flask import current_app
 
 logger = logging.getLogger(__name__)
+
+
+def _auth_timeout() -> httpx.Timeout:
+    """How long the token check may take before it is called an outage.
+
+    Every authenticated request pays one `auth.get_user` round trip to GoTrue,
+    and production runs `--workers 1 --threads 8` (README.md) — so a stalled
+    auth call holds one of eight request threads for the whole stall, and eight
+    concurrent ones exhaust the only worker's capacity for every reader. Opening
+    one console account already costs two of them.
+
+    Gunicorn's own `--timeout 300` does not bound this: it governs the worker,
+    not an outbound call.
+
+    5 seconds is not a new policy: it is httpx's own default, which this call
+    has always been running on by accident. Stating it makes the bound a
+    decision rather than a library detail that a future `supabase` bump could
+    change underneath the one call that gates the whole app.
+    """
+    return httpx.Timeout(float(os.getenv("SUPABASE_AUTH_TIMEOUT", "5")), connect=5.0)
+
+
+def _auth_http_client() -> httpx.Client:
+    """The transport GoTrue will use.
+
+    `follow_redirects` and `http2` are repeated deliberately. supabase-py only
+    applies its own defaults when no client is injected, so an injected client
+    that omitted them would quietly downgrade the connection — and the incident
+    this bounds was observed on an HTTP/2 stream.
+    """
+    return httpx.Client(timeout=_auth_timeout(), follow_redirects=True, http2=True)
 
 
 class SupabaseClient:
@@ -15,17 +53,22 @@ class SupabaseClient:
         if cls._instance is None:
             url = os.getenv('SUPABASE_URL')
             key = os.getenv('SUPABASE_ANON_KEY')
-            
+
             if not url or not key:
                 raise ValueError("SUPABASE_URL and SUPABASE_ANON_KEY environment variables are required")
-            
+
             # Handle test environment
             if current_app and current_app.config.get('TESTING'):
                 # In test environment, we don't actually create a Supabase client
                 # The mock will be injected by the test fixtures
                 return None
-            
-            cls._instance = create_client(url, key)
+
+            # This client is only ever used for auth (token verification,
+            # logout, the dead signup/login routes). Nothing reads PostgREST
+            # through it, so one timeout tuned for GoTrue is safe to share.
+            cls._instance = create_client(
+                url, key, SyncClientOptions(httpx_client=_auth_http_client())
+            )
         return cls._instance
 
 def get_supabase() -> Client:

@@ -33,4 +33,10 @@ itsdangerous
 click
 sentence_transformers>=5.5.1
 supabase
+# Already arrives with supabase, but named here because the app imports it
+# directly: web/api/app.py classifies httpx.TransportError as an outage rather
+# than a rejected credential, and web/utils/supabase_client.py injects an httpx
+# client to bound the auth call. A transitive dependency that code imports by
+# name is a direct dependency.
+httpx
 tiktoken

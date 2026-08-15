@@ -62,12 +62,28 @@ export function createAdminServices(getToken) {
   async function request(path, { method = 'GET', body } = {}) {
     let response = await send(path, method, body, await getToken());
 
-    // One retry, and only on 401. A token that expired between resolution and
-    // arrival is the ordinary case here; anything else repeated would just be
-    // sending a rejected request twice.
+    // One retry on 401. A token that expired between resolution and arrival is
+    // the ordinary case here, and the gate answers 401 before any route body
+    // runs, so re-sending cannot repeat work that already happened.
     if (response.status === 401) {
       const refreshed = await getToken();
       if (refreshed) response = await send(path, method, body, refreshed);
+    }
+
+    /* One retry on 503, and only for GET.
+       The server used to answer 401 when it could not REACH the identity
+       provider, so a transient blip was quietly absorbed by the retry above and
+       looked like nothing had happened. It now answers 503, which is truthful —
+       and would have turned that same blip into a visible failure had this not
+       been added.
+
+       Narrower than the 401 retry on purpose. A 401 provably precedes the route
+       body; a 503 does not — `storage_unavailable` is returned by routes that
+       have already begun work. Re-sending a PATCH or POST on one would be a
+       second attempt at a mutation nobody asked for twice, and this console can
+       send a password-reset email. A GET cannot have that problem. */
+    if (response.status === 503 && method === 'GET') {
+      response = await send(path, method, body, await getToken());
     }
 
     let payload = null;

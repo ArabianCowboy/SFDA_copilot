@@ -13,6 +13,54 @@ says only what it wants is a wish, and the useful half is the cost.
 
 ## Known bugs
 
+### ~~A transient Supabase outage signed readers out~~ — FIXED 2026-08-15
+
+**Where:** `web/api/app.py`, `_authenticate_request`. Found in production on
+2026-08-15 from a single log line:
+
+```
+ERROR:root:Authentication error at endpoint admin.audit: The read operation timed out
+  ... httpx.ReadTimeout
+"GET /admin/api/audit?...&target_id=..." 401
+```
+
+**What was wrong.** One bare `except Exception` answered every failure with
+`_handle_unauthorized`. That is not merely the wrong status — it calls
+`clear_auth_session()`, so a read timeout to GoTrue told a signed-in
+administrator they were signed out *and* destroyed their server-side session:
+the stored access token, the email, and the admin render hint. The credential in
+their hands was valid throughout. The same branch also caught a missing
+environment variable, a provider response in an unexpected shape, a GoTrue
+rate limit, and any bug in identity resolution, and blamed the reader's
+credential for all of them.
+
+**Why it survived.** The rule was already written down one layer lower —
+`web/api/admin.py` answers 503 when the *profile* store cannot be read, because
+"an outage is not a refusal" — and
+`test_an_identity_outage_is_a_503_not_a_refusal` appears to guard it. It does
+not: it monkeypatches `_authenticate_request` itself, so the `except` block that
+made the mistake never ran. A test that mocks the function under test is how a
+bug hides behind green.
+
+**What fixed it.** A three-way split in `_authenticate_request`: **503**
+`identity_unavailable` for an outage (`httpx.TransportError`,
+`AuthRetryableError`, a 5xx, or a 429), **500** `identity_check_failed` for our
+own faults, and **401** only for a genuine refusal — which now additionally
+requires the exception to carry an integer status, because 401 is the strongest
+claim the code can make and it should rest on evidence. `AuthUnknownError` is
+excluded from refusals: GoTrue mints it when it cannot parse the provider's
+error body at all, which is not a verdict on anyone's credential. The auth call
+also gained an explicit 5s ceiling (`web/utils/supabase_client.py`) — not a new
+policy, just httpx's existing default made a decision rather than a library
+detail. Client side, `static/js/admin/services.js` retries a 503 once **for GET
+only**: a 401 provably precedes the route body, a 503 does not, and re-sending a
+mutation on one could put a second recovery link in somebody's inbox.
+
+Covered by `web/tests/test_auth_failure_modes.py`, which was verified to fail
+against the old code rather than merely to pass against the new.
+
+---
+
 ### ~~There is no password reset~~ — FIXED 2026-08-14
 
 **Resolved.** Reader-facing recovery ships: a *forgot password* affordance in the
@@ -253,7 +301,21 @@ public `EXECUTE` on the `handle_new_user` signup trigger, pinning
 
 ---
 
-### An account outside the newest 50 cannot be found or administered
+### An account outside the newest 50 cannot be found or administered — HALF FIXED 2026-08-15
+
+**Update.** The **search box now exists**: `#people-search` in `admin.html`,
+debounced in `initPeopleTab`, passing `q` through to the RPC that always
+accepted it. So an account outside the newest 50 can now be *found*.
+
+**The pager was not built.** `limit` and `offset` are still never sent, so a
+search matching more than 50 accounts silently shows the first 50 and says
+nothing about the rest — which is the more dangerous half of this entry, because
+a truncated result set looks exactly like a complete one. `total` is returned
+and rendered as a bare `N / M` line; that is a count, not a control. Closing
+this properly means a next-page control, or a stated "showing N of M" that reads
+as a limit rather than as a total.
+
+The original diagnosis follows.
 
 **Where:** `static/js/admin/services.js` and `handlers.js` call
 `/admin/api/users` with no query string, so it serves its default page. Found
@@ -337,6 +399,15 @@ the log exists. The mutation itself is correct; the record of it is not.
 JSONB the RPC already captures — the honest fix is to derive the name from the
 diff rather than from the request, and to record nothing when the diff is empty.
 Worth doing before the log has enough entries for anyone to trust it.
+
+**Update 2026-08-15 — the pattern now exists, in the other RPC.**
+`admin_update_profile` (migration `20260814200342`) was written this way from
+the start: it derives the action from the diff, and returns early without
+writing an audit row at all when `before` and `after` match apart from
+`updated_at`. Verified live — one real change wrote one row, a no-op wrote none.
+So this entry is now a *port*, not a design problem: `admin_set_user_flags` is
+the one still deriving its name from whichever field the request happened to
+carry. Copy the shape, do not reinvent it.
 
 ---
 
@@ -916,3 +987,206 @@ and neutralises restored citations, because sources die in module memory on a
 reload (`static/js/app.js:85`). And whether a saved session belongs to the
 account across browsers, which is the only reading that is safe on a shared
 machine.
+
+---
+
+### Consolidate every documentation file into `docs/`
+
+**Where:** Documentation is spread across five places. Root: `DESIGN.md`,
+`PRODUCT.md`, `TODO.md`. `docs/`: `SMTP_CONFIGURATION.md`. `memory-bank/`:
+`activeContext.md`, `productContext.md`, `progress.md`, `projectbrief.md`,
+`systemPatterns.md`, `techContext.md`, `CHANGELOG.md`, `NewKnowledgeBase.md`.
+`memory-bank/Issue-teckting/`: ten fix-plan and analysis files
+(`DEPLOYMENT_PLAN.md`, `SFDA_COPILOT_FIX_PLAN.md`, `dead_code_report.md`, and
+others), currently **gitignored** (`.gitignore:91`) and therefore not under
+version control at all. `supabase/README.md`.
+
+**Why it is wanted.** A reader cannot find the state of the project without
+learning the layout first, and the largest, least trustworthy cluster
+(`memory-bank/Issue-teckting/`) is not even in git — a fresh clone has none of
+it, and nothing protects it from being lost. Moving the plan documents under
+version control and gathering every doc in `docs/` turns "where is X
+documented" into one answer.
+
+**What it would disturb.** Three classes of cost, each verified:
+
+- **Path references in code and tests.** `DESIGN.md` and `PRODUCT.md` are
+  referenced by *file path* — in tests (`test_admin_page.py:80`,
+  `test_admin_settings.py:321`, `test_password_recovery.py:176`), in JS
+  comments (`static/js/app.js:266`, `admin/ui.js:9`, `admin/handlers.js:205`),
+  in CSS (`components.css:304`), in templates, in i18n comments
+  (`en.yaml:292`, `ar.yaml:273`), and in `web/api/app.py:917`. **Those tests
+  and comments may need adjusting after the move** — treat their failures as
+  expected fallout of the relocation, not as regressions.
+- **Inter-document links.** `TODO.md:92,172` link to
+  `docs/SMTP_CONFIGURATION.md`; `README.md:343-356` is a documentation table
+  pointing at all the root docs and `supabase/README.md`; `README.md:232` lists
+  `memory-bank/` in the project structure.
+- **The memory-bank convention.** `memory-bank/` is the Cline-style layout
+  agents are trained to read (`activeContext`, `projectbrief`, `productContext`,
+  `systemPatterns`, `techContext`, `progress`). Moving it breaks that
+  convention — acceptable *if* decided deliberately, but the review entry below
+  determines whether the content survives at all, so the two are sequenced:
+  review first, move what survives.
+
+**Open questions.** Whether `docs/` keeps subfolders (`docs/plan/` for the
+issue-teckting plans, `docs/memory-bank/` for the tracked files) or flattens;
+whether `CHANGELOG.md` and `NewKnowledgeBase.md` are worth keeping at all after
+the review; and whether README stays the only root-level doc or gains siblings
+for discovery.
+
+---
+
+### The memory-bank docs are stale, and the review cannot trust them
+
+**Where:** the eight tracked files in `memory-bank/`. Verified against current
+code on 2026-08-15.
+
+**What is wrong.** The set describes a project from mid-2025 and is wrong in
+its own terms:
+
+- `activeContext.md` still works the `feature/All-Guideline` branch and
+  2024/2025 search tuning; nothing about the admin console, the audit log,
+  password recovery, or the account-detail work.
+- `CHANGELOG.md` stops at 2025-04-26; the entire 2026-08 admin/auth work is
+  absent.
+- `NewKnowledgeBase.md` references files that no longer exist (`web/utils/utils.py`,
+  `QuizGenerator`, the loading overlay, the custom dropdowns, View Transitions).
+- `systemPatterns.md` references `system-architecture.png`, which does not exist
+  (checked 2026-08-15).
+- `techContext.md` says Python 3.9+ and `unittest`, and omits
+  `SUPABASE_SECRET_KEY`, `PUBLIC_BASE_URL`, and the `supabase/migrations/`
+  directory — the actual stack is newer, pytest-driven, and keyed off the
+  `.env.example` semantics.
+- `progress.md` reports coverage percentages and a backlog that do not match
+  the actual test suite or the shipped console.
+
+**Who it reaches.** Anyone — human or agent — who reads `memory-bank/` for
+ground truth and acts on what it says.
+
+**Why it is written down rather than fixed.** Fixing means deciding which files
+earn a rewrite and which earn deletion, and that decision belongs with the
+consolidation entry above: rewriting into place and then moving is double work.
+The two entries are deliberately sequenced — review first, move what survives.
+
+**What fixing it costs.** `PRODUCT.md`, `DESIGN.md`, `README.md` and `TODO.md`
+are the maintained set; nothing in `memory-bank/` is cross-referenced by code
+or tests (checked), so the only true cost is the review effort itself. The
+plausible outcomes: keep `productContext.md`/`projectbrief.md` (still largely
+accurate), fold any surviving facts into `docs/`, and delete the rest rather
+than maintain a second changelog.
+
+---
+
+### The `.env` file carries keys nothing reads
+
+**Where:** `.env` at the project root (gitignored; loaded by
+`load_dotenv` in `web/utils/config_loader.py:30`). The code reads **exactly**
+these variables (verified 2026-08-15): `OPENAI_API_KEY`, `SUPABASE_URL`,
+`SUPABASE_ANON_KEY`, `SUPABASE_SECRET_KEY` (with legacy fallback
+`SUPABASE_SERVICE_ROLE_KEY`), `FLASK_SECRET_KEY`, `PUBLIC_BASE_URL`,
+`BEHIND_PROXY`, `DEBUG`, `LOG_LEVEL`, `WEB_CONCURRENCY`, `FLASK_TESTING`,
+`SUPABASE_PROJECT_REF`. Optional-with-default: `OMP_NUM_THREADS`,
+`MKL_NUM_THREADS`, `TOKENIZERS_PARALLELISM`.
+
+**What is wrong.** `README.md:305-318` documents a different set —
+`FLASK_ENV`, `FLASK_DEBUG`, `SECRET_KEY`, `DATABASE_URL` — none of which any
+code reads, which is a strong hint of what has accumulated in `.env`. A stale
+key is worse than a missing one: it implies a setting is in force when it is
+not, and the operator tuning the wrong file gets no warning.
+
+**What fixing it costs.** Small and safe. Reconcile `.env` against the list
+above and `.env.example`: remove keys nothing reads, rename legacy ones
+(`SECRET_KEY` → `FLASK_SECRET_KEY`; `SUPABASE_SERVICE_ROLE_KEY` →
+`SUPABASE_SECRET_KEY` once the `sb_secret_…` key exists), and fix the README
+env section that lists the phantom variables. **`.env` is gitignored and never
+committed** — it carries real secrets, so handle it with care; `.env.example`
+is the version-controlled record of the agreed set and should match the code's
+reads exactly.
+
+---
+
+### Stale claims in README, and a one-time orphan-file sweep
+
+**Where:** `README.md` and the repo tree. The known dead files are already
+gone — `quiz_generator.py`, `web/utils/utils.py`, and `test_search.py` were
+deleted, and their removal is recorded in `memory-bank/CHANGELOG.md`. Verified
+2026-08-15: no `.bak`/`.tmp`/`.log` leftovers and no stray build artifacts
+under `web/processed_data/`.
+
+**What is wrong.** README describes things that do not exist: the env-var
+section (`README.md:305-318`) lists `FLASK_ENV`, `FLASK_DEBUG`, `SECRET_KEY`,
+`DATABASE_URL` (nothing reads them — see the `.env` entry), and the
+project-structure tree (`README.md:217`) lists `static/images/`, which has no
+directory. The split modules (`lexical_searcher`, `semantic_searcher`,
+`result_combiner`) and the dual OpenAI files (`openai_client.py` vs
+`openai_app.py`) are *deliberate* decomposition, not duplication — the sweep
+should prove that, not undo it.
+
+**What fixing it costs.** Minutes, mostly reading. Fix the two stale README
+sections, then one grep pass over imports of every module under `web/` and
+`static/js/` to confirm nothing is orphaned. The risk of the sweep is
+overreach — removing a file that looks unused but is actually loaded by glob
+(the `MODULE_FILENAMES` import-map glob in `static/js/` and any
+`import_module` by string) rather than by an import statement.
+
+---
+
+### The docs quote three different `ASSET_VERSION` values, none of them current
+
+**Where:** belongs with the documentation entries above. `web/api/app.py` is the
+live source and reads `warm27` (2026-08-15). `DESIGN.md`'s "Do bump
+`ASSET_VERSION`" bullet cites `warm14`. `.impeccable/design.json`'s
+`narrative.dos` cites `warm6`.
+
+**What is wrong.** Nothing functional — no check reads either quoted value, and
+the design hook parses `DESIGN.md`'s frontmatter live rather than the sidecar
+(verified in `detector/design-system.mjs`, which is also why the "sidecar is
+stale" advisory is cosmetic here and not a correctness risk). The problem is
+that a rule quoting its own stale example teaches the reader to distrust the
+rule. `DESIGN.md` is the maintained document and is the one worth fixing;
+`design.json` is generated and will correct itself whenever the sidecar is
+regenerated.
+
+**What fixing it costs.** One line in `DESIGN.md`, plus a decision worth taking
+once: **stop quoting the value at all.** "Bump `ASSET_VERSION` in
+`web/api/app.py`" is the durable instruction; naming the current value adds
+nothing and goes stale on the very next commit that follows the instruction.
+
+---
+
+### Every authenticated request pays a network round trip to verify its token
+
+**Where:** `web/api/app.py`, `_authenticate_request` calls
+`supabase.auth.get_user(token)` on every request that is not the public
+landing. Surfaced 2026-08-15 by the audit of the outage bug above.
+
+**What is wrong.** Nothing is cached. Opening the console costs **four** GoTrue
+verifications — identity, settings, users, audit — before an operator has
+clicked anything, and opening one account costs **two more**. There is an
+identity-flags cache (`web/services/identity_cache.py`, 30s TTL) but it covers
+the *profile* lookup that follows, and console requests deliberately pass
+`fresh=True` to bypass even that, for a documented and correct reason: being
+thirty seconds behind a demotion is unacceptable on the surface that can disable
+an account.
+
+**Who it reaches.** Everyone, as latency; and it is the reason the timeout bug
+above had such a wide blast radius. Production runs `--workers 1 --threads 8`,
+so a slow GoTrue holds one of eight request threads per in-flight verification
+and eight concurrent stalls exhaust the only worker for every reader.
+
+**What fixing it costs — and why it is not obviously worth paying.** The obvious
+move, caching token→user for a short TTL, buys latency at the price of a revoked
+session staying valid for that TTL. That is a real security trade and it is not
+the same trade as the identity-flags cache, which only ever caches *flags* for
+an already-verified caller. The alternative is verifying the JWT locally against
+the project's signing key, which removes the round trip entirely and keeps
+revocation semantics honest for expiry — but not for revocation, and it means
+holding key material and tracking Supabase's move to asymmetric keys.
+
+**Do not do this quietly.** It is a deliberate weakening of a check that
+currently asks the authority on every request. Whoever picks it up should write
+down the revocation window they are choosing, and say it out loud in this file.
+The mitigations already shipped — a 5s ceiling, correct outage classification,
+and a client-side guard against double-opening an account — address the harm
+this caused without touching the trade.

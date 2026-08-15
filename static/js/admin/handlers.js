@@ -60,6 +60,10 @@ export function describeAccessFailure(error) {
   if (error instanceof AdminRequestError) {
     if (error.status === 403) return I18n.t('admin.accessDenied');
     if (error.status === 401) return I18n.t('admin.signedOut');
+    // The server could not REACH the identity provider. Distinct from 401 on
+    // purpose: telling an administrator whose session is perfectly good to go
+    // and sign in again sends them to fix something that is not broken.
+    if (error.status === 503) return I18n.t('admin.identityUnavailable');
   }
   return I18n.t('admin.accessCheckFailed');
 }

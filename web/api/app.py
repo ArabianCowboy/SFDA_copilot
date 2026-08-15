@@ -24,8 +24,24 @@ from urllib.parse import urlparse
 from logging.handlers import RotatingFileHandler # New import for logging
 from werkzeug.middleware.proxy_fix import ProxyFix  # For reverse proxy support
 
+import httpx
 import yaml
 from dotenv import load_dotenv
+
+# GoTrue's own "this one is worth retrying" signal. Imported defensively and
+# behind two names because the package was renamed from `gotrue` to
+# `supabase_auth` mid-2.x: a hard import would turn a dependency bump into a
+# boot failure, and the classifier below degrades to the httpx check alone.
+try:
+    from supabase_auth.errors import AuthError, AuthRetryableError, AuthUnknownError
+except ImportError:  # pragma: no cover - exercised only on older/newer pins
+    try:
+        from gotrue.errors import AuthError, AuthRetryableError, AuthUnknownError
+    except ImportError:
+        AuthError = None  # type: ignore[assignment]
+        AuthRetryableError = None  # type: ignore[assignment]
+        AuthUnknownError = None  # type: ignore[assignment]
+
 from flask import (
     Flask,
     Response,
@@ -304,6 +320,97 @@ def _account_disabled_response() -> Tuple[Response, int]:
     return jsonify({"error": "account_disabled"}), 403
 
 
+def _identity_unavailable_response() -> Tuple[Response, int]:
+    """503, and — critically — the session is left alone.
+
+    The counterpart to `_account_disabled_response`, for the opposite failure.
+    That one says "we know who you are and the answer is no"; this one says "we
+    could not find out". Neither is 401, because 401 means the credential was
+    missing or bad, and `_handle_unauthorized` acts on that by destroying the
+    session.
+
+    `identity_unavailable` rather than a new code: the admin gate already
+    answers exactly this way when the *profile* store cannot be read
+    (`web/api/admin.py`). The same sentence should not arrive under two names
+    depending on which hop failed.
+    """
+    return jsonify({"error": "identity_unavailable"}), 503
+
+
+def _is_upstream_outage(exception: BaseException) -> bool:
+    """"We could not reach the thing that knows" — as opposed to a bad token.
+
+    The distinction was missing entirely: one bare `except Exception` answered
+    both with 401, so a read timeout to GoTrue told a signed-in administrator
+    they were signed out *and* cleared their session on the way. The repo had
+    already written this rule down one layer lower — see the `is_resolved`
+    branch in `web/api/admin.py` and
+    `test_an_identity_outage_is_a_503_not_a_refusal` — and this is that rule
+    applied to the hop above it.
+
+    `httpx.TransportError` is the whole family: connect, read, write and pool
+    timeouts, connection failures, protocol errors. `AuthRetryableError` is
+    GoTrue's own name for "ask again". A 5xx from the auth service is its
+    outage, not the caller's fault.
+
+    **429 counts too**, which is not obvious. A rate limit is the provider
+    declining to answer right now, not a verdict on the credential — and this
+    app asks GoTrue to verify a token on *every* authenticated request, so
+    opening the console costs four verifications before an operator has clicked
+    anything. Landing that in the refusal branch would sign an administrator out
+    for being busy. The cost of counting it here is that the console retries the
+    GET once, which is a rounding error against the fan-out that provoked it.
+    """
+    if isinstance(exception, httpx.TransportError):
+        return True
+    if AuthRetryableError is not None and isinstance(exception, AuthRetryableError):
+        return True
+    status = getattr(exception, "status", None)
+    return isinstance(status, int) and (status >= 500 or status == 429)
+
+
+def _is_auth_refusal(exception: BaseException) -> bool:
+    """A genuine "no": an expired JWT, a malformed one, a revoked session.
+
+    Only GoTrue's own error family counts. This is deliberately not the default
+    branch — the audit that found the timeout bug also found that a missing
+    environment variable, a malformed provider response, and any bug in identity
+    resolution all landed on the same 401. "Your credentials are bad" is exactly
+    as untrue for a server fault as it is for a network one, and it carries the
+    same cost: the session is cleared on the way out.
+    """
+    if AuthError is None:
+        # No error family to test against. Answering "yes, a refusal" here would
+        # be the safe-looking choice and is the wrong one: the only way this
+        # branch is reached is that the auth library could not be imported at
+        # all, which means `get_user` never works — so every request would 401
+        # and clear its session, which is precisely the bug this function was
+        # added to fix, restored in the degenerate case. A missing library is a
+        # fault on our side, so say so.
+        return False
+
+    # `AuthUnknownError` is inside the family and is not a verdict. GoTrue's
+    # `handle_exception` returns it when it could not parse the provider's error
+    # body at all — its second argument is literally the parse failure. "We could
+    # not understand why the call failed" is not "your credential is bad", and
+    # answering 401 there would clear a valid session over a malformed response.
+    if AuthUnknownError is not None and isinstance(exception, AuthUnknownError):
+        return False
+
+    if not isinstance(exception, AuthError):
+        return False
+
+    # A refusal is the strongest claim this function can make — it ends in a 401
+    # and a destroyed session — so it has to rest on actual evidence. Every error
+    # the library raises for a rejected credential carries an integer status
+    # (`AuthInvalidJwtError`, `AuthSessionMissingError` and
+    # `AuthInvalidCredentialsError` are all 400; `AuthApiError` is constructed
+    # with `status_code or 500`). One arriving without a usable status has not
+    # established anything, and "we cannot tell" is our failure, not the
+    # reader's.
+    return isinstance(getattr(exception, "status", None), int)
+
+
 def _authenticate_request() -> Tuple[Optional[IdentityFlags], Optional[Any]]:
     """Resolve the caller. Returns (flags, early_response); exactly one is None.
 
@@ -344,6 +451,27 @@ def _authenticate_request() -> Tuple[Optional[IdentityFlags], Optional[Any]]:
                 fresh=(request.blueprint == "admin"),
             )
         except Exception as exception:
+            if _is_upstream_outage(exception):
+                # Not a refusal. Log it as the outage it is, leave the session
+                # intact, and let the caller retry — the credential in the
+                # reader's hands is still perfectly good.
+                logging.error(
+                    "Identity provider unreachable at endpoint %s: %s",
+                    request.endpoint, exception, exc_info=True,
+                )
+                return None, _identity_unavailable_response()
+
+            if not _is_auth_refusal(exception):
+                # A fault on our side: a missing setting, a provider response
+                # in a shape we did not expect, a bug in identity resolution.
+                # It still denies the request — but it says so as our failure
+                # rather than blaming the reader's credential, and it leaves
+                # the session alone.
+                logging.exception(
+                    "Unexpected failure while authenticating at endpoint %s", request.endpoint
+                )
+                return None, (jsonify({"error": "identity_check_failed"}), 500)
+
             logging.error("Authentication error at endpoint %s: %s", request.endpoint, exception, exc_info=True)
             return None, _handle_unauthorized(_is_page_request())
 

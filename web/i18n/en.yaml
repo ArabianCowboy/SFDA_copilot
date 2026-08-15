@@ -143,6 +143,10 @@ runtime:
   admin:
     accessDenied: "This console is for administrators."
     accessCheckFailed: "Could not confirm your access. Reload to try again."
+    # Distinct from signedOut. The server could not reach the sign-in service,
+    # which says nothing about this administrator's credentials — and sending
+    # them to sign in again would be sending them to fix something that works.
+    identityUnavailable: "The sign-in service could not be reached, so your access could not be checked. Your session is still valid — try again in a moment."
     signedOut: "You are not signed in. Sign in on the chat page first."
     signedInAs: "Signed in as {email}"
     roleLabel: "Role"

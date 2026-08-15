@@ -806,6 +806,51 @@ def test_a_failed_open_does_not_lock_the_account_shut(browser_page: Page):
     expect(browser_page.locator("#account-heading")).to_contain_text("test@example.com")
 
 
+def test_a_transient_outage_on_a_read_is_retried_once(browser_page: Page):
+    """The server answers 503 rather than 401 when it cannot reach the identity
+    provider. That is truthful — and it would have turned a blip the old 401
+    retry silently absorbed into a visible failure, so a GET is retried."""
+    calls = []
+    _open_people(browser_page)
+
+    def flaky(route):
+        calls.append(1)
+        if len(calls) == 1:
+            route.fulfill(status=503, content_type="application/json",
+                          body=json.dumps({"error": "identity_unavailable"}))
+            return
+        _json(route, {"user": DETAILS["test-user-id"], "self_id": "test-admin-id"})
+
+    browser_page.route("**/admin/api/users/test-user-id", flaky)
+    browser_page.locator(".admin-account-open", has_text="test@example.com").click()
+
+    expect(browser_page.locator("#account-heading")).to_contain_text("test@example.com")
+    assert len(calls) == 2, "a transient 503 on a read should be retried exactly once"
+
+
+def test_an_outage_on_a_mutation_is_not_retried(browser_page: Page):
+    """A 401 provably precedes the route body; a 503 does not.
+
+    `storage_unavailable` is returned by routes that have already begun work, so
+    re-sending on one would be a second attempt at a mutation nobody asked for
+    twice — and this console can put a recovery link in somebody's inbox.
+    """
+    calls = []
+    _open_people(browser_page)
+    browser_page.route(
+        "**/admin/api/users/*/reset-password",
+        lambda route: (calls.append(1), route.fulfill(
+            status=503, content_type="application/json",
+            body=json.dumps({"error": "storage_unavailable"}))),
+    )
+    browser_page.locator(".admin-account-open", has_text="test@example.com").click()
+    browser_page.once("dialog", lambda dialog: dialog.accept())
+    browser_page.locator("#account-send-reset").click()
+    browser_page.wait_for_timeout(500)
+
+    assert calls == [1], f"a 503 on a mutation was sent {len(calls)} times"
+
+
 # ── The profile is editable ──────────────────────────────────────────────────
 
 
