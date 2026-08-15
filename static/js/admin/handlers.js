@@ -19,9 +19,11 @@ import {
   showAccountMessage,
   showAuditMessage,
   showPeopleMessage,
+  readProfileForm,
   readSettingsForm,
   renderSettings,
   selectTab,
+  setProfileSaving,
   setSettingsSaving,
   showGateMessage,
   stageRevert,
@@ -29,6 +31,21 @@ import {
   showSettingsMessage,
   tabIds,
 } from './ui.js';
+
+/**
+ * Which sentence a refused profile save gets.
+ *
+ * A lookup rather than a prefix, because these codes do not all live under one
+ * catalogue branch: a stale write is specific to this form, but "that account is
+ * gone" and "you are no longer an administrator" are the same facts the role
+ * controls report and share their wording.
+ */
+const PROFILE_REFUSALS = {
+  profile_changed_since_loaded: 'admin.account.profile_changed_since_loaded',
+  no_such_account: 'admin.people.no_such_account',
+  actor_no_longer_administrator: 'admin.people.actor_no_longer_administrator',
+  too_long: 'admin.account.profile_too_long',
+};
 
 /**
  * Turn a failed access check into one sentence.
@@ -130,6 +147,14 @@ export async function initPeopleTab(services) {
 
   const search = document.getElementById('people-search');
   let searchTimer = null;
+  /* Which account is already being fetched, if any.
+     The generation counter below discards a stale RENDER, but both requests
+     still leave the browser — and opening an account costs two of them, each
+     paying a GoTrue token verification on the server. A double-click therefore
+     spends four verifications to draw one page, against the exact service whose
+     timeout produced the 401 this was hardened for. Same account already in
+     flight: do nothing. */
+  let opening = null;
   /* Which view the operator last asked for. Every render checks it before
      touching the DOM, so a request that resolves late cannot redraw a panel the
      operator has already moved on from — typing and then opening a result
@@ -138,6 +163,10 @@ export async function initPeopleTab(services) {
 
   async function load() {
     clearTimeout(searchTimer);
+    // Returning to the list abandons whatever was being opened. Without this,
+    // opening an account, going back, and opening the same one again inside one
+    // round trip would find the guard below still held and do nothing at all.
+    opening = null;
     const mine = ++generation;
     try {
       const result = await services.users({ q: search?.value.trim() || '' });
@@ -161,6 +190,8 @@ export async function initPeopleTab(services) {
   });
 
   async function openAccount(userId) {
+    if (opening === userId) return;
+    opening = userId;
     clearTimeout(searchTimer);
     const mine = ++generation;
     try {
@@ -178,15 +209,59 @@ export async function initPeopleTab(services) {
     } catch (error) {
       if (mine !== generation) return;
       showAccountMessage(I18n.t('admin.account.loadFailed'));
+    } finally {
+      // Released in `finally`, and only if this call is still the current one:
+      // a failed open must not leave the account permanently unopenable, and a
+      // slow one that has already been superseded must not clear the newer
+      // request's claim on the way out.
+      if (opening === userId) opening = null;
     }
   }
 
   await load();
 
+  /* Saving a profile is its own route and its own RPC, so it is its own
+     listener. Delegated from the panel, because the form is rebuilt from
+     scratch every time an account is opened. */
+  body.addEventListener('submit', async (event) => {
+    if (event.target.id !== 'account-profile-form') return;
+    event.preventDefault();
+
+    const form = readProfileForm();
+    if (!form) return;
+
+    setProfileSaving(true);
+    try {
+      await services.updateProfile(form.userId, form.patch);
+      ErrorHandler.showToast(I18n.t('admin.account.profileSaved'));
+      // Re-read rather than patch in place: the response carries a new
+      // `updated_at`, and saving twice against the stale one would be refused
+      // as a conflict with nobody.
+      await openAccount(form.userId);
+      loadAudit(services);
+    } catch (error) {
+      setProfileSaving(false);
+      const code = error instanceof AdminRequestError ? error.code : null;
+      ErrorHandler.showToast(
+        I18n.t(PROFILE_REFUSALS[code] || 'admin.account.profileSaveFailed'), true,
+      );
+    }
+  });
+
   body.addEventListener('click', async (event) => {
     if (event.target.closest('#account-back')) {
       await load();
       document.querySelector('.admin-account-open')?.focus();
+      return;
+    }
+
+    /* The whole row opens its account. The address stays a real button because
+       a keyboard and a screen reader need a control to land on, but a
+       five-column row where only the first cell answers is a target the eye has
+       to aim at. Anything that is itself a control keeps its own behaviour. */
+    const row = event.target.closest('#people-table tbody tr[data-user-id]');
+    if (row && !event.target.closest('button')) {
+      await openAccount(row.dataset.userId);
       return;
     }
 
@@ -200,11 +275,15 @@ export async function initPeopleTab(services) {
       return;
     }
 
+    /* Role and access now live only on the account page, so the account being
+       acted on is the one the page is showing. It used to be read out of the
+       row the button sat in, and that row no longer exists. */
+    const email = document.getElementById('account-heading')?.textContent || '';
+
     if (action === 'send-reset') {
       /* Confirmed, because it puts a credential-recovery link in somebody's
          inbox. `DESIGN.md` gives the system no danger button to lean on, so the
          weight has to come from the words and from the record. */
-      const email = document.getElementById('account-heading')?.textContent || '';
       if (!window.confirm(I18n.t('admin.account.confirmReset', { email }))) return;
 
       button.disabled = true;
@@ -228,7 +307,6 @@ export async function initPeopleTab(services) {
       return;
     }
 
-    const email = button.closest('tr')?.querySelector('.admin-cell-machine')?.textContent || '';
     let patch = null;
 
     if (action === 'promote') {

@@ -359,11 +359,9 @@ select.admin-input {
 /* ── Row actions ─────────────────────────────────────────────────────────── */
 
 .admin-row-actions {
-  white-space: nowrap;
-}
-
-.admin-row-action + .admin-row-action {
-  margin-inline-start: var(--space-2);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
 }
 
 .admin-row-action:disabled {
@@ -424,64 +422,421 @@ select.admin-input {
   max-inline-size: 28ch;
 }
 
-/* ── Account detail ──────────────────────────────────────────────────────────
-   An in-panel swap inside the People panel, so it inherits the panel's ground
-   rather than introducing a surface of its own. Logical properties throughout —
-   test_css_contract.py is at zero violations across every stylesheet. */
+/* ── The users list ──────────────────────────────────────────────────────────
+   The corridor to the account page, and only that. Role and access controls
+   used to sit on every row AND on the detail; TODO.md asks for one home for
+   everything done to an account, and a control in two places is two places to
+   keep true. What is left here is a list you read, with one way in. */
+
+/* Used by the search field's label and the profile form's. It was referenced in
+   admin.html and defined in no stylesheet, which is why "Search by email"
+   rendered as unstyled body text. */
+.admin-label {
+  font-size: var(--fs-100);
+  font-weight: var(--fw-medium);
+  letter-spacing: var(--track-caps);
+  text-transform: uppercase;
+  color: var(--fg-muted);
+}
+
 .admin-people-search {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
-  margin-block-end: 1rem;
+  gap: var(--space-2);
+  margin-block-end: var(--space-5);
   max-inline-size: 22rem;
 }
 
-/* The email is the way into a detail view, so it has to read as a control while
-   staying a machine-reported fact: mono face, LTR, no colour change on its own. */
+/* A whole row opens its account. The button stays because a keyboard and a
+   screen reader need a real control to land on, but a five-column row where
+   only the first cell responds is a target the eye has to aim at. */
+.admin-table tbody tr[data-user-id] {
+  cursor: pointer;
+}
+
+.admin-table tbody tr[data-user-id]:hover {
+  background: var(--bg-sunken);
+}
+
+/* The way in has to read as a control while staying a machine-reported fact:
+   the mono face and LTR isolation of an address, in the colour that means
+   "actionable" everywhere else in this system. */
 .admin-account-open {
   background: none;
   border: 0;
   padding: 0;
   font: inherit;
-  color: var(--accent-ink, inherit);
+  color: var(--signal);
   text-decoration: underline;
-  text-underline-offset: 2px;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
   cursor: pointer;
 }
 
-.admin-definitions {
-  display: grid;
-  grid-template-columns: minmax(8rem, max-content) 1fr;
-  gap: 0.35rem 1rem;
-  margin-block: 0.5rem 1.5rem;
+.admin-account-open:hover {
+  color: var(--signal-hover);
 }
 
-.admin-definitions dt {
-  color: var(--ink-secondary);
-  font-weight: 500;
+/* A chevron in the last column, pointing the way the row goes. Decorative — the
+   row and the address are both already controls — so it is aria-hidden and
+   takes the faint ink until the row is under the cursor. */
+.admin-row-go {
+  inline-size: 1px;
+  color: var(--fg-faint);
+  text-align: end;
 }
 
-.admin-definitions dd {
-  margin-inline-start: 0;
+.admin-row-go .icon {
+  transform: scaleX(var(--flip));
 }
 
+.admin-table tbody tr[data-user-id]:hover .admin-row-go {
+  color: var(--signal);
+}
+
+/* ── Account detail ──────────────────────────────────────────────────────────
+   Four zones in increasing severity: who this is, what they told us about
+   themselves, what can be done to them, and what has been done.
+
+   It was a flat run of <dl> rows before, every fact at one weight — and two of
+   the colours it asked for, --ink-secondary and --accent-ink, are not tokens in
+   this system at all, so each label resolved to the same ink as its value and
+   the page read as one paragraph. Same information, given a shape. */
+
+.admin-detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.admin-backlink {
+  align-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--fg-secondary);
+  font: inherit;
+  font-size: var(--fs-200);
+  font-weight: var(--fw-medium);
+  cursor: pointer;
+}
+
+.admin-backlink:hover,
+.admin-backlink:hover .icon {
+  color: var(--signal);
+}
+
+/* chevron-right is the only chevron in the runtime icon subset, so "back" is it
+   turned around. scaleX(-1 × --flip) points it against the reading direction in
+   both scripts: -1 in LTR, +1 in RTL. transform has no logical form, and this
+   is the documented escape hatch for that. */
+.admin-backlink .icon {
+  color: var(--fg-faint);
+  transform: scaleX(calc(-1 * var(--flip)));
+}
+
+/* ── Zone 0: the account as an object ────────────────────────────────────── */
+
+.admin-account-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--space-3) var(--space-5);
+  padding: var(--space-5);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+}
+
+/* A withdrawn permission is a state, not an error, and this system has no
+   danger variant by design — so a disabled account recedes onto the sunken
+   fill rather than turning red. A whole card stepping back reads harder across
+   a page than a coloured pill does, and it does not cry fault at a decision
+   somebody made deliberately. */
+.admin-account-head.is-off {
+  background: var(--bg-sunken);
+}
+
+.admin-account-id {
+  flex: 1 1 18rem;
+  min-inline-size: 0;
+}
+
+/* The address leads, because it is what the operator searched for. Set as the
+   machine-reported fact it is rather than in the display face — which would
+   never have applied to it anyway, since the heading has always wrapped a mono
+   span. */
+.admin-account-address {
+  margin: 0;
+  font-size: var(--fs-400);
+  font-weight: var(--fw-medium);
+  line-height: var(--lh-snug);
+  overflow-wrap: anywhere;
+}
+
+.admin-account-address .admin-cell-machine {
+  color: var(--fg-primary);
+  font-size: inherit;
+  font-weight: inherit;
+}
+
+.admin-account-address:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 4px;
+  border-radius: var(--radius-xs);
+}
+
+/* The person under the address. An operator searching by email still has to
+   work out who they are looking at, and this is the answer in one line. */
+.admin-account-person {
+  margin: var(--space-2) 0 0;
+  color: var(--fg-secondary);
+  font-size: var(--fs-200);
+}
+
+.admin-marks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.admin-mark {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-pill);
+  background: var(--bg-surface);
+  color: var(--fg-secondary);
+  font-size: var(--fs-100);
+  font-weight: var(--fw-medium);
+  letter-spacing: var(--track-caps);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* The citation marker's resting treatment at control size, the same one
+   `.new-chat-btn` borrows on the reader surface. Administrator is the one
+   standing on this page that changes what somebody can do to everybody else,
+   so it is the one that earns the signal. */
+.admin-mark.is-signal {
+  border-color: transparent;
+  background: var(--signal-tint);
+  color: var(--signal);
+}
+
+.admin-mark.is-off {
+  background: var(--bg-sunken);
+  color: var(--fg-muted);
+}
+
+/* Who withdrew access, when, and why — one sentence across the foot of the
+   card. It was three more rows in the wall of definitions, which is where a
+   reason nobody reads goes to be ignored. */
+/* The rule spans the card; the sentence is held to a measure inside it. Both on
+   one element meant `max-inline-size` cropped the border too, and a divider
+   that stops halfway across a card reads as a mistake rather than a boundary. */
+.admin-account-note {
+  flex-basis: 100%;
+  padding-block-start: var(--space-4);
+  border-block-start: 1px solid var(--hairline);
+}
+
+.admin-account-note p {
+  margin: 0;
+  max-inline-size: 70ch;
+  color: var(--fg-secondary);
+  font-size: var(--fs-200);
+}
+
+.admin-account-reason {
+  color: var(--fg-primary);
+}
+
+/* ── Zones ───────────────────────────────────────────────────────────────── */
+
+.admin-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.admin-section-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+/* The heading IS the label: a small tracked cap naming the zone, with a
+   hairline running out to the edge so four zones down one column stay four
+   zones. Not an eyebrow — there is no second heading under it. */
 .admin-subheading {
-  font-size: 0.95rem;
-  font-weight: 600;
-  margin-block: 1.25rem 0.25rem;
+  margin: 0;
+  flex: 0 0 auto;
+  font-family: var(--font-sans);
+  font-size: var(--fs-100);
+  font-weight: var(--fw-medium);
+  letter-spacing: var(--track-caps);
+  text-transform: uppercase;
+  color: var(--fg-muted);
 }
 
-/* A stated problem, not an alarm. The system has no danger variant by design,
-   so this carries weight through the sunken fill and the words. */
-.admin-notice {
-  background: var(--paper-100);
-  border: 1px solid var(--rule-200);
-  border-radius: 0.5rem;
-  padding: 0.75rem 1rem;
-  margin-block: 1rem;
+.admin-section-head::after {
+  content: "";
+  flex: 1 1 auto;
+  block-size: 1px;
+  background: var(--hairline);
+}
+
+.admin-card {
+  padding: var(--space-5);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+}
+
+/* ── Zone 1: the readout ─────────────────────────────────────────────────── */
+
+/* Each fact is a cell, not a row: the label small and tracked above it, the
+   human reading of the time in ink, and the exact stamp beneath in mono.
+   Both, deliberately — an operator wants "yesterday" to decide and
+   "2026-08-14 04:13:28" to defend the decision afterwards. It is the split
+   this product already makes between an answer and its citation. */
+.admin-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: var(--space-5) var(--space-4);
+  margin: 0;
+}
+
+.admin-fact {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-inline-size: 0;
+}
+
+/* --fg-muted, not --fg-faint. Faint ink measures about 4.0:1 on the card white,
+   which is under the 4.5:1 floor for text this size — and every word in this
+   zone is content, not chrome. The step down from the value is carried by size,
+   tracking and caps instead of by a colour nobody can read. */
+.admin-fact dt {
+  font-size: var(--fs-100);
+  font-weight: var(--fw-medium);
+  letter-spacing: var(--track-caps);
+  text-transform: uppercase;
+  color: var(--fg-muted);
+}
+
+.admin-fact dd {
+  margin: 0;
+  color: var(--fg-primary);
+  overflow-wrap: anywhere;
+}
+
+.admin-fact-exact {
+  display: block;
+  margin-block-start: var(--space-1);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fs-100);
+  color: var(--fg-muted);
+  unicode-bidi: isolate;
+}
+
+/* ── Zone 2: the profile ─────────────────────────────────────────────────── */
+
+.admin-profile-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: var(--space-4);
+}
+
+.admin-profile-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.admin-profile-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-block-start: var(--space-5);
+  padding-block-start: var(--space-4);
+  border-block-start: 1px solid var(--hairline);
+}
+
+/* ── Zone 3: what can be done ────────────────────────────────────────────── */
+
+.admin-account-hint {
+  margin: var(--space-4) 0 0;
+  padding-block-start: var(--space-4);
+  border-block-start: 1px solid var(--hairline);
+  color: var(--fg-secondary);
+  font-size: var(--fs-200);
   max-inline-size: 70ch;
 }
 
+.admin-absent {
+  margin-block-start: var(--space-4);
+}
+
+.admin-absent-title {
+  display: block;
+  font-size: var(--fs-100);
+  font-weight: var(--fw-medium);
+  letter-spacing: var(--track-caps);
+  text-transform: uppercase;
+  color: var(--fg-muted);
+}
+
+.admin-absent-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  list-style: none;
+  max-inline-size: 70ch;
+}
+
+.admin-absent-list li {
+  padding-inline-start: var(--space-4);
+  border-inline-start: 1px solid var(--hairline-strong);
+  color: var(--fg-muted);
+  font-size: var(--fs-200);
+}
+
+/* A stated problem, not an alarm. The system has no danger variant by design,
+   so this carries its weight through the sunken fill and the words. */
+.admin-notice {
+  padding: var(--space-4);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: var(--bg-sunken);
+  max-inline-size: 70ch;
+}
+
+.admin-notice strong {
+  display: block;
+  margin-block-end: var(--space-2);
+  color: var(--fg-primary);
+}
+
 .admin-notice p {
-  margin-block-end: 0;
+  margin: 0;
+  color: var(--fg-secondary);
+  font-size: var(--fs-200);
+}
+
+/* ── Zone 4: what has been done ──────────────────────────────────────────── */
+
+/* Wide content scrolls inside its own container, never the page. */
+.admin-scroll {
+  overflow-x: auto;
 }

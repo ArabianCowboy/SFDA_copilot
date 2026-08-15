@@ -447,10 +447,24 @@ DETAILS = {
         "id": "test-user-id", "email": "test@example.com", "has_profile": True,
         "role": "user", "tier": "free", "is_disabled": False,
         "created_at": "2026-02-01T00:00:00+00:00", "last_sign_in_at": None,
-        "email_confirmed_at": "2026-02-01T00:00:00+00:00", "updated_at": None,
+        "email_confirmed_at": "2026-02-01T00:00:00+00:00",
+        # Non-null, because the profile form sends it back as the version it was
+        # loaded at and a null one would let the assertion pass vacuously.
+        "updated_at": "2026-05-01T09:00:00+00:00",
         "disabled_at": None, "disabled_by_email": None, "disabled_reason": None,
         "full_name": "Test User", "organization": "Test Organization",
         "specialization": "Regulatory Affairs", "last_seen_at": None,
+    },
+    "test-disabled-id": {
+        "id": "test-disabled-id", "email": "disabled@example.com", "has_profile": True,
+        "role": "user", "tier": "free", "is_disabled": True,
+        "created_at": "2026-03-01T00:00:00+00:00", "last_sign_in_at": None,
+        "email_confirmed_at": "2026-03-01T00:00:00+00:00", "updated_at": None,
+        "disabled_at": "2026-06-01T00:00:00+00:00",
+        "disabled_by_email": "admin@example.com",
+        "disabled_reason": "Sharing an account with a colleague",
+        "full_name": None, "organization": None,
+        "specialization": None, "last_seen_at": None,
     },
     "test-orphan-id": {
         "id": "test-orphan-id", "email": "orphan@example.com", "has_profile": False,
@@ -652,6 +666,210 @@ def test_a_rate_limited_reset_gets_its_own_sentence(browser_page: Page):
     browser_page.locator("#account-send-reset").click()
 
     expect(browser_page.locator("#toast")).to_contain_text("allowance", ignore_case=True)
+
+
+# ── The account page is the one home for what is done to an account ──────────
+
+
+def test_role_and_access_controls_live_only_on_the_account_page(browser_page: Page):
+    """TODO.md asks for one home for everything done to an account.
+
+    They used to be buttons on every list row AND on the detail view, which is
+    two places to keep true and two places to get wrong — and it made the list
+    unreadable across five columns of controls.
+    """
+    _open_people(browser_page)
+    rows = browser_page.locator("#people-table")
+    expect(rows.locator("[data-action='promote']")).to_have_count(0)
+    expect(rows.locator("[data-action='disable']")).to_have_count(0)
+
+    browser_page.locator(".admin-account-open", has_text="test@example.com").click()
+    expect(browser_page.locator("#account-actions [data-action='promote']")).to_be_visible()
+    expect(browser_page.locator("#account-actions [data-action='disable']")).to_be_visible()
+
+
+def test_clicking_anywhere_in_a_row_opens_that_account(browser_page: Page):
+    """The address stays a real button for the keyboard; the row answers too,
+    because a five-column row where only the first cell responds is a target the
+    eye has to aim at."""
+    _open_people(browser_page)
+    # The Role cell — not the address button, so this proves the row itself.
+    browser_page.locator("#people-table tbody tr[data-user-id='test-user-id'] td").nth(1).click()
+
+    expect(browser_page.locator("#account-heading")).to_contain_text("test@example.com")
+
+
+def test_opening_an_account_takes_the_search_label_with_the_input(browser_page: Page):
+    """The id used to be on the input alone, so opening an account hid the box
+    and left "Search by email" stranded above the account page, labelling
+    nothing."""
+    _open_people(browser_page)
+    expect(browser_page.locator("#people-search-field")).to_be_visible()
+
+    browser_page.locator(".admin-account-open", has_text="test@example.com").click()
+    expect(browser_page.locator("#people-search-field")).to_be_hidden()
+
+    browser_page.locator("#account-back").click()
+    expect(browser_page.locator("#people-search-field")).to_be_visible()
+
+
+def test_a_disabled_account_states_its_standing_beside_its_address(browser_page: Page):
+    """Standing was the fifth row of a definition list, at the same weight as
+    "Created" — so whether this person can use the product at all took reading
+    the page to find out."""
+    _open_people(browser_page)
+    browser_page.locator(".admin-account-open", has_text="disabled@example.com").click()
+
+    head = browser_page.locator(".admin-account-head")
+    expect(head).to_have_class(re.compile(r"is-off"))
+    expect(head.locator(".admin-mark.is-off")).to_contain_text("Disabled")
+    # Asking for a reason and then filing it out of sight is how a required
+    # field becomes theatre.
+    expect(browser_page.locator(".admin-account-reason")).to_contain_text("colleague")
+
+
+# ── Outage handling in the transport ─────────────────────────────────────────
+
+
+def test_opening_an_account_fetches_it_once(browser_page: Page):
+    """The row and the address are both ways in; exactly one may fire.
+
+    Every admin request costs a GoTrue token verification, so a double-open is
+    not merely untidy — it doubles the load on the service whose timeout caused
+    the incident this suite now covers.
+    """
+    calls = []
+    _open_people(browser_page)
+
+    def counted(route):
+        calls.append(route.request.url)
+        _json(route, {"user": DETAILS["test-user-id"], "self_id": "test-admin-id"})
+
+    browser_page.route("**/admin/api/users/test-user-id", counted)
+    browser_page.locator(".admin-account-open", has_text="test@example.com").click()
+    expect(browser_page.locator("#account-heading")).to_contain_text("test@example.com")
+    browser_page.wait_for_timeout(400)
+
+    assert len(calls) == 1, f"one click fetched the account {len(calls)} times"
+
+
+def test_a_double_click_does_not_open_an_account_twice(browser_page: Page):
+    """Seen in the incident log: the same account fetched twice, one second
+    apart. Two clicks, not a double-fire — but each open costs two requests and
+    each request costs a GoTrue token verification, so an impatient operator
+    spends four of them to draw one page against the service whose timeout
+    started all this.
+    """
+    calls = []
+    _open_people(browser_page)
+
+    def slow(route):
+        calls.append(1)
+        _json(route, {"user": DETAILS["test-user-id"], "self_id": "test-admin-id"})
+
+    browser_page.route("**/admin/api/users/test-user-id", slow)
+    target = browser_page.locator(".admin-account-open", has_text="test@example.com")
+    target.click(click_count=2, delay=10)
+
+    expect(browser_page.locator("#account-heading")).to_contain_text("test@example.com")
+    browser_page.wait_for_timeout(500)
+    assert len(calls) == 1, f"a double-click fetched the account {len(calls)} times"
+
+
+def test_an_account_can_be_reopened_after_going_back(browser_page: Page):
+    """The guard above must not become a lock. Returning to the list abandons
+    whatever was opening, so the same account opens again straight after."""
+    _open_people(browser_page)
+    browser_page.locator(".admin-account-open", has_text="test@example.com").click()
+    expect(browser_page.locator("#account-heading")).to_contain_text("test@example.com")
+
+    browser_page.locator("#account-back").click()
+    expect(browser_page.locator("#people-list")).to_be_visible()
+
+    browser_page.locator(".admin-account-open", has_text="test@example.com").click()
+    expect(browser_page.locator("#account-heading")).to_contain_text("test@example.com")
+
+
+def test_a_failed_open_does_not_lock_the_account_shut(browser_page: Page):
+    """The guard is released in `finally`. Released only on success, one failed
+    load would make that account permanently unopenable for the session."""
+    _open_people(browser_page)
+    browser_page.route("**/admin/api/users/test-user-id",
+                       lambda route: route.fulfill(status=500))
+    browser_page.locator(".admin-account-open", has_text="test@example.com").click()
+    expect(browser_page.locator("#account-error")).to_be_visible()
+
+    # The route is now healthy again; the same account must still open.
+    browser_page.unroute("**/admin/api/users/test-user-id")
+    browser_page.locator("#account-back").click()
+    browser_page.locator(".admin-account-open", has_text="test@example.com").click()
+    expect(browser_page.locator("#account-heading")).to_contain_text("test@example.com")
+
+
+# ── The profile is editable ──────────────────────────────────────────────────
+
+
+def test_the_profile_can_be_edited_and_carries_the_version_it_was_loaded_at(
+    browser_page: Page,
+):
+    """`PATCH …/profile` and `admin_update_profile` were built and tested with
+    no caller at all, so this zone showed three values an operator could read
+    and not correct.
+
+    The version travels with the write: the RPC refuses a save whose expectation
+    no longer matches rather than overwriting whatever somebody else stored
+    while this form sat open.
+    """
+    sent = []
+    _open_people(browser_page)
+    browser_page.route(
+        "**/admin/api/users/*/profile",
+        lambda route: (sent.append(route.request.post_data),
+                       _json(route, {"profile": DETAILS["test-user-id"]})),
+    )
+    browser_page.locator(".admin-account-open", has_text="test@example.com").click()
+
+    expect(browser_page.locator("#account-organization")).to_have_value("Test Organization")
+    browser_page.locator("#account-organization").fill("Ministry of Health")
+    browser_page.locator("#account-specialization").fill("")
+    browser_page.locator("#account-profile-save").click()
+
+    expect(browser_page.locator("#toast")).to_contain_text("saved", ignore_case=True)
+    body = json.loads(sent[0])
+    assert body["organization"] == "Ministry of Health"
+    # Cleared means null, not "". The column is nullable, and "never filled in"
+    # is a different fact about a person than "set to the empty string".
+    assert body["specialization"] is None
+    assert body["expected_updated_at"] == "2026-05-01T09:00:00+00:00"
+
+
+def test_a_stale_profile_save_is_refused_rather_than_overwriting(browser_page: Page):
+    """A row lock protects execution time; this protects think time. Two
+    operators with the same account open would otherwise have the later save
+    silently discard the earlier one."""
+    _open_people(browser_page)
+    browser_page.route(
+        "**/admin/api/users/*/profile",
+        lambda route: route.fulfill(
+            status=409, content_type="application/json",
+            body=json.dumps({"error": "profile_changed_since_loaded"})),
+    )
+    browser_page.locator(".admin-account-open", has_text="test@example.com").click()
+    browser_page.locator("#account-full-name").fill("Somebody Else")
+    browser_page.locator("#account-profile-save").click()
+
+    expect(browser_page.locator("#toast")).to_contain_text("Reload", ignore_case=True)
+
+
+def test_an_account_with_no_profile_offers_no_profile_form(browser_page: Page):
+    """There is no row to write to. A form that cannot save is worse than an
+    absent one, because it invites the attempt."""
+    _open_people(browser_page)
+    browser_page.locator(".admin-account-open", has_text="orphan@example.com").click()
+
+    expect(browser_page.locator("#account-profile-form")).to_have_count(0)
+    # But the reset link still works — it goes to an address, not to a profile.
+    expect(browser_page.locator("#account-send-reset")).to_be_visible()
 
 
 def test_declining_the_confirmation_sends_nothing(browser_page: Page):

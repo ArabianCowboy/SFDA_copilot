@@ -157,8 +157,12 @@
                    roving-tabindex model assumes every tab is always reachable
                    and always has something behind it. #}
                 {# Server-rendered so it keeps its value and focus while the list
-                   below it reloads on every keystroke. Carries no data. #}
-                <div class="admin-people-search">
+                   below it reloads on every keystroke. Carries no data.
+
+                   The id is on the FIELD, not the input: opening an account
+                   hides this whole block, and hiding the input alone stranded
+                   its label over the account page with nothing underneath. #}
+                <div class="admin-people-search" id="people-search-field">
                     <label class="admin-label" for="people-search">{{ t('page.admin.searchLabel') }}</label>
                     <input type="search" id="people-search" class="admin-input"
                         autocomplete="off" placeholder="{{ t('page.admin.searchLabel') }}">

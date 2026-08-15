@@ -235,10 +235,17 @@ runtime:
       absentRevoke: "Ending existing sessions. Disabling chat does not sign anyone out, and a password reset does not end other sessions either — use the Supabase dashboard."
       absentEmailChange: "Changing an email address. With confirmation on, an address typed wrongly at signup cannot be reached by a reset either; that reader has to register again."
       saveProfile: "Save profile"
+      # Says who sees it and that the change is kept. An operator rewriting
+      # somebody else's description of themselves should know both.
+      profileHint: "This is what the person sees on their own profile. Every change is recorded with what it said before."
       profileSaved: "Profile saved."
       profileSaveFailed: "Could not save this profile."
       profile_changed_since_loaded: "Somebody else changed this profile while you were editing. Reload before saving."
+      profile_too_long: "One of these is too long. Each field holds up to 200 characters."
       brokenHeading: "This account has no profile"
+      # The same fact as brokenHeading, at pill length. The heading explains; a
+      # mark beside the address only has room to name the state.
+      noProfileMark: "No profile"
       brokenBody: "It exists in authentication but has no profile row, so its role and access cannot be read or changed. It was most likely created before the signup trigger was repaired."
     people:
       hint: "Accounts on this instance. Disabling chat access stops new questions; a conversation already streaming finishes, and the person can still sign in."
