@@ -13,7 +13,7 @@ import json
 import pytest
 
 from web.api.app import create_app
-from web.services.conversation_store import ConversationStore
+from web.services.conversation_store import ELISION_NOTICE, ConversationStore
 from web.services.result_combiner import SearchResult
 from web.services.search_exceptions import SearchEngineError
 
@@ -335,7 +335,13 @@ def test_store_caps_by_serialized_size():
     store = ConversationStore()
     for i in range(6):
         store.append_turn("c1", "q" * 200, "a" * 200, max_pairs=50, max_chars=1_000)
-    assert len(json.dumps(store.get("c1"))) <= 1_000
+    # ensure_ascii=False to measure the way _truncate does. The fixture is pure
+    # ASCII so both settings agree on it, which is exactly why the default was
+    # able to sit here looking like it pinned the production measurement.
+    assert len(json.dumps(store.get("c1"), ensure_ascii=False)) <= 1_000
+    # A cap satisfied by returning nothing is not a cap. Without this, the
+    # assertion above passes just as happily on [].
+    assert store.get("c1"), "trimming to the budget must not empty the conversation"
 
 
 def test_store_measures_serialized_size_without_ascii_escaping():
@@ -353,6 +359,86 @@ def test_store_measures_serialized_size_without_ascii_escaping():
     history = store.get("c1")
     assert history, "an exchange well under max_chars must survive, not be trimmed to nothing"
     assert history[0]["content"] == arabic
+
+
+def test_the_newest_exchange_survives_an_answer_larger_than_the_budget():
+    """The reported bug, at its smallest.
+
+    A single answer bigger than the whole budget used to be discarded by the
+    call that recorded it, and it took every earlier turn with it — the store
+    returned []. An exchange the reader is looking at must be in history.
+    """
+    store = ConversationStore()
+    store.append_turn("c1", "short question", "A" * 50_000, max_pairs=10, max_chars=4_000)
+
+    history = store.get("c1")
+    assert len(history) == 2, "the exchange just recorded must not be trimmed away"
+    assert history[0]["content"] == "short question"
+    assert history[1]["content"].startswith("AAAA")
+
+
+def test_an_oversized_message_is_clamped_and_says_so():
+    """Clamped, not dropped — and visibly, so the model does not read a severed
+    answer as a complete one."""
+    store = ConversationStore()
+    store.append_turn("c1", "q", "A" * 50_000, max_pairs=10, max_chars=4_000)
+
+    answer = store.get("c1")[1]["content"]
+    assert len(answer) <= 2_000, "a message may not exceed half the budget"
+    assert answer.endswith(ELISION_NOTICE)
+
+
+def test_history_still_grows_over_a_realistic_conversation():
+    """The regression the old tests could not catch, because every fixture
+    answer was a handful of characters and the budget only bites at real size.
+
+    Four turns of ordinary RAG answers — one of them very long — must leave the
+    model with more context than it started with, never less and never none.
+    """
+    store = ConversationStore()
+    answers = ["A" * 3_300, "B" * 1_100, "C" * 9_000, "D" * 400]
+
+    sizes = []
+    for turn, answer in enumerate(answers):
+        sizes.append(len(store.get("c1")))
+        store.append_turn("c1", f"question {turn}", answer, max_pairs=10, max_chars=24_000)
+
+    assert sizes[0] == 0, "the first turn has no history by definition"
+    assert all(size > 0 for size in sizes[1:]), f"history was emptied mid-conversation: {sizes}"
+    assert sizes == sorted(sizes), f"history shrank instead of accumulating: {sizes}"
+    assert len(store.get("c1")) == 8, "all four exchanges fit the budget and must be kept"
+
+
+def test_the_pair_cap_is_reachable_at_realistic_answer_sizes():
+    """`chat_history_length` has to be the bound it claims to be.
+
+    It never was: the character budget was narrower than one exchange, so it
+    decided every conversation first and the configured pair count was dead.
+    """
+    store = ConversationStore()
+    for turn in range(8):
+        store.append_turn("c1", f"question {turn}", "A" * 2_000, max_pairs=3, max_chars=24_000)
+
+    history = store.get("c1")
+    assert len(history) == 6, "the pair cap, not the char budget, must bind here"
+    assert history[0]["content"] == "question 5"
+
+
+def test_reading_a_conversation_keeps_it_alive(monkeypatch):
+    """TTL means an hour of inactivity, not an hour since the last successful
+    write — otherwise a reader whose turns keep failing loses the history they
+    are still using."""
+    clock = {"t": 0.0}
+    monkeypatch.setattr(ConversationStore, "_now", staticmethod(lambda: clock["t"]))
+
+    store = ConversationStore(ttl_seconds=100)
+    store.append_turn("c1", "q", "a", max_pairs=10, max_chars=10_000)
+    for _ in range(5):
+        clock["t"] += 80
+        assert store.get("c1"), "reading must refresh the TTL"
+
+    clock["t"] += 200
+    assert store.get("c1") == [], "a genuinely idle conversation still expires"
 
 
 def test_store_evicts_least_recently_used():

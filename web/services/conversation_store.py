@@ -57,12 +57,21 @@ class ConversationStore:
             self._data.popitem(last=False)
 
     def get(self, conversation_id: str) -> list[dict[str, str]]:
-        """Return the turns for a conversation, newest last."""
+        """Return the turns for a conversation, newest last.
+
+        Reading refreshes the TTL stamp, so the hour is one of INACTIVITY
+        rather than one measured from the last successful write. The two only
+        diverge when a turn is read but never appended — a retrieval outage, a
+        model error, a cancelled stream — and there the write-based reading
+        punishes the reader for the server's failure by expiring the history
+        they were still using.
+        """
         with self._lock:
             self._evict()
             entry = self._data.get(conversation_id)
             if entry is None:
                 return []
+            self._data[conversation_id] = (self._now(), entry[1])
             self._data.move_to_end(conversation_id)
             return list(entry[1])
 
@@ -116,15 +125,60 @@ class ConversationStore:
             return len(self._data)
 
 
+ELISION_NOTICE = "\n\n[… the rest of this message is omitted from the conversation history …]"
+
+
+def _clamp(message: dict[str, str], limit: int) -> dict[str, str]:
+    """Cut one over-long message down to `limit` characters, visibly.
+
+    A single message must never be large enough to price the whole exchange
+    out of the budget — that is how one long answer used to take the entire
+    conversation with it. Clamping bounds each message so the newest exchange
+    always has room.
+
+    The notice is not decoration. Handing the model a silently severed answer
+    invites it to treat a truncated list as complete and contradict itself
+    against what the reader can still see on screen; saying the text is
+    partial costs a few tokens and removes that failure.
+
+    The head is kept rather than the tail because these are RAG answers: the
+    direct response leads and the elaboration follows.
+    """
+    content = message.get("content", "")
+    if len(content) <= limit:
+        return message
+    head = max(0, limit - len(ELISION_NOTICE))
+    return {**message, "content": content[:head] + ELISION_NOTICE}
+
+
 def _truncate(history: list[dict[str, str]], max_pairs: int, max_chars: int) -> list[dict[str, str]]:
-    """Trim to max_pairs exchanges, then to max_chars of serialized JSON."""
-    trimmed = history[-(max_pairs * 2):]
+    """Trim to max_pairs exchanges, then to max_chars of serialized JSON.
+
+    THE NEWEST EXCHANGE ALWAYS SURVIVES. That invariant is the whole point of
+    this function's shape, and its absence was a bug: the loop below used to
+    run while `trimmed` was merely non-empty, so an exchange that exceeded the
+    budget on its own was dropped by the very call that recorded it — taking
+    every older turn with it and returning []. A four-turn conversation went
+    0 -> 547 -> 205 -> 0 logged history tokens, and the model, asked what had
+    been discussed, answered from nothing.
+
+    So the budget is enforced in the only order that can hold that invariant:
+    clamp each message first, then drop whole pairs oldest-first, and stop at
+    one pair whether or not the budget is met. A lone clamped exchange can sit
+    slightly over `max_chars` — bounded by the per-message limit below — and
+    that is the deliberate trade. Exceeding a soft memory budget by one
+    exchange is cheap; discarding the turn the reader is looking at is not.
+    """
+    # Half the budget, so a clamped pair lands near max_chars rather than at
+    # twice it. This is what keeps the floor below from being unbounded.
+    per_message = max_chars // 2
+    trimmed = [_clamp(m, per_message) for m in history[-(max_pairs * 2):]]
     # ensure_ascii=False: the default True escapes every non-ASCII character
     # (e.g. Arabic) to a 6-char \uXXXX sequence, so a ~950-char Arabic
     # exchange would measure ~4,700 chars against a 3,500 budget and the loop
     # below would drop it to nothing. Pinned by
     # test_store_measures_serialized_size_without_ascii_escaping and
     # test_arabic_history_survives_the_blocking_path.
-    while trimmed and len(json.dumps(trimmed, ensure_ascii=False)) > max_chars:
+    while len(trimmed) > 2 and len(json.dumps(trimmed, ensure_ascii=False)) > max_chars:
         trimmed = trimmed[2:]  # drop the oldest user/assistant pair
     return trimmed

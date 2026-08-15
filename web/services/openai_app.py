@@ -38,6 +38,27 @@ BASE_SYSTEM_MESSAGE = (
     "Always prioritize information from the context over your general knowledge. "
     "If the answer is not found within the provided context, clearly state that you cannot answer based on the given information. "
     "Do not make up information or use external knowledge. "
+    # Those three rules are about the DOCUMENTS, but nothing said so, and the
+    # prior turns arrive in the same prompt as ordinary messages with no
+    # standing of their own. Read literally — which is how it was read — a
+    # reader asking "what did I ask first?" is asking something the context
+    # does not contain, so the honest response was a refusal, and the observed
+    # one was worse: with history separately broken, the model had nothing to
+    # refuse from and answered that the first question was the question being
+    # asked right then.
+    #
+    # Repairing the store is therefore only half of it. History that reaches
+    # the prompt but which the prompt forbids using is history the reader
+    # still cannot get an answer out of. The carve-out is deliberately narrow:
+    # it licenses answering ABOUT the conversation, never answering a
+    # regulatory question from memory.
+    "The conversation so far is also yours to draw on. A question about this conversation itself — "
+    "what was asked earlier, what you already answered, or a request to revise, shorten or expand a "
+    "previous answer — is answered from the conversation, and the rule about the provided context "
+    "does not apply to it. Answer it directly rather than refusing. "
+    "Such an answer carries no citation markers, because it comes from the conversation and not from "
+    "a document. This is not licence to answer a regulatory question from memory: any claim about "
+    "SFDA regulation still comes from the provided context or not at all. "
     # Numbered markers rather than prose citations: the context blocks are
     # numbered, so "[2]" maps to a source by array index with no ambiguity and
     # survives being split across streaming token boundaries. Writing out

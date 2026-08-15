@@ -153,7 +153,19 @@ from web.utils.supabase_client import get_supabase
 # ──────────────────────────────────────────────────────────
 # Constants
 # ──────────────────────────────────────────────────────────
-MAX_SESSION_CHAT_HISTORY_CHARS = 3_500
+# Fallback for `server.chat_history_char_budget`. This was 3,500 and named
+# MAX_SESSION_CHAT_HISTORY_CHARS, which was right when history rode the signed
+# session cookie: the browser drops a cookie over ~4KB, so the budget was a
+# hard external limit. Moving history into ConversationStore removed that
+# limit but kept the number, and a bound sized for a cookie is punitive for
+# RAM — a single ordinary answer here runs 3,000-9,000 characters, so the
+# budget was routinely smaller than ONE exchange and the store spent its time
+# deleting the conversation instead of holding it.
+#
+# What bounds it now is server memory: this ceiling times ConversationStore's
+# 500 conversations, so ~12MB of history at worst. It is a soft budget — see
+# _truncate, which will exceed it rather than drop the newest exchange.
+DEFAULT_CHAT_HISTORY_CHAR_BUDGET = 24_000
 DEFAULT_MAX_CHAT_MESSAGES_COUNT = 5
 ALLOWED_CHAT_CATEGORIES = {"all", "regulatory", "pharmacovigilance", "veterinary", "biological"}
 SUPPORTED_FAQ_LANGS = ("en", "ar")
@@ -558,6 +570,13 @@ def _configure_app(app: Flask, testing: bool) -> None:
         TESTING=testing,
         RATELIMIT_ENABLED=not testing,
         MAX_CHAT_HISTORY_MESSAGE_PAIRS=config.get("server", "chat_history_length", DEFAULT_MAX_CHAT_MESSAGES_COUNT),
+        # Configurable because the constant it replaced was the one history
+        # bound config.yaml could not see, and it silently overrode the one it
+        # could: `chat_history_length: 10` never took effect, because a budget
+        # narrower than a single exchange decided every conversation first.
+        MAX_CHAT_HISTORY_CHARS=config.get(
+            "server", "chat_history_char_budget", DEFAULT_CHAT_HISTORY_CHAR_BUDGET
+        ),
     )
     if testing:
         app.config.update(SERVER_NAME="localhost")
@@ -1169,6 +1188,7 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
         handler: OpenAIHandler = current_app.config["openai_handler"]
         store: ConversationStore = current_app.config["conversations"]
         max_pairs = current_app.config["MAX_CHAT_HISTORY_MESSAGE_PAIRS"]
+        max_chars = current_app.config["MAX_CHAT_HISTORY_CHARS"]
 
         # ── Every session touch happens HERE, in the view body. ──
         # Flask writes Set-Cookie in finalize_request(), which runs after this
@@ -1247,18 +1267,41 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
                     "retrieved": len(retrieved),
                 })
 
+                # Recorded HERE, before suggestions, and the order is the
+                # point. `generate_suggestions` is a second blocking call to
+                # OpenAI; running it first put a whole network round trip
+                # between the reader receiving `final` — the complete,
+                # normalized answer, which the client renders as authoritative
+                # — and the turn existing in history. A tab closed or a
+                # failure inside that window left the reader looking at an
+                # answer the server had no record of, so the next question
+                # could not refer to it. handlers.js says as much where it
+                # handles `final` without `done`.
+                #
+                # `final` is the honest moment of completion: once it is sent
+                # the answer is whole and the reader has it. Suggestions are a
+                # garnish, and a garnish must not gate the record.
+                store.append_turn(conversation_id, query, answer, max_pairs, max_chars)
+
                 yield sse("suggestions", {
                     "suggested_questions": handler.generate_suggestions(query, answer, lang=lang),
                 })
 
-                store.append_turn(conversation_id, query, answer, max_pairs, MAX_SESSION_CHAT_HISTORY_CHARS)
                 yield sse("done", {"finish_reason": "stop", "chars": len(answer)})
 
             except GeneratorExit:
                 # Client disconnected (cancelled or navigated away). Re-raising
                 # lets stream_response's context manager close the upstream
-                # connection, and skips append_turn so a cancelled turn is
-                # correctly not recorded in history.
+                # connection.
+                #
+                # Whether the turn was recorded depends on where the
+                # disconnect landed, which is the correct dependency: a cancel
+                # DURING drafting arrives before append_turn and is rightly
+                # not recorded, because there is no complete answer and the
+                # reader was not shown one. A cancel after `final` finds the
+                # turn already recorded — also right, since by then the reader
+                # has the whole answer on screen and their next question may
+                # refer to it.
                 logging.info("Client disconnected mid-stream (conv=%s)", conversation_id)
                 raise
             except SearchEngineError:
@@ -1323,6 +1366,7 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
 
             store: ConversationStore = current_app.config["conversations"]
             max_pairs = current_app.config["MAX_CHAT_HISTORY_MESSAGE_PAIRS"]
+            max_chars = current_app.config["MAX_CHAT_HISTORY_CHARS"]
 
             # Same pattern the streaming route uses (see its comment there):
             # get/create conv_id up front, one-time-migrate any pre-deploy
@@ -1352,7 +1396,7 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
             cited = extract_cited_indices(answer, retrieved)
             sources = [s for s in retrieved if s["index"] in cited]
 
-            store.append_turn(conversation_id, query, answer, max_pairs, MAX_SESSION_CHAT_HISTORY_CHARS)
+            store.append_turn(conversation_id, query, answer, max_pairs, max_chars)
 
             return jsonify(
                 response=answer,

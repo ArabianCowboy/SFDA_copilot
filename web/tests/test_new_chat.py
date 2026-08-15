@@ -554,8 +554,6 @@ def test_the_session_cookie_stays_under_the_browsers_limit_with_incompressible_c
     'session' cookie is too large". Moving history off the cookie entirely
     removes the class of problem rather than tuning the budget.
     """
-    from web.api.app import MAX_SESSION_CHAT_HISTORY_CHARS
-
     incompressible = _deterministic_high_entropy("pasted-ids", 73)
     pair = [
         {"role": "user", "content": incompressible},
@@ -563,7 +561,10 @@ def test_the_session_cookie_stays_under_the_browsers_limit_with_incompressible_c
     ]
     # Self-assert the precondition: this content must survive the char-based
     # budget, or the test stops proving anything if the budget ever changes.
-    assert len(json.dumps(pair, ensure_ascii=False)) <= MAX_SESSION_CHAT_HISTORY_CHARS
+    # The budget is `server.chat_history_char_budget` now, resolved onto the
+    # app — it used to be MAX_SESSION_CHAT_HISTORY_CHARS, a module constant
+    # sized for this very cookie, which is why it outlived the cookie.
+    assert len(json.dumps(pair, ensure_ascii=False)) <= app.config["MAX_CHAT_HISTORY_CHARS"]
 
     with client.session_transaction() as flask_session:
         # Every real signed-in session carries this; TESTING's bypass never

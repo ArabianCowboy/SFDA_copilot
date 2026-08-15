@@ -10,8 +10,27 @@ server:
   host: 0.0.0.0
   port: 5001
   debug: false  # Set to true for local development
-  chat_history_length: 10  # Message pairs to keep in session
-  
+  # Exchanges (one user question + one assistant answer) kept per conversation.
+  # Held server-side in ConversationStore, NOT in the session cookie — the
+  # comment here said "in session" long after that stopped being true.
+  chat_history_length: 10
+
+  # Soft character budget for one conversation's stored history, measured as
+  # serialized JSON. This exists so a conversation cannot grow without bound in
+  # memory; it is NOT a model-context limit.
+  #
+  # Set it comfortably above a single exchange or it stops being a bound and
+  # becomes a deletion policy. At 3,500 — the value inherited from when history
+  # rode the 4KB session cookie — one ordinary answer exceeded the whole budget,
+  # so each turn evicted the turns before it and a long answer emptied the
+  # conversation outright. `chat_history_length` above never bound anything
+  # because this always bound first.
+  #
+  # The newest exchange is never dropped to satisfy this (see
+  # ConversationStore._truncate); an over-long message is clamped instead.
+  chat_history_char_budget: 24000
+
+
   # Rate limiting
   rate_limit:
     per_day: 200
