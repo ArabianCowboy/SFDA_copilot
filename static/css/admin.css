@@ -338,6 +338,27 @@ select.admin-input {
   unicode-bidi: isolate;
 }
 
+/* `dir="ltr"` sets the direction of the BOX, not only of the text inside it —
+   and `text-align: start` resolves against the box's own direction. So on an
+   Arabic page every machine cell hugged the LEFT edge of its column while its
+   own column heading, and every neighbouring cell, hugged the right: the two
+   readings of one fact ended up on opposite sides.
+
+   The isolate has to stay — it is what stops an address or a stamp being
+   reordered — so the alignment is restored explicitly instead. This is a
+   direction branch, which this system otherwise avoids, but the alternatives
+   are worse: `inline-size: fit-content` does not shrink-wrap a table cell, and
+   moving the isolate to an inner element would change the DOM that
+   `test_admin_browser.py` and the confirmation copy in `handlers.js` both read.
+
+   `end`, never `right` — test_css_contract.py fails the build on the physical
+   form. On an inline `.admin-cell-machine` (the account heading's address) this
+   is inert, because text-align applies to block containers. */
+[dir="rtl"] .admin-cell-machine,
+[dir="rtl"] .admin-fact-exact {
+  text-align: end;
+}
+
 /* ── Footer ──────────────────────────────────────────────────────────────── */
 
 .admin-footer {

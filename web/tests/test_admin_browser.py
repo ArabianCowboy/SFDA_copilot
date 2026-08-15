@@ -434,8 +434,13 @@ def test_a_staged_revert_is_sent_as_null(browser_page: Page):
 ACCOUNTS = [
     {"id": "test-admin-id", "email": "admin@example.com", "role": "admin",
      "tier": "internal", "is_disabled": False, "last_sign_in_at": None},
+    # The only seeded account that has ever signed in. Every entry here used to
+    # carry None, so the people table's date path was never rendered by a test
+    # at all — which is how it shipped for a year formatting the cell with
+    # `toLocaleDateString`, whose Arabic output the bidi algorithm mangles.
     {"id": "test-user-id", "email": "test@example.com", "role": "user",
-     "tier": "free", "is_disabled": False, "last_sign_in_at": None},
+     "tier": "free", "is_disabled": False,
+     "last_sign_in_at": "2026-08-15T12:00:00+00:00"},
     {"id": "test-disabled-id", "email": "disabled@example.com", "role": "user",
      "tier": "free", "is_disabled": True, "last_sign_in_at": None},
     {"id": "test-orphan-id", "email": "orphan@example.com", "role": "user",
@@ -541,6 +546,36 @@ def test_an_account_with_no_profile_is_shown_as_broken(browser_page: Page):
     browser_page.locator(".admin-account-open", has_text="orphan@example.com").click()
 
     expect(browser_page.locator("#account-broken")).to_be_visible()
+
+
+def test_the_people_table_dates_survive_arabic(browser_page: Page):
+    """Two failures met in this one column, and neither is visible in English.
+
+    `toLocaleDateString('ar')` returns `15<U+200F>/8<U+200F>/2026` — RIGHT-TO-LEFT
+    MARKs between the numeric fields. Those are strongly-RTL characters inside a
+    run of digits, so the bidi algorithm reorders the fields even within the
+    cell's own `dir="ltr"` isolate and the column rendered `152026/8/`: a date
+    saying the wrong thing, not merely looking odd. `dir` cannot fix that; only
+    not emitting the marks can, which is why the stamp is built from parts.
+
+    Separately, `dir="ltr"` sets the direction of the BOX, so `text-align: start`
+    resolved to physical LEFT and every machine cell hugged the edge opposite its
+    own column heading.
+    """
+    _open_people(browser_page, lang="&lang=ar")
+
+    expect(browser_page.locator("html")).to_have_attribute("dir", "rtl")
+    row = browser_page.locator(".admin-table tbody tr", has_text="test@example.com")
+    seen = row.locator("td.admin-cell-machine").nth(1)
+
+    # Shape, not a fixed date: `dayStamp` reads local parts, so the day itself is
+    # timezone-dependent. The mangling this guards against fails the shape.
+    stamp = seen.inner_text().strip()
+    assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", stamp), f"not an ISO stamp: {stamp!r}"
+    assert not re.search(r"[‎‏؜⁦-⁩]", stamp), (
+        f"stamp carries bidi control characters: {stamp!r}"
+    )
+    assert seen.evaluate("el => getComputedStyle(el).textAlign") == "end"
 
 
 def test_the_detail_keeps_machine_values_left_to_right_in_arabic(browser_page: Page):

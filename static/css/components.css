@@ -376,6 +376,7 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  color: var(--fg-muted);
 }
 .form-floating > label .icon { color: var(--fg-faint); }
 .form-label { display: inline-flex; align-items: center; gap: var(--space-2); }
@@ -396,7 +397,6 @@
   border-color: var(--signal);
   box-shadow: 0 0 0 3px var(--focus-ring-shadow);
 }
-.form-floating > label { color: var(--fg-muted); }
 .form-text { color: var(--fg-muted); font-size: var(--fs-200); }
 
 /* ——————————————— New chat ———————————————
@@ -1518,7 +1518,7 @@
   align-items: center;
   gap: var(--space-2);
   max-inline-size: 190px;
-  padding: var(--space-3) var(--space-3);
+  padding: var(--space-3);
   border: none;
   border-inline-end: 1px solid var(--hairline);
   border-start-start-radius: var(--radius-md);
@@ -1738,34 +1738,56 @@
    `.landing`'s ground and measure rather than introducing a surface of its own:
    a reader arriving here has already been shown the landing once, and a second
    visual language for one form would read as a different site.
-   Logical properties throughout — test_css_contract.py is at zero violations. */
+   Logical properties throughout — test_css_contract.py is at zero violations.
+
+   This block was authored off the token system and has been brought back onto
+   it. Every value below now names a scale or semantic token; the two literals
+   that remain are measures with no token to name them. */
 .recovery .landing-inner {
+  /* 34rem and the 5rem ceiling are the only lengths here with no scale token:
+     80px falls between --space-8 and --space-9. Left as authored rather than
+     rounded to the nearest step, which would silently reflow the view. */
   max-inline-size: 34rem;
-  padding-block: clamp(2rem, 8vh, 5rem);
+  padding-block: clamp(var(--space-6), 8vh, 5rem);
 }
 
 .recovery-heading {
-  font-size: 1.5rem;
-  font-weight: 700;
-  letter-spacing: -0.012em;
-  margin-block-end: 0.5rem;
+  font-size: var(--fs-600);
+  font-weight: var(--fw-display);
+  /* Was a hardcoded -.012em. tokens.css zeroes the tracking tokens under
+     [dir="rtl"] because negative tracking breaks Arabic glyph joining — but
+     the blanket `[dir="rtl"] *` reset ties on specificity with a class rule
+     and loses on source order, since components.css is loaded after
+     tokens.css. The literal therefore survived into Arabic; the token does
+     not. */
+  letter-spacing: var(--track-tight);
+  margin-block-end: var(--space-2);
 }
 
 .recovery-lead {
-  color: var(--ink-secondary);
+  /* --ink-secondary is not a token in this system: the ramp is --ink-900/700/
+     500/300 and the semantic name is --fg-secondary. The declaration was
+     invalid, so the lead inherited body primary ink and sat at the same
+     weight as the heading's own colour. admin.css records the identical
+     mistake being found and fixed there. */
+  color: var(--fg-secondary);
   max-inline-size: 54ch;
-  margin-block-end: 1.5rem;
+  margin-block-end: var(--space-5);
 }
 
 .recovery-form {
-  background: var(--paper-000);
-  border: 1px solid var(--rule-200);
-  border-radius: var(--radius-lg, 0.75rem);
-  padding: 1.5rem;
+  /* Layer 3 names, not the primitives underneath them. --paper-000 and
+     --rule-200 resolve to exactly these on both themes, so this renders
+     identically — but a component reaching past the semantic layer is the one
+     thing tokens.css's header rules out. */
+  background: var(--bg-surface);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
 }
 
 /* The notice is at the end of the flow here rather than in a footer, because
    this view has none. Same sunken fill and measure as the landing's. */
 .recovery-notice {
-  margin-block-start: 2rem;
+  margin-block-start: var(--space-6);
 }

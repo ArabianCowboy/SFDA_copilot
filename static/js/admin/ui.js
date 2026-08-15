@@ -437,11 +437,15 @@ export function renderUsers({ users, total, self_id: selfId }) {
       }
     }
 
-    const seen = machineCell(
-      user.last_sign_in_at
-        ? new Date(user.last_sign_in_at).toLocaleDateString(I18n.lang)
-        : I18n.t('admin.people.never'),
-    );
+    /* Two different kinds of value share this column, so they cannot share a
+       cell treatment. A stamp is machine-reported and takes the mono LTR box;
+       "never" is a translated sentence, and forcing it into that same box set
+       Arabic in a Latin mono face and laid it out left-to-right. The account
+       detail view already draws this distinction — see the `text:` branch of
+       the sign-in fact — and the table had not. */
+    const seen = user.last_sign_in_at
+      ? machineCell(dayStamp(user.last_sign_in_at))
+      : machineCell(I18n.t('admin.people.never'), { mono: false });
 
     /* Role and access used to be buttons on every row AND on the detail view.
        TODO.md asks for one home for everything done to an account, and a
@@ -688,8 +692,30 @@ function exactWhen(value) {
   const at = new Date(value);
   if (Number.isNaN(at.getTime())) return '';
   const pad = (part) => String(part).padStart(2, '0');
-  return `${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())} `
+  return `${dayStamp(value)} `
     + `${pad(at.getHours())}:${pad(at.getMinutes())}:${pad(at.getSeconds())}`;
+}
+
+/**
+ * The date alone, on exactly the doctrine above, for the columns that carry no
+ * clock time.
+ *
+ * The people table asked Intl for this one and got back `15<RLM>/8<RLM>/2026`:
+ * the `ar` locale separates the numeric fields with U+200F RIGHT-TO-LEFT MARK.
+ * Those are strongly-RTL characters sitting in a run of digits, so the bidi
+ * algorithm reorders the fields even inside the cell's own `dir="ltr"` isolate,
+ * and the column rendered the literal string `152026/8/` — a date that says the
+ * wrong thing rather than one that merely looks odd. `dir` cannot fix it; only
+ * not emitting the marks can.
+ *
+ * The audit table already learned this — see the comment on `exactWhen` and the
+ * one above the audit `when` cell. This cell had been left behind.
+ */
+function dayStamp(value) {
+  const at = new Date(value);
+  if (Number.isNaN(at.getTime())) return '';
+  const pad = (part) => String(part).padStart(2, '0');
+  return `${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())}`;
 }
 
 /**
