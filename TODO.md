@@ -402,7 +402,34 @@ any future account in this state.
 
 ---
 
-### A combined or no-op account change is recorded under a misleading name
+### ~~A combined or no-op account change is recorded under a misleading name~~ — FIXED 2026-08-16
+
+**Resolved.** `admin_set_user_flags` (migration
+`20260816121335_diff_based_admin_user_flags_audit.sql`) now derives its audit
+rows from the diff between before/after state exactly as `admin_update_profile`
+already did, ported rather than reinvented as this entry predicted. A combined
+`{role, is_disabled}` change writes **two** rows, one per field, deliberately —
+not the same shape as `admin_update_profile`'s single row, and the divergence
+was decided rather than defaulted: the per-account audit view
+(`static/js/admin/ui.js`) renders only an action name and a note, no
+before/after diff, so collapsing two simultaneous changes under one label would
+silently drop one of them on exactly the page built to show "what happened to
+this account." A no-op patch writes nothing, matching the reference. A
+caller-supplied `reason` is preserved on a role-only change too — it is a
+general note on the call, not a field reserved for disabling, and the first
+draft of this fix dropped it there before review caught it.
+
+Investigated and implemented by two independently delegated implementers
+(Antigravity/`gemini-3.7-flash-high` and OpenCode/`gpt-5.6-luna`) working from
+the same brief, whose designs disagreed on one-row-vs-two; adjudicated by
+reading the actual per-account UI rather than guessing. Covered by
+`web/tests/test_admin_users.py` (combined change, no-op, partial no-op, and
+reason-on-role-only-change). Applied live and verified against the deployed
+function body on the project (`yjjuudnsnjzhyqllsqrd`), not just committed.
+
+---
+
+### (original entry, kept for the cost it records) A combined or no-op account change is recorded under a misleading name
 
 **Where:** the action name is derived in `web/services/admin_store.py` from
 whichever field is present, and written by the `admin_set_user_flags` RPC.
@@ -434,8 +461,8 @@ carry. Copy the shape, do not reinvent it.
 
 ### A disabled reader is not told until they ask a question
 
-**Where:** `Services.getIdentity` (`static/js/modules/services.js:328`) returns
-`null` for both 401 and 403, and `static/js/app.js:218` uses it only to decide
+**Where:** `Services.getIdentity` (`static/js/modules/services.js:462`) returns
+`null` for both 401 and 403, and `static/js/app.js:296` uses it only to decide
 whether to reveal the admin link.
 
 **What is wrong.** Disabling chat access is enforced server-side on every
@@ -453,6 +480,75 @@ a contract change to a function whose docstring currently promises it does not �
 and the composer would need a disabled state, which is a bilingual surface with
 its own CSS. Not urgent: the current behaviour is correct, merely late and
 graceless.
+
+---
+
+### ~~The admin console link disappears intermittently for a genuine administrator~~ — FIXED 2026-08-16
+
+**Resolved.** `onAuthStateChange`'s callback in `static/js/app.js` fires
+**twice** on a page load with an existing session — once for `INITIAL_SESSION`,
+once for `SIGNED_IN` — confirmed against the pinned
+`@supabase/supabase-js@2.39.7` source rather than assumed: `_recoverAndRefresh`
+queues a `SIGNED_IN` notification during `initialize()` while `onAuthStateChange`
+separately emits `INITIAL_SESSION` straight to each subscriber once
+`initializePromise` settles. Both firings independently dispatched
+`Services.getIdentity().then(identity => AuthView.renderAdminAffordance(...))`
+with no ordering guard, so whichever of the two *resolved* last decided the
+final visible state, regardless of which was dispatched first. `getIdentity`
+also had zero retry, so a single transient hiccup — the same class of GoTrue
+outage the entry above this one already proved happens on this project —
+permanently hid the link for that page load with nothing bringing it back
+short of a reload. Both weaknesses had to be present for the symptom to be
+this rare and this unpredictable; either alone would have been more consistent.
+
+**What fixed it.** `Services.getIdentity()` (`static/js/modules/services.js`)
+now dedupes concurrent calls into one shared promise, assigned synchronously
+before any `await` so two callers in the same tick can never both see it
+unset — closing the race at its source rather than picking a winner after the
+fact. It also enforces a 5s request timeout (a hung request previously
+defeated retry outright) and attaches `.status` to what it throws. A new
+`identityCheckId` generation counter (`auth-view.js` / `state.js`), bumped
+whenever a view stops being the signed-in reader's — sign-out, entering
+recovery — lets `app.js` discard a check's result if it resolves after the
+view that asked for it is gone. `app.js` also no longer blocks the identity
+check behind FAQ loading, and retries only network failures and 5xx/503, never
+a 401/403 (a real answer) or another 4xx (repeating it would only repeat the
+answer).
+
+**A second, more serious bug found in review, on the same code.** The dedup
+above is not scoped to *who* asked — on a shared machine, if reader A signs
+out while their check is still in flight and reader B signs in before it
+resolves, B's call would join A's promise and could be shown A's admin
+standing. `/admin/api/*` stays gated server-side regardless — this is an
+affordance leak, not an authorization bypass — but it is exactly the class of
+bug this fix exists to close, just for a second person instead of one. Fixed
+by checking the resolved identity's `user_id` against the reader the check
+was actually dispatched for; a mismatch is discarded, which fails to
+"unresolved, stay hidden" rather than showing anyone the wrong account's
+standing — the same posture this app already takes for every other
+unresolved case.
+
+Investigated independently by two implementers reasoning from the same
+symptom (Antigravity/`gemini-3.7-flash-high` for the initial root cause and a
+risk-review pass on the proposed fix; Codex/`gpt-5.6-luna` for a read-only
+adversarial review of the finished diff), which is what surfaced the
+cross-user leak above along with the missing timeout and an over-broad retry
+scope — all fixed here rather than left for later. Covered by a new browser
+test in `web/tests/test_frontend.py` proving the specific ordering this
+guards against, using Playwright's deferred `route.fulfill()` rather than a
+thread blocked inside the route handler — the first draft used the latter and
+it stalled Playwright's own sync dispatcher badly enough to look like a
+different bug entirely before the mechanism was understood. Verified to fail
+against the pre-fix code and pass against the fix; full suite otherwise
+unaffected (the one browser-suite failure seen while testing this was the
+already-documented `test_source_panel.py` flake below, confirmed unrelated by
+reproducing it identically on the pre-fix code).
+
+**What this was not.** A local `.env` missing `SUPABASE_SECRET_KEY` /
+`SUPABASE_SERVICE_ROLE_KEY` separately made a local dev instance unable to
+resolve *any* reader as an administrator — a deploy-config gap, unrelated to
+this bug, and not fixed here. See "The `.env` file carries keys nothing
+reads" below.
 
 ---
 
@@ -730,6 +826,24 @@ Chasing it needs a reproduction, and it did not reproduce on demand.
 **Where to start.** Run the browser suite with `-p no:randomly` if ordering is
 suspected, or `--tracing retain-on-failure` to capture the context state at the
 moment it dies. If it recurs in CI, that trace is the thing worth having.
+
+**2026-08-16 — a different symptom, same suspect.** Seen again during an
+unrelated session that had run many browser tests back to back: not a fixture
+teardown ERROR this time but an assertion failure —
+`test_opening_sources_does_not_move_the_answer` and
+`test_scrolling_up_hands_control_back_to_the_reader` both failing on
+"transcript moved 652px" (a real scroll-position check, not a fixture crash).
+Unlike the original write-up, the *same pair* failed across several repeats
+rather than a different test each time — but it failed identically on
+pre-existing, unmodified code too, and stopped correlating with any particular
+diff once ~8 leftover Chromium processes and a stray unrelated `opencode`
+process (from earlier delegate work in the same long session, never cleaned
+up) were killed. Not a diagnosis — the original ERROR-at-teardown shape is
+still unexplained — but real, session-level evidence for the "resource
+contention" half of the theory above: a long session that accumulates
+un-cleaned browser/agent processes measurably degrades this specific suite's
+timing-sensitive assertions. Worth checking process count before trusting a
+red run in a long-lived session, CI or not.
 
 ---
 
@@ -1142,6 +1256,17 @@ env section that lists the phantom variables. **`.env` is gitignored and never
 committed** — it carries real secrets, so handle it with care; `.env.example`
 is the version-controlled record of the agreed set and should match the code's
 reads exactly.
+
+**This stopped being theoretical on 2026-08-16.** A local `.env`, untouched
+since 2026-05-30, was carrying exactly the dead set this entry describes
+(`FLASK_APP`, `FLASK_ENV`, `PORT`, …) and neither `FLASK_SECRET_KEY` nor
+`SUPABASE_SECRET_KEY`/`SUPABASE_SERVICE_ROLE_KEY` — so `get_supabase_admin()`
+had no credential to construct a privileged client with, and *every* reader
+on that instance resolved as a non-administrator, unconditionally. It read as
+"the admin button is broken" and cost real investigation time before the
+file's own modification timestamp settled it: nothing had changed recently,
+the `.env` had simply never been updated to match what the app grew to need.
+Confirms the severity this entry already claimed — updated after the fact.
 
 ---
 
