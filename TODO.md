@@ -402,7 +402,32 @@ any future account in this state.
 
 ---
 
-### A combined or no-op account change is recorded under a misleading name
+### ~~A combined or no-op account change is recorded under a misleading name~~ — FIXED 2026-08-16
+
+**Resolved.** `admin_set_user_flags` (migration
+`20260816121335_diff_based_admin_user_flags_audit.sql`) now derives its audit
+rows from the diff between before-state and after-state rather than from
+whichever fields the request carried, exactly as the entry below recommended
+after the sibling RPC set the precedent. Two behaviours changed:
+
+- A patch touching both `role` and `is_disabled` now writes **two** audit rows
+  — `user.role_change` and `user.disable`/`user.enable` — rather than
+  dropping one.
+- A field sent back at the value it already holds writes **no** row for that
+  field; a fully no-op call writes nothing at all.
+
+Both are covered live:
+`test_a_single_call_changing_both_role_and_standing_records_both` asserts the
+two-row split (`web/tests/test_admin_users.py:233`), and
+`test_a_no_op_user_flags_edit_records_nothing` /
+`test_a_partial_no_op_records_only_the_field_that_moved`
+(`web/tests/test_admin_users.py:261,277`) assert the no-op case. The in-memory
+test double in `web/services/admin_store.py:600-625` mirrors the SQL shape
+rather than reimplementing it separately, so the two cannot drift.
+
+---
+
+### (original entry, kept for the cost it records) A combined or no-op account change is recorded under a misleading name
 
 **Where:** the action name is derived in `web/services/admin_store.py` from
 whichever field is present, and written by the `admin_set_user_flags` RPC.
@@ -1117,31 +1142,39 @@ files rather than a set needing review before any move.
 
 ---
 
-### The `.env` file carries keys nothing reads
+### ~~The `.env` file carries keys nothing reads~~ — FIXED 2026-08-16
 
-**Where:** `.env` at the project root (gitignored; loaded by
-`load_dotenv` in `web/utils/config_loader.py:30`). The code reads **exactly**
-these variables (verified 2026-08-15): `OPENAI_API_KEY`, `SUPABASE_URL`,
-`SUPABASE_ANON_KEY`, `SUPABASE_SECRET_KEY` (with legacy fallback
-`SUPABASE_SERVICE_ROLE_KEY`), `FLASK_SECRET_KEY`, `PUBLIC_BASE_URL`,
-`BEHIND_PROXY`, `DEBUG`, `LOG_LEVEL`, `WEB_CONCURRENCY`, `FLASK_TESTING`,
-`SUPABASE_PROJECT_REF`. Optional-with-default: `OMP_NUM_THREADS`,
-`MKL_NUM_THREADS`, `TOKENIZERS_PARALLELISM`.
+**Resolved, in two steps.** `README.md:329-361` and `.env.example` were
+re-verified against a fresh repo-wide grep of every `os.getenv`/`os.environ`
+read: they already listed exactly what the code reads — including
+`SUPABASE_AUTH_TIMEOUT`, added since this entry was first written — and
+README already stated outright that `FLASK_ENV`, `FLASK_DEBUG`, plain
+`SECRET_KEY`, and `DATABASE_URL` are dead. That half needed no further work.
 
-**What is wrong.** `README.md:305-318` documents a different set —
-`FLASK_ENV`, `FLASK_DEBUG`, `SECRET_KEY`, `DATABASE_URL` — none of which any
-code reads, which is a strong hint of what has accumulated in `.env`. A stale
-key is worse than a missing one: it implies a setting is in force when it is
-not, and the operator tuning the wrong file gets no warning.
+The project's actual `.env` is gitignored and was never read here — it
+carries real secrets — but a sanitized working copy (`.env copy`) was
+reviewed line by line against the same grep, and every variable it carried
+that nothing reads was identified and removed: `OPENAI_MODEL`,
+`EMBEDDING_MODEL`, `EMBEDDING_DIMENSION`, `MAX_TOKENS` (all superseded by
+`web/config.yaml`'s `openai.*` / `search_engine.*` keys, and already out of
+sync with the live values there), `SUPABASE_KEY`, `supabasePassword`,
+`FLASK_APP`, `PORT` (the real port is `config.yaml` -> `server.port`, and the
+`.env` copy's value didn't even match it), `CHUNK_SIZE`/`CHUNK_OVERLAP`
+(from `config.yaml` -> `data_processing.*` instead), and `API_KEY`. The
+legacy `SUPABASE_SERVICE_ROLE_KEY` was also dropped in favour of the
+`SUPABASE_SECRET_KEY` already present — the code prefers the latter whenever
+both are set (`web/utils/supabase_client.py:110`), so the legacy key was
+already inert and is one fewer non-revocable credential to track. The
+cleaned copy was then applied to the real `.env` by hand, since only whoever
+holds that file can safely do the reconciliation.
 
-**What fixing it costs.** Small and safe. Reconcile `.env` against the list
-above and `.env.example`: remove keys nothing reads, rename legacy ones
-(`SECRET_KEY` → `FLASK_SECRET_KEY`; `SUPABASE_SERVICE_ROLE_KEY` →
-`SUPABASE_SECRET_KEY` once the `sb_secret_…` key exists), and fix the README
-env section that lists the phantom variables. **`.env` is gitignored and never
-committed** — it carries real secrets, so handle it with care; `.env.example`
-is the version-controlled record of the agreed set and should match the code's
-reads exactly.
+One side effect worth recording: reviewing the sanitized copy in this
+conversation surfaced that it wasn't actually sanitized — it still carried
+live values for `OPENAI_API_KEY`, `SUPABASE_SECRET_KEY`, and
+`FLASK_SECRET_KEY` (also `SUPABASE_SERVICE_ROLE_KEY` and a raw
+`supabasePassword`, both now removed regardless). Those three should be
+treated as exposed and rotated independently of this cleanup — that is
+tracked as a follow-up outside this file, not blocking it.
 
 ---
 
@@ -1176,7 +1209,25 @@ glob (the `MODULE_FILENAMES` import-map glob in `static/js/` and any
 
 ---
 
-### The docs quote three different `ASSET_VERSION` values, none of them current
+### ~~The docs quote three different `ASSET_VERSION` values, none of them current~~ — FIXED 2026-08-16
+
+**Resolved by the fix this entry itself recommended.** `DESIGN.md`'s "Do bump
+`ASSET_VERSION`" bullet no longer names a value at all — it now reads "Do bump
+`ASSET_VERSION` in `web/api/app.py` in any commit touching CSS or JS," which
+cannot go stale the way a quoted example (`"warm14"`, before that `"warm6"`)
+does on the very next commit that follows the instruction. `web/api/app.py`
+itself was at `warm30` by the time this was fixed, one more bump past the
+`warm28` this entry quoted when it was written — confirming the entry's own
+point about how fast the quoted value ages.
+
+`.impeccable/design.json`'s `narrative.dos` still cites an old value, left
+alone as this entry already concluded: it is generated, `detector/design-system.mjs`
+parses `DESIGN.md`'s frontmatter live rather than the sidecar, and it will
+correct itself whenever the sidecar is next regenerated.
+
+---
+
+### (original entry) The docs quote three different `ASSET_VERSION` values, none of them current
 
 **Where:** belongs with the documentation entries above. `web/api/app.py` is the
 live source and reads `warm28` (2026-08-16 — this entry's own previously-quoted
