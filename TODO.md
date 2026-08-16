@@ -87,9 +87,15 @@ learn and are invisible in the finished code:
   trusted to open the view; and the marker has to be readable before the client is
   constructed, because it selects the flow type.
 
-The admin half — a *send reset* button on the account detail view — is still open;
-see *Account detail view* under Planned work. It is now one authorised call on top
-of this.
+**Update 2026-08-16 — the admin half has shipped too.** `POST
+/admin/api/users/<user_id>/reset-password` (`web/api/admin.py:265-340`) sends
+the same recovery link from the account detail view via `#account-send-reset`
+(`static/js/admin/ui.js:956-959`, wired through
+`services.sendPasswordReset(userId)` in
+`static/js/admin/handlers.js:287-312` and `static/js/admin/services.js:132-133`).
+Tested in `web/tests/test_admin_users.py:461-530` and
+`web/tests/test_admin_browser.py:658-705`. See *Account detail view* under
+Planned work for what else that page does and does not do yet.
 
 ---
 
@@ -168,6 +174,15 @@ So the shape to build is **send a password reset** (`auth.admin.generateLink`
 with `type: 'recovery'`, or triggering the same reader-facing flow), not **set a
 password**.
 
+**Update 2026-08-16 — the send-reset half is built; email change is not.**
+`POST /admin/api/users/<user_id>/reset-password` (`web/api/admin.py:265-340`)
+does exactly what this entry recommended, and structurally enforces the
+"deliberately cannot set a password" position: it rejects any request body at
+all, returning 422 `unknown_field` if a payload such as `{"password": ...}`
+is submitted (`web/api/admin.py:299-303`). No route or RPC anywhere in the
+repository reaches `auth.users.email` (confirmed by a repo-wide search) — an
+email change is still genuinely unbuilt.
+
 **What it would disturb.** Both reach `auth.admin.*`, so both are the
 outside-Postgres case the audit design already anticipates: the mutation and its
 audit row cannot share a transaction, so they need intent-then-outcome — record
@@ -177,9 +192,9 @@ the *new* address rather than `email_confirm: true`, and it wants the old addres
 kept in the audit row — otherwise the log cannot show what the account used to be.
 
 **Where it goes:** on the account detail view, not in the People table — see
-*Account detail view* under Planned work, which is the agreed home for
-per-account management. Note the reset button there is mostly built by the
-reader-facing password reset above: both return to the same recovery landing view.
+*Account detail view* under Planned work, which is now built and is where the
+reset button above actually lives. An email-change action, when built, belongs
+there too.
 
 ---
 
@@ -341,18 +356,24 @@ that found it — it is a feature-sized piece of frontend, not a repair.
 
 ---
 
-### An account with no profile row can chat but cannot be administered — PARTLY STALE
+### ~~An account with no profile row can chat but cannot be administered~~ — FIXED 2026-08-16
 
-**The instance is gone, the class is not, and the diagnosis was wrong.**
-`midoxp@yahoo.com` was backfilled and all four accounts now have profiles. But the
-entry below says `admin_list_users` "reads from `public.profiles`", and it does
-not: `20260814100500_user_management.sql:35-47` reads
-`from auth.users u left join public.profiles p`, so a profile-less account **is**
-listed. The real defect is `coalesce(p.role,'user')` / `coalesce(p.tier,'free')` /
-`coalesce(p.is_disabled,false)` at lines 37-40, which paint healthy defaults over
-a missing profile — so a broken account renders as a perfectly normal one. That is
-worse than being absent, because nothing looks wrong. The account detail view's
-`has_profile` is the fix.
+**Resolved.** The instance (`midoxp@yahoo.com`) was backfilled and all
+accounts now have profiles, but the class of bug was the more important
+half — and it is now fixed too. `admin_list_users`
+(`20260814100500_user_management.sql:35-47`) still left-joins
+`auth.users u left join public.profiles p` and paints healthy defaults over a
+missing profile with `coalesce(p.role,'user')` / `coalesce(p.tier,'free')` /
+`coalesce(p.is_disabled,false)`, so the underlying data shape is unchanged.
+What changed is that the account detail view now acts on the gap instead of
+hiding it: `has_profile` shipped in
+`supabase/migrations/20260814175551_account_detail.sql:24,48`
+(`(p.id is not null) as has_profile`), and the admin UI renders an explicit
+`#account-broken` warning (`admin.account.brokenHeading` /
+`admin.account.brokenBody`) and gates the profile-edit and role/disable
+controls behind it (`static/js/admin/ui.js:907-917,939,961`) whenever a future
+account arrives in this state. A broken account is now a visible problem, not
+an absence.
 
 ---
 
@@ -535,37 +556,41 @@ server-rendered profile page. `handleProfileButtonClick` and
 `handleProfileFormSubmit` in `static/js/modules/handlers.js` (lines 611-681);
 `populateProfileForm` in `static/js/modules/ui.js` (~line 611); `getProfile` and
 `updateProfile` in `static/js/modules/services.js` (lines 299-318), speaking
-straight to Supabase's `profiles` table via
-`from('profiles').select('id, full_name, organization, specialization, preferences')`
-and `from('profiles').upsert({ id, ...updates }, { onConflict: 'id' })`;
-`loadProfileWithTimeout` in `static/js/app.js` (lines 29-49), fed by
-`API_TIMEOUT` / `RETRY_MAX_ATTEMPTS` / `RETRY_DELAY_INITIAL` in
-`static/js/modules/config.js`; the `#profileModal` form in
-`web/templates/index.html` (lines 239-289); the two `profile-button*` triggers
-in `web/templates/partials/_sidebar.html` (lines 59-62); and
+straight to Supabase's `profiles` table; `handleAuthFormSubmit` (signup leg)
+in `handlers.js:164-200` and `Services.signup` in `services.js:277-282`; the
+`#signup-pane` and `#profileModal` forms in `web/templates/index.html` (lines
+228-258 and 271-321); `handle_new_user` trigger and `admin_update_profile` RPC
+in `supabase/migrations/`; `loadProfileWithTimeout` in `static/js/app.js` (lines
+29-49), fed by `API_TIMEOUT` / `RETRY_MAX_ATTEMPTS` / `RETRY_DELAY_INITIAL` in
+`static/js/modules/config.js`; the two `profile-button*` triggers in
+`web/templates/partials/_sidebar.html` (lines 59-62); and
 `AppState.state.userProfile` in `static/js/modules/state.js`. The catalogue
 already carries `runtime.profile.*` keys (`loadFailed`, `saveFailed`, `saved`)
 in both `web/i18n/en.yaml` and `web/i18n/ar.yaml` — no JS module reads them.
 
-**Why it is wanted.** The profile is a Bootstrap modal bolted onto the chat
-shell, and its wiring strains in visible ways. The form is seeded from the
-*startup snapshot*: `loadProfileWithTimeout` fills `AppState.userProfile` once at
-sign-in (`static/js/app.js:207`), and `handleProfileButtonClick` only calls
-`Services.getProfile` on a cache miss (handlers.js:655-678) — so the modal shows
-whatever the page captured on load, never a fresh read. The theme radios never
-reflect the stored preference: both `populateProfileForm` (ui.js:625) and the
-empty-profile reset (handlers.js:668) check `ThemeManager.getCurrent()` — the
-live `data-bs-theme` attribute — not `profile.preferences.theme`, so a reader
-who saved Dark is shown their *current* theme, not their saved one. And the
-surface is silently English-only while the `runtime.profile.*` keys written for
-exactly this sit unused.
+**Why it is wanted.** Three things converge on this surface:
 
-The reason to touch it has changed. It used to be that the admin controls needed
-somewhere to live and nothing but this modal existed to hang them from — that is
-no longer true; they live at `/admin`, on their own page, and this modal was
-never asked to carry them. What is left is the modal's own two bugs, below, and
-the question of whether a reader-facing profile deserves better than a Bootstrap
-modal bolted onto the chat shell.
+1. **Identity fields need structuring.** `full_name` is currently a single
+   free-text field that gives no clean way to address readers politely or sort
+   by family name. It wants a split into `first_name` and `family_name`. In
+   addition, collecting numeric `age` provides demographic context for
+   regulatory queries without requiring sensitive birthdates.
+2. **Registration captures nothing today.** Signup takes only email and password,
+   leaving `profiles` initialised with empty strings for everything else until
+   someone finds the profile modal. Capturing `first_name`, `family_name`, and
+   `age` during signup passes them via user metadata into `handle_new_user`, so
+   an account starts with real identity data.
+3. **The profile modal strains in visible ways.** The form is seeded from the
+   *startup snapshot*: `loadProfileWithTimeout` fills `AppState.userProfile` once
+   at sign-in (`static/js/app.js:207`), and `handleProfileButtonClick` only calls
+   `Services.getProfile` on a cache miss (handlers.js:655-678) — so the modal
+   shows whatever the page captured on load, never a fresh read. The theme radios
+   never reflect the stored preference: both `populateProfileForm` (ui.js:625)
+   and the empty-profile reset (handlers.js:895) check `ThemeManager.getCurrent()`
+   — the live `data-bs-theme` attribute — not `profile.preferences.theme`, so a
+   reader who saved Dark is shown their *current* theme, not their saved one. And
+   the surface is silently English-only while the `runtime.profile.*` keys
+   written for exactly this sit unused.
 
 **Two live bugs to fix while you are in here.** Both are shipped today, both
 were confirmed by reading the code, and neither has a test that would catch it —
@@ -573,7 +598,7 @@ which is why they are written out rather than left in the prose above.
 
 1. **The theme radios ignore the saved preference.** `populateProfileForm`
    (`static/js/modules/ui.js:625`) and the empty-profile reset
-   (`static/js/modules/handlers.js:668`) both select the radio matching
+   (`static/js/modules/handlers.js:895`) both select the radio matching
    `ThemeManager.getCurrent()` — the live `data-bs-theme` attribute — rather
    than `profile.preferences.theme`. Save Dark, switch to Light, reopen the
    modal: it shows Light, and saving from there silently overwrites the stored
@@ -585,7 +610,7 @@ which is why they are written out rather than left in the prose above.
    new test goes.
 
 2. **Every profile string is hardcoded English.** Five call sites in
-   `static/js/modules/handlers.js` — 620, 635, 639, 650 and 674 — pass literals
+   `static/js/modules/handlers.js` — 841, 862, 866, 877 and 901 — pass literals
    to `showProfileError`/`showToast`, while
    `runtime.profile.{loadFailed,saveFailed,saved}` sit in *both*
    `web/i18n/en.yaml` and `web/i18n/ar.yaml` and are read by no module. An
@@ -594,7 +619,7 @@ which is why they are written out rather than left in the prose above.
    checks that Arabic has every key English has, and both catalogues have
    these — they are simply never used. Note there are five sites and only
    three keys, so translating them is not a one-to-one mapping; the session-
-   expired (620) and save-failure (639) messages need keys that do not exist
+   expired (841) and save-failure (866) messages need keys that do not exist
    yet.
 
 **What it would disturb.** Every profile behaviour is pinned by tests that name
@@ -602,31 +627,27 @@ it. `web/tests/test_profile_theme_integration.py` runs three browser tests —
 cached form fill, theme-persists-through-save, and the `updateProfile` /
 `getProfile` wire contract (`test_profile_service_contracts`) — entirely against
 the `SUPABASE_BROWSER_MOCK` `from('profiles')` chain in
-`web/tests/conftest.py`, a chain that supports exactly the one
-`{id, full_name, organization, specialization, preferences}` shape.
-`test_frontend_architecture.py::test_handlers_own_user_facing_service_failures`
-pins that `ErrorHandler.showProfileError` stays in `handlers.js`, so moving
-profile handling to another module is a contract change, not a relocation.
+`web/tests/conftest.py`, a chain that currently asserts the
+`{id, full_name, organization, specialization, preferences}` shape. Changing
+`public.profiles` to replace `full_name` with `first_name`, `family_name`, and
+`age` requires migrating existing rows, updating `admin_update_profile` and
+`handle_new_user`, and adjusting the admin account detail view that reads
+profile columns. `test_frontend_architecture.py::test_handlers_own_user_facing_service_failures`
+pins that `ErrorHandler.showProfileError` stays in `handlers.js`.
 `test_frontend.py::test_login_and_logout_flow` asserts `#profile-button` is
-visible after sign-in. Any new `runtime:` strings must ship in both YAML files —
-`test_arabic_catalogue_covers_every_runtime_key` fails if Arabic lags — and any
-new CSS must use logical properties or `web/tests/test_css_contract.py` (zero
-violations today) fails; any commit touching CSS or JS bumps `ASSET_VERSION` in
-`web/api/app.py`. A separate page would break the one-page two-views model
-(`index()` renders a single template and `AuthView` toggles `d-none` between
-landing and chat), and this project deliberately has no bundler, so a build step
-is a much bigger change than it looks — new modules under `static/js/modules/`
-are picked up at import time by the `MODULE_FILENAMES` glob and the import map,
-but only after a restart.
+visible after sign-in. Any new `page.auth.*`, `page.profile.*`, or `runtime:`
+strings must ship in both YAML files (`test_arabic_catalogue_covers_every_runtime_key`
+fails if Arabic lags) and any new CSS must use logical properties
+(`web/tests/test_css_contract.py`); any commit touching CSS or JS bumps
+`ASSET_VERSION` in `web/api/app.py`.
 
 **Open questions.** Is the profile a better modal or its own server-rendered
 page, and if a page, how does it coexist with the landing/auth shell and the
 `?testing=true` demo path? Should profile data keep flowing browser-side through
-the anon-key Supabase client, or move behind an authenticated Flask route — no
-such route exists today, and the operations this exposes are governed only by
-Supabase RLS, which is not located in this repo (there are no `.sql` files)? And
-should the theme preference even be a stored profile field when nothing renders
-from it server-side?
+the anon-key Supabase client, or move behind an authenticated Flask route? And
+for the future newsletter plan: when integrating Beehiiv, should the opt-in
+checkbox live in `preferences.newsletter` on `public.profiles` and sync via
+a server-side webhook/background worker, or sync directly at signup/profile save?
 
 ---
 
@@ -817,7 +838,7 @@ answers, which on a regulatory surface is the more expensive mistake.
 
 ---
 
-### Account detail view — the home for everything done to one account
+### Account detail view — the home for everything done to one account — MOSTLY BUILT 2026-08-16
 
 **Decided 2026-08-14:** this is where per-account management lives. Email
 changes, password recovery, role, chat access and session revocation all land
@@ -890,6 +911,34 @@ considerably — which is an argument for the severity zoning above, and for
 `auth.admin.*` calls using the intent-then-outcome audit shape, since they cannot
 share a transaction with their audit row.
 
+**Update 2026-08-16 — built, except two things.** The page exists and all
+three suggested-order steps landed: (a) the recovery landing view shipped
+with reader-facing password reset, above; (b) and (c) shipped together rather
+than sequentially.
+
+- **Zone 1, identity: built.** Created, last sign-in, confirmed, last seen,
+  disabled-at/by — `static/js/admin/ui.js:919-936`.
+- **Zone 2, profile: built, and made editable.** The entry's own open
+  question — visible or editable — was answered as editable:
+  `static/js/admin/ui.js:938-943`, backed by `PATCH
+  /admin/api/users/<id>/profile` and `admin_update_profile`.
+- **Zone 3, actions: mostly built.** Send-password-reset
+  (`static/js/admin/ui.js:956-959`), and promote/demote and enable/disable
+  **moved here from the People table** as planned
+  (`static/js/admin/ui.js:961-977`). Two actions are deliberately still
+  missing, and the page says so itself rather than leaving an operator to
+  guess: `static/js/admin/ui.js:986-1003` renders an explicit "what is
+  missing" notice (`admin.account.absentRevoke`,
+  `admin.account.absentEmailChange`) for session revocation and email
+  change — which are exactly the two other open entries in this file
+  ("Ending a session, as distinct from disabling chat" below, and the
+  email-change half of "The console cannot change an email address..."
+  above), not new work this entry still owes.
+- **Zone 4, per-account audit: built.** `static/js/admin/ui.js:1010-1012`,
+  backed by audit filtering in `web/api/admin.py:231-250,476-513`.
+- Route/RPC: `supabase/migrations/20260814175551_account_detail.sql:16-65`.
+  Browser coverage: `web/tests/test_admin_browser.py:519+`.
+
 ---
 
 ### Ending a session, as distinct from disabling chat
@@ -945,8 +994,18 @@ store TTL loses the whole chat — the transcript resumes only as markup, and th
 model's memory with it, because the context is the same `ConversationStore`
 entry or the same cookie list. This is a mid-task tool (PRODUCT.md: the reader
 is mid-task, not browsing), and there is no way to come back to a session later
-or from another browser. The state exists today; it just has no home that
-outlives the process.
+or from another browser.
+
+**Suggested sequence (Two Phases):**
+
+1. **Phase 1 — Single-Session Cloud Persistence.** Move conversation state and
+   citation payloads from process-local RAM/cookies to Postgres (`chat_sessions`
+   and `chat_messages` with user-level RLS). This closes the 1-hour TTL and
+   tab-close context loss, ensuring the active conversation and its clickable
+   source citations survive reloads and work across devices without UI changes.
+2. **Phase 2 — Full Multi-Session Conversation Manager.** Introduce a sidebar
+   conversation list, opening-question auto-titling, session switching, and
+   per-session deletion.
 
 **What it would disturb.** The isolation contract is the reason a whole suite
 exists: `test_session_isolation.py` (logout purge, server-side store purge,
@@ -957,36 +1016,21 @@ exists: `test_session_isolation.py` (logout purge, server-side store purge,
 reaches another. Saving per user re-keys conversations from a random cookie to
 an account, which is only safe if the *account*, not the browser, becomes the
 boundary — and it must still respect the purge that fires when a different
-reader picks up the same cookie. Real persistence means a database, and
-this repo has none of it ready: there are no `.sql` migrations, and the only
-table named anywhere is `profiles`, read and upserted from the browser with no
-Flask route in between. Schema, RLS, and a server-side path for reads and writes
-are all net-new. The reset/undo design threads through every history test —
-`test_new_chat.py` end to end (rotation, the `prev_*` keys,
-`test_undo_survives_a_blocking_question_after_resetting_a_streaming_conversation`),
-`test_chat_stream.py`
-(`test_history_survives_the_streaming_response`,
-`test_adopt_cookie_history_migrates_once`, the `ConversationStore` unit tests),
-`test_chat_api.py` history tests — and each of those decides, per assertion,
-what "saved" means when the store is a database rather than a cookie or a RAM
-dict. A conversation list is a new bilingual surface
-(`test_arabic_catalogue_covers_every_runtime_key`), logical-property CSS
-(`web/tests/test_css_contract.py`, zero violations today), and an
-`ASSET_VERSION` bump.
+reader picks up the same cookie. Real persistence requires dedicated schema
+and RLS policies (`supabase/migrations/`) and authenticated backend routes
+for fetching and managing session trees. What survives the round trip matters
+greatly: turn text is needed for the model's context, but the source passages
+and citation payloads that feed the Source Panel must also be persisted or
+rehydrated, rather than neutralising citations on reload. The reset/undo design
+threads through every history test (`test_new_chat.py`, `test_chat_stream.py`,
+`test_chat_api.py`). A multi-session sidebar in Phase 2 is a new bilingual
+surface (`test_arabic_catalogue_covers_every_runtime_key`), logical-property
+CSS (`web/tests/test_css_contract.py`), and an `ASSET_VERSION` bump.
 
-**Open questions.** Where the sessions live: a new Supabase table plus RLS
-(not located in this repo) versus extending `profiles` versus something the
-single-instance deployment can own itself — the `ConversationStore` docstring
-already names swapping its backing dict for Redis as the seam if process-local
-ever stops being acceptable. What the unit is — one auto-saved chat per reader,
-several named ones, per browser? — and how that interacts with reset/undo, which
-today assume exactly one current conversation. What survives the round trip:
-turn text for the model's context, or also the source passages and citation
-payloads the panel renders — the client today deliberately restores only markup
-and neutralises restored citations, because sources die in module memory on a
-reload (`static/js/app.js:85`). And whether a saved session belongs to the
-account across browsers, which is the only reading that is safe on a shared
-machine.
+**Open questions.** Data retention posture: whether chats are kept
+indefinitely or subject to user-driven deletion / export ("answer receipts").
+And how active SSE streaming interacts with background session switching if a
+reader navigates to an older chat while a generation is in-flight.
 
 ---
 
@@ -1135,9 +1179,10 @@ overreach — removing a file that looks unused but is actually loaded by glob
 ### The docs quote three different `ASSET_VERSION` values, none of them current
 
 **Where:** belongs with the documentation entries above. `web/api/app.py` is the
-live source and reads `warm27` (2026-08-15). `DESIGN.md`'s "Do bump
-`ASSET_VERSION`" bullet cites `warm14`. `.impeccable/design.json`'s
-`narrative.dos` cites `warm6`.
+live source and reads `warm28` (2026-08-16 — this entry's own previously-quoted
+`warm27` was already stale by the time it was read again, which is the point).
+`DESIGN.md`'s "Do bump `ASSET_VERSION`" bullet cites `warm14`.
+`.impeccable/design.json`'s `narrative.dos` cites `warm6`.
 
 **What is wrong.** Nothing functional — no check reads either quoted value, and
 the design hook parses `DESIGN.md`'s frontmatter live rather than the sidecar

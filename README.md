@@ -12,8 +12,15 @@ An AI-powered regulatory guidance system for pharmaceutical regulations in Saudi
   over 112 official SFDA guidelines
 - **Bilingual EN/AR** with full RTL, including Arabic queries and answers
 - **Comprehensive FAQ System**: Browse categorized regulatory guidelines
-- **User Authentication**: Secure login/signup with Supabase
+- **User Authentication**: Secure login/signup with Supabase, plus self-service
+  password recovery (email link, works across devices)
 - **Profile Management**: User profiles with theme preferences
+- **Admin Console**: a `/admin` surface for operators — a searchable People
+  list, a per-account detail view (identity, profile, role, chat access,
+  send-password-reset), and an audit log of every privileged action, global
+  and per-account
+- **Rate Limiting**: per-IP request quotas protect the single-worker
+  deployment from being overwhelmed
 - **Dark/Light Theme**: Accessible theme toggle with system preference detection
 - **Responsive Design**: Works seamlessly across desktop and mobile devices
 
@@ -104,7 +111,7 @@ document.addEventListener('keydown', (e) => {
 ## 🚀 Getting Started
 
 ### Prerequisites
-- Python 3.8+
+- Python 3.12 (the version CI tests against — see `.github/workflows/tests.yml`)
 - Node.js 16+
 - Supabase account
 
@@ -201,7 +208,7 @@ sfda-copilot/
 ├── README.md                 # This file
 ├── requirements.txt          # Python dependencies
 ├── package.json             # Node.js dependencies
-├── .env.example            # Environment variables template
+├── .env.example            # Environment variables template — the source of truth
 ├── faq.yaml                # FAQ data configuration
 ├── static/                 # Static frontend assets (no bundler, ES modules)
 │   ├── css/                # Layered: tokens -> base -> components -> robot -> effects
@@ -210,20 +217,30 @@ sfda-copilot/
 │   │   ├── components.css  # Buttons, chat, citations, composer
 │   │   ├── robot.css       # Mascot states
 │   │   └── effects.css     # Motion + shared keyframes
-│   ├── js/
-│   │   ├── app.js          # Entry point
-│   │   └── modules/        # config, dom, state, services, ui, handlers,
-│   │                       # citations, stream-render, i18n, robot, theme
-│   └── images/             # Image assets
+│   └── js/
+│       ├── app.js          # Reader-facing entry point (chat shell)
+│       ├── admin.js        # Admin console entry point
+│       ├── modules/        # config, dom, state, services, ui, handlers,
+│       │                   # citations, stream-render, i18n, robot, theme,
+│       │                   # auth-view, source-panel, dropdown
+│       └── admin/          # Admin console: services, ui, handlers
 ├── web/                    # Flask backend
-│   ├── api/app.py         # Flask application entry point
+│   ├── api/
+│   │   ├── app.py          # App entry point, auth middleware, chat/SSE routes
+│   │   ├── auth.py         # Signup / login / password-recovery routes
+│   │   └── admin.py        # Admin console routes: people, account detail, audit
 │   ├── i18n/              # en.yaml / ar.yaml UI catalogues
-│   ├── services/          # Search, LLM, citations, SSE, conversation store
+│   ├── services/          # Search, LLM, citations, SSE, conversation store,
+│   │                       # admin store, audit log, account recovery
 │   ├── utils/             # Config loader, i18n loader, Supabase client
-│   ├── templates/         # HTML templates
-│   │   ├── index.html     # Main application template
+│   ├── templates/
+│   │   ├── index.html     # Reader-facing template (landing / chat / recovery views)
+│   │   ├── admin.html     # Admin console template
 │   │   └── partials/      # Jinja macros (sidebar)
 │   └── tests/             # Test files
+├── supabase/
+│   ├── migrations/        # Schema, RLS policies, RPCs (SQL)
+│   └── README.md          # Migration conventions
 ├── data/                  # Regulatory guideline data
 │   ├── regulatory/
 │   ├── pharmacovigilance/
@@ -303,19 +320,38 @@ merge gate.
 ## 🔧 Configuration
 
 ### Environment Variables
+
+[`.env.example`](.env.example) is the version-controlled, authoritative list —
+copy it and fill in real values (`cp .env.example .env`). The variables the
+code actually reads:
+
 ```env
-# Supabase Configuration
-SUPABASE_URL=your_supabase_project_url
-SUPABASE_ANON_KEY=your_supabase_anon_key
+# Required
+OPENAI_API_KEY=sk-your-openai-api-key-here
+SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
+SUPABASE_ANON_KEY=your-supabase-anon-key
+SUPABASE_PROJECT_REF=your-project-ref
+FLASK_SECRET_KEY=generate-a-secure-random-string-here
 
-# Flask Configuration
-FLASK_ENV=development
-FLASK_DEBUG=True
-SECRET_KEY=your_secret_key
+# Required for password-recovery links to point at the right place
+PUBLIC_BASE_URL=http://127.0.0.1:5001
 
-# Database Configuration (if not using Supabase)
-DATABASE_URL=your_database_url
+# Optional — enables the /admin console. Without it every reader resolves as
+# a non-administrator, which is a safe and supported way to deploy.
+SUPABASE_SECRET_KEY=sb_secret_...   # legacy fallback: SUPABASE_SERVICE_ROLE_KEY
+
+# Optional, sensible defaults
+BEHIND_PROXY=false
+DEBUG=false
+LOG_LEVEL=INFO
+WEB_CONCURRENCY=1
+FLASK_TESTING=false
+SUPABASE_AUTH_TIMEOUT=5
 ```
+
+There is no `FLASK_ENV`, `FLASK_DEBUG`, plain `SECRET_KEY`, or `DATABASE_URL`
+— none of those are read anywhere in the app. If an older `.env` in your
+checkout has them, they're dead weight and safe to delete.
 
 ### FAQ Configuration
 Edit `faq.yaml` to customize the FAQ categories and questions:
@@ -374,7 +410,21 @@ that lives in a third-party dashboard, in DNS, or in the Supabase project.
 
 ## 📝 Changelog
 
-### Recent Updates
+### Recent Updates (2026-08)
+- **Admin Console**: a searchable People list, a per-account detail view
+  (identity, profile, role, chat access, send-password-reset), and an audit
+  log — global and per-account — for every privileged action
+- **Password Recovery**: self-service reader-facing reset and an
+  admin-triggered "send reset" action, both landing on the same recovery view
+- **Auth Hardening**: a Supabase/GoTrue outage is now reported as a 503
+  rather than mistaken for a bad credential, and no longer signs an
+  administrator out of a valid session
+- **Bilingual Error Messages**: signup rate-limit and recovery errors reach
+  readers in their own language instead of raw English
+
+See [TODO.md](TODO.md) for what's still open, and the cost of fixing it.
+
+### Earlier Updates
 - **Theme Toggle Refactoring**: Implemented HTML-first approach with improved accessibility
 - **Profile Integration**: Enhanced theme preference synchronization with user profiles
 - **Testing Suite**: Added comprehensive tests for theme toggle functionality
