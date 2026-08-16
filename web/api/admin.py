@@ -27,6 +27,7 @@ is silent.
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any, Dict, Optional, Tuple
 
 from flask import Blueprint, Response, current_app, g, jsonify, render_template, request
@@ -384,6 +385,226 @@ def send_password_reset(user_id: str) -> Response:
     )
     # 200, not 202: nothing further happens on our side after this returns, and
     # 202 would imply queued work this application controls.
+    return jsonify({"accepted": True, "operation_id": operation_id})
+
+
+# A real email check, not "contains @": this is a login identifier, not free
+# text, and a malformed one becomes a support ticket days later rather than an
+# immediate, correctable 422.
+_EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+_EMAIL_MAX_LENGTH = 254  # RFC 5321 4.5.3.1.3, not the profile-field 200 cap —
+                          # this is a real email column, not free text.
+
+
+def _actor_still_admin(backend) -> Optional[str]:
+    """None if the acting operator is still an enabled administrator right
+    now; otherwise the refusal code.
+
+    ``_gate()`` proves this at request start. Both new routes below call an
+    external provider after that check, and re-check immediately before the
+    call — mirroring what ``admin_update_profile``'s own RPC does inside its
+    transaction — because an operator demoted mid-request should not be able
+    to still complete an Auth Admin mutation on the strength of a role that
+    no longer holds.
+    """
+    if not g.identity.user_id:
+        return None
+    acting = backend.get_user(g.identity.user_id)
+    if acting is None or acting.get("role") != "admin" or acting.get("is_disabled"):
+        return "actor_no_longer_administrator"
+    return None
+
+
+@admin_bp.route("/api/users/<user_id>/revoke-sessions", methods=["POST"])
+def revoke_sessions(user_id: str) -> Response:
+    """End every session this account holds, right now.
+
+    **The mechanism, and why it is this and not something more direct.**
+    GoTrue's Admin API has no endpoint that revokes a user's sessions by id
+    alone — confirmed against its Go source. The only thing that deletes every
+    session/refresh-token row for a user is a password update with no session
+    context, so that is what this calls, through
+    :func:`web.services.auth_admin.SupabaseAuthAdminDispatcher.revoke_sessions`.
+    The generated password is never seen by this route, this response, or the
+    audit log — see that module's docstring.
+
+    **What this does not do.** It does not touch ``is_disabled`` — chat access
+    and session validity are a deliberately separate axis (see `TODO.md`). It
+    does not chain a password-reset email automatically: incident containment
+    and account recovery are two different decisions, and auto-sending mail to
+    a possibly-compromised inbox as a side effect of a different action would
+    be the wrong default. An operator who wants both clicks "send reset"
+    separately, which already exists on this page.
+
+    **The three-way audit outcome.** A transport failure (timeout, dropped
+    connection) does not prove the mutation failed — GoTrue may have already
+    committed it before this process learned the outcome. Recording that as an
+    ordinary "failed" would be a false entry on the one surface whose purpose
+    is to be trustworthy later, so it is recorded as `outcome_unknown` instead;
+    only a structured, definitive provider rejection is ever `failed`.
+    """
+    import uuid as _uuid
+
+    from web.services.auth_admin import AuthAdminRefused
+    from web.services.audit import actor_from_request
+
+    payload = request.get_json(silent=True)
+    if payload not in (None, {}):
+        return jsonify({"error": "unknown_field",
+                        "fields": sorted(payload) if isinstance(payload, dict) else []}), 422
+
+    backend = current_app.config["admin_backend"]()
+    if backend is None:
+        return jsonify({"error": "storage_unavailable"}), 503
+
+    account = backend.get_user(user_id)
+    if account is None:
+        return jsonify({"error": "no_such_account"}), 404
+
+    if (refusal_code := _actor_still_admin(backend)) is not None:
+        return jsonify({"error": refusal_code}), 409
+
+    actor = actor_from_request(g.identity)
+    operation_id = str(_uuid.uuid4())
+    backend.append_audit(
+        action="user.sessions_revoke_requested", target_type="user",
+        target_id=user_id, actor=actor,
+        after={"status": "requested", "operation_id": operation_id},
+    )
+
+    dispatcher = current_app.config.get("auth_admin_dispatcher")
+    dispatcher = dispatcher() if callable(dispatcher) else dispatcher
+
+    try:
+        if dispatcher is None:
+            raise AuthAdminRefused("auth_admin_unavailable", "no dispatcher available")
+        dispatcher.revoke_sessions(user_id)
+    except AuthAdminRefused as refusal:
+        outcome = "outcome_unknown" if refusal.ambiguous else "failed"
+        backend.append_audit(
+            action=f"user.sessions_revoke_{outcome}", target_type="user",
+            target_id=user_id, actor=actor,
+            after={"status": outcome, "operation_id": operation_id},
+            # The code, never the provider's message body.
+            note=refusal.code,
+        )
+        status = {
+            "no_such_account": 404,
+            "auth_admin_unavailable": 503,
+        }.get(refusal.code, 502)
+        return jsonify({"error": refusal.code, "outcome_unknown": refusal.ambiguous}), status
+
+    backend.append_audit(
+        action="user.sessions_revoke_accepted", target_type="user",
+        target_id=user_id, actor=actor,
+        after={"status": "accepted", "operation_id": operation_id},
+    )
+    return jsonify({"accepted": True, "operation_id": operation_id})
+
+
+@admin_bp.route("/api/users/<user_id>/change-email", methods=["POST"])
+def change_email(user_id: str) -> Response:
+    """Set this account's email immediately. No reader confirmation exists.
+
+    **Why immediate, and why that is disclosed rather than hidden.** GoTrue's
+    Admin API has no defer-until-confirmed flow — that only exists for a
+    reader changing their own email through an authenticated session, which
+    this console does not have. Live-verified against the real project (not
+    assumed from documentation): passing ``email_confirm: False`` does *not*
+    lock the account out — ``email_confirmed_at`` is left at its prior value,
+    so a previously-confirmed account keeps signing in. What it actually
+    leaves behind is an email identity marked unverified for the new address,
+    which is why `admin_get_user` now returns `email_identity_verified`
+    separately from `email_confirmed_at`, and why the account view must read
+    that flag rather than treat the (now stale) confirmation timestamp as
+    proof of the *current* address.
+
+    **Why this refuses a self-target and `reset-password` does not.** Chained
+    with the console's own existing "send password reset" button, an
+    unconfirmed self-service email change is a complete account-impersonation
+    primitive: change a victim's email, click reset, the reader never sees it
+    coming. That risk is specific to *changing where the account's identity
+    points*, not to resetting a credential or ending a session — which is why
+    only this route, not `revoke-sessions` or the existing `reset-password`,
+    guards against the operator targeting their own account.
+    """
+    import uuid as _uuid
+
+    from web.services.auth_admin import AuthAdminRefused
+    from web.services.audit import actor_from_request
+
+    if g.identity.user_id and g.identity.user_id == user_id:
+        return jsonify({"error": "cannot_change_own_email"}), 409
+
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return jsonify({"error": "invalid_payload"}), 400
+
+    unknown = set(payload) - {"email"}
+    if unknown:
+        return jsonify({"error": "unknown_field", "fields": sorted(unknown)}), 422
+
+    new_email = payload.get("email")
+    if not isinstance(new_email, str) or not new_email.strip():
+        return jsonify({"error": "invalid_payload"}), 400
+    new_email = new_email.strip()
+    if len(new_email) > _EMAIL_MAX_LENGTH:
+        return jsonify({"error": "too_long", "field": "email"}), 422
+    if not _EMAIL_RE.match(new_email):
+        return jsonify({"error": "invalid_email"}), 422
+
+    backend = current_app.config["admin_backend"]()
+    if backend is None:
+        return jsonify({"error": "storage_unavailable"}), 503
+
+    account = backend.get_user(user_id)
+    if account is None:
+        return jsonify({"error": "no_such_account"}), 404
+
+    old_email = account.get("email")
+    # Case-folded: retyping the same address with different casing is not a
+    # change, and GoTrue treats addresses case-insensitively.
+    if old_email and new_email.casefold() == old_email.casefold():
+        return jsonify({"error": "same_email"}), 400
+
+    if (refusal_code := _actor_still_admin(backend)) is not None:
+        return jsonify({"error": refusal_code}), 409
+
+    actor = actor_from_request(g.identity)
+    operation_id = str(_uuid.uuid4())
+    backend.append_audit(
+        action="user.email_change_requested", target_type="user",
+        target_id=user_id, actor=actor, before={"email": old_email},
+        after={"status": "requested", "operation_id": operation_id, "email": new_email},
+    )
+
+    dispatcher = current_app.config.get("auth_admin_dispatcher")
+    dispatcher = dispatcher() if callable(dispatcher) else dispatcher
+
+    try:
+        if dispatcher is None:
+            raise AuthAdminRefused("auth_admin_unavailable", "no dispatcher available")
+        dispatcher.change_email(user_id, new_email)
+    except AuthAdminRefused as refusal:
+        outcome = "outcome_unknown" if refusal.ambiguous else "failed"
+        backend.append_audit(
+            action=f"user.email_change_{outcome}", target_type="user",
+            target_id=user_id, actor=actor, before={"email": old_email},
+            after={"status": outcome, "operation_id": operation_id, "email": new_email},
+            note=refusal.code,
+        )
+        status = {
+            "no_such_account": 404,
+            "auth_admin_unavailable": 503,
+            "email_already_registered": 409,
+        }.get(refusal.code, 502)
+        return jsonify({"error": refusal.code, "outcome_unknown": refusal.ambiguous}), status
+
+    backend.append_audit(
+        action="user.email_change_accepted", target_type="user",
+        target_id=user_id, actor=actor, before={"email": old_email},
+        after={"status": "accepted", "operation_id": operation_id, "email": new_email},
+    )
     return jsonify({"accepted": True, "operation_id": operation_id})
 
 

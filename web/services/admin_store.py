@@ -158,7 +158,8 @@ class AdminBackend(Protocol):
 
     def append_audit(
         self, *, action: str, target_type: str, target_id: str, actor,
-        after: Optional[dict] = None, note: Optional[str] = None,
+        before: Optional[dict] = None, after: Optional[dict] = None,
+        note: Optional[str] = None,
     ) -> None:
         """Record one action that could not share a transaction with its effect.
 
@@ -168,6 +169,12 @@ class AdminBackend(Protocol):
         option: the send is an HTTP call to somebody else. So the intent is
         recorded, the call is made, and the outcome is recorded, and the pair is
         correlated by an ``operation_id`` carried in ``after``.
+
+        ``before`` is optional and was unused until the email-change action:
+        the reset-password action this was built for has no "before" worth
+        recording, but a changed email does — the row otherwise cannot show
+        what the account used to be. Optional rather than widening every
+        existing call site.
 
         Appending is not the danger this system guards against. **Changing** a
         recorded entry is, and no implementation offers a way to.
@@ -311,7 +318,8 @@ class SupabaseAdminBackend:
 
     def append_audit(
         self, *, action: str, target_type: str, target_id: str, actor,
-        after: Optional[dict] = None, note: Optional[str] = None,
+        before: Optional[dict] = None, after: Optional[dict] = None,
+        note: Optional[str] = None,
     ) -> None:
         # A direct insert rather than an RPC: there is no accompanying mutation
         # to share a transaction with, which is the entire reason this exists.
@@ -323,6 +331,7 @@ class SupabaseAdminBackend:
             "action": action,
             "target_type": target_type,
             "target_id": target_id,
+            "before": before,
             "after": after,
             # None rather than "": the RPCs guard with `nullif(...)::inet` and a
             # direct insert has no such guard, so an empty string would fail the
@@ -463,15 +472,15 @@ class InMemoryAdminBackend:
             {"id": "test-admin-id", "email": "admin@example.com", "role": "admin",
              "tier": "internal", "is_disabled": False, "disabled_at": None,
              "disabled_reason": None, "created_at": "2026-01-01T00:00:00+00:00",
-             "last_sign_in_at": "2026-08-14T00:00:00+00:00"},
+             "last_sign_in_at": "2026-08-14T00:00:00+00:00", "email_identity_verified": True},
             {"id": "test-user-id", "email": "test@example.com", "role": "user",
              "tier": "free", "is_disabled": False, "disabled_at": None,
              "disabled_reason": None, "created_at": "2026-02-01T00:00:00+00:00",
-             "last_sign_in_at": "2026-08-13T00:00:00+00:00"},
+             "last_sign_in_at": "2026-08-13T00:00:00+00:00", "email_identity_verified": True},
             {"id": "test-disabled-id", "email": "disabled@example.com", "role": "user",
              "tier": "free", "is_disabled": True, "disabled_at": "2026-08-01T00:00:00+00:00",
              "disabled_reason": "seeded", "created_at": "2026-03-01T00:00:00+00:00",
-             "last_sign_in_at": None},
+             "last_sign_in_at": None, "email_identity_verified": True},
             # An account in auth with no profile row. Rare in production now the
             # signup trigger is repaired, and seeded here precisely because it is
             # rare: it is the state the detail view exists to make visible, and
@@ -494,10 +503,11 @@ class InMemoryAdminBackend:
 
     def append_audit(
         self, *, action: str, target_type: str, target_id: str, actor,
-        after: Optional[dict] = None, note: Optional[str] = None,
+        before: Optional[dict] = None, after: Optional[dict] = None,
+        note: Optional[str] = None,
     ) -> None:
         self._record(action=action, target_type=target_type, target_id=target_id,
-                     actor=actor, after=after, note=note)
+                     actor=actor, before=before, after=after, note=note)
 
     def update_profile(
         self, user_id: str, *, full_name, organization, specialization,
@@ -545,6 +555,7 @@ class InMemoryAdminBackend:
             "created_at": row["created_at"],
             "last_sign_in_at": row["last_sign_in_at"],
             "email_confirmed_at": row.get("email_confirmed_at", row["created_at"]),
+            "email_identity_verified": row.get("email_identity_verified", True),
             "banned_until": None,
             "has_profile": has_profile,
             "disabled_by_email": None,

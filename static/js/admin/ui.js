@@ -593,6 +593,14 @@ const ACTION_KEYS = {
   'user.password_reset_requested': 'admin.audit.actionResetRequested',
   'user.password_reset_accepted': 'admin.audit.actionResetAccepted',
   'user.password_reset_failed': 'admin.audit.actionResetFailed',
+  'user.sessions_revoke_requested': 'admin.audit.actionSessionsRevokeRequested',
+  'user.sessions_revoke_accepted': 'admin.audit.actionSessionsRevokeAccepted',
+  'user.sessions_revoke_failed': 'admin.audit.actionSessionsRevokeFailed',
+  'user.sessions_revoke_outcome_unknown': 'admin.audit.actionSessionsRevokeUnknown',
+  'user.email_change_requested': 'admin.audit.actionEmailChangeRequested',
+  'user.email_change_accepted': 'admin.audit.actionEmailChangeAccepted',
+  'user.email_change_failed': 'admin.audit.actionEmailChangeFailed',
+  'user.email_change_outcome_unknown': 'admin.audit.actionEmailChangeUnknown',
 };
 
 function describeAction(action) {
@@ -601,6 +609,25 @@ function describeAction(action) {
   // produce confident nonsense in Arabic.
   const key = ACTION_KEYS[action];
   return key ? I18n.t(key) : action;
+}
+
+// `note` is a human-typed reason for most actions (e.g. why an account was
+// disabled) but a machine refusal code for the two auth-admin actions'
+// failure/unknown rows — the only place this table's `note` column can hold
+// a value nobody typed. Translating those specifically, rather than every
+// `note`, keeps every other action's free text exactly as an operator wrote
+// it.
+const REASON_KEYS = {
+  auth_admin_unreachable: 'admin.account.auth_admin_unreachable',
+  auth_admin_unavailable: 'admin.account.auth_admin_unavailable',
+  auth_admin_failed: 'admin.account.auth_admin_failed',
+  email_already_registered: 'admin.account.email_already_registered',
+  no_such_account: 'admin.account.no_such_account',
+};
+
+function describeReason(note) {
+  const key = REASON_KEYS[note];
+  return key ? I18n.t(key) : (note || '');
 }
 
 /** The changed keys, as `key: from → to`. */
@@ -683,7 +710,7 @@ export function renderAudit(entries, { append = false } = {}) {
     change.textContent = describeChange(entry.before, entry.after) || '—';
 
     const note = document.createElement('td');
-    note.textContent = entry.note || '—';
+    note.textContent = describeReason(entry.note) || '—';
 
     row.append(when, who, what, change, note);
     tbody.appendChild(row);
@@ -826,6 +853,15 @@ function dayStamp(value) {
  * because that is what they defend the decision with afterwards. It is the same
  * split this product already makes between an answer and its citation.
  */
+/** `email_identity_verified` is a real tri-state: true/false from the
+ * identity row, or null/undefined when no email identity was found at all
+ * (rare, and must not be shown as either yes or no). */
+function emailVerifiedKey(value) {
+  if (value === false) return 'admin.account.emailNotVerified';
+  if (value === true) return 'admin.account.emailVerifiedYes';
+  return 'admin.account.emailVerifiedUnknown';
+}
+
 function fact(list, label, { when = null, text = null, machine = false } = {}) {
   const cell = document.createElement('div');
   cell.className = 'admin-fact';
@@ -1025,6 +1061,13 @@ export function renderAccountDetail(account, entries, selfId = null) {
     ? { when: account.last_sign_in_at } : { text: I18n.t('admin.people.never') });
   fact(facts, I18n.t('admin.account.confirmed'), account.email_confirmed_at
     ? { when: account.email_confirmed_at } : { text: I18n.t('admin.account.notConfirmed') });
+  // Separate from the fact above on purpose: `email_confirmed_at` is when the
+  // account was FIRST confirmed and is never cleared by an admin email
+  // change (live-verified against the real project), so after one it would
+  // otherwise show a "confirmed" date beside an address nobody verified.
+  // This reads the email identity's own flag instead.
+  fact(facts, I18n.t('admin.account.currentEmailVerified'),
+    { text: I18n.t(emailVerifiedKey(account.email_identity_verified)) });
   fact(facts, I18n.t('admin.account.lastSeen'), account.last_seen_at
     ? { when: account.last_seen_at } : { text: I18n.t('admin.people.never') });
   if (account.is_disabled) {
@@ -1058,6 +1101,20 @@ export function renderAccountDetail(account, entries, selfId = null) {
   reset.id = 'account-send-reset';
   actions.appendChild(reset);
 
+  const revoke = actionButton(I18n.t('admin.account.revokeSessions'),
+    { action: 'revoke-sessions', id: account.id, danger: true });
+  revoke.id = 'account-revoke-sessions';
+  actions.appendChild(revoke);
+
+  // Disabled for yourself, matching promote/disable below: changing your own
+  // email chained with the reset button above is a full impersonation
+  // primitive, so the server refuses it — this only stops an operator
+  // discovering that by being told no.
+  const emailChange = actionButton(I18n.t('admin.account.changeEmail'),
+    { action: 'change-email', id: account.id, danger: true, disabled: isSelf });
+  emailChange.id = 'account-change-email';
+  actions.appendChild(emailChange);
+
   if (account.has_profile) {
     // Disabled for yourself rather than hidden: an operator should see that the
     // control exists and why it is not theirs to use, instead of wondering
@@ -1083,24 +1140,28 @@ export function renderAccountDetail(account, entries, selfId = null) {
   hint.textContent = I18n.t('admin.account.noPasswordHint');
   card.appendChild(hint);
 
-  /* And what is deliberately missing. An operator mid-incident should not have
-     to work out for themselves that the console cannot end a session. */
-  const absent = document.createElement('div');
-  absent.className = 'admin-absent';
-  absent.id = 'account-absent';
-  const absentTitle = document.createElement('strong');
-  absentTitle.className = 'admin-absent-title';
-  absentTitle.textContent = I18n.t('admin.account.absentHeading');
-  const absentList = document.createElement('ul');
-  absentList.className = 'admin-absent-list';
-  [I18n.t('admin.account.absentRevoke'), I18n.t('admin.account.absentEmailChange')]
-    .forEach((text) => {
+  /* And what is deliberately missing. Empty today — session revocation and
+     email change, the two things this list used to name, both shipped — kept
+     as a conditional block rather than deleted outright, so a future
+     deliberately-deferred action still has a home without rebuilding this. */
+  const absentEntries = [];
+  if (absentEntries.length) {
+    const absent = document.createElement('div');
+    absent.className = 'admin-absent';
+    absent.id = 'account-absent';
+    const absentTitle = document.createElement('strong');
+    absentTitle.className = 'admin-absent-title';
+    absentTitle.textContent = I18n.t('admin.account.absentHeading');
+    const absentList = document.createElement('ul');
+    absentList.className = 'admin-absent-list';
+    absentEntries.forEach((text) => {
       const li = document.createElement('li');
       li.textContent = text;
       absentList.appendChild(li);
     });
-  absent.append(absentTitle, absentList);
-  card.appendChild(absent);
+    absent.append(absentTitle, absentList);
+    card.appendChild(absent);
+  }
   actionsSection.appendChild(card);
   detail.appendChild(actionsSection);
 
@@ -1239,7 +1300,7 @@ function renderAccountActivity(entries) {
      naming it four times says nothing. */
   const head = document.createElement('thead');
   const headRow = document.createElement('tr');
-  ['columnWhen', 'columnWho', 'columnWhat', 'columnReason'].forEach((key) => {
+  ['columnWhen', 'columnWho', 'columnWhat', 'columnChange', 'columnReason'].forEach((key) => {
     const th = document.createElement('th');
     th.scope = 'col';
     th.textContent = I18n.t(`admin.audit.${key}`);
@@ -1256,9 +1317,16 @@ function renderAccountActivity(entries) {
     );
     const what = document.createElement('td');
     what.textContent = describeAction(entry.action);
+    // Same treatment the global Activity tab already gives before/after —
+    // this table simply never had it, which meant an email change's old
+    // address was captured in the database and shown nowhere.
+    const change = document.createElement('td');
+    change.className = 'admin-cell-machine';
+    change.setAttribute('dir', 'ltr');
+    change.textContent = describeChange(entry.before, entry.after) || '—';
     const why = document.createElement('td');
-    why.textContent = entry.note || '';
-    row.append(what, why);
+    why.textContent = describeReason(entry.note);
+    row.append(what, change, why);
     tbody.appendChild(row);
   });
 

@@ -183,18 +183,58 @@ is submitted (`web/api/admin.py:299-303`). No route or RPC anywhere in the
 repository reaches `auth.users.email` (confirmed by a repo-wide search) — an
 email change is still genuinely unbuilt.
 
-**What it would disturb.** Both reach `auth.admin.*`, so both are the
-outside-Postgres case the audit design already anticipates: the mutation and its
-audit row cannot share a transaction, so they need intent-then-outcome — record
-the intent, perform the call, record what happened. An email change is also an
-account-takeover primitive when paired with a reset, so it wants confirmation to
-the *new* address rather than `email_confirm: true`, and it wants the old address
-kept in the audit row — otherwise the log cannot show what the account used to be.
+**Update 2026-08-17 — email change is now built too, with one deviation from
+this entry's own recommendation, made deliberately and disclosed rather than
+silently substituted.** `POST /admin/api/users/<user_id>/change-email`
+(`web/api/admin.py`) ships. This entry originally called for confirmation
+*to the new address* rather than `email_confirm: true` — but building that
+would mean a new pending-email column, a confirmation route, and its own
+email template, real scope beyond one action, and out of reach for what the
+Admin API itself supports in a single call anyway (its email-change path has
+no defer-until-confirmed flow at all; that only exists for a reader changing
+their own email through an authenticated session). Rather than build the
+larger thing or quietly ship `email_confirm: true` (which requires nothing
+and would look, on the surface, like the address was verified), the change
+takes effect **immediately** with `email_confirm: false`, disclosed plainly
+in the confirm dialog before an operator commits. Live-verified against the
+real project before shipping (not assumed from documentation): this does
+**not** lock the account out — `email_confirmed_at` is untouched, so a
+previously-confirmed account keeps signing in — but it does leave the
+identity's `email_verified` flag false for the new address, and the console
+now reads that flag directly (`admin_get_user`'s new
+`email_identity_verified` column) rather than continuing to show the old,
+now-stale confirmation timestamp as if it certified the current address.
 
-**Where it goes:** on the account detail view, not in the People table — see
-*Account detail view* under Planned work, which is now built and is where the
-reset button above actually lives. An email-change action, when built, belongs
-there too.
+**The account-takeover risk this entry named up front turned out to be the
+central design question**, surfaced sharply by an adversarial review before
+shipping: chained with the *existing* reset-password button, an unconfirmed
+email change is a complete impersonation primitive — change the victim's
+email, click reset, they never see it coming (this is exactly how Twitter's
+2020 breach worked). The mitigation built: `change-email`, uniquely among
+the three auth-admin actions on this page, refuses to target the operator's
+own account. `revoke-sessions` and the existing `reset-password` still do
+not, on the same reasoning `set_user_flags`'s self-change guard already
+established — the two also worth turning on but not yet done: enabling
+Supabase's `GOTRUE_MAILER_NOTIFICATIONS_EMAIL_CHANGED_ENABLED` project
+setting (notifies the *old* address as tamper-evidence — external config,
+not app code, same category as leaked-password-protection below) and
+tightening the shared `60/minute` admin rate limit specifically for these
+two destructive routes, both done (limiter applied per-route in
+`web/api/app.py`), but the mailer setting itself is still an open item for
+whoever holds the Supabase dashboard.
+
+**What it would disturb — confirmed, not just anticipated.** Both reach
+`auth.admin.*`, so both use the intent-then-outcome shape, now extended with
+a third outcome (`outcome_unknown`) for transport failures whose true result
+is genuinely unknown rather than provably failed. The old address is kept in
+the audit row (`before={"email": old}`), and — a real gap an adversarial
+review caught before shipping — the per-account audit table did not
+previously render `before`/`after` at all, so capturing the old address
+would have gone nowhere any operator could see it; it now does (mirroring
+what the global Activity tab already had).
+
+**Where it lives:** the account detail view, exactly as predicted — see
+*Account detail view* below.
 
 ---
 
@@ -947,18 +987,17 @@ than sequentially.
   question — visible or editable — was answered as editable:
   `static/js/admin/ui.js:938-943`, backed by `PATCH
   /admin/api/users/<id>/profile` and `admin_update_profile`.
-- **Zone 3, actions: mostly built.** Send-password-reset
-  (`static/js/admin/ui.js:956-959`), and promote/demote and enable/disable
+- **Zone 3, actions: built in full, 2026-08-17.** Send-password-reset
+  (`static/js/admin/ui.js:956-959`), promote/demote and enable/disable
   **moved here from the People table** as planned
-  (`static/js/admin/ui.js:961-977`). Two actions are deliberately still
-  missing, and the page says so itself rather than leaving an operator to
-  guess: `static/js/admin/ui.js:986-1003` renders an explicit "what is
-  missing" notice (`admin.account.absentRevoke`,
-  `admin.account.absentEmailChange`) for session revocation and email
-  change — which are exactly the two other open entries in this file
-  ("Ending a session, as distinct from disabling chat" below, and the
-  email-change half of "The console cannot change an email address..."
-  above), not new work this entry still owes.
+  (`static/js/admin/ui.js:961-977`), and — the two actions the "what is
+  missing" notice used to name, closing this zone out — end-sessions
+  (`#account-revoke-sessions`) and change-email (`#account-change-email`).
+  The notice itself is now a conditionally-rendered empty block rather than
+  deleted outright, so a future deferred action still has a home. See
+  "Ending a session, as distinct from disabling chat" and the email-change
+  half of "The console cannot change an email address..." above for what
+  shipped and what it cost.
 - **Zone 4, per-account audit: built.** `static/js/admin/ui.js:1010-1012`,
   backed by audit filtering in `web/api/admin.py:231-250,476-513`.
 - Route/RPC: `supabase/migrations/20260814175551_account_detail.sql:16-65`.
@@ -966,28 +1005,43 @@ than sequentially.
 
 ---
 
-### Ending a session, as distinct from disabling chat
+### ~~Ending a session, as distinct from disabling chat~~ — BUILT 2026-08-17, pending a production migration
 
-**Where:** `admin_set_user_flags` sets `profiles.is_disabled`, and
-`auth_required` (`web/api/app.py:351`) refuses new requests with 403
-`account_disabled`.
+**Resolved, in code.** `POST /admin/api/users/<user_id>/revoke-sessions`
+(`web/api/admin.py`) ships. **The actual mechanism is not
+`auth.admin.signOut(jwt, 'global')`** as this entry originally proposed —
+verified against GoTrue's Go source that no endpoint revokes sessions by
+user id alone, `signOut` needs the target's own live token, which the
+console never holds. The real mechanism GoTrue's Admin API exposes is a
+password rotation with no session context, which triggers the same
+`models.Logout` (full session wipe) as a side effect. So `revoke-sessions`
+rotates the account's password to a server-generated value that is
+discarded immediately — never logged, stored, or returned — purely to
+trigger that wipe. Chat access (`is_disabled`) is untouched, exactly as
+this entry specified. The intent-then-outcome shape is built as predicted,
+extended with a third outcome (`outcome_unknown`, alongside
+`accepted`/`failed`) for transport failures whose true result is
+genuinely unknown rather than provably failed — a refinement three
+adversarial reviews converged on independently. `DESIGN.md`'s no-danger-
+button constraint is answered the same way `send-reset` already answers
+it: confirm copy carries the weight, including the honest caveat that an
+already-issued access token remains valid until its own natural expiry.
 
-**Why it is wanted.** The flag is named accurately for what it does and that
-naming is deliberate — but it means the console has no answer to an actual
-incident. A disabled account keeps its Supabase access token until it expires,
-keeps its refresh token indefinitely, can still sign in, and can still reach
-PostgREST directly with the published anon key for anything RLS permits. If
-credentials are believed compromised, "disable chat" is not the response.
+Shipped alongside it, on the same page and by the same mechanism: `POST
+.../change-email` — see the email-address entry above, which this was
+built together with.
 
-**What it would disturb.** This is the first console action that reaches outside
-Postgres, which is precisely why the audit design already anticipates it: a
-database mutation and its audit row go in one transaction, but an Auth Admin call
-cannot, so it needs the intent-then-outcome shape — write the intent, perform the
-action, record what happened. `auth.admin.signOut(jwt, 'global')` revokes refresh
-tokens; banning is a separate `updateUserById({ ban_duration })`. Both are
-irreversible in the sense that matters (the reader is signed out of every device
-immediately), so this is the strongest case in the console for explicit
-confirmation — and `DESIGN.md:278` gives it no red button to lean on, by design.
+**What is still open, deliberately.** The new `admin_get_user` SQL
+(`supabase/migrations/20260817120000_admin_get_user_email_verified.sql`)
+has been dry-run against the live project inside a rolled-back
+transaction — proven syntactically and semantically correct against real
+data — but not yet applied for real. Both routes work today off the
+*old* `admin_get_user` shape (missing `email_identity_verified` just
+degrades to "Unknown" in the UI, not an error), so this is safe to apply
+whenever convenient rather than blocking. Covered by
+`web/tests/test_admin_users.py` and `web/tests/test_admin_browser.py`
+(65/65 admin browser tests passing, including the new dual-dialog
+change-email flow).
 
 ---
 

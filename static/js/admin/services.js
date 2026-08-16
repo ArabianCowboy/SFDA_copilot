@@ -132,6 +132,14 @@ export function createAdminServices(getToken) {
     sendPasswordReset: (id) =>
       request(`users/${encodeURIComponent(id)}/reset-password`, { method: 'POST' }),
 
+    /** End every session this account holds. Returns no credential, by design. */
+    revokeSessions: (id) =>
+      request(`users/${encodeURIComponent(id)}/revoke-sessions`, { method: 'POST' }),
+
+    /** Set a new email immediately. No confirmation step exists on this path. */
+    changeEmail: (id, email) =>
+      request(`users/${encodeURIComponent(id)}/change-email`, { method: 'POST', body: { email } }),
+
     /** Rewrite the three profile fields an operator may touch. */
     updateProfile: (id, patch) =>
       request(`users/${encodeURIComponent(id)}/profile`, { method: 'PATCH', body: patch }),
