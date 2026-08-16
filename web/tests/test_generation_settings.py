@@ -199,6 +199,39 @@ def test_stored_overrides_are_adopted_at_startup(app):
         assert restarted.config["openai_handler"].model == "gpt-4o"
 
 
+# ── Configured is not the same fact as live ───────────────────────────────────
+
+
+def test_the_settings_api_reports_the_handler_that_is_actually_answering(app):
+    """The console showed Luna from the store while every answer came from
+    gpt-4o-mini, and the only place that disagreement appeared was a line in the
+    server's terminal. `active` is read off the live handler so the console can
+    say so itself."""
+    client = app.test_client()
+    with app.app_context():
+        app.config["settings_service"].update({"model": "gpt-4o"}, actor=ACTOR)
+        # Stored, but deliberately NOT applied — this is the shape a boot that
+        # could not reach the settings store leaves behind.
+
+        body = client.get("/admin/api/settings", headers=ADMIN).get_json()
+
+    assert body["settings"]["model"] == "gpt-4o", "what is configured"
+    assert body["active"]["model"] == "gpt-4o-mini", "what is answering"
+
+
+def test_the_two_agree_once_the_settings_are_applied(app):
+    with app.app_context():
+        client = app.test_client()
+        response = client.put(
+            "/admin/api/settings", json={"model": "gpt-4o"}, headers=ADMIN
+        )
+
+    body = response.get_json()
+    assert response.status_code == 200
+    assert body["applied"] is True
+    assert body["settings"]["model"] == body["active"]["model"] == "gpt-4o"
+
+
 # ── The tokenizer, which is the invariant a mutation would break ─────────────
 
 

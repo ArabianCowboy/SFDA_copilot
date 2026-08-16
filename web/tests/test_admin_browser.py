@@ -354,6 +354,160 @@ def test_model_default_is_offered_as_a_distinct_choice(browser_page: Page):
     expect(browser_page.locator("#setting-reasoning_effort")).to_have_value("")
 
 
+# ── Switching AWAY from a reasoning model ────────────────────────────────────
+#
+# The instance this came from: a console showing Luna, a terminal showing
+# gpt-4o-mini, and a Save button that did nothing and said nothing. Every save
+# came back 422 `reasoning_effort: reasoning_not_supported`, because the stored
+# override survived a switch to a model with no reasoning — and the refusal
+# named a field the form had stopped drawing, so it was written to a DOM node
+# that does not exist and dropped. The model could not be changed back from this
+# console at all.
+
+ON_A_REASONING_MODEL = {
+    "settings": {
+        "model": "gpt-5.6-luna", "temperature": 0.1, "max_tokens": 128000,
+        "max_context_results": 8, "reasoning_effort": "xhigh",
+    },
+    "overrides": {
+        "model": "gpt-5.6-luna", "temperature": 0.1, "max_tokens": 128000,
+        "max_context_results": 8, "reasoning_effort": "xhigh",
+    },
+    "defaults": {
+        "model": "gpt-4o-mini", "temperature": 0.1, "max_tokens": 16384,
+        "max_context_results": 8, "reasoning_effort": None,
+    },
+    "allowed_models": REASONING_SETTINGS["allowed_models"],
+}
+
+
+def _capture_put(page: Page, settings: dict, *, response=None, status: int = 200):
+    """Record the PUT body and answer it with `response`."""
+    sent: list = []
+
+    def handle(route):
+        if route.request.method == "PUT":
+            sent.append(route.request.post_data_json)
+            route.fulfill(
+                status=status, content_type="application/json",
+                body=json.dumps(response if response is not None
+                                else {**settings, "applied": True}),
+            )
+        else:
+            route.fulfill(status=200, content_type="application/json",
+                          body=json.dumps(settings))
+
+    page.route("**/admin/api/settings", handle)
+    return sent
+
+
+def test_leaving_a_reasoning_model_clears_the_effort_it_had(browser_page: Page):
+    """Choosing a model without reasoning IS a decision about reasoning effort.
+
+    Omitting the key left the old value in the stored document, the server
+    validated the resulting pair and refused it, and the model could never be
+    changed back. null is the honest patch: the override is removed.
+    """
+    _admin_console(browser_page, settings=ON_A_REASONING_MODEL)
+    browser_page.locator("#tab-settings").click()
+    sent = _capture_put(browser_page, ON_A_REASONING_MODEL)
+
+    browser_page.locator("#setting-model").select_option("gpt-4o-mini")
+    browser_page.locator("#setting-max_tokens").fill("16384")
+    browser_page.locator("#settings-save").click()
+
+    expect(browser_page.locator("#settings-save")).to_be_enabled()
+    assert sent, "no PUT was sent"
+    assert sent[0]["reasoning_effort"] is None
+    assert sent[0]["model"] == "gpt-4o-mini"
+
+
+def test_arriving_at_a_reasoning_model_clears_the_temperature_it_cannot_use(
+    browser_page: Page,
+):
+    """The mirror image. Luna rejects `temperature` outright, so an override for
+    it is a value nothing will ever read and no control will ever show."""
+    _admin_console(browser_page, settings=REASONING_SETTINGS)
+    browser_page.locator("#tab-settings").click()
+    sent = _capture_put(browser_page, REASONING_SETTINGS)
+
+    browser_page.locator("#setting-model").select_option("gpt-5.6-luna")
+    browser_page.locator("#settings-save").click()
+
+    expect(browser_page.locator("#settings-save")).to_be_enabled()
+    assert sent and sent[0]["temperature"] is None
+
+
+def test_a_value_survives_a_round_trip_through_a_model_that_hides_it(
+    browser_page: Page,
+):
+    """Temperature has no control under Luna. Coming back to a model that has
+    one used to show an empty box — the value only existed in the control that
+    had just been removed — and an empty box is dropped from the patch, so the
+    setting was abandoned without anyone touching it."""
+    _admin_console(browser_page, settings=REASONING_SETTINGS)
+    browser_page.locator("#tab-settings").click()
+
+    browser_page.locator("#setting-model").select_option("gpt-5.6-luna")
+    expect(browser_page.locator("#setting-temperature")).to_have_count(0)
+    browser_page.locator("#setting-model").select_option("gpt-4o-mini")
+
+    expect(browser_page.locator("#setting-temperature")).to_have_value("0.1")
+
+
+def test_a_refusal_against_a_hidden_field_is_still_said_out_loud(browser_page: Page):
+    """The silence is the bug. An error whose field this model does not draw has
+    nowhere to sit in the form, and was written to a node that does not exist —
+    leaving a re-enabled Save button as the only thing that happened."""
+    _admin_console(browser_page, settings=ON_A_REASONING_MODEL)
+    browser_page.locator("#tab-settings").click()
+    _capture_put(
+        browser_page, ON_A_REASONING_MODEL, status=422,
+        response={"error": "validation_failed", "errors": [
+            {"field": "reasoning_effort", "code": "reasoning_not_supported"},
+        ]},
+    )
+
+    browser_page.locator("#setting-model").select_option("gpt-4o-mini")
+    browser_page.locator("#settings-save").click()
+
+    expect(browser_page.locator("#toast")).to_contain_text("reasoning", ignore_case=True)
+
+
+def test_the_form_says_when_it_is_not_the_model_answering(browser_page: Page):
+    """Configured is not the same fact as live, and the console used to report
+    only the first — which is how it showed Luna while every answer came from
+    gpt-4o-mini, with the disagreement visible only in the server's terminal."""
+    _admin_console(browser_page, settings={
+        **ON_A_REASONING_MODEL, "active": {"model": "gpt-4o-mini"},
+    })
+    browser_page.locator("#tab-settings").click()
+
+    expect(browser_page.locator("#settings-not-live")).to_contain_text("gpt-4o-mini")
+
+
+def test_no_warning_when_the_live_model_is_the_configured_one(browser_page: Page):
+    """A permanent notice is a notice nobody reads."""
+    _admin_console(browser_page, settings={
+        **ON_A_REASONING_MODEL, "active": {"model": "gpt-5.6-luna"},
+    })
+    browser_page.locator("#tab-settings").click()
+
+    expect(browser_page.locator("#setting-model")).to_be_visible()
+    expect(browser_page.locator("#settings-not-live")).to_have_count(0)
+
+
+def test_the_token_box_declares_the_selected_model_s_ceiling(browser_page: Page):
+    """128000 is a fine answer length for Luna and an instant 400 for gpt-4o-mini.
+    The box that holds it has to say which."""
+    _admin_console(browser_page, settings=ON_A_REASONING_MODEL)
+    browser_page.locator("#tab-settings").click()
+
+    expect(browser_page.locator("#setting-max_tokens")).to_have_attribute("max", "128000")
+    browser_page.locator("#setting-model").select_option("gpt-4o-mini")
+    expect(browser_page.locator("#setting-max_tokens")).to_have_attribute("max", "16384")
+
+
 # ── Reverting an override ─────────────────────────────────────────────────────
 
 OVERRIDDEN = {

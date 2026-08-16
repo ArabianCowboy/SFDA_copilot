@@ -114,7 +114,7 @@ function specFor(modelId, allowedModels) {
 
 const fieldName = (field) => field.name || field.key;
 
-function buildControl(field, value, allowedModels, currentModel) {
+function buildControl(field, value, allowedModels, currentModel, ceiling) {
   if (field.kind === 'effort') {
     // Populated from the SELECTED model's own list, because the levels differ
     // per model — Luna offers `none`, Nano's floor is `minimal`. A shared list
@@ -160,12 +160,20 @@ function buildControl(field, value, allowedModels, currentModel) {
   input.step = field.step;
   input.className = 'form-control admin-input';
   input.value = value;
+  // The output ceiling belongs to the MODEL, not to the field, and it changes
+  // under the operator when they pick a different one. Declaring it here is
+  // not a clamp — `noValidate` is set on the form and the server still refuses
+  // — it is the difference between a box that quietly holds an unsaveable
+  // number and one that says what the number may be.
+  if (fieldName(field) === 'max_tokens' && ceiling) input.max = ceiling;
   if (field.numeric) input.setAttribute('dir', 'ltr');
   return input;
 }
 
 /** Render the settings form. Returns nothing; read it back with readSettingsForm. */
-export function renderSettings({ settings, overrides, defaults, allowed_models: allowedModels }) {
+export function renderSettings({
+  settings, overrides, defaults, allowed_models: allowedModels, active,
+}) {
   const body = el('settings-body');
   if (!body) return;
   body.textContent = '';
@@ -180,8 +188,35 @@ export function renderSettings({ settings, overrides, defaults, allowed_models: 
   hint.textContent = I18n.t('admin.settings.hint');
   form.appendChild(hint);
 
+  // Said here, where the model is chosen, when the model being chosen is not
+  // the model answering. This form otherwise describes the stored settings and
+  // nothing else, which is how a console could show Luna for two days while
+  // every answer came from gpt-4o-mini — the disagreement existed only in the
+  // server's terminal, and only for whoever thought to look.
+  const activeModel = active?.model;
+  if (activeModel && settings.model && activeModel !== settings.model) {
+    const stale = document.createElement('p');
+    stale.className = 'admin-form-hint is-warning';
+    stale.id = 'settings-not-live';
+    stale.setAttribute('role', 'status');
+    stale.textContent = I18n.t('admin.settings.notLive', { model: activeModel });
+    form.appendChild(stale);
+  }
+
   const spec = specFor(settings.model, allowedModels);
   const isReasoning = (spec.reasoning_efforts || []).length > 0;
+
+  // The settings this model has no parameter for, recorded on the form so that
+  // reading it back can say so.
+  //
+  // Not rendering a control is only half a decision. The other half is what the
+  // patch says about it, and "nothing" was the wrong answer: an override stored
+  // for the PREVIOUS model survived the merge, the server validated the
+  // resulting document and refused it — `reasoning_effort` set on a model with
+  // no reasoning — and the refusal named a field this form had chosen not to
+  // draw, so it could not be shown either. Switching away from a reasoning
+  // model was therefore impossible from this console and silent about it.
+  const inapplicable = [];
 
   FIELDS.forEach((field) => {
     const name = fieldName(field);
@@ -189,8 +224,11 @@ export function renderSettings({ settings, overrides, defaults, allowed_models: 
     // A reasoning model rejects `temperature` outright, and an ordinary one
     // rejects `reasoning_effort`. Showing a control the server would refuse is
     // an invitation to a 422 that nobody could have predicted from the form.
-    if (field.kind === 'effort' && !isReasoning) return;
-    if (name === 'temperature' && spec.supports_temperature === false) return;
+    if (field.kind === 'effort' && !isReasoning) { inapplicable.push(name); return; }
+    if (name === 'temperature' && spec.supports_temperature === false) {
+      inapplicable.push(name);
+      return;
+    }
 
     const row = document.createElement('div');
     row.className = 'admin-field';
@@ -201,7 +239,9 @@ export function renderSettings({ settings, overrides, defaults, allowed_models: 
     label.htmlFor = `setting-${name}`;
     label.textContent = I18n.t(`admin.settings.${field.key}`);
 
-    const control = buildControl(field, settings[name], allowedModels || [], settings.model);
+    const control = buildControl(
+      field, settings[name], allowedModels || [], settings.model, spec.max_output_tokens,
+    );
     control.id = `setting-${name}`;
     control.name = name;
 
@@ -250,6 +290,9 @@ export function renderSettings({ settings, overrides, defaults, allowed_models: 
   actions.appendChild(save);
 
   form.appendChild(actions);
+  // Read back by readSettingsForm as explicit removals. Empty string when the
+  // model accepts everything, which `split` turns into `[]` rather than `['']`.
+  form.dataset.inapplicable = inapplicable.join(',');
   body.appendChild(form);
 }
 
@@ -259,12 +302,25 @@ export function readSettingsForm() {
   if (!form) return {};
 
   const patch = {};
+
+  // Settings the SELECTED model has no parameter for, cleared explicitly.
+  //
+  // This used to be an omission, on the reasoning that null means "revert this
+  // override" and a model switch should not clear a setting nobody touched.
+  // The reasoning was right about what null means and wrong about what the
+  // operator did: choosing a model without a temperature IS a decision about
+  // temperature. Omitting it left the old value in the stored document, the
+  // server validated the resulting pair — `reasoning_effort` against a model
+  // with no reasoning, which is exactly the invalid-pair-from-two-valid-values
+  // case it exists to catch — and refused every save. There was no gesture in
+  // this form that could clear it, because the control it belongs to is the one
+  // the new model caused to disappear.
+  const inapplicable = (form.dataset.inapplicable || '').split(',').filter(Boolean);
+  inapplicable.forEach((name) => { patch[name] = null; });
+
   FIELDS.forEach((field) => {
     const name = fieldName(field);
     const control = form.elements[name];
-    // Absent because the selected model does not accept it. Omitted entirely
-    // rather than sent as null: null means "revert this override", and a model
-    // switch should not silently clear a setting the operator never touched.
     if (!control) return;
     // Marked for reversion by the control below. Sent as null, which removes
     // the override — distinct from writing the default's current value, which
@@ -292,6 +348,38 @@ export function readSettingsForm() {
   return patch;
 }
 
+/**
+ * What the controls are SHOWING, with none of the patch semantics attached.
+ *
+ * Separate from readSettingsForm because the two questions are different, and
+ * answering the second with the first is what blanked a field. A patch says
+ * "remove this override" with null; a re-render needs a value to put in a box,
+ * and null is not one. A field the current model has no parameter for is simply
+ * absent here, so the caller keeps whatever it already knew — which is the only
+ * place that value still exists once the control is gone.
+ */
+export function readSettingsDisplay() {
+  const form = el('settings-form');
+  if (!form) return {};
+
+  const shown = {};
+  FIELDS.forEach((field) => {
+    const name = fieldName(field);
+    const control = form.elements[name];
+    if (!control) return;
+    // A staged revert has already put the default in the box, so reading the
+    // control shows what it will become — which is what should carry over.
+    if (field.kind === 'effort') {
+      shown[name] = control.value || null;
+      return;
+    }
+    const raw = String(control.value).trim();
+    if (raw === '') return;
+    shown[name] = field.kind === 'number' ? Number(raw) : raw;
+  });
+  return shown;
+}
+
 export function clearSettingsErrors() {
   document.querySelectorAll('.admin-field-error').forEach((node) => {
     node.hidden = true;
@@ -302,10 +390,21 @@ export function clearSettingsErrors() {
   });
 }
 
-/** Put each failure beside the field it belongs to, not in a pile at the top. */
+/**
+ * Put each failure beside the field it belongs to, not in a pile at the top.
+ *
+ * Returns the failures that found no field to sit beside, so the caller can say
+ * them out loud. That return value is the fix for a save that refused in
+ * silence: an error against a control this model does not render — storage
+ * unavailable, or a setting left over from the previous model — was written
+ * into a DOM node that does not exist and then dropped. The operator got a
+ * re-enabled Save button and no other change on screen.
+ */
 export function showSettingsErrors(errors) {
   clearSettingsErrors();
-  (errors || []).forEach(({ field, code, limit }) => {
+  const homeless = [];
+  (errors || []).forEach((entry) => {
+    const { field, code, limit } = entry;
     const row = document.querySelector(`.admin-field[data-field="${field}"]`);
     const node = el(`error-${field}`);
     const text = I18n.t(`admin.errors.${code}`, {
@@ -314,11 +413,12 @@ export function showSettingsErrors(errors) {
     if (node) {
       node.textContent = text;
       node.hidden = false;
+    } else {
+      homeless.push(entry);
     }
     if (row) row.classList.add('has-error');
-    // A field-less failure (storage unavailable) has nowhere to sit; the
-    // caller surfaces it as a toast instead.
   });
+  return homeless;
 }
 
 export function setSettingsSaving(isSaving) {

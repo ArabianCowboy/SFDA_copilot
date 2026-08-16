@@ -165,6 +165,8 @@ runtime:
       saving: "Saving…"
       saved: "Settings saved."
       savedNotApplied: "Saved, but not applied to answers yet. The previous settings are still live."
+      # The model name is a machine fact and is not translated; see config.yaml.
+      notLive: "Answers are currently coming from {model}, not from the model selected here. Save to apply, or restart the server."
       usingDefault: "Deployed default"
       overridden: "Changed here"
       revert: "Revert to default"

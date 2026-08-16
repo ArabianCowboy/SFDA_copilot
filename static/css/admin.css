@@ -200,6 +200,14 @@
   max-inline-size: 60ch;
 }
 
+/* The form describes what is stored; this line is for when that is not what is
+   answering. Warning rather than danger: nothing is broken, the change simply
+   has not reached generation yet. */
+.admin-form-hint.is-warning {
+  color: var(--warning);
+  font-weight: var(--fw-medium);
+}
+
 .admin-field {
   display: grid;
   /* Label and origin marker share a row; the control spans beneath both, so a

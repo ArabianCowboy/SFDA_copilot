@@ -20,6 +20,7 @@ import {
   showAuditMessage,
   showPeopleMessage,
   readProfileForm,
+  readSettingsDisplay,
   readSettingsForm,
   renderSettings,
   selectTab,
@@ -392,12 +393,26 @@ export async function initSettingsTab(services) {
   // What each field reverts TO. An overridden field hides its own default,
   // so the console cannot offer reversion without being told.
   let currentDefaults = {};
+  // The last state the SERVER reported, kept as the floor a re-render falls
+  // back to. A model switch hides the controls the new model has no parameter
+  // for, and reading the form is therefore a lossy snapshot of it — switching
+  // to a reasoning model and back used to return a blank temperature box,
+  // because the value only ever existed in the control that had just been
+  // removed. An empty box is then dropped from the patch, so the round trip
+  // quietly abandoned a setting the operator never touched.
+  let currentSettings = {};
+  // What the running handler is actually generating with, which is not the same
+  // fact as what is stored. Carried across re-renders so the warning does not
+  // vanish the moment the operator touches the model select.
+  let currentActive = {};
 
   try {
     const loaded = await services.settings();
     allowedModels = loaded.allowed_models || [];
     currentOverrides = loaded.overrides || {};
     currentDefaults = loaded.defaults || {};
+    currentSettings = loaded.settings || {};
+    currentActive = loaded.active || {};
     renderSettings(loaded);
   } catch (error) {
     showSettingsMessage(I18n.t('admin.settings.loadFailed'));
@@ -416,11 +431,24 @@ export async function initSettingsTab(services) {
 
   body.addEventListener('change', (event) => {
     if (event.target.name !== 'model') return;
+
+    // Over the last state the server reported, not in place of it. A control
+    // the outgoing model had and the incoming one does not is absent from the
+    // read, and `currentSettings` is then the only place its value still
+    // exists — reading the form alone is how the temperature box came back
+    // empty after a trip through a reasoning model.
+    const settings = {
+      ...currentSettings,
+      ...readSettingsDisplay(),
+      model: event.target.value,
+    };
+
     renderSettings({
-      settings: { ...readSettingsForm(), model: event.target.value },
+      settings,
       overrides: currentOverrides,
       defaults: currentDefaults,
       allowed_models: allowedModels,
+      active: currentActive,
     });
   });
 
@@ -439,6 +467,8 @@ export async function initSettingsTab(services) {
       // "changed here" markers, which a local update would leave stale.
       currentOverrides = saved.overrides || {};
       currentDefaults = saved.defaults || currentDefaults;
+      currentSettings = saved.settings || currentSettings;
+      currentActive = saved.active || {};
       renderSettings({ ...saved, defaults: currentDefaults, allowed_models: allowedModels });
 
       // `applied: false` means the values were stored but the generation
@@ -458,10 +488,13 @@ export async function initSettingsTab(services) {
     } catch (error) {
       setSettingsSaving(false);
       if (error instanceof AdminRequestError && error.errors?.length) {
-        showSettingsErrors(error.errors);
-        // A failure with no field of its own — storage unavailable — has
-        // nowhere to sit in the form, so it is spoken aloud instead.
-        const homeless = error.errors.filter((entry) => entry.field === '_');
+        // Whatever could not be placed beside a field is spoken aloud. Asking
+        // the renderer which ones those were, rather than assuming it is only
+        // the field-less `_` code, is what stops a refusal from disappearing:
+        // an error against a control this model does not draw is homeless in
+        // exactly the same way, and used to be dropped on the floor — the save
+        // failed and the console said nothing at all.
+        const homeless = showSettingsErrors(error.errors);
         homeless.forEach((entry) =>
           ErrorHandler.showToast(I18n.t(`admin.errors.${entry.code}`), true));
         return;

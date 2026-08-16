@@ -201,7 +201,7 @@ SUPPORTED_FAQ_LANGS = ("en", "ar")
 # that mixes a fresh template with a stale module is worse than a stale page —
 # post-icon-migration it would render an <i class="bi"> with no icon font behind
 # it, or print a glyph NAME as text. MODULE_IMPORT_MAP below closes that.
-ASSET_VERSION = "warm28"
+ASSET_VERSION = "warm29"
 
 # Product release, rendered in the landing footer. Kept as one constant so
 # the number cannot drift between the page and the module headers.
@@ -1029,8 +1029,39 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
     # survives a restart. Deliberately best-effort and after the handler already
     # exists: a settings-store outage during boot leaves the deployed defaults
     # running rather than preventing the app from serving at all.
-    if app.config["settings_service"].overrides():
-        apply_generation_settings()
+    #
+    # UNCONDITIONAL, and that is the point of it. Gating this on `overrides()`
+    # being non-empty meant the only model a boot ever printed was the one from
+    # the throwaway handler `_initialize_services` builds — "OpenAIHandler
+    # initialized with model: gpt-4o-mini" — which is the deployed default
+    # whatever the console shows, and is discarded seconds later on any instance
+    # that has overrides. An operator reading the terminal had no way to tell
+    # which of the two handlers was live. Applying always makes "Generation
+    # settings applied" the single line that states what this process will
+    # actually generate with, and it costs nothing when nothing is overridden
+    # because `snapshot()` is then exactly the deployed defaults.
+    try:
+        stored = app.config["settings_service"].read_overrides()
+    except Exception:
+        # Said here rather than left to be inferred. `snapshot()` is lenient and
+        # serves the deployed defaults when the store cannot be read — correct,
+        # because a settings outage must not cost a reader their answer, but it
+        # means this process will generate with defaults while /admin/api/settings
+        # reports whatever is stored the moment the store comes back. Nothing
+        # reconciles the two until the next save or restart, so the disagreement
+        # has to be announced at the point it is created.
+        logger.error(
+            "The settings store could not be read at startup, so generation is "
+            "running the DEPLOYED DEFAULTS from config.yaml. The console will "
+            "show the stored overrides once the store recovers; the two will "
+            "disagree until a save or a restart.",
+            exc_info=True,
+        )
+    else:
+        if stored:
+            logger.info("Adopting stored settings overrides: %s", sorted(stored))
+
+    apply_generation_settings()
     app.register_blueprint(auth_bp, url_prefix="/auth")
     # Recovery triggers an email from an unauthenticated endpoint, which is the
     # one shape on this origin that a script can turn into someone else's inbox

@@ -27,7 +27,7 @@ is silent.
 from __future__ import annotations
 
 import logging
-from typing import Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 from flask import Blueprint, Response, current_app, g, jsonify, render_template, request
 
@@ -120,6 +120,38 @@ def console() -> Response:
     return render_template("admin.html", **context, module_import_map=import_map)
 
 
+def _active_generation() -> Dict[str, Any]:
+    """What the handler that answers questions is ACTUALLY using, right now.
+
+    Read off the live object, not off the store. Everything else in this
+    response describes what is *configured*, and the two can disagree: the
+    settings a request generates with are fixed when its handler is
+    constructed, and a boot that could not reach the settings store builds that
+    handler from the deployed defaults and never revisits the decision. Nothing
+    reconciles them until the next save or restart.
+
+    That gap is exactly the state this console was unable to describe — it
+    reported Luna from the store while the process was generating with
+    gpt-4o-mini, and the only place the disagreement was visible was a line in
+    the server's terminal. An operator should not have to read the logs to find
+    out whether the model they chose is the model answering.
+
+    Per-process, and honestly so: it describes the worker that served this
+    request. That is a real limit under WEB_CONCURRENCY > 1, which this app
+    already warns against for the same reason.
+    """
+    handler = current_app.config.get("openai_handler")
+    if handler is None:
+        return {}
+    return {
+        "model": getattr(handler, "model", None),
+        "max_tokens": getattr(handler, "max_tokens", None),
+        "temperature": getattr(handler, "temperature", None),
+        "max_context_results": getattr(handler, "max_context_results", None),
+        "reasoning_effort": getattr(handler, "reasoning_effort", None),
+    }
+
+
 @admin_bp.route("/api/settings", methods=["GET"])
 def get_settings() -> Response:
     """The effective settings, plus what an operator is allowed to choose.
@@ -140,6 +172,8 @@ def get_settings() -> Response:
         # equal the default would pin it instead of restoring inheritance.
         "defaults": deployed_defaults(),
         "allowed_models": allowed_models(),
+        # Configured is not the same fact as live; see _active_generation.
+        "active": _active_generation(),
     })
 
 
@@ -197,6 +231,10 @@ def put_settings() -> Response:
         "overrides": service.overrides(),
         "defaults": deployed_defaults(),
         "applied": applied,
+        # Read AFTER the swap, so `applied: false` is not the only way to learn
+        # that answers are still coming from the previous settings — this says
+        # which ones they are.
+        "active": _active_generation(),
     })
 
 

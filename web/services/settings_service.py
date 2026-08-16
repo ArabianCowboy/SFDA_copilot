@@ -298,6 +298,24 @@ class SettingsService:
         """What has actually been changed, for the console to show as such."""
         return {k: v for k, v in self._overrides().items() if k in GENERATION_KEYS}
 
+    def read_overrides(self) -> Dict[str, Any]:
+        """:meth:`overrides`, but it raises rather than answering ``{}``.
+
+        For the one caller that has to tell "nothing is overridden" apart from
+        "the store did not answer": startup. Both look like an empty document
+        through :meth:`overrides`, and they mean opposite things there — the
+        first is a process correctly running the deployed defaults, the second
+        is a process running them while the console will report something else.
+
+        No backend at all is the first case, not the second, and is answered
+        rather than raised: without a service-role key nothing can ever have
+        been written, and the console reads through this same service — so both
+        sides see the deployed defaults and there is nothing to disagree about.
+        """
+        if self._backend is None:
+            return {}
+        return {k: v for k, v in self._read_overrides().items() if k in GENERATION_KEYS}
+
     def _publish(self, overrides: Dict[str, Any]) -> None:
         """Install a known-committed document as the snapshot.
 
