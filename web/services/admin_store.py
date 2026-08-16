@@ -588,23 +588,42 @@ class InMemoryAdminBackend:
             if enabled_admins <= 1:
                 raise AdminActionRefused("would_leave_no_administrator")
 
+        before_role = row["role"]
+        before_disabled = row["is_disabled"]
+
         if role is not None:
             row["role"] = role
         if is_disabled is not None:
             row["is_disabled"] = is_disabled
             row["disabled_reason"] = reason if is_disabled else None
 
-        self._record(
-            action=("user.disable" if is_disabled is True
-                    else "user.enable" if is_disabled is False
-                    else "user.role_change"),
-            target_type="user",
-            target_id=user_id,
-            actor=actor,
-            before=None,
-            after={"role": row["role"], "is_disabled": row["is_disabled"]},
-            note=reason,
-        )
+        if role is not None and role != before_role:
+            # `reason` is a general note on the call, not reserved for
+            # disabling — the route only *requires* it when is_disabled is
+            # true, it does not forbid sending it alongside a role-only
+            # change. Attaching it here too means it is never silently
+            # dropped, matching the SQL RPC this mirrors.
+            self._record(
+                action="user.role_change",
+                target_type="user",
+                target_id=user_id,
+                actor=actor,
+                before={"role": before_role},
+                after={"role": row["role"]},
+                note=reason,
+            )
+
+        if is_disabled is not None and is_disabled != before_disabled:
+            self._record(
+                action="user.disable" if row["is_disabled"] else "user.enable",
+                target_type="user",
+                target_id=user_id,
+                actor=actor,
+                before={"is_disabled": before_disabled},
+                after={"is_disabled": row["is_disabled"]},
+                note=reason if row["is_disabled"] else None,
+            )
+
         return {"role": row["role"], "tier": row["tier"], "is_disabled": row["is_disabled"]}
 
 

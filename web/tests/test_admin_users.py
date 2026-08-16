@@ -21,7 +21,8 @@ ACTOR = AuditActor("test-admin-id", "admin@example.com", "127.0.0.1", "pytest")
 
 
 @pytest.fixture
-def app():
+def app(monkeypatch):
+    monkeypatch.setenv("PUBLIC_BASE_URL", "http://127.0.0.1:5001")
     return create_app(testing=True)
 
 
@@ -227,6 +228,91 @@ def test_a_refused_change_is_not_recorded(client):
     never happened."""
     client.patch("/admin/api/users/test-admin-id", json={"role": "user"}, headers=ADMIN)
     assert client.get("/admin/api/audit", headers=ADMIN).get_json()["entries"] == []
+
+
+def test_a_single_call_changing_both_role_and_standing_records_both(client):
+    """A mutation carrying both role and is_disabled records two distinct audit
+    rows with their respective diffs, rather than dropping one."""
+    response = client.patch(
+        "/admin/api/users/test-user-id",
+        json={"role": "admin", "is_disabled": True, "reason": "quarantined admin"},
+        headers=ADMIN,
+    )
+    assert response.status_code == 200
+
+    entries = client.get(
+        "/admin/api/audit?target_type=user&target_id=test-user-id", headers=ADMIN
+    ).get_json()["entries"]
+
+    assert len(entries) == 2
+    actions = {e["action"] for e in entries}
+    assert actions == {"user.role_change", "user.disable"}
+
+    disable_entry = next(e for e in entries if e["action"] == "user.disable")
+    assert disable_entry["before"] == {"is_disabled": False}
+    assert disable_entry["after"] == {"is_disabled": True}
+    assert disable_entry["note"] == "quarantined admin"
+
+    role_entry = next(e for e in entries if e["action"] == "user.role_change")
+    assert role_entry["before"] == {"role": "user"}
+    assert role_entry["after"] == {"role": "admin"}
+
+
+def test_a_no_op_user_flags_edit_records_nothing(client):
+    """A patch setting a field to the value it already holds records nothing at
+    all — matching admin_update_profile and avoiding false audit entries."""
+    before = len(client.get("/admin/api/audit", headers=ADMIN).get_json()["entries"])
+
+    response = client.patch(
+        "/admin/api/users/test-user-id",
+        json={"role": "user", "is_disabled": False},
+        headers=ADMIN,
+    )
+    assert response.status_code == 200
+
+    after = len(client.get("/admin/api/audit", headers=ADMIN).get_json()["entries"])
+    assert after == before, "an unchanged user flags patch wrote an audit row"
+
+
+def test_a_partial_no_op_records_only_the_field_that_moved(client):
+    """When both fields are sent but only one changed, only the changed field
+    gets an audit row."""
+    response = client.patch(
+        "/admin/api/users/test-user-id",
+        json={"role": "user", "is_disabled": True, "reason": "abusive questions"},
+        headers=ADMIN,
+    )
+    assert response.status_code == 200
+
+    entries = client.get(
+        "/admin/api/audit?target_type=user&target_id=test-user-id", headers=ADMIN
+    ).get_json()["entries"]
+
+    assert len(entries) == 1
+    assert entries[0]["action"] == "user.disable"
+    assert entries[0]["before"] == {"is_disabled": False}
+    assert entries[0]["after"] == {"is_disabled": True}
+
+
+def test_a_reason_on_a_role_only_change_is_not_dropped(client):
+    """`reason` is a general note on the call, not a field reserved for
+    disabling — the route only requires it when is_disabled is true, it does
+    not forbid sending it alongside a role-only change. A role_change row
+    must keep it rather than silently discarding it."""
+    response = client.patch(
+        "/admin/api/users/test-user-id",
+        json={"role": "admin", "reason": "promoted after training"},
+        headers=ADMIN,
+    )
+    assert response.status_code == 200
+
+    entries = client.get(
+        "/admin/api/audit?target_type=user&target_id=test-user-id", headers=ADMIN
+    ).get_json()["entries"]
+
+    assert len(entries) == 1
+    assert entries[0]["action"] == "user.role_change"
+    assert entries[0]["note"] == "promoted after training"
 
 
 def test_the_identity_cache_is_invalidated_so_the_change_takes_effect(client, app):
