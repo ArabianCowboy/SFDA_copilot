@@ -1005,7 +1005,7 @@ than sequentially.
 
 ---
 
-### ~~Ending a session, as distinct from disabling chat~~ — BUILT 2026-08-17, pending a production migration
+### ~~Ending a session, as distinct from disabling chat~~ — BUILT and DEPLOYED 2026-08-17
 
 **Resolved, in code.** `POST /admin/api/users/<user_id>/revoke-sessions`
 (`web/api/admin.py`) ships. **The actual mechanism is not
@@ -1031,17 +1031,40 @@ Shipped alongside it, on the same page and by the same mechanism: `POST
 .../change-email` — see the email-address entry above, which this was
 built together with.
 
-**What is still open, deliberately.** The new `admin_get_user` SQL
-(`supabase/migrations/20260817120000_admin_get_user_email_verified.sql`)
-has been dry-run against the live project inside a rolled-back
-transaction — proven syntactically and semantically correct against real
-data — but not yet applied for real. Both routes work today off the
-*old* `admin_get_user` shape (missing `email_identity_verified` just
-degrades to "Unknown" in the UI, not an error), so this is safe to apply
-whenever convenient rather than blocking. Covered by
+**Fully shipped, not just merged.** The new `admin_get_user` SQL
+(`supabase/migrations/20260816215103_admin_get_user_email_verified.sql`)
+was dry-run inside a rolled-back transaction first, then applied for real
+against the live project and re-verified against real data afterward. The
+application code reached production the same day: `main` was 79 commits
+behind on the production server, deployed in one pass (`fb1f0a3` →
+`dbfe151`), with `PUBLIC_BASE_URL` added to production's `.env` and
+confirmed on Supabase's redirect allow-list — required for password
+recovery, which this feature's own confirm-copy leans on for the
+"send reset" companion action. Verified live post-deploy: clean gunicorn
+restart, no startup errors, correct asset version served, and a real
+recovery-mail send against the production redirect URL. Covered by
 `web/tests/test_admin_users.py` and `web/tests/test_admin_browser.py`
 (65/65 admin browser tests passing, including the new dual-dialog
 change-email flow).
+
+**One false alarm worth recording, so it isn't re-investigated as a mystery
+bug later.** After deploy, admin-changing an account's email and then
+logging in with what looked like the right password intermittently failed
+with GoTrue's `invalid_credentials` — recoverable only by requesting a
+fresh password reset. Investigated properly rather than assumed: two
+independent adversarial passes (a live disposable-account test reproducing
+the *exact* reported round-trip sequence, and an independent code trace by
+a second model) both confirmed the email-change call never touches
+`encrypted_password` — proven by logging into the same disposable account
+with the same known password before and after the exact change sequence,
+repeatedly, with zero failures. The real account's own audit trail matched
+this: every failure paired with a password the operator was recalling from
+memory, and every fix was a password reset that supplied a password
+they'd just typed. **Conclusion: this is not a bug, and a reader does not
+need to reset their password after an admin-triggered email change** —
+the apparent correlation was an artifact of testing against an account
+that had already been through several password resets in this session
+alone.
 
 ---
 
