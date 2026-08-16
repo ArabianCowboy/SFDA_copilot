@@ -246,7 +246,8 @@ sfda-copilot/
 │   ├── pharmacovigilance/
 │   ├── Veterinary_Medicines/
 │   └── Biological_Products_and_Quality_Control/
-└── memory-bank/           # Project documentation and notes
+└── memory-bank/           # productContext.md, projectbrief.md — product
+                           # rationale only; see TODO.md for status
 ```
 
 ### Architecture Boundaries

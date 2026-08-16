@@ -1036,21 +1036,20 @@ reader navigates to an older chat while a generation is in-flight.
 
 ### Consolidate every documentation file into `docs/`
 
-**Where:** Documentation is spread across five places. Root: `DESIGN.md`,
+**Where:** Documentation is spread across four places. Root: `DESIGN.md`,
 `PRODUCT.md`, `TODO.md`. `docs/`: `SMTP_CONFIGURATION.md`. `memory-bank/`:
-`activeContext.md`, `productContext.md`, `progress.md`, `projectbrief.md`,
-`systemPatterns.md`, `techContext.md`, `CHANGELOG.md`, `NewKnowledgeBase.md`.
-`memory-bank/Issue-teckting/`: ten fix-plan and analysis files
-(`DEPLOYMENT_PLAN.md`, `SFDA_COPILOT_FIX_PLAN.md`, `dead_code_report.md`, and
-others), currently **gitignored** (`.gitignore:91`) and therefore not under
-version control at all. `supabase/README.md`.
+`productContext.md`, `projectbrief.md` — down from eight files after the
+2026-08-16 review below deleted the other six as stale, and deleted the
+gitignored `memory-bank/Issue-teckting/` cluster outright rather than
+migrating it. `supabase/README.md`.
 
 **Why it is wanted.** A reader cannot find the state of the project without
-learning the layout first, and the largest, least trustworthy cluster
-(`memory-bank/Issue-teckting/`) is not even in git — a fresh clone has none of
-it, and nothing protects it from being lost. Moving the plan documents under
-version control and gathering every doc in `docs/` turns "where is X
-documented" into one answer.
+learning the layout first, and gathering every doc in `docs/` turns "where is
+X documented" into one answer. The largest, least trustworthy cluster
+(`memory-bank/Issue-teckting/`) no longer exists to migrate — its loss risk
+was resolved by deletion, not by bringing it under version control — so what
+remains here is smaller than when this entry was written: two small,
+already-accurate files plus the four documents above.
 
 **What it would disturb.** Three classes of cost, each verified:
 
@@ -1068,57 +1067,52 @@ documented" into one answer.
   `memory-bank/` in the project structure.
 - **The memory-bank convention.** `memory-bank/` is the Cline-style layout
   agents are trained to read (`activeContext`, `projectbrief`, `productContext`,
-  `systemPatterns`, `techContext`, `progress`). Moving it breaks that
-  convention — acceptable *if* decided deliberately, but the review entry below
-  determines whether the content survives at all, so the two are sequenced:
-  review first, move what survives.
+  `systemPatterns`, `techContext`, `progress`). The review entry below already
+  broke that convention deliberately — six of the eight files are gone, so
+  moving what's left (`productContext.md`, `projectbrief.md`) is now a small,
+  low-stakes step rather than a decision about a whole convention.
 
-**Open questions.** Whether `docs/` keeps subfolders (`docs/plan/` for the
-issue-teckting plans, `docs/memory-bank/` for the tracked files) or flattens;
-whether `CHANGELOG.md` and `NewKnowledgeBase.md` are worth keeping at all after
-the review; and whether README stays the only root-level doc or gains siblings
+**Open questions.** Whether `docs/` keeps a subfolder for the surviving
+`memory-bank/` pair or flattens them alongside the other root docs; and
+whether README stays the only root-level doc or gains siblings
 for discovery.
 
 ---
 
-### The memory-bank docs are stale, and the review cannot trust them
+### ~~The memory-bank docs are stale, and the review cannot trust them~~ — FIXED 2026-08-16
 
-**Where:** the eight tracked files in `memory-bank/`. Verified against current
-code on 2026-08-15.
+**Resolved.** The review this entry deferred is done. Of the eight tracked
+files, six were confirmed dead and deleted — `activeContext.md`,
+`CHANGELOG.md`, `NewKnowledgeBase.md`, `progress.md`, `systemPatterns.md`,
+`techContext.md` — each verified individually against current code before
+removal (the specific staleness this entry already listed for each: the
+`feature/All-Guideline` branch, the pre-2026-08 changelog, dead file
+references, the broken `system-architecture.png`, `Python 3.9+`/`unittest`,
+and coverage numbers matching nothing real). `productContext.md` and
+`projectbrief.md` survive unchanged, exactly as this entry predicted: no
+dates, no dead references, product rationale that still holds. Nothing was
+cross-referenced by code or tests, so nothing else moved — confirmed by a
+fresh repo-wide grep for `memory-bank` immediately before deleting (only
+README.md, TODO.md, and `.gitignore` mentioned it, and all three are now
+updated).
 
-**What is wrong.** The set describes a project from mid-2025 and is wrong in
-its own terms:
+`memory-bank/Issue-teckting/` — the ten gitignored fix-plan and analysis
+files this file's "Consolidate every documentation" entry flagged as an
+at-risk, ungitted cluster — was reviewed in full and deleted too rather than
+brought under version control. Every file targeted a codebase shape that no
+longer exists: a single `static/css/style.css` (replaced by the layered
+`tokens/base/components/robot/effects` system), a `web/docker-compose.yml`
+and `web/.env.example` that aren't in the repo, and bugs (the FAQ-buttons RLS
+hang, the theme-toggle icon collision, the stale-refresh-token handling) that
+were fixed long ago through other means. Not git-recoverable, unlike the six
+above — deleted deliberately rather than by the same-risk reasoning that
+applied to the tracked files.
 
-- `activeContext.md` still works the `feature/All-Guideline` branch and
-  2024/2025 search tuning; nothing about the admin console, the audit log,
-  password recovery, or the account-detail work.
-- `CHANGELOG.md` stops at 2025-04-26; the entire 2026-08 admin/auth work is
-  absent.
-- `NewKnowledgeBase.md` references files that no longer exist (`web/utils/utils.py`,
-  `QuizGenerator`, the loading overlay, the custom dropdowns, View Transitions).
-- `systemPatterns.md` references `system-architecture.png`, which does not exist
-  (checked 2026-08-15).
-- `techContext.md` says Python 3.9+ and `unittest`, and omits
-  `SUPABASE_SECRET_KEY`, `PUBLIC_BASE_URL`, and the `supabase/migrations/`
-  directory — the actual stack is newer, pytest-driven, and keyed off the
-  `.env.example` semantics.
-- `progress.md` reports coverage percentages and a backlog that do not match
-  the actual test suite or the shipped console.
-
-**Who it reaches.** Anyone — human or agent — who reads `memory-bank/` for
-ground truth and acts on what it says.
-
-**Why it is written down rather than fixed.** Fixing means deciding which files
-earn a rewrite and which earn deletion, and that decision belongs with the
-consolidation entry above: rewriting into place and then moving is double work.
-The two entries are deliberately sequenced — review first, move what survives.
-
-**What fixing it costs.** `PRODUCT.md`, `DESIGN.md`, `README.md` and `TODO.md`
-are the maintained set; nothing in `memory-bank/` is cross-referenced by code
-or tests (checked), so the only true cost is the review effort itself. The
-plausible outcomes: keep `productContext.md`/`projectbrief.md` (still largely
-accurate), fold any surviving facts into `docs/`, and delete the rest rather
-than maintain a second changelog.
+Net effect: `memory-bank/` is now two files, both accurate. The larger
+"Consolidate every documentation file into `docs/`" entry below is unaffected
+in shape but smaller in scope — there is no `memory-bank/Issue-teckting/`
+left to migrate, and `memory-bank/` itself is now two small, already-correct
+files rather than a set needing review before any move.
 
 ---
 
@@ -1154,24 +1148,29 @@ reads exactly.
 
 **Where:** `README.md` and the repo tree. The known dead files are already
 gone — `quiz_generator.py`, `web/utils/utils.py`, and `test_search.py` were
-deleted, and their removal is recorded in `memory-bank/CHANGELOG.md`. Verified
-2026-08-15: no `.bak`/`.tmp`/`.log` leftovers and no stray build artifacts
-under `web/processed_data/`.
+deleted; their removal was recorded in `memory-bank/CHANGELOG.md`, which no
+longer exists — see git log for that history now, per the memory-bank review
+below. Verified 2026-08-15: no `.bak`/`.tmp`/`.log` leftovers and no stray
+build artifacts under `web/processed_data/`.
 
-**What is wrong.** README describes things that do not exist: the env-var
-section (`README.md:305-318`) lists `FLASK_ENV`, `FLASK_DEBUG`, `SECRET_KEY`,
-`DATABASE_URL` (nothing reads them — see the `.env` entry), and the
-project-structure tree (`README.md:217`) lists `static/images/`, which has no
-directory. The split modules (`lexical_searcher`, `semantic_searcher`,
-`result_combiner`) and the dual OpenAI files (`openai_client.py` vs
-`openai_app.py`) are *deliberate* decomposition, not duplication — the sweep
-should prove that, not undo it.
+**Update 2026-08-16 — the README half is fixed; the sweep half is not.** Both
+stale sections named below were corrected this session: `README.md`'s
+env-var list now matches what the code actually reads and points at
+`.env.example` as the source of truth, and the `static/images/` line is gone
+from the project-structure tree (which also gained the admin-console files it
+was missing entirely). The orphan-file sweep itself — one grep pass over
+imports of every module under `web/` and `static/js/` to confirm nothing is
+orphaned — has not been run; that half is still open.
 
-**What fixing it costs.** Minutes, mostly reading. Fix the two stale README
-sections, then one grep pass over imports of every module under `web/` and
-`static/js/` to confirm nothing is orphaned. The risk of the sweep is
-overreach — removing a file that looks unused but is actually loaded by glob
-(the `MODULE_FILENAMES` import-map glob in `static/js/` and any
+**What is wrong (orphan-sweep half, still open).** The split modules
+(`lexical_searcher`, `semantic_searcher`, `result_combiner`) and the dual
+OpenAI files (`openai_client.py` vs `openai_app.py`) are *deliberate*
+decomposition, not duplication — the sweep should prove that, not undo it.
+
+**What fixing it costs.** One grep pass over imports of every module under
+`web/` and `static/js/` to confirm nothing is orphaned. The risk of the sweep
+is overreach — removing a file that looks unused but is actually loaded by
+glob (the `MODULE_FILENAMES` import-map glob in `static/js/` and any
 `import_module` by string) rather than by an import statement.
 
 ---
