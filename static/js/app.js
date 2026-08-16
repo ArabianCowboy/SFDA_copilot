@@ -49,6 +49,34 @@ const App = {
   },
 
   /**
+   * `Services.getIdentity()`, retried on a genuine, transient fault only.
+   *
+   * `getIdentity()` already resolves — never throws — for "nobody" or "not
+   * allowed" (a 401/403 is a real answer, not a fault); retrying those would
+   * hammer a refusal and delay the sign-out UI ever settling. Only a network
+   * failure (no `.status` — the fetch itself never got a response, which now
+   * includes the client-side timeout `getIdentity` enforces) or a 5xx/503
+   * from an identity-provider outage — the exact shape `_authenticate_request`
+   * classifies server-side — is worth a second attempt, because that is the
+   * case the server is explicitly built to recover from: `resolve_identity_flags`
+   * deliberately never caches a failed lookup, precisely so the next request
+   * gets a clean try. Any other status (400, 404, 429, ...) is retried zero
+   * times — repeating the same request would only repeat the same answer.
+   */
+  async fetchIdentityWithRetry(attempts = 2, delayMs = 500) {
+    for (let attempt = 1; attempt <= attempts; attempt++) {
+      try {
+        return await Services.getIdentity();
+      } catch (error) {
+        const retryable = error.status === undefined || error.status >= 500;
+        if (!retryable || attempt >= attempts) throw error;
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+      }
+    }
+    return null;
+  },
+
+  /**
    * Decide, once, what happens to the transcript saved by a language switch.
    *
    * Deliberately NOT done during init(). Restoring before authentication
@@ -215,13 +243,15 @@ const App = {
       this.settleTranscript(user);
 
       if (user) {
-        try {
-          UI.Faq.renderButtons(await Services.getFaqData());
-        } catch (error) {
-          logError(error, 'onAuthStateChange.getFaqData');
-          UI.Faq.clearButtons();
-          ErrorHandler.showToast(I18n.t('faq.loadFailed'), true);
-        }
+        // Independent of everything else in this block — not awaited, so a
+        // slow FAQ response no longer holds up the identity check below it.
+        Services.getFaqData()
+          .then(faqData => UI.Faq.renderButtons(faqData))
+          .catch(error => {
+            logError(error, 'onAuthStateChange.getFaqData');
+            UI.Faq.clearButtons();
+            ErrorHandler.showToast(I18n.t('faq.loadFailed'), true);
+          });
 
         this.loadProfileWithTimeout(user.id)
           .then(profileData => {
@@ -233,10 +263,40 @@ const App = {
            the console link from the answer rather than from anything the page
            already held. Fire-and-forget: the link is an affordance, and a
            reader who never learns about it has lost nothing, while a failed
-           check must not delay or break the chat. Defaults to hidden. */
-        Services.getIdentity()
-          .then(identity => AuthView.renderAdminAffordance(!!identity?.is_admin))
+           check must not delay or break the chat. Defaults to hidden.
+
+           `checkId` is captured now, before either await below, and compared
+           after: `auth-view.js` bumps `identityCheckId` on sign-out and on
+           entering recovery, so a check dispatched for this reader that only
+           resolves after they have left this view is recognised as stale and
+           discarded rather than applied to whatever view replaced it.
+
+           `Services.getIdentity()` dedupes concurrent calls into one shared
+           promise (see its own comment), and that promise is not scoped to
+           who asked. On a shared machine, if reader A signs out and reader B
+           signs in on the same tab before A's still-pending check resolves,
+           B's call joins A's promise and would otherwise receive A's answer.
+           `identity.user_id` is checked against the user this dispatch was
+           actually for so a borrowed answer for someone else's account is
+           discarded rather than applied — this fails to "unresolved, stay
+           hidden" for B rather than showing them A's standing, which matches
+           how this app already treats every other unresolved case. */
+        const checkId = AppState.get('identityCheckId') || 0;
+        const dispatchedForUserId = user.id;
+        this.fetchIdentityWithRetry()
+          .then(identity => {
+            if ((AppState.get('identityCheckId') || 0) !== checkId) return;
+            if (identity && identity.user_id !== dispatchedForUserId) {
+              logError(
+                `getIdentity answered for ${identity.user_id}, expected ${dispatchedForUserId}`,
+                'getIdentity.identityMismatch'
+              );
+              return;
+            }
+            AuthView.renderAdminAffordance(!!identity?.is_admin);
+          })
           .catch(err => {
+            if ((AppState.get('identityCheckId') || 0) !== checkId) return;
             AuthView.renderAdminAffordance(false);
             logError(err, 'getIdentity');
           });

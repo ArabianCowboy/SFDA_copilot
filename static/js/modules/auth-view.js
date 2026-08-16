@@ -9,6 +9,7 @@ import { CONFIG } from './config.js';
 import { DOMCache } from './dom.js';
 import { RobotStateManager } from './robot.js';
 import { I18n } from './i18n.js';
+import { AppState } from './state.js';
 
 function updateStatusAndActions(user) {
   const isLoggedIn = !!user;
@@ -153,6 +154,23 @@ function renderAdminAffordance(isAdmin) {
   });
 }
 
+/**
+ * Retire whatever `/api/identity` check is still in flight for the view we
+ * are leaving. `app.js` captures `identityCheckId` before dispatching that
+ * check and refuses to apply a result whose id has since moved on — so a
+ * check dispatched while signed in as an admin, still pending when the
+ * reader signs out (or a recovery email's link opens this same tab), cannot
+ * resolve *after* that transition and pop the console link back on for
+ * whoever is looking at the page now. Called only from the two places a
+ * view genuinely stops being "this reader, signed in": nowhere here treats
+ * every `renderAdminAffordance(false)` as an invalidation, because that call
+ * is also the ordinary way a resolved non-admin answer hides the link, and
+ * that answer is still current — it is not what this guards against.
+ */
+function invalidatePendingIdentityCheck() {
+  AppState.set('identityCheckId', (AppState.get('identityCheckId') || 0) + 1);
+}
+
 export const AuthView = {
   /**
    * Draw the view this user implies — unless recovery is in progress.
@@ -170,7 +188,10 @@ export const AuthView = {
     // Signing out is the one moment this can be decided locally, and it must
     // be: leaving the link up for the next person on a shared machine is the
     // same shape of leak as a stale `is_admin_hint`.
-    if (!user) renderAdminAffordance(false);
+    if (!user) {
+      renderAdminAffordance(false);
+      invalidatePendingIdentityCheck();
+    }
     currentView = user ? VIEW.CHAT : VIEW.LANDING;
     user ? showAuthenticatedView() : showUnauthenticatedView();
   },
@@ -181,6 +202,7 @@ export const AuthView = {
     currentView = VIEW.RECOVERY;
     updateStatusAndActions(null);
     renderAdminAffordance(false);
+    invalidatePendingIdentityCheck();
     showRecoveryView();
   },
 

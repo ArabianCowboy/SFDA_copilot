@@ -1,5 +1,7 @@
 """Browser-level coverage for the main application flows."""
 
+import re
+
 from playwright.sync_api import Page, expect
 
 
@@ -27,6 +29,63 @@ def test_login_and_logout_flow(authenticated_page: Page):
 
     expect(authenticated_page.locator("#unauthenticated-view")).to_be_visible()
     expect(authenticated_page.locator("#auth-button-main")).to_be_visible()
+
+
+def test_a_slow_identity_check_does_not_reveal_admin_after_logout(browser_page: Page):
+    """The reader signs out while /api/identity is still in flight for the
+    account they just left. Its eventual answer — even a true one — must not
+    apply itself to the signed-out view that replaced the one that asked.
+
+    The route handler never blocks: it stores the intercepted request and
+    returns immediately, deferring `route.fulfill()` to be called later from
+    the test's own control flow. Playwright's sync API runs route handlers
+    through the same dispatcher that every other page call goes through, so a
+    handler that blocks a thread waiting on a signal — the first version of
+    this test did exactly that — stalls every subsequent Playwright call
+    (`wait_for`, `click`, `expect`) until the handler returns, which defeats
+    the point of holding the response open at all: everything else in the
+    test queues up behind it instead of running concurrently with it. Not
+    blocking inside the handler is the documented way to hold a response open
+    (https://playwright.dev/python/docs/network#modify-requests), and it
+    sidesteps the question of exactly how blocked handlers interact with the
+    dispatcher rather than depending on the answer.
+    """
+    held_routes = []
+    browser_page.route("**/api/identity", lambda route: held_routes.append(route))
+
+    with browser_page.expect_request("**/api/identity"):
+        browser_page.goto("/")
+        browser_page.locator("#auth-button-main").click()
+        browser_page.locator("#login-email").fill("test@example.com")
+        browser_page.locator("#login-password").fill("password123")
+        browser_page.locator("#login-form").evaluate("(form) => form.requestSubmit()")
+
+    # The request has been observed and is being held, unfulfilled, in
+    # `held_routes` — genuinely in flight, not resolved yet.
+    expect(browser_page.locator("#logout-button")).to_be_visible()
+    browser_page.locator("#logout-button").click()
+    expect(browser_page.locator("#unauthenticated-view")).to_be_visible()
+
+    # Only now let the stale check's answer arrive.
+    assert held_routes, "no /api/identity request was intercepted"
+    for route in held_routes:
+        route.fulfill(
+            status=200,
+            content_type="application/json",
+            body='{"user_id":"test-user-id","email":"test@example.com",'
+            '"role":"admin","tier":"free","is_admin":true}',
+        )
+
+    # Polls until it matches or its own timeout, rather than a fixed sleep
+    # guessing how long the now-unblocked response takes to be processed.
+    # Checked on the element's own class rather than `to_be_hidden()`: the
+    # sidebar it lives in is itself hidden once signed out, which would make
+    # that assertion pass for the wrong reason — a bug that popped `d-none`
+    # off #admin-button would go undetected as long as its ancestor view
+    # stayed hidden too.
+    expect(browser_page.locator("#admin-button")).to_have_class(
+        re.compile(r"(?:^|\s)d-none(?:\s|$)")
+    )
 
 
 def test_login_failure_is_presented_by_handler(browser_page: Page):

@@ -9,6 +9,18 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
    this one is reused across every drain of the stream buffer. */
 const FRAME_SEPARATOR = /\r?\n\r?\n/;
 
+/* The one outstanding /api/identity call, shared by every concurrent
+   caller. `onAuthStateChange` fires this lookup on both INITIAL_SESSION and
+   SIGNED_IN for a single page load (verified against the pinned
+   @supabase/supabase-js@2.39.7: `_recoverAndRefresh` queues a SIGNED_IN
+   notification during initialize() while `onAuthStateChange` separately
+   emits INITIAL_SESSION straight to each subscriber once initializePromise
+   settles) — without this, that is two independent, unordered fetches
+   racing to decide one boolean, and whichever happens to RESOLVE last wins
+   regardless of which was more current. One shared promise means both
+   callers see the same answer, so there is nothing left to race. */
+let identityInFlight = null;
+
 /**
  * Parse one SSE frame into { event, data }.
  * Returns null for comment-only frames (keep-alive pings) and unparseable data.
@@ -418,17 +430,53 @@ export const Services = {
    * Returns null when the answer is simply "nobody" or "not allowed" — those
    * are answers, not faults, and the caller's safe default for both is the
    * same. A network failure still throws, because that is a fault.
+   *
+   * Deduplicated: a call made while one is already in flight gets the same
+   * promise rather than starting a second fetch — see `identityInFlight`.
+   * The assignment below happens synchronously, before any `await`, so two
+   * calls made in the same tick can never both see it unset.
    */
   async getIdentity() {
-    const token = await this.getSessionToken();
-    if (!token) return null;
+    if (identityInFlight) return identityInFlight;
 
-    const response = await fetch('/api/identity', {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (response.status === 401 || response.status === 403) return null;
-    if (!response.ok) throw new Error(`Identity check failed (${response.status})`);
-    return response.json();
+    identityInFlight = (async () => {
+      const token = await this.getSessionToken();
+      if (!token) return null;
+
+      // A hard ceiling, not a courtesy: without it a hung request never
+      // rejects, so `fetchIdentityWithRetry` in app.js never gets a chance
+      // to try again and the console link stays hidden for the rest of the
+      // page's life. AbortController rather than Promise.race, so the
+      // underlying request is actually cancelled rather than left running.
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+      let response;
+      try {
+        response = await fetch('/api/identity', {
+          headers: { Authorization: `Bearer ${token}` },
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timeoutId);
+      }
+      if (response.status === 401 || response.status === 403) return null;
+      if (!response.ok) {
+        // `.status` lets a caller decide what is worth retrying (a 503 from
+        // an identity-provider outage, per `_authenticate_request`'s own
+        // classification) from what is not (some other 4xx, which retrying
+        // would only repeat).
+        const error = new Error(`Identity check failed (${response.status})`);
+        error.status = response.status;
+        throw error;
+      }
+      return response.json();
+    })();
+
+    try {
+      return await identityInFlight;
+    } finally {
+      identityInFlight = null;
+    }
   },
 
   async getProfile(userId) {
