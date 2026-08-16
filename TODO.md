@@ -1178,34 +1178,42 @@ tracked as a follow-up outside this file, not blocking it.
 
 ---
 
-### Stale claims in README, and a one-time orphan-file sweep
+### ~~Stale claims in README, and a one-time orphan-file sweep~~ — FIXED 2026-08-16
 
-**Where:** `README.md` and the repo tree. The known dead files are already
-gone — `quiz_generator.py`, `web/utils/utils.py`, and `test_search.py` were
-deleted; their removal was recorded in `memory-bank/CHANGELOG.md`, which no
-longer exists — see git log for that history now, per the memory-bank review
-below. Verified 2026-08-15: no `.bak`/`.tmp`/`.log` leftovers and no stray
-build artifacts under `web/processed_data/`.
+**Resolved, both halves.** The README half was fixed earlier this session
+(see the `.env` entry above). The orphan-file sweep — the half this entry
+left open — is now done too: every git-tracked module under `web/` (32
+files) and `static/js/` (22 files) was checked for a real cross-file
+reference, not just presence in a directory.
 
-**Update 2026-08-16 — the README half is fixed; the sweep half is not.** Both
-stale sections named below were corrected this session: `README.md`'s
-env-var list now matches what the code actually reads and points at
-`.env.example` as the source of truth, and the `static/images/` line is gone
-from the project-structure tree (which also gained the admin-console files it
-was missing entirely). The orphan-file sweep itself — one grep pass over
-imports of every module under `web/` and `static/js/` to confirm nothing is
-orphaned — has not been run; that half is still open.
+**Method, since the risk was overreach.** A name match alone isn't proof of
+use — the risk this entry itself named was a file that's actually loaded by
+glob (`MODULE_FILENAMES`/`ADMIN_MODULE_FILENAMES` in `web/api/app.py:222-235`
+publish *every* file under `static/js/modules/` and `static/js/admin/` into
+the browser import map automatically) rather than by a literal import
+statement, which would make "not imported by name" a false positive. So
+every low-hit-count result was read in full before being called clean, not
+just counted.
 
-**What is wrong (orphan-sweep half, still open).** The split modules
-(`lexical_searcher`, `semantic_searcher`, `result_combiner`) and the dual
-OpenAI files (`openai_client.py` vs `openai_app.py`) are *deliberate*
-decomposition, not duplication — the sweep should prove that, not undo it.
+**Result: nothing orphaned.** On the Python side, every module traces back
+to `web/api/app.py` either directly or through `search_engine.py`'s
+composition (`search_index`, `lexical_searcher`, `semantic_searcher`,
+`result_combiner`, `query_processor`, `build_registry`, `pharma_constants`
+all confirmed as real imports, several via one-hit modules that were read
+individually to be sure). The dual OpenAI files are also both live:
+`openai_client.py` and `openai_app.py` are separately imported and serve
+different callers, confirming the entry's own suspicion that this is
+deliberate decomposition, not duplication. On the JS side, `app.js` and
+`admin.js` are the two template `<script type="module">` entry points
+(`index.html:688`, `admin.html:193`); every other file is `import`ed by name
+from another module — nothing exists only via the import-map glob without
+also being actually imported somewhere.
 
-**What fixing it costs.** One grep pass over imports of every module under
-`web/` and `static/js/` to confirm nothing is orphaned. The risk of the sweep
-is overreach — removing a file that looks unused but is actually loaded by
-glob (the `MODULE_FILENAMES` import-map glob in `static/js/` and any
-`import_module` by string) rather than by an import statement.
+**One unrelated thing the file listing surfaced.** A `web/api/.venv/`
+directory exists on disk — a second, nested virtualenv sitting inside
+`web/api/` beside the real project-root `.venv`. It is gitignored and
+0 files are tracked in it, so it is local disk clutter rather than a repo
+problem; not acted on here since it isn't part of what this entry scoped.
 
 ---
 
