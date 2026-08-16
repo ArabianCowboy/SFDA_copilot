@@ -206,10 +206,18 @@ location /api/chat/stream {
 ```
 sfda-copilot/
 ├── README.md                 # This file
+├── DESIGN.md                # The design system: tokens, components, RTL
+├── TODO.md                  # Known bugs and planned work
 ├── requirements.txt          # Python dependencies
 ├── package.json             # Node.js dependencies
 ├── .env.example            # Environment variables template — the source of truth
 ├── faq.yaml                # FAQ data configuration
+├── docs/
+│   ├── PRODUCT.md          # What the product is for, and the principles a
+│   │                       # change is judged against
+│   ├── productContext.md   # Why SFDA Copilot exists, problems solved
+│   ├── projectbrief.md     # Objectives, features, target users
+│   └── SMTP_CONFIGURATION.md  # State this repo can't tell you: DNS, Resend setup
 ├── static/                 # Static frontend assets (no bundler, ES modules)
 │   ├── css/                # Layered: tokens -> base -> components -> robot -> effects
 │   │   ├── tokens.css      # Design tokens: primitives, scales, semantics
@@ -241,13 +249,11 @@ sfda-copilot/
 ├── supabase/
 │   ├── migrations/        # Schema, RLS policies, RPCs (SQL)
 │   └── README.md          # Migration conventions
-├── data/                  # Regulatory guideline data
-│   ├── regulatory/
-│   ├── pharmacovigilance/
-│   ├── Veterinary_Medicines/
-│   └── Biological_Products_and_Quality_Control/
-└── memory-bank/           # productContext.md, projectbrief.md — product
-                           # rationale only; see TODO.md for status
+└── data/                  # Regulatory guideline data
+    ├── regulatory/
+    ├── pharmacovigilance/
+    ├── Veterinary_Medicines/
+    └── Biological_Products_and_Quality_Control/
 ```
 
 ### Architecture Boundaries
@@ -379,15 +385,21 @@ different one in the composer. Adding a category means adding it there too.
 
 ## 📚 Documentation
 
-Design intent and product principles live at the repository root; anything under
-`docs/` records **state that this repository cannot tell you** — configuration
-that lives in a third-party dashboard, in DNS, or in the Supabase project.
+`DESIGN.md` and `TODO.md` stay at the repository root — `DESIGN.md` because
+this project's Impeccable design tooling reads it from there, `TODO.md`
+because it's the most actively-edited file in the project and the
+conventional place to look for a backlog. Everything else lives under
+`docs/`, whether that's product rationale or **state this repository cannot
+tell you** — configuration that lives in a third-party dashboard, in DNS, or
+in the Supabase project.
 
 | Document | What it covers |
 |---|---|
-| [PRODUCT.md](PRODUCT.md) | What the product is for, and the principles a change is judged against |
 | [DESIGN.md](DESIGN.md) | The design system: tokens, components, and the RTL contract |
 | [TODO.md](TODO.md) | Known bugs and planned work, each with the cost of fixing it |
+| [docs/PRODUCT.md](docs/PRODUCT.md) | What the product is for, and the principles a change is judged against |
+| [docs/productContext.md](docs/productContext.md) | Why SFDA Copilot exists, the problems it solves, and its core workflows |
+| [docs/projectbrief.md](docs/projectbrief.md) | Objectives, key features, target users, and success metrics |
 | [supabase/README.md](supabase/README.md) | Migration conventions and how schema changes are applied |
 | [docs/SMTP_CONFIGURATION.md](docs/SMTP_CONFIGURATION.md) | Transactional email: why the built-in sender failed, the Resend SMTP and DNS setup, and how to verify delivery |
 

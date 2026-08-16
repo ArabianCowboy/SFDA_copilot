@@ -1034,48 +1034,49 @@ reader navigates to an older chat while a generation is in-flight.
 
 ---
 
-### Consolidate every documentation file into `docs/`
+### ~~Consolidate every documentation file into `docs/`~~ — FIXED 2026-08-16
 
-**Where:** Documentation is spread across four places. Root: `DESIGN.md`,
-`PRODUCT.md`, `TODO.md`. `docs/`: `SMTP_CONFIGURATION.md`. `memory-bank/`:
-`productContext.md`, `projectbrief.md` — down from eight files after the
-2026-08-16 review below deleted the other six as stale, and deleted the
-gitignored `memory-bank/Issue-teckting/` cluster outright rather than
-migrating it. `supabase/README.md`.
+**Resolved, partially by design.** `PRODUCT.md` and `memory-bank`'s two
+survivors (`productContext.md`, `projectbrief.md`) moved into `docs/`, which
+now holds `PRODUCT.md`, `productContext.md`, `projectbrief.md`, and
+`SMTP_CONFIGURATION.md`. `memory-bank/` no longer exists. Two of the four
+"Root" documents deliberately did **not** move, answering this entry's own
+open question about whether README stays the only root-level doc: it gains
+one sibling directory (`docs/`), not more root-level files.
 
-**Why it is wanted.** A reader cannot find the state of the project without
-learning the layout first, and gathering every doc in `docs/` turns "where is
-X documented" into one answer. The largest, least trustworthy cluster
-(`memory-bank/Issue-teckting/`) no longer exists to migrate — its loss risk
-was resolved by deletion, not by bringing it under version control — so what
-remains here is smaller than when this entry was written: two small,
-already-accurate files plus the four documents above.
+- **`DESIGN.md` stays at root.** It's the companion file for this project's
+  Impeccable design-tooling sidecar (`.impeccable/design.json`); that
+  tooling's convention reads it from the repo root. Moving it risked breaking
+  tooling for a discoverability gain that matters less for a file read
+  mostly by tooling, not humans browsing the repo.
+- **`TODO.md` stays at root.** The most actively-edited file in the project,
+  and the conventional place a contributor looks for a backlog.
+- **`supabase/README.md` stays put**, and was never really the problem: it's
+  subsystem-scoped documentation next to the migrations it describes, which
+  is exactly where a contributor working in `supabase/` expects to find it.
+  It wasn't contributing to the root-clutter problem this entry was actually
+  about.
 
-**What it would disturb.** Three classes of cost, each verified:
-
-- **Path references in code and tests.** `DESIGN.md` and `PRODUCT.md` are
-  referenced by *file path* — in tests (`test_admin_page.py:80`,
-  `test_admin_settings.py:321`, `test_password_recovery.py:176`), in JS
-  comments (`static/js/app.js:266`, `admin/ui.js:9`, `admin/handlers.js:205`),
-  in CSS (`components.css:304`), in templates, in i18n comments
-  (`en.yaml:292`, `ar.yaml:273`), and in `web/api/app.py:917`. **Those tests
-  and comments may need adjusting after the move** — treat their failures as
-  expected fallout of the relocation, not as regressions.
-- **Inter-document links.** `TODO.md:92,172` link to
-  `docs/SMTP_CONFIGURATION.md`; `README.md:343-356` is a documentation table
-  pointing at all the root docs and `supabase/README.md`; `README.md:232` lists
-  `memory-bank/` in the project structure.
-- **The memory-bank convention.** `memory-bank/` is the Cline-style layout
-  agents are trained to read (`activeContext`, `projectbrief`, `productContext`,
-  `systemPatterns`, `techContext`, `progress`). The review entry below already
-  broke that convention deliberately — six of the eight files are gone, so
-  moving what's left (`productContext.md`, `projectbrief.md`) is now a small,
-  low-stakes step rather than a decision about a whole convention.
-
-**Open questions.** Whether `docs/` keeps a subfolder for the surviving
-`memory-bank/` pair or flattens them alongside the other root docs; and
-whether README stays the only root-level doc or gains siblings
-for discovery.
+The cost this entry worried about turned out smaller than expected: a
+repo-wide search found every bare-filename mention of `DESIGN.md`/`PRODUCT.md`
+in code, tests, CSS, JS, and i18n comments — `test_admin_page.py:80`,
+`test_admin_settings.py:321`, `test_password_recovery.py:176`,
+`static/js/app.js:266`, `static/js/admin/ui.js:9,787`,
+`static/js/admin/handlers.js:290`, `static/css/components.css:304`,
+`web/i18n/en.yaml:305,316`, `web/i18n/ar.yaml:279,290`,
+`web/services/admin_store.py:386`, `web/templates/index.html:123,429,452`,
+`web/api/app.py:1154` — is a **human-readable citation in a comment or
+docstring, not a functional path reference**: nothing programmatically
+opens/imports these files by path. Moving `PRODUCT.md` broke zero tests and
+zero runtime behavior. Those citations are deliberately left as bare
+`PRODUCT.md`/`DESIGN.md` rather than updated to `docs/PRODUCT.md` — editing
+`static/css/components.css` or `static/js/app.js`, even comment-only,
+triggers this project's own "any commit touching CSS or JS bumps
+`ASSET_VERSION`" convention for zero functional benefit, and the citations
+still correctly name the file, just not its folder. The only things that
+actually needed updating were the real markdown links and the
+project-structure tree, both in `README.md`, plus the now-orphaned
+`memory-bank/Issue-teckting/` line in `.gitignore` (removed alongside).
 
 ---
 
