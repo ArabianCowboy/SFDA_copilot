@@ -13,7 +13,7 @@
  */
 
 import { I18n } from '../modules/i18n.js';
-import { iconMarkup } from '../modules/icons.js';
+import { iconElement, iconMarkup } from '../modules/icons.js';
 
 const TABS = [
   { tab: 'tab-overview', panel: 'panel-overview' },
@@ -458,7 +458,146 @@ function actionButton(label, { danger = false, action, id, disabled = false }) {
   return button;
 }
 
-export function renderUsers({ users, total, self_id: selfId }) {
+let busyTimer = null;
+
+export function setPeopleLoading(loading) {
+  if (busyTimer) {
+    clearTimeout(busyTimer);
+    busyTimer = null;
+  }
+  const pager = el('people-pager');
+  const prev = el('people-prev');
+  const next = el('people-next');
+  const wrapper = document.querySelector('#people-list .admin-table-wrapper');
+  const table = el('people-table');
+
+  if (loading) {
+    if (pager) pager.setAttribute('aria-busy', 'true');
+    if (prev) prev.disabled = true;
+    if (next) next.disabled = true;
+    busyTimer = setTimeout(() => {
+      if (wrapper) wrapper.classList.add('is-busy-visual');
+      if (table) table.classList.add('is-busy-visual');
+    }, 100);
+  } else {
+    if (pager) pager.setAttribute('aria-busy', 'false');
+    if (wrapper) wrapper.classList.remove('is-busy-visual');
+    if (table) table.classList.remove('is-busy-visual');
+  }
+}
+
+function appendPagerButtonContent(button, label, iconFirst) {
+  const icon = iconElement('chevron-right', 14);
+  const labelNode = document.createElement('span');
+  labelNode.textContent = label;
+
+  if (iconFirst) {
+    if (icon) button.appendChild(icon);
+    button.appendChild(labelNode);
+  } else {
+    button.appendChild(labelNode);
+    if (icon) button.appendChild(icon);
+  }
+}
+
+/**
+ * Build the People pager from one committed response.
+ * Caller must not call this for an empty result. `count` is the committed row
+ * count (for the displayed end number); `limit` (not `count`) drives the
+ * Next-button boundary check, since the final page can be shorter than `limit`.
+ */
+export function createPeoplePager({ offset, limit, total, count, loading = false }) {
+  const pager = document.createElement('nav');
+  pager.id = 'people-pager';
+  pager.className = 'admin-pager';
+  pager.setAttribute('aria-label', I18n.t('admin.people.pagerLabel'));
+  pager.setAttribute('aria-controls', 'people-table');
+  pager.setAttribute('aria-busy', String(loading));
+
+  const navGroup = document.createElement('div');
+  navGroup.className = 'admin-pager-nav';
+
+  const prevBtn = document.createElement('button');
+  prevBtn.type = 'button';
+  prevBtn.id = 'people-prev';
+  prevBtn.className = 'admin-pager-btn admin-pager-btn--prev';
+  prevBtn.disabled = loading || offset <= 0;
+  appendPagerButtonContent(prevBtn, I18n.t('admin.people.previousPage'), true);
+
+  const status = document.createElement('span');
+  status.id = 'people-range-status';
+  status.className = 'admin-pager-status';
+  status.tabIndex = -1; // required so the boundary focus fallback below actually works
+  status.setAttribute('role', 'status');
+  status.setAttribute('aria-live', 'polite');
+  status.setAttribute('aria-atomic', 'true');
+
+  const startNum = total === 0 ? 0 : offset + 1;
+  const endNum = offset + count;
+  const rangeBdi = document.createElement('bdi');
+  rangeBdi.setAttribute('dir', 'ltr');
+  rangeBdi.className = 'admin-cell-machine';
+  rangeBdi.textContent = `${startNum}–${endNum}`;
+
+  const totalBdi = document.createElement('bdi');
+  totalBdi.setAttribute('dir', 'ltr');
+  totalBdi.className = 'admin-cell-machine';
+  totalBdi.textContent = String(total);
+
+  status.append(
+    document.createTextNode(I18n.t('admin.people.showing')),
+    rangeBdi,
+    document.createTextNode(I18n.t('admin.people.of')),
+    totalBdi,
+  );
+
+  const nextBtn = document.createElement('button');
+  nextBtn.type = 'button';
+  nextBtn.id = 'people-next';
+  nextBtn.className = 'admin-pager-btn admin-pager-btn--next';
+  nextBtn.disabled = loading || offset + limit >= total;
+  appendPagerButtonContent(nextBtn, I18n.t('admin.people.nextPage'), false);
+
+  navGroup.append(prevBtn, status, nextBtn);
+
+  const sizeGroup = document.createElement('div');
+  sizeGroup.className = 'admin-pager-size';
+
+  const sizeLabel = document.createElement('label');
+  sizeLabel.className = 'admin-pager-size-label';
+  sizeLabel.htmlFor = 'people-page-size';
+  sizeLabel.textContent = I18n.t('admin.people.pageSize');
+
+  const select = document.createElement('select');
+  select.className = 'form-select admin-input admin-pager-select';
+  select.id = 'people-page-size';
+  // Deliberately left enabled during loading — see "Loading treatment" above.
+
+  [25, 50, 100, 200].forEach((size) => {
+    const option = document.createElement('option');
+    option.value = String(size);
+    option.textContent = String(size);
+    option.selected = size === limit;
+    select.appendChild(option);
+  });
+
+  sizeGroup.append(sizeLabel, select);
+  pager.append(navGroup, sizeGroup); // locked DOM order — see "DOM shape" above
+  return pager;
+}
+
+export function renderUsers({
+  users,
+  total,
+  self_id: selfId,
+  offset = 0,
+  limit = 50,
+  loading = false,
+  activeId = null,
+}) {
+  const focusTargetId = activeId || document.activeElement?.id;
+  setPeopleLoading(false);
+
   const body = el('people-list');
   if (!body) return;
   body.textContent = '';
@@ -475,6 +614,9 @@ export function renderUsers({ users, total, self_id: selfId }) {
     body.appendChild(empty);
     return;
   }
+
+  const wrapper = document.createElement('div');
+  wrapper.className = 'admin-table-wrapper';
 
   const table = document.createElement('table');
   table.className = 'admin-table';
@@ -561,17 +703,30 @@ export function renderUsers({ users, total, self_id: selfId }) {
   });
 
   table.append(head, tbody);
-  body.appendChild(table);
+  wrapper.appendChild(table);
+  body.appendChild(wrapper);
 
-  if (total > users.length) {
-    const count = document.createElement('p');
-    count.className = 'admin-form-hint';
-    count.textContent = `${users.length} / ${total}`;
-    body.appendChild(count);
+  const pager = createPeoplePager({
+    offset,
+    limit,
+    total,
+    count: users.length,
+    loading,
+  });
+  body.appendChild(pager);
+
+  if (focusTargetId) {
+    const target = document.getElementById(focusTargetId);
+    if (target && !target.disabled) {
+      target.focus();
+    } else if (focusTargetId === 'people-prev' || focusTargetId === 'people-next') {
+      document.getElementById('people-range-status')?.focus();
+    }
   }
 }
 
 export function showPeopleMessage(message) {
+  setPeopleLoading(false);
   const body = el('people-list');
   if (!body) return;
   body.textContent = '';

@@ -47,11 +47,12 @@ export function createAdminServices(getToken) {
     throw new Error('createAdminServices requires a token provider');
   }
 
-  async function send(path, method, body, token) {
+  async function send(path, method, body, token, signal) {
     return fetch(`/admin/api/${path}`, {
       method,
       headers: { ...JSON_HEADERS, Authorization: `Bearer ${token}` },
       body: body === undefined ? undefined : JSON.stringify(body),
+      signal,
       // The gate answers JSON for every /admin/api/* route, so a redirect here
       // would mean something upstream intercepted us. Following it would turn a
       // login page into a parsed-as-null success.
@@ -59,15 +60,15 @@ export function createAdminServices(getToken) {
     });
   }
 
-  async function request(path, { method = 'GET', body } = {}) {
-    let response = await send(path, method, body, await getToken());
+  async function request(path, { method = 'GET', body, signal } = {}) {
+    let response = await send(path, method, body, await getToken(), signal);
 
     // One retry on 401. A token that expired between resolution and arrival is
     // the ordinary case here, and the gate answers 401 before any route body
     // runs, so re-sending cannot repeat work that already happened.
     if (response.status === 401) {
       const refreshed = await getToken();
-      if (refreshed) response = await send(path, method, body, refreshed);
+      if (refreshed) response = await send(path, method, body, refreshed, signal);
     }
 
     /* One retry on 503, and only for GET.
@@ -83,7 +84,7 @@ export function createAdminServices(getToken) {
        second attempt at a mutation nobody asked for twice, and this console can
        send a password-reset email. A GET cannot have that problem. */
     if (response.status === 503 && method === 'GET') {
-      response = await send(path, method, body, await getToken());
+      response = await send(path, method, body, await getToken(), signal);
     }
 
     let payload = null;
@@ -121,8 +122,8 @@ export function createAdminServices(getToken) {
     saveSettings: (patch) => request('settings', { method: 'PUT', body: patch }),
 
     /** Accounts and their standing. */
-    users: ({ limit = 50, offset = 0, q = '' } = {}) =>
-      request(`users?limit=${limit}&offset=${offset}&q=${encodeURIComponent(q)}`),
+    users: ({ limit = 50, offset = 0, q = '', signal } = {}) =>
+      request(`users?limit=${limit}&offset=${offset}&q=${encodeURIComponent(q)}`, { signal }),
 
     /** Change a role or chat access. Refusals arrive as 409 with a code. */
     setUserFlags: (id, patch) =>

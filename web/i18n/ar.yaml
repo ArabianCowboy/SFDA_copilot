@@ -286,6 +286,12 @@ runtime:
       no_such_account: "لم يعد هذا الحساب موجوداً."
       actor_no_longer_administrator: "تغيّرت صلاحيتك أثناء العمل. أعد التحميل ثم حاول مجدداً."
       reason_required: "يلزم ذكر سبب لتعطيل الوصول للمحادثة."
+      pagerLabel: "صفحات المستخدمين"
+      previousPage: "الصفحة السابقة"
+      nextPage: "الصفحة التالية"
+      showing: "عرض"
+      of: "من"
+      pageSize: "عدد الصفوف في الصفحة"
 page:
   meta:
     title: "مساعد الهيئة العامة للغذاء والدواء"

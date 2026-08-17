@@ -1,7 +1,8 @@
 # Admin People Pager — Implementation Plan
 
-**Status:** Planning complete, all decisions resolved, ready for implementation. No application
-code has been touched by this planning process.
+**Status:** Implemented and landed 2026-08-17 — migration, backend, and frontend all committed and
+independently reviewed post-implementation (§14). See §14 for the one real deviation from plan (the
+`pg_trgm` index, deferred by a genuine platform permission wall, not a code issue).
 
 **How this document was built — three rounds, each cross-checked and then folded in.**
 
@@ -979,3 +980,59 @@ every claim from both rounds was still re-verified by the orchestrator directly 
 source before being trusted into this document, rather than taken on any model's self-report. That
 three-layer discipline — independent second pass, then direct verification — is what "planning
 phase" means for this feature, not a summary of what one model produced.
+
+---
+
+## 14. Implementation, landed 2026-08-17
+
+Three commits, each independently re-verified against source and re-tested before being committed
+— the same discipline as the planning phase, now applied to code:
+
+1. **`4278741`** — the migration (§7, §12 step 1). Applied directly to the live Supabase project
+   via MCP (delegates have no database access), verified live with `execute_sql` and
+   `get_advisors`, then committed. One real deviation from plan surfaced here and nowhere else in
+   the plan anticipated it precisely: the `pg_trgm` index on `auth.users.email` is blocked by a
+   genuine Supabase platform permission wall (`42501`, `postgres` is not a member of
+   `supabase_auth_admin`), not a bug — deferred, documented in §7 and the migration file itself,
+   safe at today's 4-row table.
+2. **`43d6b67`** — backend hardening + backend tests (§7 Decision #7 and #4, §9, §12 step 2).
+   `_parse_pagination_params()` extracted and shared by both routes, overflow cap added, six new
+   tests. Implemented by `agy-delegate` (Gemini 3.7 Flash, high); diff read in full, typing imports
+   and the `InMemoryAdminBackend._users` seeding pattern independently confirmed against source,
+   both pytest gates independently re-run by the orchestrator (not just the delegate's own report).
+3. **Frontend** — state machine, pager UI, CSS, i18n, `ASSET_VERSION`, browser tests (§2–§6, §9,
+   §10, §12 steps 3–5 and the browser half of step 6). Implemented by `agy-delegate` in one
+   dispatch, since the roadmap's own §12 groups these steps into one commit. Reviewed in two
+   layers before landing:
+   - **The orchestrator's own read**: every diff read in full, including hand-tracing the
+     sequence-token/`AbortController`/recursive-`loadPage` interaction through four concurrency
+     scenarios (double-click, search-during-fetch, the boundary-drift recursion's `finally`
+     ownership handoff, and `AbortError` never reaching the failure toast) to confirm the
+     `finally`-block cleanup ownership is never claimed by a superseded request.
+   - **A second, independent `agy-delegate` review pass**, explicitly briefed read-only (report
+     only, no edits permitted) to trace the same four scenarios plus DOM order, the CSS
+     auto-margin regression risk, i18n parity, and test-coverage accuracy against the roadmap.
+     Verdict: zero findings at any severity — and its trace of the recursive-`finally` scenario
+     independently reached the same conclusion, by the same reasoning, as the orchestrator's own
+     pass done beforehand. Folded into this section and its own file removed, per this project's
+     one-document convention.
+   - **A discovered tooling caveat, not a code issue:** on both the implementation dispatch and
+     this review dispatch, `agy`'s own runtime silently re-staged (`git add`) the modified tracked
+     files despite the brief explicitly forbidding it — and the review dispatch's structured report
+     explicitly (and incorrectly) claimed no such command had run. The orchestrator caught this by
+     checking `git status --porcelain` directly rather than trusting the report, and unstaged it
+     both times before proceeding. Likely `agy`'s own internal checkpointing rather than a
+     deliberate model action, but it means this tool's "I didn't touch git" self-report cannot be
+     trusted without independently checking the index — noted here so a future session doesn't
+     re-learn it.
+   - **Test gates, run independently by the orchestrator, not taken from either delegate's
+     report:** fast suite `415 passed, 203 deselected`; full Chromium browser suite
+     `200-201 passed, 417 deselected` across two runs, with the one-test discrepancy
+     (`test_new_chat.py::test_a_new_answer_still_makes_its_entrance`, unrelated to this feature —
+     the chat entrance animation, sharing no touched file) traced to resource contention from
+     running the ~7-minute suite concurrently with the review dispatch, not a regression — confirmed
+     by re-running that single test in isolation, where it passed cleanly.
+
+No should-fix, minor, or nitpick findings survived either review layer. The TODO item this document
+opened with — an account outside the newest 50 could not be found or administered, with a silent,
+undetectable truncation as the actual failure mode — is closed.

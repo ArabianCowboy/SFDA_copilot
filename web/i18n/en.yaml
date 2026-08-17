@@ -322,6 +322,12 @@ runtime:
       no_such_account: "That account no longer exists."
       actor_no_longer_administrator: "Your administrator access changed while you were working. Reload and try again."
       reason_required: "A reason is required to disable chat access."
+      pagerLabel: "People pages"
+      previousPage: "Previous page"
+      nextPage: "Next page"
+      showing: "Showing"
+      of: "of"
+      pageSize: "Rows per page"
 page:
   meta:
     title: "SFDA Copilot"

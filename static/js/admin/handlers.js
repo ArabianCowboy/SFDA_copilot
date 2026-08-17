@@ -15,6 +15,7 @@ import {
   renderAccountDetail,
   renderAudit,
   renderUsers,
+  setPeopleLoading,
   showAccountList,
   showAccountMessage,
   showAuditMessage,
@@ -166,22 +167,86 @@ export async function initPeopleTab(services) {
      within the debounce window otherwise let the list replace the detail. */
   let generation = 0;
 
-  async function load() {
+  let offset = 0;
+  let limit = 50;
+  let total = 0;
+  let query = '';
+  let loading = false;
+  let requestSequence = 0;
+  let activeListAbort = null;
+
+  async function loadPage({
+    targetOffset = offset,
+    targetLimit = limit,
+    targetQuery = (search?.value.trim() || ''),
+    callerActiveId = null,
+  } = {}) {
     clearTimeout(searchTimer);
     // Returning to the list abandons whatever was being opened. Without this,
     // opening an account, going back, and opening the same one again inside one
     // round trip would find the guard below still held and do nothing at all.
     opening = null;
+
+    if (activeListAbort) {
+      activeListAbort.abort();
+      activeListAbort = null;
+    }
+
     const mine = ++generation;
+    const seq = ++requestSequence;
+    const controller = new AbortController();
+    activeListAbort = controller;
+
+    const activeId = callerActiveId || document.activeElement?.id;
+    loading = true;
+    setPeopleLoading(true);
+
     try {
-      const result = await services.users({ q: search?.value.trim() || '' });
-      if (mine !== generation) return;
+      const result = await services.users({
+        q: targetQuery,
+        limit: targetLimit,
+        offset: targetOffset,
+        signal: controller.signal,
+      });
+      if (mine !== generation || seq !== requestSequence) return;
+
+      // Boundary drift fix: treat users.length === 0 && offset > 0 as ambiguous
+      // regardless of total, reset to offset 0 and refetch once unconditionally.
+      if (result.users && result.users.length === 0 && targetOffset > 0) {
+        offset = 0;
+        return await loadPage({ targetOffset: 0, targetLimit, targetQuery });
+      }
+
+      offset = typeof result.offset === 'number' ? result.offset : targetOffset;
+      limit = typeof result.limit === 'number' ? result.limit : targetLimit;
+      total = typeof result.total === 'number' ? result.total : (result.users?.length || 0);
+      query = targetQuery;
+
       showAccountList();
-      renderUsers(result);
+      renderUsers({
+        users: result.users || [],
+        total,
+        self_id: result.self_id,
+        offset,
+        limit,
+        loading: false,
+        activeId,
+      });
     } catch (error) {
-      if (mine !== generation) return;
+      if (error?.name === 'AbortError' || controller.signal.aborted) {
+        return;
+      }
+      if (mine !== generation || seq !== requestSequence) return;
       showAccountList();
       showPeopleMessage(I18n.t('admin.people.loadFailed'));
+    } finally {
+      if (seq === requestSequence) {
+        loading = false;
+        setPeopleLoading(false);
+        if (activeListAbort === controller) {
+          activeListAbort = null;
+        }
+      }
     }
   }
 
@@ -191,13 +256,29 @@ export async function initPeopleTab(services) {
      since they were written. */
   search?.addEventListener('input', () => {
     clearTimeout(searchTimer);
-    searchTimer = setTimeout(load, 300);
+    offset = 0;
+    if (activeListAbort) {
+      activeListAbort.abort();
+      activeListAbort = null;
+    }
+    searchTimer = setTimeout(() => {
+      loadPage({
+        targetOffset: 0,
+        targetLimit: limit,
+        targetQuery: search.value.trim(),
+        callerActiveId: 'people-search',
+      });
+    }, 300);
   });
 
   async function openAccount(userId) {
     if (opening === userId) return;
     opening = userId;
     clearTimeout(searchTimer);
+    if (activeListAbort) {
+      activeListAbort.abort();
+      activeListAbort = null;
+    }
     const mine = ++generation;
     try {
       const { user, self_id: selfId } = await services.user(userId);
@@ -223,7 +304,7 @@ export async function initPeopleTab(services) {
     }
   }
 
-  await load();
+  await loadPage();
 
   /* Saving a profile is its own route and its own RPC, so it is its own
      listener. Delegated from the panel, because the form is rebuilt from
@@ -253,10 +334,53 @@ export async function initPeopleTab(services) {
     }
   });
 
+  body.addEventListener('change', async (event) => {
+    if (event.target.id === 'people-page-size') {
+      const newSize = parseInt(event.target.value, 10);
+      if (![25, 50, 100, 200].includes(newSize)) return;
+      limit = newSize;
+      offset = 0;
+      await loadPage({
+        targetOffset: 0,
+        targetLimit: limit,
+        targetQuery: query,
+        callerActiveId: 'people-page-size',
+      });
+    }
+  });
+
   body.addEventListener('click', async (event) => {
     if (event.target.closest('#account-back')) {
-      await load();
+      await loadPage({ targetOffset: offset, targetLimit: limit, targetQuery: query });
       document.querySelector('.admin-account-open')?.focus();
+      return;
+    }
+
+    const prevBtn = event.target.closest('#people-prev');
+    if (prevBtn) {
+      if (loading || offset <= 0) return;
+      prevBtn.disabled = true;
+      const targetOffset = Math.max(0, offset - limit);
+      await loadPage({
+        targetOffset,
+        targetLimit: limit,
+        targetQuery: query,
+        callerActiveId: 'people-prev',
+      });
+      return;
+    }
+
+    const nextBtn = event.target.closest('#people-next');
+    if (nextBtn) {
+      if (loading || offset + limit >= total) return;
+      nextBtn.disabled = true;
+      const targetOffset = offset + limit;
+      await loadPage({
+        targetOffset,
+        targetLimit: limit,
+        targetQuery: query,
+        callerActiveId: 'people-next',
+      });
       return;
     }
 
@@ -419,7 +543,7 @@ export async function initPeopleTab(services) {
       await services.setUserFlags(userId, patch);
       ErrorHandler.showToast(I18n.t('admin.people.changed'));
       if (fromDetail) await openAccount(userId);
-      else await load();
+      else await loadPage({ targetOffset: offset, targetLimit: limit, targetQuery: query });
       loadAudit(services);
     } catch (error) {
       // A 409 is the system refusing on principle — it understood perfectly.

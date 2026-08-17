@@ -523,6 +523,231 @@ select.admin-input {
   color: var(--signal);
 }
 
+/* ── Admin People Pager ─────────────────────────────────────────────────── */
+
+.admin-table-wrapper {
+  position: relative;
+  inline-size: 100%;
+}
+
+/* Visual busy state is added only after the 100ms threshold — see above. */
+.admin-table.is-busy-visual tbody {
+  opacity: 0.45;
+  transition: opacity var(--duration-s) var(--ease-soft);
+}
+
+.admin-table tbody {
+  transition: opacity var(--duration-s) var(--ease-soft);
+}
+
+.admin-table-wrapper.is-busy-visual::after {
+  content: "";
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline: 0;
+  block-size: 2px;
+  background: var(--signal);
+  border-start-start-radius: var(--radius-md);
+  border-start-end-radius: var(--radius-md);
+  animation: adminPagerPulse 1.2s var(--ease-soft) infinite;
+  transform-origin: center; /* direction-neutral: symmetric in both LTR and RTL */
+}
+
+@keyframes adminPagerPulse {
+  0% { transform: scaleX(0.1); opacity: 0.4; }
+  50% { transform: scaleX(0.8); opacity: 1; }
+  100% { transform: scaleX(1); opacity: 0; }
+}
+
+.admin-pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-3) var(--space-4);
+  margin-block-start: var(--space-4);
+  padding-block: var(--space-2);
+}
+
+.admin-pager-size {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 0 0 auto;
+}
+
+.admin-pager-size-label {
+  font-family: var(--font-sans);
+  font-size: var(--fs-200);
+  color: var(--fg-muted);
+  font-weight: var(--fw-body);
+  white-space: nowrap;
+}
+
+.admin-pager-select {
+  min-block-size: 32px;
+  padding: var(--space-1) var(--space-3);
+  padding-inline-end: var(--space-7);
+  font-family: var(--font-mono);
+  font-size: var(--fs-200);
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-primary);
+  background-color: var(--bg-surface);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: var(--btn-transition);
+}
+
+.admin-pager-select:focus {
+  outline: none;
+  border-color: var(--signal);
+  box-shadow: 0 0 0 3px var(--focus-ring-shadow);
+}
+
+.admin-pager-nav {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  flex: 0 0 auto;
+  /* No margin-inline-start: auto here — an audit pass caught that this was a
+     leftover from an earlier draft where the size group was appended first.
+     Now that navGroup is the first child (DOM order corrected above), an auto
+     margin on it would consume all the flex free space and push both groups
+     to the same end, overriding .admin-pager's own `justify-content:
+     space-between` below. The parent's space-between already places navGroup
+     at inline-start and sizeGroup at inline-end without any margin here. */
+}
+
+.admin-pager-status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--fs-200);
+  color: var(--fg-secondary);
+  white-space: nowrap;
+}
+
+.admin-pager-status .admin-cell-machine {
+  font-family: var(--font-mono);
+  font-size: var(--fs-200);
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-primary);
+  font-weight: var(--fw-medium);
+}
+
+.admin-pager-status:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 4px;
+  border-radius: var(--radius-xs);
+}
+
+.admin-pager-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-block-size: 32px;
+  padding: var(--space-2) var(--space-3);
+  background: transparent;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-sans);
+  font-size: var(--fs-200);
+  font-weight: var(--fw-medium);
+  color: var(--fg-secondary);
+  cursor: pointer;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: var(--btn-transition);
+}
+
+.admin-pager-btn .icon {
+  color: var(--fg-muted);
+  transition: color var(--duration-s) var(--ease-soft),
+              transform var(--duration-s) var(--ease-soft);
+}
+
+.admin-pager-btn:hover:not(:disabled) {
+  background: var(--bg-sunken);
+  border-color: var(--fg-faint);
+  color: var(--fg-primary);
+  transform: translateY(-1px);
+}
+
+.admin-pager-btn:hover:not(:disabled) .icon {
+  color: var(--fg-primary);
+}
+
+.admin-pager-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.admin-pager-btn:focus-visible {
+  outline: none;
+  border-color: var(--signal);
+  box-shadow: 0 0 0 3px var(--focus-ring-shadow);
+  background: var(--bg-surface);
+  color: var(--fg-primary);
+}
+
+.admin-pager-btn:disabled {
+  opacity: 0.45;
+  border-color: var(--hairline);
+  color: var(--fg-faint);
+  cursor: not-allowed;
+  pointer-events: none;
+  transform: none;
+}
+
+.admin-pager-btn:disabled .icon {
+  color: var(--fg-faint);
+}
+
+.admin-pager-btn--prev .icon {
+  transform: scaleX(calc(-1 * var(--flip)));
+}
+
+.admin-pager-btn--next .icon {
+  transform: scaleX(calc(1 * var(--flip)));
+}
+
+.admin-pager-btn--prev:hover:not(:disabled) .icon {
+  transform: scaleX(calc(-1 * var(--flip))) translateX(calc(-2px * var(--flip)));
+}
+
+.admin-pager-btn--next:hover:not(:disabled) .icon {
+  transform: scaleX(calc(1 * var(--flip))) translateX(calc(2px * var(--flip)));
+}
+
+@media (max-width: 640px) {
+  .admin-pager {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-3);
+  }
+
+  .admin-pager-nav {
+    inline-size: 100%;
+    justify-content: space-between;
+    margin-inline-start: 0;
+  }
+
+  .admin-pager-status {
+    order: -1;
+    flex-basis: 100%;
+    inline-size: auto;
+    justify-content: center;
+    margin-block-end: var(--space-1);
+  }
+
+  .admin-pager-size {
+    justify-content: center;
+    inline-size: 100%;
+  }
+}
+
 /* ── Account detail ──────────────────────────────────────────────────────────
    Four zones in increasing severity: who this is, what they told us about
    themselves, what can be done to them, and what has been done.

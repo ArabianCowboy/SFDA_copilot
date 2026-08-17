@@ -641,8 +641,9 @@ def _json(route, body):
     route.fulfill(status=200, content_type="application/json", body=json.dumps(body))
 
 
-def _open_people(page: Page, *, lang: str = "") -> None:
+def _open_people(page: Page, *, lang: str = "", accounts=None) -> None:
     _route_identity(page, status=200, body=ADMIN_IDENTITY)
+    account_list = ACCOUNTS if accounts is None else accounts
 
     def users_or_detail(route):
         url = route.request.url
@@ -656,17 +657,24 @@ def _open_people(page: Page, *, lang: str = "") -> None:
             _json(route, {"user": account, "self_id": "test-admin-id"})
             return
 
-        needle = (parse_qs(urlparse(url).query).get("q") or [""])[0].lower()
-        rows = [a for a in ACCOUNTS if needle in a["email"].lower()]
-        _json(route, {"users": rows, "total": len(rows), "limit": 50,
-                      "offset": 0, "self_id": "test-admin-id"})
+        query_params = parse_qs(urlparse(url).query)
+        needle = (query_params.get("q") or [""])[0].lower()
+        limit = int((query_params.get("limit") or ["50"])[0])
+        offset = int((query_params.get("offset") or ["0"])[0])
+        rows = [a for a in account_list if needle in a["email"].lower()]
+        sliced = rows[offset : offset + limit]
+        _json(route, {"users": sliced, "total": len(rows), "limit": limit,
+                      "offset": offset, "self_id": "test-admin-id"})
 
     page.route("**/admin/api/users*", users_or_detail)
     page.route("**/admin/api/users/*", users_or_detail)
     page.route("**/admin/api/audit*",
                lambda route: _json(route, {"entries": [], "limit": 50, "offset": 0}))
+    page.route("**/admin/api/settings*",
+               lambda route: _json(route, SETTINGS))
 
     page.goto(f"/admin?testing=true{lang}")
+    expect(page.locator("#admin-console")).to_be_visible()
     page.locator("#tab-people").click()
 
 
@@ -1279,3 +1287,343 @@ def test_declining_the_confirmation_sends_nothing(browser_page: Page):
     browser_page.wait_for_timeout(300)
 
     assert not sent, "a dismissed confirmation still sent the reset"
+
+
+# ── People Pager ─────────────────────────────────────────────────────────────
+
+MANY_ACCOUNTS = [
+    {
+        "id": f"test-user-{i}",
+        "email": f"user{i:03d}@example.com",
+        "role": "admin" if i == 1 else "user",
+        "tier": "free",
+        "is_disabled": False,
+        "last_sign_in_at": None,
+    }
+    for i in range(1, 61)
+]
+
+
+def test_people_pager_one_page_result_disables_both_buttons(browser_page: Page):
+    """One-page result: range shown (e.g. 1–4 of 4), both buttons disabled."""
+    _open_people(browser_page)
+    pager = browser_page.locator("#people-pager")
+    expect(pager).to_be_visible()
+    expect(pager).to_have_attribute("aria-controls", "people-table")
+    expect(pager).to_have_attribute("aria-busy", "false")
+
+    status = browser_page.locator("#people-range-status")
+    expect(status).to_be_visible()
+    bdis = status.locator("bdi")
+    expect(bdis.nth(0)).to_have_text("1–4")
+    expect(bdis.nth(1)).to_have_text("4")
+
+    expect(browser_page.locator("#people-prev")).to_be_disabled()
+    expect(browser_page.locator("#people-next")).to_be_disabled()
+
+
+def test_people_pager_multi_page_navigation(browser_page: Page):
+    """Multi-page result: Next requests page 2, Previous returns to page 1."""
+    _open_people(browser_page, accounts=MANY_ACCOUNTS)
+
+    # Initial page 1 (1–50 of 60)
+    expect(browser_page.locator(".admin-account-open")).to_have_count(50)
+    expect(browser_page.locator(".admin-account-open").first).to_have_text("user001@example.com")
+    expect(browser_page.locator("#people-prev")).to_be_disabled()
+    expect(browser_page.locator("#people-next")).to_be_enabled()
+
+    bdis = browser_page.locator("#people-range-status bdi")
+    expect(bdis.nth(0)).to_have_text("1–50")
+    expect(bdis.nth(1)).to_have_text("60")
+
+    # Click Next -> page 2 (51–60 of 60)
+    browser_page.locator("#people-next").click()
+    expect(browser_page.locator(".admin-account-open")).to_have_count(10)
+    expect(browser_page.locator(".admin-account-open").first).to_have_text("user051@example.com")
+    expect(browser_page.locator("#people-prev")).to_be_enabled()
+    expect(browser_page.locator("#people-next")).to_be_disabled()
+    expect(bdis.nth(0)).to_have_text("51–60")
+    expect(bdis.nth(1)).to_have_text("60")
+
+    # Click Prev -> page 1 (1–50 of 60)
+    browser_page.locator("#people-prev").click()
+    expect(browser_page.locator(".admin-account-open")).to_have_count(50)
+    expect(browser_page.locator(".admin-account-open").first).to_have_text("user001@example.com")
+    expect(browser_page.locator("#people-prev")).to_be_disabled()
+    expect(browser_page.locator("#people-next")).to_be_enabled()
+    expect(bdis.nth(0)).to_have_text("1–50")
+
+
+def test_people_pager_page_size_change_resets_to_offset_0(browser_page: Page):
+    """Changing page size resets offset to 0 and requests the new limit."""
+    _open_people(browser_page, accounts=MANY_ACCOUNTS)
+
+    # Go to page 2 first (offset 50)
+    browser_page.locator("#people-next").click()
+    expect(browser_page.locator("#people-range-status bdi").nth(0)).to_have_text("51–60")
+
+    # Change page size to 25 -> resets to offset 0, limit 25
+    browser_page.locator("#people-page-size").select_option("25")
+    expect(browser_page.locator(".admin-account-open")).to_have_count(25)
+    expect(browser_page.locator(".admin-account-open").first).to_have_text("user001@example.com")
+    expect(browser_page.locator("#people-range-status bdi").nth(0)).to_have_text("1–25")
+    expect(browser_page.locator("#people-prev")).to_be_disabled()
+    expect(browser_page.locator("#people-next")).to_be_enabled()
+
+    # Change page size to 100 -> all 60 fit on page 1, both buttons disabled
+    browser_page.locator("#people-page-size").select_option("100")
+    expect(browser_page.locator(".admin-account-open")).to_have_count(60)
+    expect(browser_page.locator("#people-range-status bdi").nth(0)).to_have_text("1–60")
+    expect(browser_page.locator("#people-prev")).to_be_disabled()
+    expect(browser_page.locator("#people-next")).to_be_disabled()
+
+
+def test_people_pager_search_while_on_page_2_resets_offset_to_0(browser_page: Page):
+    """A search typed while on page 2 sends offset 0 and renders query results."""
+    _open_people(browser_page, accounts=MANY_ACCOUNTS)
+
+    # Go to page 2 (offset 50)
+    browser_page.locator("#people-next").click()
+    expect(browser_page.locator("#people-range-status bdi").nth(0)).to_have_text("51–60")
+
+    # Search for "user00" which matches user001..user009 (9 accounts)
+    browser_page.locator("#people-search").fill("user00")
+    expect(browser_page.locator(".admin-account-open")).to_have_count(9)
+    expect(browser_page.locator("#people-range-status bdi").nth(0)).to_have_text("1–9")
+    expect(browser_page.locator("#people-range-status bdi").nth(1)).to_have_text("9")
+    expect(browser_page.locator("#people-prev")).to_be_disabled()
+    expect(browser_page.locator("#people-next")).to_be_disabled()
+
+
+def test_people_pager_out_of_order_responses_resolve_correctly(browser_page: Page):
+    """Hold an old response, resolve a newer one first, then release old.
+    Assert the DOM shows newer query and aborted request does not surface error."""
+    _route_identity(browser_page, status=200, body=ADMIN_IDENTITY)
+    browser_page.route("**/admin/api/settings", lambda route: _json(route, SETTINGS))
+
+    held_routes = []
+
+    def custom_users(route):
+        url = route.request.url
+        query_params = parse_qs(urlparse(url).query)
+        q = (query_params.get("q") or [""])[0]
+        if q == "slow":
+            held_routes.append(route)
+            return
+        rows = [a for a in ACCOUNTS if q in a["email"].lower()]
+        _json(route, {"users": rows, "total": len(rows), "limit": 50,
+                      "offset": 0, "self_id": "test-admin-id"})
+
+    browser_page.route("**/admin/api/users*", custom_users)
+    browser_page.route("**/admin/api/users/*", custom_users)
+    browser_page.route("**/admin/api/audit*",
+                       lambda route: _json(route, {"entries": [], "limit": 50, "offset": 0}))
+
+    browser_page.goto("/admin?testing=true")
+    expect(browser_page.locator("#admin-console")).to_be_visible()
+    browser_page.locator("#tab-people").click()
+    expect(browser_page.locator(".admin-account-open")).to_have_count(4)
+
+    # Type "slow" to trigger the held request
+    browser_page.locator("#people-search").fill("slow")
+    browser_page.wait_for_timeout(350)
+
+    # Now type "orphan" to trigger a second fast request
+    browser_page.locator("#people-search").fill("orphan")
+    expect(browser_page.locator(".admin-account-open")).to_have_count(1)
+    expect(browser_page.locator(".admin-account-open")).to_contain_text("orphan@example.com")
+
+    # Now fulfill the held slow route
+    for r in held_routes:
+        try:
+            _json(r, {"users": ACCOUNTS, "total": 4, "limit": 50, "offset": 0, "self_id": "test-admin-id"})
+        except Exception:
+            pass
+
+    browser_page.wait_for_timeout(300)
+    # DOM still shows "orphan" result, not overwritten by slow
+    expect(browser_page.locator(".admin-account-open")).to_have_count(1)
+    expect(browser_page.locator(".admin-account-open")).to_contain_text("orphan@example.com")
+    expect(browser_page.locator("#toast")).to_have_class("toast-notification hidden")
+
+
+def test_people_pager_repeated_rapid_clicks_only_issue_one_request(browser_page: Page):
+    """Rapid clicks while request is pending do not issue duplicate requests."""
+    calls = []
+    _route_identity(browser_page, status=200, body=ADMIN_IDENTITY)
+    browser_page.route("**/admin/api/settings", lambda route: _json(route, SETTINGS))
+
+    def users_handler(route):
+        url = route.request.url
+        query_params = parse_qs(urlparse(url).query)
+        offset = int((query_params.get("offset") or ["0"])[0])
+        calls.append(offset)
+        rows = MANY_ACCOUNTS[offset : offset + 50]
+        _json(route, {"users": rows, "total": len(MANY_ACCOUNTS), "limit": 50,
+                      "offset": offset, "self_id": "test-admin-id"})
+
+    browser_page.route("**/admin/api/users*", users_handler)
+    browser_page.route("**/admin/api/audit*",
+                       lambda route: _json(route, {"entries": [], "limit": 50, "offset": 0}))
+
+    browser_page.goto("/admin?testing=true")
+    expect(browser_page.locator("#admin-console")).to_be_visible()
+    browser_page.locator("#tab-people").click()
+    expect(browser_page.locator(".admin-account-open")).to_have_count(50)
+    assert calls == [0]
+
+    # Rapid click next multiple times
+    next_btn = browser_page.locator("#people-next")
+    next_btn.click(click_count=3, delay=5)
+    expect(browser_page.locator(".admin-account-open")).to_have_count(10)
+    # Exactly one page 2 request (offset=50) was issued
+    assert calls == [0, 50]
+
+
+def test_people_pager_renders_in_arabic_with_ltr_bdi(browser_page: Page):
+    """Arabic rendering: labels from catalogue, dir=rtl, bdi wrapping, no bidi marks."""
+    _open_people(browser_page, lang="&lang=ar")
+
+    expect(browser_page.locator("html")).to_have_attribute("dir", "rtl")
+    pager = browser_page.locator("#people-pager")
+    expect(pager).to_have_attribute("aria-label", "صفحات المستخدمين")
+
+    expect(browser_page.locator("#people-prev")).to_contain_text("الصفحة السابقة")
+    expect(browser_page.locator("#people-next")).to_contain_text("الصفحة التالية")
+
+    status = browser_page.locator("#people-range-status")
+    expect(status).to_contain_text("عرض")
+    expect(status).to_contain_text("من")
+
+    bdis = status.locator("bdi")
+    expect(bdis.nth(0)).to_have_attribute("dir", "ltr")
+    expect(bdis.nth(0)).to_have_text("1–4")
+    expect(bdis.nth(1)).to_have_attribute("dir", "ltr")
+    expect(bdis.nth(1)).to_have_text("4")
+
+    # Assert no stray bidi control characters in the status text
+    status_text = status.inner_text()
+    assert not re.search(r"[‎‏؜⁦-⁩]", status_text), f"status carries bidi marks: {status_text!r}"
+
+    expect(browser_page.locator('label[for="people-page-size"]')).to_have_text("عدد الصفوف في الصفحة")
+
+
+def test_people_pager_loading_busy_visual_threshold(browser_page: Page):
+    """Fast requests (<100ms) never show .is-busy-visual. Slow requests (>100ms) show it while in-flight."""
+    _route_identity(browser_page, status=200, body=ADMIN_IDENTITY)
+    browser_page.route("**/admin/api/settings", lambda route: _json(route, SETTINGS))
+
+    # Fast initial load
+    def fast_users(route):
+        _json(route, {"users": MANY_ACCOUNTS[0:50], "total": 60, "limit": 50,
+                      "offset": 0, "self_id": "test-admin-id"})
+
+    browser_page.route("**/admin/api/users*", fast_users)
+    browser_page.route("**/admin/api/audit*",
+                       lambda route: _json(route, {"entries": [], "limit": 50, "offset": 0}))
+
+    browser_page.goto("/admin?testing=true")
+    expect(browser_page.locator("#admin-console")).to_be_visible()
+    browser_page.locator("#tab-people").click()
+    expect(browser_page.locator(".admin-account-open")).to_have_count(50)
+
+    # .is-busy-visual was never added on fast request
+    expect(browser_page.locator(".admin-table-wrapper")).not_to_have_class(re.compile(r"is-busy-visual"))
+
+    # Now stub a slow request (>100ms)
+    def slow_users(route):
+        browser_page.wait_for_timeout(250)
+        _json(route, {"users": MANY_ACCOUNTS[50:60], "total": 60, "limit": 50,
+                      "offset": 50, "self_id": "test-admin-id"})
+
+    browser_page.route("**/admin/api/users*", slow_users)
+    browser_page.locator("#people-next").click()
+
+    # Search and page size select remain non-disabled during request
+    expect(browser_page.locator("#people-search")).to_be_enabled()
+    expect(browser_page.locator("#people-page-size")).to_be_enabled()
+
+    # After 150ms (past 100ms threshold), is-busy-visual should be present
+    browser_page.wait_for_timeout(150)
+    expect(browser_page.locator(".admin-table-wrapper")).to_have_class(re.compile(r"is-busy-visual"))
+
+    # When request completes, is-busy-visual is cleared
+    expect(browser_page.locator(".admin-account-open")).to_have_count(10)
+    expect(browser_page.locator(".admin-table-wrapper")).not_to_have_class(re.compile(r"is-busy-visual"))
+
+
+def test_people_pager_keyboard_focus_retention(browser_page: Page):
+    """Keyboard focus retention: when next button becomes disabled, focus falls back to #people-range-status."""
+    _open_people(browser_page, accounts=MANY_ACCOUNTS)
+
+    # Focus next button and press Enter
+    next_btn = browser_page.locator("#people-next")
+    next_btn.focus()
+    expect(next_btn).to_be_focused()
+    browser_page.keyboard.press("Enter")
+
+    # On page 2, next is disabled -> focus lands on #people-range-status
+    expect(browser_page.locator(".admin-account-open")).to_have_count(10)
+    expect(browser_page.locator("#people-next")).to_be_disabled()
+    expect(browser_page.locator("#people-range-status")).to_be_focused()
+
+    # Focus prev button and press Enter
+    prev_btn = browser_page.locator("#people-prev")
+    prev_btn.focus()
+    expect(prev_btn).to_be_focused()
+    browser_page.keyboard.press("Enter")
+
+    # On page 1, prev is disabled -> focus lands on #people-range-status
+    expect(browser_page.locator(".admin-account-open")).to_have_count(50)
+    expect(browser_page.locator("#people-prev")).to_be_disabled()
+    expect(browser_page.locator("#people-range-status")).to_be_focused()
+
+
+def test_people_pager_aria_controls_resolves_to_people_table(browser_page: Page):
+    """aria-controls on #people-pager points to the real table element id."""
+    _open_people(browser_page)
+    pager = browser_page.locator("#people-pager")
+    expect(pager).to_have_attribute("aria-controls", "people-table")
+    expect(browser_page.locator("#people-table")).to_be_visible()
+
+
+def test_people_pager_boundary_drift_resets_to_offset_0(browser_page: Page):
+    """Out-of-bounds offset returning {users: [], total: 0} resets to offset 0 and refetches."""
+    _route_identity(browser_page, status=200, body=ADMIN_IDENTITY)
+    browser_page.route("**/admin/api/settings", lambda route: _json(route, SETTINGS))
+    requested_offsets = []
+    call_count = [0]
+
+    def drift_flow(route):
+        query_params = parse_qs(urlparse(route.request.url).query)
+        offset = int((query_params.get("offset") or ["0"])[0])
+        requested_offsets.append(offset)
+        call_count[0] += 1
+
+        if call_count[0] == 1:
+            # First load: page 1 of 60
+            _json(route, {"users": MANY_ACCOUNTS[0:50], "total": 60, "limit": 50, "offset": 0, "self_id": "test-admin-id"})
+        elif offset == 50:
+            # Second load (Next clicked): boundary drift! users: [], total: 0
+            _json(route, {"users": [], "total": 0, "limit": 50, "offset": 50, "self_id": "test-admin-id"})
+        else:
+            # Third load (auto refetch on offset 0): return surviving accounts
+            _json(route, {"users": ACCOUNTS, "total": 4, "limit": 50, "offset": 0, "self_id": "test-admin-id"})
+
+    browser_page.route("**/admin/api/users*", drift_flow)
+    browser_page.route("**/admin/api/audit*",
+                       lambda route: _json(route, {"entries": [], "limit": 50, "offset": 0}))
+
+    browser_page.goto("/admin?testing=true")
+    expect(browser_page.locator("#admin-console")).to_be_visible()
+    browser_page.locator("#tab-people").click()
+
+    expect(browser_page.locator(".admin-account-open")).to_have_count(50)
+    expect(browser_page.locator("#people-next")).to_be_enabled()
+
+    # Click Next -> hits offset 50 -> gets {users: [], total: 0} -> resets to offset 0 -> renders 4 accounts
+    browser_page.locator("#people-next").click()
+    expect(browser_page.locator(".admin-account-open")).to_have_count(4)
+    expect(browser_page.locator("#people-range-status bdi").nth(0)).to_have_text("1–4")
+    assert 50 in requested_offsets
+    assert requested_offsets[-1] == 0
