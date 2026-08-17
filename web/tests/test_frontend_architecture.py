@@ -27,6 +27,31 @@ def test_handlers_own_user_facing_service_failures():
     assert "ErrorHandler.showToast(I18n.t('chat.sendFailed')" in source
 
 
+def test_profile_flow_uses_the_i18n_catalogue_not_literals():
+    """Five call sites in the profile flow used to pass raw English literals
+    to showProfileError/showToast instead of a translation key, so an Arabic
+    reader saw English on this one surface. `runtime.profile.*` existed in
+    both catalogues the whole time and was read by nothing — this pins that
+    each site now actually draws from it, which the catalogue-parity test
+    alone cannot catch (both languages can carry a key that nothing uses).
+    """
+    source = (MODULES / "handlers.js").read_text(encoding="utf-8")
+
+    assert "I18n.t('runtime.profile.sessionExpired')" in source
+    assert "I18n.t('runtime.profile.saved')" in source
+    assert "I18n.t('runtime.profile.saveFailed')" in source
+    assert "I18n.t('runtime.profile.loginRequired')" in source
+    assert "I18n.t('runtime.profile.loadFailed')" in source
+
+    # The literals this replaces, so a revert reintroduces hardcoded English
+    # rather than silently passing.
+    assert "Your session seems to have expired" not in source
+    assert "Profile saved successfully!" not in source
+    assert "Failed to save: ${error.message}" not in source
+    assert "Please log in to manage your profile." not in source
+    assert "Could not load your profile." not in source
+
+
 def test_ui_does_not_own_authentication_transitions():
     ui_source = (MODULES / "ui.js").read_text(encoding="utf-8")
     auth_view_source = (MODULES / "auth-view.js").read_text(encoding="utf-8")

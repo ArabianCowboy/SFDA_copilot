@@ -622,8 +622,49 @@ export const UI = {
     if (orgInput) orgInput.value = organization;
     if (specInput) specInput.value = specialization;
 
-    const themeRadio = form.querySelector(`input[name="theme-preference"][value="${ThemeManager.getCurrent()}"]`);
+    this.selectThemeRadio(form, profile);
+  },
+
+  /**
+   * Check the theme radio matching the reader's *saved* preference
+   * (`profile.preferences.theme`), not whichever theme happens to be
+   * rendered on screen right now. Those two can diverge the moment a
+   * reader toggles the theme button without saving the profile form, and
+   * `ThemeManager.getCurrent()` reads the live `data-bs-theme` attribute,
+   * not the stored preference. Falls back to the live theme only when the
+   * profile carries no saved value at all (e.g. a brand-new, profile-less
+   * account), where there is nothing else to honor.
+   */
+  selectThemeRadio(form, profile) {
+    if (!form) return;
+    const theme = profile?.preferences?.theme || ThemeManager.getCurrent();
+    const themeRadio = form.querySelector(`input[name="theme-preference"][value="${theme}"]`);
     if (themeRadio) themeRadio.checked = true;
+  },
+
+  /**
+   * Tell a disabled reader as soon as we know, rather than only after they
+   * submit a question and hit the same 403 (handlers.js's existing bot-message
+   * notice, kept as a fallback). The composer stays usable — this is a notice,
+   * not a lockout.
+   *
+   * The glyph is ours, so it goes in as markup; the message is translated
+   * copy, so it goes in as a text node — never `innerHTML` for translated
+   * strings, the same rule this app applies everywhere else.
+   */
+  showAccountDisabledNotice() {
+    const el = DOMCache.get(CONFIG.SELECTORS.ACCOUNT_DISABLED_NOTICE);
+    if (!el) return;
+    el.innerHTML = iconMarkup('alert', 14, 'account-disabled-notice-icon');
+    const label = document.createElement('span');
+    label.textContent = I18n.t('auth.accountDisabled');
+    el.appendChild(label);
+    el.hidden = false;
+  },
+
+  hideAccountDisabledNotice() {
+    const el = DOMCache.get(CONFIG.SELECTORS.ACCOUNT_DISABLED_NOTICE);
+    if (el) el.hidden = true;
   },
 
   setSendingState(isSending) {

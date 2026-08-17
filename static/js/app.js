@@ -51,17 +51,19 @@ const App = {
   /**
    * `Services.getIdentity()`, retried on a genuine, transient fault only.
    *
-   * `getIdentity()` already resolves — never throws — for "nobody" or "not
-   * allowed" (a 401/403 is a real answer, not a fault); retrying those would
-   * hammer a refusal and delay the sign-out UI ever settling. Only a network
-   * failure (no `.status` — the fetch itself never got a response, which now
-   * includes the client-side timeout `getIdentity` enforces) or a 5xx/503
-   * from an identity-provider outage — the exact shape `_authenticate_request`
+   * `getIdentity()` already resolves — never throws — for "nobody" (401, no
+   * session or an invalid one). "Not allowed" (403, a disabled account) now
+   * throws instead, carrying `.status = 403`, but is equally not worth
+   * retrying: it is a real answer, not a fault, and hammering a refusal would
+   * only delay the disabled-notice ever settling. Only a network failure (no
+   * `.status` — the fetch itself never got a response, which now includes the
+   * client-side timeout `getIdentity` enforces) or a 5xx/503 from an
+   * identity-provider outage — the exact shape `_authenticate_request`
    * classifies server-side — is worth a second attempt, because that is the
    * case the server is explicitly built to recover from: `resolve_identity_flags`
    * deliberately never caches a failed lookup, precisely so the next request
-   * gets a clean try. Any other status (400, 404, 429, ...) is retried zero
-   * times — repeating the same request would only repeat the same answer.
+   * gets a clean try. Any other status (400, 403, 404, 429, ...) is retried
+   * zero times — repeating the same request would only repeat the same answer.
    */
   async fetchIdentityWithRetry(attempts = 2, delayMs = 500) {
     for (let attempt = 1; attempt <= attempts; attempt++) {
@@ -298,6 +300,17 @@ const App = {
           .catch(err => {
             if ((AppState.get('identityCheckId') || 0) !== checkId) return;
             AuthView.renderAdminAffordance(false);
+            /* A disabled account is not a fault — see getIdentity's own
+               comment. Surface the early notice instead of logging it as an
+               error, so a disabled reader learns their standing before they
+               type a question rather than only after (handlers.js already
+               shows the same string on a 403 chat response; this is the
+               earlier half of the same fix). Every other rejection here is
+               a genuine fault and keeps the existing log-and-hide-link path. */
+            if (err?.code === 'account_disabled') {
+              UI.showAccountDisabledNotice();
+              return;
+            }
             logError(err, 'getIdentity');
           });
       } else {

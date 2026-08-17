@@ -88,6 +88,8 @@ runtime:
     loadFailed: "Failed to load your profile."
     saveFailed: "Failed to save your profile."
     saved: "Profile saved."
+    sessionExpired: "Your session seems to have expired. Please log out and log in again."
+    loginRequired: "Please log in to manage your profile."
 
   faq:
     loadFailed: "Failed to load FAQs."

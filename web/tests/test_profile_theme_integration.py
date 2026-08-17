@@ -15,6 +15,30 @@ def test_profile_form_loads_cached_profile(authenticated_page: Page):
     )
 
 
+def test_profile_form_shows_saved_theme_not_live_theme(authenticated_page: Page):
+    """The radio reflects `profile.preferences.theme`, not whatever theme
+    happens to be rendered right now.
+
+    The mock profile (conftest.py) carries `preferences: { theme: "light" }`.
+    Toggling the live theme without saving the profile form must not change
+    which radio the modal shows on reopen — regression coverage for the bug
+    where both `populateProfileForm` and the empty-profile reset read
+    `ThemeManager.getCurrent()` (the live `data-bs-theme` attribute) instead
+    of the saved preference, so a reader who saved Light, then switched to
+    Dark via the theme button, would reopen the modal to find Dark
+    pre-selected — and saving from there would silently overwrite Light.
+    """
+    authenticated_page.locator("#sidebar-theme-toggle").click()
+    expect(authenticated_page.locator("html")).to_have_attribute(
+        "data-bs-theme", "dark"
+    )
+
+    authenticated_page.locator("#profile-button").click()
+    expect(authenticated_page.locator("#profileModal")).to_be_visible()
+    expect(authenticated_page.locator("#theme-light")).to_be_checked()
+    expect(authenticated_page.locator("#theme-dark")).not_to_be_checked()
+
+
 def test_profile_update_applies_and_persists_theme(authenticated_page: Page):
     authenticated_page.locator("#profile-button").click()
     authenticated_page.locator("#profile-full-name").fill("Updated User")

@@ -88,6 +88,65 @@ def test_a_slow_identity_check_does_not_reveal_admin_after_logout(browser_page: 
     )
 
 
+def test_a_disabled_reader_sees_the_notice_immediately_on_sign_in(browser_page: Page):
+    """Previously the only signal a disabled reader got was the 403 on their
+    first chat submission (handlers.js's bot-message notice, still in place
+    as a fallback). `/api/identity` already told the difference between
+    "nobody" (401) and "not allowed" (403, `account_disabled`) — the client
+    just discarded it. This is the earlier half of that fix: the notice
+    should appear as soon as the identity check resolves, before the reader
+    types anything.
+    """
+    browser_page.route(
+        "**/api/identity",
+        lambda route: route.fulfill(
+            status=403,
+            content_type="application/json",
+            body='{"error":"account_disabled"}',
+        ),
+    )
+
+    browser_page.goto("/")
+    browser_page.locator("#auth-button-main").click()
+    browser_page.locator("#login-email").fill("test@example.com")
+    browser_page.locator("#login-password").fill("password123")
+    browser_page.locator("#login-form").evaluate("(form) => form.requestSubmit()")
+    browser_page.locator("#authenticated-view").wait_for(state="visible")
+
+    expect(browser_page.locator("#account-disabled-notice")).to_be_visible()
+    expect(browser_page.locator("#account-disabled-notice")).to_contain_text(
+        "Chat access for this account has been turned off."
+    )
+    # The composer stays usable — this is a notice, not a lockout.
+    expect(browser_page.locator("#query-input")).to_be_enabled()
+    # A disabled account is never an administrator; the admin link stays hidden.
+    expect(browser_page.locator("#admin-button")).to_have_class(
+        re.compile(r"(?:^|\s)d-none(?:\s|$)")
+    )
+
+
+def test_a_signed_out_identity_check_resolves_null_not_an_error(browser_page: Page):
+    """The 401 path is unchanged by the 403 fix above: `getIdentity()` still
+    resolves to `null` for a genuine "nobody" rather than throwing.
+    """
+    browser_page.goto("/")
+
+    result = browser_page.evaluate(
+        """
+        async () => {
+          const { Services } = await import('/static/js/modules/services.js');
+          try {
+            return { identity: await Services.getIdentity(), threw: null };
+          } catch (error) {
+            return { identity: undefined, threw: error.message };
+          }
+        }
+        """
+    )
+
+    assert result == {"identity": None, "threw": None}
+
+
 def test_login_failure_is_presented_by_handler(browser_page: Page):
     browser_page.goto("/")
     browser_page.locator("#auth-button-main").click()

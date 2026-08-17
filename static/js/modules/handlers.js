@@ -838,7 +838,7 @@ export const Handlers = {
       const user = sessionData?.data?.session?.user;
 
       if (!user) {
-        return ErrorHandler.showProfileError('Your session seems to have expired. Please log out and log in again.');
+        return ErrorHandler.showProfileError(I18n.t('runtime.profile.sessionExpired'));
       }
 
       const formData = new FormData(event.target);
@@ -859,11 +859,14 @@ export const Handlers = {
       await Services.updateProfile(user.id, updates);
       AppState.set('userProfile', { ...AppState.get('userProfile'), ...updates });
       ThemeManager.apply(updates.preferences?.theme || CONFIG.CLASSES.LIGHT);
-      ErrorHandler.showToast('Profile saved successfully!');
+      ErrorHandler.showToast(I18n.t('runtime.profile.saved'));
       this.hideModal('profileModal', CONFIG.SELECTORS.PROFILE_MODAL);
     } catch (error) {
+      // The raw error.message isn't translatable and can leak technical
+      // detail to the reader; log it for diagnosis and keep the surfaced
+      // message generic and bilingual.
       logError(error, 'handleProfileFormSubmit');
-      ErrorHandler.showProfileError(`Failed to save: ${error.message}`);
+      ErrorHandler.showProfileError(I18n.t('runtime.profile.saveFailed'));
     }
   },
 
@@ -874,7 +877,7 @@ export const Handlers = {
     const user = sessionData?.data?.session?.user;
 
     if (!user) {
-      ErrorHandler.showToast('Please log in to manage your profile.', true);
+      ErrorHandler.showToast(I18n.t('runtime.profile.loginRequired'), true);
       AppState.get('authModal')?.show();
       return;
     }
@@ -892,13 +895,12 @@ export const Handlers = {
           const form = DOMCache.get(CONFIG.SELECTORS.PROFILE_FORM);
           if (form) {
             form.reset();
-            const defaultThemeRadio = form.querySelector(`input[name="theme-preference"][value="${ThemeManager.getCurrent()}"]`);
-            if (defaultThemeRadio) defaultThemeRadio.checked = true;
+            UI.selectThemeRadio(form, null);
           }
         }
       } catch (error) {
         logError(error, 'handleProfileButtonClick');
-        ErrorHandler.showToast('Could not load your profile.', true);
+        ErrorHandler.showToast(I18n.t('runtime.profile.loadFailed'), true);
         const form = DOMCache.get(CONFIG.SELECTORS.PROFILE_FORM);
         form?.reset();
       }
@@ -965,6 +967,7 @@ export const Handlers = {
        inside Services.logout(); the endpoint is idempotent. */
     Services.endServerSession();
     UI.clearTranscript();
+    UI.hideAccountDisabledNotice();
     // reset, not close: closing leaves the previous reader's passages sitting
     // in the panel's DOM for the next one.
     SourcePanel.reset();

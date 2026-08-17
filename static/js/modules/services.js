@@ -427,9 +427,18 @@ export const Services = {
    * thing that works on a first sign-in in a fresh browser, where no hint
    * exists yet because no authenticated request has been made.
    *
-   * Returns null when the answer is simply "nobody" or "not allowed" — those
-   * are answers, not faults, and the caller's safe default for both is the
-   * same. A network failure still throws, because that is a fault.
+   * Returns null when the answer is simply "nobody" (no session, or an
+   * invalid/expired one — 401) — that is an answer, not a fault, and the
+   * caller's safe default for it is the same as for never having asked.
+   *
+   * "Not allowed" (signed in, but the account is disabled — 403) is answered
+   * differently: it throws, with `.status = 403` and `.code =
+   * 'account_disabled'`, the same error-tagging shape chat requests already
+   * use for this case. A disabled reader is a real, disclosable state a
+   * caller may want to act on (e.g. showing an early notice) rather than a
+   * plain "nobody" a caller has no way to distinguish from being signed out.
+   *
+   * A network failure still throws too, because that is a fault.
    *
    * Deduplicated: a call made while one is already in flight gets the same
    * promise rather than starting a second fetch — see `identityInFlight`.
@@ -459,7 +468,18 @@ export const Services = {
       } finally {
         clearTimeout(timeoutId);
       }
-      if (response.status === 401 || response.status === 403) return null;
+      if (response.status === 401) return null;
+      if (response.status === 403) {
+        // Status and code ride along, mirroring the pattern used for chat
+        // requests above — flattening this to null loses the difference
+        // between "nobody" and "a disabled account", and a caller may need
+        // to tell them apart.
+        const errorJson = await response.json().catch(() => ({}));
+        const refusal = new Error(errorJson.error || 'account_disabled');
+        refusal.status = 403;
+        refusal.code = errorJson.error || 'account_disabled';
+        throw refusal;
+      }
       if (!response.ok) {
         // `.status` lets a caller decide what is worth retrying (a 503 from
         // an identity-provider outage, per `_authenticate_request`'s own

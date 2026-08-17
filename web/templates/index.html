@@ -572,6 +572,15 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
             <!-- Chat Area -->
             <section class="col-12 col-lg-9 chat-area h-100" aria-labelledby="chat-intro-title">
                 <div class="chat-container">
+                    {#
+                      Hidden until Services.getIdentity() resolves a 403 for
+                      this reader (app.js). The composer stays usable — this
+                      is a notice, not a lockout — and text is filled in by
+                      UI.showAccountDisabledNotice() via textContent, never
+                      server-rendered, so it always reflects a live check
+                      rather than whatever was true when the page loaded.
+                    #}
+                    <div id="account-disabled-notice" class="account-disabled-notice" role="status" hidden></div>
                     <div id="messages" class="messages" role="log" aria-live="polite">
                         {#
                           The opening state, NOT a message. It used to be a

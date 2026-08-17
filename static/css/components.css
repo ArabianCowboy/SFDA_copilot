@@ -689,6 +689,26 @@
 }
 .knowledge-cutoff-notice .icon { margin-block-start: .2em; }
 
+/* Same row shape as the cutoff notice above, but a genuine restriction
+   rather than routine context — a --danger accent, same 2px weight as the
+   toast/tab-indicator/blockquote rule, and full-strength ink rather than
+   muted. JS-controlled only (see UI.showAccountDisabledNotice): no content
+   is server-rendered, so there is nothing here for :empty to hide. */
+.account-disabled-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  margin-block-end: var(--space-4);
+  border-radius: var(--radius-sm);
+  border-inline-start: 2px solid var(--danger);
+  background: var(--bg-sunken);
+  font-size: var(--fs-200);
+  line-height: 1.6;
+  color: var(--fg);
+}
+.account-disabled-notice .account-disabled-notice-icon { flex-shrink: 0; margin-block-start: .2em; color: var(--danger); }
+
 /* ——————————————— Opening state ———————————————
    Not a message: nothing was sent, so there is no bubble, no avatar row and
    no timestamp. It names the three things the reader can do and then gets out

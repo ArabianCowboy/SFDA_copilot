@@ -80,6 +80,7 @@ export const CONFIG = {
     PROFILE_ERROR: '#profile-error',
     PROFILE_BTN: '#profile-button',
     PROFILE_BTN_OFFCANVAS: '#profile-button-offcanvas',
+    ACCOUNT_DISABLED_NOTICE: '#account-disabled-notice',
     ADMIN_BTN: '#admin-button',
     ADMIN_BTN_OFFCANVAS: '#admin-button-offcanvas',
     RECOVERY_VIEW: '#recovery-view',

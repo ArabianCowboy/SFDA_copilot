@@ -506,7 +506,28 @@ carry. Copy the shape, do not reinvent it.
 
 ---
 
-### A disabled reader is not told until they ask a question
+### ~~A disabled reader is not told until they ask a question~~ — FIXED 2026-08-17
+
+**Resolved.** `/api/identity` already distinguished the two states server-side
+— 401 for signed-out, 403 with `{"error": "account_disabled"}` for
+signed-in-but-disabled — so no server change was needed. `Services.getIdentity`
+(`static/js/modules/services.js`) now keeps returning `null` only for the true
+"nobody" case (401); a 403 throws with `.status = 403` and `.code =
+'account_disabled'`, the same error-tagging shape chat requests already use.
+`app.js`'s identity-check `.catch` branch renders an inline banner
+(`UI.showAccountDisabledNotice`, `static/js/modules/ui.js`) reusing the
+existing `auth.accountDisabled` string that was previously shown only after a
+disabled reader submitted a question — that late path
+(`handlers.js:261-265`) is unchanged and stays as a fallback. The composer is
+deliberately left usable rather than disabled, the smaller of the two options
+this entry weighed, chosen to avoid new bilingual CSS for a notice-not-lockout
+state. Covered by `test_a_disabled_reader_sees_the_notice_immediately_on_sign_in`
+and `test_a_signed_out_identity_check_resolves_null_not_an_error`
+(`web/tests/test_frontend.py`).
+
+---
+
+### (original entry, kept for the cost it records) A disabled reader is not told until they ask a question
 
 **Where:** `Services.getIdentity` (`static/js/modules/services.js:328`) returns
 `null` for both 401 and 403, and `static/js/app.js:218` uses it only to decide
@@ -695,6 +716,25 @@ which is why they are written out rather than left in the prose above.
    three keys, so translating them is not a one-to-one mapping; the session-
    expired (841) and save-failure (866) messages need keys that do not exist
    yet.
+
+**Update 2026-08-17 — both live bugs fixed; the rest of this entry (identity
+field restructuring, signup capture, modal-vs-page) is still open.** The
+theme radio now reads `profile.preferences.theme` via a shared
+`UI.selectThemeRadio(form, profile)` helper (`static/js/modules/ui.js`),
+called from both `populateProfileForm` and the empty-profile reset in
+`handlers.js` rather than patched at each call site separately — the second
+site had no saved value to read (a genuinely profile-less account) so was
+never independently buggy, but shared the same fragile pattern. All 5
+hardcoded call sites now draw from `runtime.profile.*`: two new keys,
+`sessionExpired` and `loginRequired`, joined the three that already existed
+unused; the save-failure site (866) stopped interpolating the raw
+`error.message` into the reader-facing string at all — untranslatable and a
+minor detail leak — logging it via the existing `logError` pattern instead.
+Covered by a new theme-selection browser test in
+`test_profile_theme_integration.py` (the read-back gap this entry itself
+named) and `test_profile_flow_uses_the_i18n_catalogue_not_literals`
+(`web/tests/test_frontend_architecture.py`), which pins each call site to
+its i18n key and would fail on a reverted literal.
 
 **What it would disturb.** Every profile behaviour is pinned by tests that name
 it. `web/tests/test_profile_theme_integration.py` runs three browser tests —
