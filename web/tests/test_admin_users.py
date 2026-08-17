@@ -613,3 +613,248 @@ def test_sending_a_reset_is_gated(client):
     assert client.post(
         "/admin/api/users/test-user-id/reset-password", headers=AUTH
     ).status_code == 403
+
+
+# ── Ending sessions ────────────────────────────────────────────────────────────
+
+
+def test_a_revoke_records_intent_before_the_call_and_the_outcome_after(client):
+    response = client.post(
+        "/admin/api/users/test-user-id/revoke-sessions", headers=ADMIN
+    )
+    assert response.status_code == 200
+
+    entries = client.get(
+        "/admin/api/audit?target_type=user&target_id=test-user-id", headers=ADMIN
+    ).get_json()["entries"]
+    actions = [e["action"] for e in entries]
+    assert "user.sessions_revoke_requested" in actions
+    assert "user.sessions_revoke_accepted" in actions
+
+    ids = {e["after"]["operation_id"] for e in entries if e.get("after")}
+    assert len(ids) == 1, "the pair must share one operation_id"
+    assert response.get_json()["operation_id"] in ids
+
+
+def test_the_console_never_returns_a_generated_password(client):
+    """The design position this route exists to preserve: nobody, not even the
+    operator, ever sees the value that actually ends the sessions."""
+    response = client.post(
+        "/admin/api/users/test-user-id/revoke-sessions", headers=ADMIN
+    )
+    assert response.get_json() == {
+        "accepted": True, "operation_id": response.get_json()["operation_id"],
+    }
+
+
+def test_a_failed_revoke_is_recorded_as_failed_not_accepted(app, client):
+    app.config["_testing_auth_admin_dispatcher"].refuse_with = "auth_admin_failed"
+    response = client.post(
+        "/admin/api/users/test-user-id/revoke-sessions", headers=ADMIN
+    )
+    assert response.status_code == 502
+    assert response.get_json()["error"] == "auth_admin_failed"
+
+    actions = [e["action"] for e in
+               client.get("/admin/api/audit", headers=ADMIN).get_json()["entries"]]
+    assert "user.sessions_revoke_failed" in actions
+    assert "user.sessions_revoke_accepted" not in actions
+
+
+def test_an_ambiguous_revoke_failure_is_recorded_as_outcome_unknown_not_failed(app, client):
+    """A transport failure does not prove the mutation failed — GoTrue may
+    have already committed it. Recording that as an ordinary "failed" would
+    be a false entry on the one surface whose purpose is to be trustworthy
+    later."""
+    app.config["_testing_auth_admin_dispatcher"].refuse_with = "auth_admin_unreachable"
+    app.config["_testing_auth_admin_dispatcher"].refuse_ambiguous = True
+
+    response = client.post(
+        "/admin/api/users/test-user-id/revoke-sessions", headers=ADMIN
+    )
+    assert response.get_json()["outcome_unknown"] is True
+
+    actions = [e["action"] for e in
+               client.get("/admin/api/audit", headers=ADMIN).get_json()["entries"]]
+    assert "user.sessions_revoke_outcome_unknown" in actions
+    assert "user.sessions_revoke_failed" not in actions
+    assert "user.sessions_revoke_accepted" not in actions
+
+
+def test_revoking_sessions_refuses_when_the_actor_is_no_longer_admin(app, client):
+    """Re-checked immediately before the external call, not only at the gate —
+    an operator demoted mid-request should not still complete this."""
+    admin_row = next(
+        r for r in app.config["_testing_admin_backend"]._users if r["id"] == "test-admin-id"
+    )
+    admin_row["is_disabled"] = True
+    try:
+        response = client.post(
+            "/admin/api/users/test-user-id/revoke-sessions", headers=ADMIN
+        )
+        assert response.status_code == 409
+        assert response.get_json()["error"] == "actor_no_longer_administrator"
+    finally:
+        admin_row["is_disabled"] = False
+
+
+def test_a_revoke_for_an_unknown_account_is_refused(client):
+    assert client.post(
+        "/admin/api/users/test-nobody-id/revoke-sessions", headers=ADMIN
+    ).status_code == 404
+
+
+def test_revoking_sessions_rejects_a_nonempty_body(client):
+    response = client.post(
+        "/admin/api/users/test-user-id/revoke-sessions",
+        json={"password": "whatever"}, headers=ADMIN,
+    )
+    assert response.status_code == 422
+    assert response.get_json()["error"] == "unknown_field"
+
+
+def test_revoking_sessions_is_gated(client):
+    assert client.post("/admin/api/users/test-user-id/revoke-sessions").status_code == 401
+    assert client.post(
+        "/admin/api/users/test-user-id/revoke-sessions", headers=AUTH
+    ).status_code == 403
+
+
+# ── Changing an email address ─────────────────────────────────────────────────
+
+
+def test_an_email_change_records_intent_before_the_call_and_the_outcome_after(client):
+    response = client.post(
+        "/admin/api/users/test-user-id/change-email",
+        json={"email": "new-address@example.com"}, headers=ADMIN,
+    )
+    assert response.status_code == 200
+
+    entries = client.get(
+        "/admin/api/audit?target_type=user&target_id=test-user-id", headers=ADMIN
+    ).get_json()["entries"]
+    actions = [e["action"] for e in entries]
+    assert "user.email_change_requested" in actions
+    assert "user.email_change_accepted" in actions
+
+    requested = next(e for e in entries if e["action"] == "user.email_change_requested")
+    assert requested["before"] == {"email": "test@example.com"}
+
+    accepted = next(e for e in entries if e["action"] == "user.email_change_accepted")
+    assert accepted["after"]["email"] == "new-address@example.com"
+
+    ids = {e["after"]["operation_id"] for e in entries if e.get("after")}
+    assert len(ids) == 1
+    assert response.get_json()["operation_id"] in ids
+
+
+def test_a_successful_email_change_is_visible_on_the_next_load(client):
+    """Not just recorded — the account state itself must actually change, or a
+    success toast is followed by a stale view. Catches the in-memory
+    dispatcher recording a call without mutating the account it claims to."""
+    client.post(
+        "/admin/api/users/test-user-id/change-email",
+        json={"email": "new-address@example.com"}, headers=ADMIN,
+    )
+    account = client.get(
+        "/admin/api/users/test-user-id", headers=ADMIN
+    ).get_json()["user"]
+    assert account["email"] == "new-address@example.com"
+    assert account["email_identity_verified"] is False
+
+
+def test_a_failed_email_change_is_recorded_as_failed_not_accepted(app, client):
+    app.config["_testing_auth_admin_dispatcher"].refuse_with = "email_already_registered"
+    response = client.post(
+        "/admin/api/users/test-user-id/change-email",
+        json={"email": "admin@example.com"}, headers=ADMIN,
+    )
+    assert response.status_code == 409
+    assert response.get_json()["error"] == "email_already_registered"
+
+    actions = [e["action"] for e in
+               client.get("/admin/api/audit", headers=ADMIN).get_json()["entries"]]
+    assert "user.email_change_failed" in actions
+    assert "user.email_change_accepted" not in actions
+
+
+def test_an_ambiguous_email_change_failure_is_recorded_as_outcome_unknown(app, client):
+    app.config["_testing_auth_admin_dispatcher"].refuse_with = "auth_admin_unreachable"
+    app.config["_testing_auth_admin_dispatcher"].refuse_ambiguous = True
+
+    response = client.post(
+        "/admin/api/users/test-user-id/change-email",
+        json={"email": "new-address@example.com"}, headers=ADMIN,
+    )
+    assert response.get_json()["outcome_unknown"] is True
+    actions = [e["action"] for e in
+               client.get("/admin/api/audit", headers=ADMIN).get_json()["entries"]]
+    assert "user.email_change_outcome_unknown" in actions
+    assert "user.email_change_failed" not in actions
+
+
+def test_changing_email_refuses_a_self_target(client):
+    """The takeover primitive this specifically guards against: change an
+    account's email, then click the existing reset-password button. Only this
+    action refuses a self-target — revoke-sessions and reset-password do not,
+    because ending your own session or resetting your own password is not the
+    same risk."""
+    response = client.post(
+        "/admin/api/users/test-admin-id/change-email",
+        json={"email": "someone-else@example.com"}, headers=ADMIN,
+    )
+    assert response.status_code == 409
+    assert response.get_json()["error"] == "cannot_change_own_email"
+
+
+def test_changing_email_to_the_current_address_is_refused_as_a_no_op(client):
+    response = client.post(
+        "/admin/api/users/test-user-id/change-email",
+        json={"email": "TEST@EXAMPLE.COM"}, headers=ADMIN,
+    )
+    assert response.status_code == 400
+    assert response.get_json()["error"] == "same_email"
+
+
+def test_changing_email_rejects_a_value_with_no_at_sign(client):
+    response = client.post(
+        "/admin/api/users/test-user-id/change-email",
+        json={"email": "not-an-email"}, headers=ADMIN,
+    )
+    assert response.status_code == 422
+    assert response.get_json()["error"] == "invalid_email"
+
+
+def test_changing_email_rejects_a_non_string_or_missing_email(client):
+    assert client.post(
+        "/admin/api/users/test-user-id/change-email", json={}, headers=ADMIN,
+    ).status_code == 400
+    assert client.post(
+        "/admin/api/users/test-user-id/change-email", json={"email": 5}, headers=ADMIN,
+    ).status_code == 400
+
+
+def test_changing_email_rejects_an_unknown_field(client):
+    response = client.post(
+        "/admin/api/users/test-user-id/change-email",
+        json={"email": "new@example.com", "password": "x"}, headers=ADMIN,
+    )
+    assert response.status_code == 422
+    assert response.get_json()["error"] == "unknown_field"
+
+
+def test_an_email_change_for_an_unknown_account_is_refused(client):
+    assert client.post(
+        "/admin/api/users/test-nobody-id/change-email",
+        json={"email": "new@example.com"}, headers=ADMIN,
+    ).status_code == 404
+
+
+def test_changing_email_is_gated(client):
+    assert client.post(
+        "/admin/api/users/test-user-id/change-email", json={"email": "new@example.com"},
+    ).status_code == 401
+    assert client.post(
+        "/admin/api/users/test-user-id/change-email",
+        json={"email": "new@example.com"}, headers=AUTH,
+    ).status_code == 403

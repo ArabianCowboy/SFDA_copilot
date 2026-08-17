@@ -183,18 +183,58 @@ is submitted (`web/api/admin.py:299-303`). No route or RPC anywhere in the
 repository reaches `auth.users.email` (confirmed by a repo-wide search) — an
 email change is still genuinely unbuilt.
 
-**What it would disturb.** Both reach `auth.admin.*`, so both are the
-outside-Postgres case the audit design already anticipates: the mutation and its
-audit row cannot share a transaction, so they need intent-then-outcome — record
-the intent, perform the call, record what happened. An email change is also an
-account-takeover primitive when paired with a reset, so it wants confirmation to
-the *new* address rather than `email_confirm: true`, and it wants the old address
-kept in the audit row — otherwise the log cannot show what the account used to be.
+**Update 2026-08-17 — email change is now built too, with one deviation from
+this entry's own recommendation, made deliberately and disclosed rather than
+silently substituted.** `POST /admin/api/users/<user_id>/change-email`
+(`web/api/admin.py`) ships. This entry originally called for confirmation
+*to the new address* rather than `email_confirm: true` — but building that
+would mean a new pending-email column, a confirmation route, and its own
+email template, real scope beyond one action, and out of reach for what the
+Admin API itself supports in a single call anyway (its email-change path has
+no defer-until-confirmed flow at all; that only exists for a reader changing
+their own email through an authenticated session). Rather than build the
+larger thing or quietly ship `email_confirm: true` (which requires nothing
+and would look, on the surface, like the address was verified), the change
+takes effect **immediately** with `email_confirm: false`, disclosed plainly
+in the confirm dialog before an operator commits. Live-verified against the
+real project before shipping (not assumed from documentation): this does
+**not** lock the account out — `email_confirmed_at` is untouched, so a
+previously-confirmed account keeps signing in — but it does leave the
+identity's `email_verified` flag false for the new address, and the console
+now reads that flag directly (`admin_get_user`'s new
+`email_identity_verified` column) rather than continuing to show the old,
+now-stale confirmation timestamp as if it certified the current address.
 
-**Where it goes:** on the account detail view, not in the People table — see
-*Account detail view* under Planned work, which is now built and is where the
-reset button above actually lives. An email-change action, when built, belongs
-there too.
+**The account-takeover risk this entry named up front turned out to be the
+central design question**, surfaced sharply by an adversarial review before
+shipping: chained with the *existing* reset-password button, an unconfirmed
+email change is a complete impersonation primitive — change the victim's
+email, click reset, they never see it coming (this is exactly how Twitter's
+2020 breach worked). The mitigation built: `change-email`, uniquely among
+the three auth-admin actions on this page, refuses to target the operator's
+own account. `revoke-sessions` and the existing `reset-password` still do
+not, on the same reasoning `set_user_flags`'s self-change guard already
+established — the two also worth turning on but not yet done: enabling
+Supabase's `GOTRUE_MAILER_NOTIFICATIONS_EMAIL_CHANGED_ENABLED` project
+setting (notifies the *old* address as tamper-evidence — external config,
+not app code, same category as leaked-password-protection below) and
+tightening the shared `60/minute` admin rate limit specifically for these
+two destructive routes, both done (limiter applied per-route in
+`web/api/app.py`), but the mailer setting itself is still an open item for
+whoever holds the Supabase dashboard.
+
+**What it would disturb — confirmed, not just anticipated.** Both reach
+`auth.admin.*`, so both use the intent-then-outcome shape, now extended with
+a third outcome (`outcome_unknown`) for transport failures whose true result
+is genuinely unknown rather than provably failed. The old address is kept in
+the audit row (`before={"email": old}`), and — a real gap an adversarial
+review caught before shipping — the per-account audit table did not
+previously render `before`/`after` at all, so capturing the old address
+would have gone nowhere any operator could see it; it now does (mirroring
+what the global Activity tab already had).
+
+**Where it lives:** the account detail view, exactly as predicted — see
+*Account detail view* below.
 
 ---
 
@@ -406,26 +446,35 @@ any future account in this state.
 
 **Resolved.** `admin_set_user_flags` (migration
 `20260816121335_diff_based_admin_user_flags_audit.sql`) now derives its audit
-rows from the diff between before/after state exactly as `admin_update_profile`
-already did, ported rather than reinvented as this entry predicted. A combined
-`{role, is_disabled}` change writes **two** rows, one per field, deliberately —
-not the same shape as `admin_update_profile`'s single row, and the divergence
-was decided rather than defaulted: the per-account audit view
-(`static/js/admin/ui.js`) renders only an action name and a note, no
-before/after diff, so collapsing two simultaneous changes under one label would
-silently drop one of them on exactly the page built to show "what happened to
-this account." A no-op patch writes nothing, matching the reference. A
-caller-supplied `reason` is preserved on a role-only change too — it is a
-general note on the call, not a field reserved for disabling, and the first
-draft of this fix dropped it there before review caught it.
+rows from the diff between before-state and after-state rather than from
+whichever fields the request carried, exactly as `admin_update_profile`
+already did and as the entry below itself recommended once the sibling RPC
+set the precedent. A combined `{role, is_disabled}` change writes **two**
+audit rows — `user.role_change` and `user.disable`/`user.enable` — one per
+field, deliberately not the same shape as `admin_update_profile`'s single
+row: the per-account audit view (`static/js/admin/ui.js`) renders only an
+action name and a note, no before/after diff, so collapsing two simultaneous
+changes under one label would silently drop one of them on exactly the page
+built to show "what happened to this account." A field sent back at the
+value it already holds writes no row for that field, and a fully no-op call
+writes nothing at all — matching the reference. A caller-supplied `reason`
+is preserved on a role-only change too — it is a general note on the call,
+not a field reserved for disabling, and the first draft of this fix dropped
+it there before review caught it.
 
 Investigated and implemented by two independently delegated implementers
 (Antigravity/`gemini-3.7-flash-high` and OpenCode/`gpt-5.6-luna`) working from
 the same brief, whose designs disagreed on one-row-vs-two; adjudicated by
-reading the actual per-account UI rather than guessing. Covered by
-`web/tests/test_admin_users.py` (combined change, no-op, partial no-op, and
-reason-on-role-only-change). Applied live and verified against the deployed
-function body on the project (`yjjuudnsnjzhyqllsqrd`), not just committed.
+reading the actual per-account UI rather than guessing. Both behaviours are
+covered live: `test_a_single_call_changing_both_role_and_standing_records_both`
+asserts the two-row split (`web/tests/test_admin_users.py:233`), and
+`test_a_no_op_user_flags_edit_records_nothing` /
+`test_a_partial_no_op_records_only_the_field_that_moved`
+(`web/tests/test_admin_users.py:261,277`) assert the no-op case. The in-memory
+test double in `web/services/admin_store.py:600-625` mirrors the SQL shape
+rather than reimplementing it separately, so the two cannot drift. Applied
+live and verified against the deployed function body on the project
+(`yjjuudnsnjzhyqllsqrd`), not just committed.
 
 ---
 
@@ -1036,18 +1085,17 @@ than sequentially.
   question — visible or editable — was answered as editable:
   `static/js/admin/ui.js:938-943`, backed by `PATCH
   /admin/api/users/<id>/profile` and `admin_update_profile`.
-- **Zone 3, actions: mostly built.** Send-password-reset
-  (`static/js/admin/ui.js:956-959`), and promote/demote and enable/disable
+- **Zone 3, actions: built in full, 2026-08-17.** Send-password-reset
+  (`static/js/admin/ui.js:956-959`), promote/demote and enable/disable
   **moved here from the People table** as planned
-  (`static/js/admin/ui.js:961-977`). Two actions are deliberately still
-  missing, and the page says so itself rather than leaving an operator to
-  guess: `static/js/admin/ui.js:986-1003` renders an explicit "what is
-  missing" notice (`admin.account.absentRevoke`,
-  `admin.account.absentEmailChange`) for session revocation and email
-  change — which are exactly the two other open entries in this file
-  ("Ending a session, as distinct from disabling chat" below, and the
-  email-change half of "The console cannot change an email address..."
-  above), not new work this entry still owes.
+  (`static/js/admin/ui.js:961-977`), and — the two actions the "what is
+  missing" notice used to name, closing this zone out — end-sessions
+  (`#account-revoke-sessions`) and change-email (`#account-change-email`).
+  The notice itself is now a conditionally-rendered empty block rather than
+  deleted outright, so a future deferred action still has a home. See
+  "Ending a session, as distinct from disabling chat" and the email-change
+  half of "The console cannot change an email address..." above for what
+  shipped and what it cost.
 - **Zone 4, per-account audit: built.** `static/js/admin/ui.js:1010-1012`,
   backed by audit filtering in `web/api/admin.py:231-250,476-513`.
 - Route/RPC: `supabase/migrations/20260814175551_account_detail.sql:16-65`.
@@ -1055,28 +1103,66 @@ than sequentially.
 
 ---
 
-### Ending a session, as distinct from disabling chat
+### ~~Ending a session, as distinct from disabling chat~~ — BUILT and DEPLOYED 2026-08-17
 
-**Where:** `admin_set_user_flags` sets `profiles.is_disabled`, and
-`auth_required` (`web/api/app.py:351`) refuses new requests with 403
-`account_disabled`.
+**Resolved, in code.** `POST /admin/api/users/<user_id>/revoke-sessions`
+(`web/api/admin.py`) ships. **The actual mechanism is not
+`auth.admin.signOut(jwt, 'global')`** as this entry originally proposed —
+verified against GoTrue's Go source that no endpoint revokes sessions by
+user id alone, `signOut` needs the target's own live token, which the
+console never holds. The real mechanism GoTrue's Admin API exposes is a
+password rotation with no session context, which triggers the same
+`models.Logout` (full session wipe) as a side effect. So `revoke-sessions`
+rotates the account's password to a server-generated value that is
+discarded immediately — never logged, stored, or returned — purely to
+trigger that wipe. Chat access (`is_disabled`) is untouched, exactly as
+this entry specified. The intent-then-outcome shape is built as predicted,
+extended with a third outcome (`outcome_unknown`, alongside
+`accepted`/`failed`) for transport failures whose true result is
+genuinely unknown rather than provably failed — a refinement three
+adversarial reviews converged on independently. `DESIGN.md`'s no-danger-
+button constraint is answered the same way `send-reset` already answers
+it: confirm copy carries the weight, including the honest caveat that an
+already-issued access token remains valid until its own natural expiry.
 
-**Why it is wanted.** The flag is named accurately for what it does and that
-naming is deliberate — but it means the console has no answer to an actual
-incident. A disabled account keeps its Supabase access token until it expires,
-keeps its refresh token indefinitely, can still sign in, and can still reach
-PostgREST directly with the published anon key for anything RLS permits. If
-credentials are believed compromised, "disable chat" is not the response.
+Shipped alongside it, on the same page and by the same mechanism: `POST
+.../change-email` — see the email-address entry above, which this was
+built together with.
 
-**What it would disturb.** This is the first console action that reaches outside
-Postgres, which is precisely why the audit design already anticipates it: a
-database mutation and its audit row go in one transaction, but an Auth Admin call
-cannot, so it needs the intent-then-outcome shape — write the intent, perform the
-action, record what happened. `auth.admin.signOut(jwt, 'global')` revokes refresh
-tokens; banning is a separate `updateUserById({ ban_duration })`. Both are
-irreversible in the sense that matters (the reader is signed out of every device
-immediately), so this is the strongest case in the console for explicit
-confirmation — and `DESIGN.md:278` gives it no red button to lean on, by design.
+**Fully shipped, not just merged.** The new `admin_get_user` SQL
+(`supabase/migrations/20260816215103_admin_get_user_email_verified.sql`)
+was dry-run inside a rolled-back transaction first, then applied for real
+against the live project and re-verified against real data afterward. The
+application code reached production the same day: `main` was 79 commits
+behind on the production server, deployed in one pass (`fb1f0a3` →
+`dbfe151`), with `PUBLIC_BASE_URL` added to production's `.env` and
+confirmed on Supabase's redirect allow-list — required for password
+recovery, which this feature's own confirm-copy leans on for the
+"send reset" companion action. Verified live post-deploy: clean gunicorn
+restart, no startup errors, correct asset version served, and a real
+recovery-mail send against the production redirect URL. Covered by
+`web/tests/test_admin_users.py` and `web/tests/test_admin_browser.py`
+(65/65 admin browser tests passing, including the new dual-dialog
+change-email flow).
+
+**One false alarm worth recording, so it isn't re-investigated as a mystery
+bug later.** After deploy, admin-changing an account's email and then
+logging in with what looked like the right password intermittently failed
+with GoTrue's `invalid_credentials` — recoverable only by requesting a
+fresh password reset. Investigated properly rather than assumed: two
+independent adversarial passes (a live disposable-account test reproducing
+the *exact* reported round-trip sequence, and an independent code trace by
+a second model) both confirmed the email-change call never touches
+`encrypted_password` — proven by logging into the same disposable account
+with the same known password before and after the exact change sequence,
+repeatedly, with zero failures. The real account's own audit trail matched
+this: every failure paired with a password the operator was recalling from
+memory, and every fix was a password reset that supplied a password
+they'd just typed. **Conclusion: this is not a bug, and a reader does not
+need to reset their password after an admin-triggered email change** —
+the apparent correlation was an artifact of testing against an account
+that had already been through several password resets in this session
+alone.
 
 ---
 
@@ -1231,31 +1317,39 @@ files rather than a set needing review before any move.
 
 ---
 
-### The `.env` file carries keys nothing reads
+### ~~The `.env` file carries keys nothing reads~~ — FIXED 2026-08-16
 
-**Where:** `.env` at the project root (gitignored; loaded by
-`load_dotenv` in `web/utils/config_loader.py:30`). The code reads **exactly**
-these variables (verified 2026-08-15): `OPENAI_API_KEY`, `SUPABASE_URL`,
-`SUPABASE_ANON_KEY`, `SUPABASE_SECRET_KEY` (with legacy fallback
-`SUPABASE_SERVICE_ROLE_KEY`), `FLASK_SECRET_KEY`, `PUBLIC_BASE_URL`,
-`BEHIND_PROXY`, `DEBUG`, `LOG_LEVEL`, `WEB_CONCURRENCY`, `FLASK_TESTING`,
-`SUPABASE_PROJECT_REF`. Optional-with-default: `OMP_NUM_THREADS`,
-`MKL_NUM_THREADS`, `TOKENIZERS_PARALLELISM`.
+**Resolved, in two steps.** `README.md:329-361` and `.env.example` were
+re-verified against a fresh repo-wide grep of every `os.getenv`/`os.environ`
+read: they already listed exactly what the code reads — including
+`SUPABASE_AUTH_TIMEOUT`, added since this entry was first written — and
+README already stated outright that `FLASK_ENV`, `FLASK_DEBUG`, plain
+`SECRET_KEY`, and `DATABASE_URL` are dead. That half needed no further work.
 
-**What is wrong.** `README.md:305-318` documents a different set —
-`FLASK_ENV`, `FLASK_DEBUG`, `SECRET_KEY`, `DATABASE_URL` — none of which any
-code reads, which is a strong hint of what has accumulated in `.env`. A stale
-key is worse than a missing one: it implies a setting is in force when it is
-not, and the operator tuning the wrong file gets no warning.
+The project's actual `.env` is gitignored and was never read here — it
+carries real secrets — but a sanitized working copy (`.env copy`) was
+reviewed line by line against the same grep, and every variable it carried
+that nothing reads was identified and removed: `OPENAI_MODEL`,
+`EMBEDDING_MODEL`, `EMBEDDING_DIMENSION`, `MAX_TOKENS` (all superseded by
+`web/config.yaml`'s `openai.*` / `search_engine.*` keys, and already out of
+sync with the live values there), `SUPABASE_KEY`, `supabasePassword`,
+`FLASK_APP`, `PORT` (the real port is `config.yaml` -> `server.port`, and the
+`.env` copy's value didn't even match it), `CHUNK_SIZE`/`CHUNK_OVERLAP`
+(from `config.yaml` -> `data_processing.*` instead), and `API_KEY`. The
+legacy `SUPABASE_SERVICE_ROLE_KEY` was also dropped in favour of the
+`SUPABASE_SECRET_KEY` already present — the code prefers the latter whenever
+both are set (`web/utils/supabase_client.py:110`), so the legacy key was
+already inert and is one fewer non-revocable credential to track. The
+cleaned copy was then applied to the real `.env` by hand, since only whoever
+holds that file can safely do the reconciliation.
 
-**What fixing it costs.** Small and safe. Reconcile `.env` against the list
-above and `.env.example`: remove keys nothing reads, rename legacy ones
-(`SECRET_KEY` → `FLASK_SECRET_KEY`; `SUPABASE_SERVICE_ROLE_KEY` →
-`SUPABASE_SECRET_KEY` once the `sb_secret_…` key exists), and fix the README
-env section that lists the phantom variables. **`.env` is gitignored and never
-committed** — it carries real secrets, so handle it with care; `.env.example`
-is the version-controlled record of the agreed set and should match the code's
-reads exactly.
+One side effect worth recording: reviewing the sanitized copy in this
+conversation surfaced that it wasn't actually sanitized — it still carried
+live values for `OPENAI_API_KEY`, `SUPABASE_SECRET_KEY`, and
+`FLASK_SECRET_KEY` (also `SUPABASE_SERVICE_ROLE_KEY` and a raw
+`supabasePassword`, both now removed regardless). Those three should be
+treated as exposed and rotated independently of this cleanup — that is
+tracked as a follow-up outside this file, not blocking it.
 
 **This stopped being theoretical on 2026-08-16.** A local `.env`, untouched
 since 2026-05-30, was carrying exactly the dead set this entry describes
@@ -1270,38 +1364,64 @@ Confirms the severity this entry already claimed — updated after the fact.
 
 ---
 
-### Stale claims in README, and a one-time orphan-file sweep
+### ~~Stale claims in README, and a one-time orphan-file sweep~~ — FIXED 2026-08-16
 
-**Where:** `README.md` and the repo tree. The known dead files are already
-gone — `quiz_generator.py`, `web/utils/utils.py`, and `test_search.py` were
-deleted; their removal was recorded in `memory-bank/CHANGELOG.md`, which no
-longer exists — see git log for that history now, per the memory-bank review
-below. Verified 2026-08-15: no `.bak`/`.tmp`/`.log` leftovers and no stray
-build artifacts under `web/processed_data/`.
+**Resolved, both halves.** The README half was fixed earlier this session
+(see the `.env` entry above). The orphan-file sweep — the half this entry
+left open — is now done too: every git-tracked module under `web/` (32
+files) and `static/js/` (22 files) was checked for a real cross-file
+reference, not just presence in a directory.
 
-**Update 2026-08-16 — the README half is fixed; the sweep half is not.** Both
-stale sections named below were corrected this session: `README.md`'s
-env-var list now matches what the code actually reads and points at
-`.env.example` as the source of truth, and the `static/images/` line is gone
-from the project-structure tree (which also gained the admin-console files it
-was missing entirely). The orphan-file sweep itself — one grep pass over
-imports of every module under `web/` and `static/js/` to confirm nothing is
-orphaned — has not been run; that half is still open.
+**Method, since the risk was overreach.** A name match alone isn't proof of
+use — the risk this entry itself named was a file that's actually loaded by
+glob (`MODULE_FILENAMES`/`ADMIN_MODULE_FILENAMES` in `web/api/app.py:222-235`
+publish *every* file under `static/js/modules/` and `static/js/admin/` into
+the browser import map automatically) rather than by a literal import
+statement, which would make "not imported by name" a false positive. So
+every low-hit-count result was read in full before being called clean, not
+just counted.
 
-**What is wrong (orphan-sweep half, still open).** The split modules
-(`lexical_searcher`, `semantic_searcher`, `result_combiner`) and the dual
-OpenAI files (`openai_client.py` vs `openai_app.py`) are *deliberate*
-decomposition, not duplication — the sweep should prove that, not undo it.
+**Result: nothing orphaned.** On the Python side, every module traces back
+to `web/api/app.py` either directly or through `search_engine.py`'s
+composition (`search_index`, `lexical_searcher`, `semantic_searcher`,
+`result_combiner`, `query_processor`, `build_registry`, `pharma_constants`
+all confirmed as real imports, several via one-hit modules that were read
+individually to be sure). The dual OpenAI files are also both live:
+`openai_client.py` and `openai_app.py` are separately imported and serve
+different callers, confirming the entry's own suspicion that this is
+deliberate decomposition, not duplication. On the JS side, `app.js` and
+`admin.js` are the two template `<script type="module">` entry points
+(`index.html:688`, `admin.html:193`); every other file is `import`ed by name
+from another module — nothing exists only via the import-map glob without
+also being actually imported somewhere.
 
-**What fixing it costs.** One grep pass over imports of every module under
-`web/` and `static/js/` to confirm nothing is orphaned. The risk of the sweep
-is overreach — removing a file that looks unused but is actually loaded by
-glob (the `MODULE_FILENAMES` import-map glob in `static/js/` and any
-`import_module` by string) rather than by an import statement.
+**One unrelated thing the file listing surfaced.** A `web/api/.venv/`
+directory exists on disk — a second, nested virtualenv sitting inside
+`web/api/` beside the real project-root `.venv`. It is gitignored and
+0 files are tracked in it, so it is local disk clutter rather than a repo
+problem; not acted on here since it isn't part of what this entry scoped.
 
 ---
 
-### The docs quote three different `ASSET_VERSION` values, none of them current
+### ~~The docs quote three different `ASSET_VERSION` values, none of them current~~ — FIXED 2026-08-16
+
+**Resolved by the fix this entry itself recommended.** `DESIGN.md`'s "Do bump
+`ASSET_VERSION`" bullet no longer names a value at all — it now reads "Do bump
+`ASSET_VERSION` in `web/api/app.py` in any commit touching CSS or JS," which
+cannot go stale the way a quoted example (`"warm14"`, before that `"warm6"`)
+does on the very next commit that follows the instruction. `web/api/app.py`
+itself was at `warm30` by the time this was fixed, one more bump past the
+`warm28` this entry quoted when it was written — confirming the entry's own
+point about how fast the quoted value ages.
+
+`.impeccable/design.json`'s `narrative.dos` still cites an old value, left
+alone as this entry already concluded: it is generated, `detector/design-system.mjs`
+parses `DESIGN.md`'s frontmatter live rather than the sidecar, and it will
+correct itself whenever the sidecar is next regenerated.
+
+---
+
+### (original entry) The docs quote three different `ASSET_VERSION` values, none of them current
 
 **Where:** belongs with the documentation entries above. `web/api/app.py` is the
 live source and reads `warm28` (2026-08-16 — this entry's own previously-quoted

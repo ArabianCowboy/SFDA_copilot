@@ -202,6 +202,14 @@ runtime:
       actionResetRequested: "Started a password reset"
       actionResetAccepted: "Password reset accepted for sending"
       actionResetFailed: "Password reset could not be sent"
+      actionSessionsRevokeRequested: "Started ending sessions"
+      actionSessionsRevokeAccepted: "Sessions ended"
+      actionSessionsRevokeFailed: "Could not end sessions"
+      actionSessionsRevokeUnknown: "Ending sessions — outcome unknown"
+      actionEmailChangeRequested: "Started an email change"
+      actionEmailChangeAccepted: "Email address changed"
+      actionEmailChangeFailed: "Email change failed"
+      actionEmailChangeUnknown: "Email change — outcome unknown"
     account:
       back: "Back to all users"
       identityHeading: "Identity"
@@ -213,6 +221,14 @@ runtime:
       disabledAt: "Disabled at"
       confirmed: "Email confirmed"
       notConfirmed: "Not confirmed"
+      # `email_confirmed_at` above is when the account was FIRST confirmed and
+      # is never cleared by an admin email change — this reads the current
+      # email identity's own flag, so it cannot show a stale "confirmed" next
+      # to an address nobody verified.
+      currentEmailVerified: "Current address verified"
+      emailVerifiedYes: "Yes"
+      emailNotVerified: "No — not independently verified"
+      emailVerifiedUnknown: "Unknown"
       standing: "Standing"
       disabledBy: "Disabled by"
       disabledReason: "Reason"
@@ -236,10 +252,33 @@ runtime:
       # delivers that without anyone learning a secret.
       noPasswordHint: "An operator can send a reset link. Nobody here can set or see a password."
       # What is deliberately absent, said out loud — an operator mid-incident
-      # should not have to work out that the console cannot do these yet.
+      # should not have to work out that the console cannot do something yet.
+      # Empty today: this list is conditionally hidden when it has nothing in it.
       absentHeading: "Not available here yet"
-      absentRevoke: "Ending existing sessions. Disabling chat does not sign anyone out, and a password reset does not end other sessions either — use the Supabase dashboard."
-      absentEmailChange: "Changing an email address. With confirmation on, an address typed wrongly at signup cannot be reached by a reset either; that reader has to register again."
+      revokeSessions: "End all sessions"
+      # States the residual-JWT caveat plainly, in the confirm copy itself —
+      # this is the mechanism GoTrue's Admin API actually offers (a password
+      # rotation the operator never sees), not a made-up "sign out" button.
+      confirmRevoke: "End every session for {email}? This resets their password to a value nobody will see, which forces sign-in everywhere. It does not end a request already in flight — an access token already issued stays valid until it expires on its own."
+      revokeAccepted: "Sessions ended. New sign-ins will need a new password reset."
+      revokeFailed: "Could not end this account's sessions."
+      changeEmail: "Change email address"
+      emailPrompt: "New email address for {email}:"
+      # States the immediate/unverified caveat plainly: there is no reader-side
+      # confirmation step on this path, unlike a reader changing their own email.
+      confirmEmailChange: "Change {email} to {newEmail}? This takes effect immediately — there is no confirmation step, and the new address is not verified as reachable."
+      emailChangeAccepted: "Email address changed."
+      emailChangeFailed: "Could not change this account's email address."
+      email_already_registered: "Another account already uses that email address."
+      same_email: "That is already this account's email address."
+      invalid_email: "That does not look like an email address."
+      too_long: "That email address is too long."
+      cannot_change_own_email: "An administrator cannot change their own email address here."
+      actor_no_longer_administrator: "Your administrator access changed during this request. Sign in again."
+      auth_admin_unavailable: "Session and email changes are not configured on this deployment."
+      auth_admin_unreachable: "Could not reach the authentication provider. Nothing changed."
+      auth_admin_failed: "The authentication provider refused this change."
+      no_such_account: "This account no longer exists."
       saveProfile: "Save profile"
       # Says who sees it and that the change is kept. An operator rewriting
       # somebody else's description of themselves should know both.

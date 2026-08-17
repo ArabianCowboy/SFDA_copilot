@@ -812,15 +812,14 @@ def test_the_detail_says_a_password_can_never_be_set(browser_page: Page):
     expect(browser_page.locator("#account-send-reset")).to_be_visible()
 
 
-def test_the_detail_says_what_it_deliberately_cannot_do(browser_page: Page):
-    """An operator mid-incident should not have to work out for themselves that
-    the console cannot end a session — disabling chat does not sign anyone out."""
+def test_the_detail_no_longer_lists_anything_as_missing(browser_page: Page):
+    """Both actions this block used to name — ending sessions and changing an
+    email — have shipped. The block hides itself entirely when it has nothing
+    to say, rather than rendering empty scaffolding."""
     _open_people(browser_page)
     browser_page.locator(".admin-account-open", has_text="test@example.com").click()
 
-    absent = browser_page.locator("#account-absent")
-    expect(absent).to_be_visible()
-    expect(absent).to_contain_text("session", ignore_case=True)
+    expect(browser_page.locator("#account-absent")).to_have_count(0)
 
 
 def test_sending_a_reset_asks_first_and_reports_the_outcome(browser_page: Page):
@@ -855,6 +854,166 @@ def test_a_rate_limited_reset_gets_its_own_sentence(browser_page: Page):
     browser_page.locator("#account-send-reset").click()
 
     expect(browser_page.locator("#toast")).to_contain_text("allowance", ignore_case=True)
+
+
+def test_the_detail_offers_to_end_sessions_and_change_email(browser_page: Page):
+    _open_people(browser_page)
+    browser_page.locator(".admin-account-open", has_text="test@example.com").click()
+
+    expect(browser_page.locator("#account-revoke-sessions")).to_be_visible()
+    expect(browser_page.locator("#account-change-email")).to_be_visible()
+
+
+def test_ending_sessions_asks_first_and_reports_the_outcome(browser_page: Page):
+    _open_people(browser_page)
+    browser_page.route(
+        "**/admin/api/users/*/revoke-sessions",
+        lambda route: route.fulfill(
+            status=200, content_type="application/json",
+            body=json.dumps({"accepted": True, "operation_id": "op-1"})),
+    )
+    browser_page.locator(".admin-account-open", has_text="test@example.com").click()
+
+    browser_page.once("dialog", lambda dialog: dialog.accept())
+    browser_page.locator("#account-revoke-sessions").click()
+
+    expect(browser_page.locator("#toast")).to_contain_text("ended", ignore_case=True)
+
+
+def test_declining_the_session_end_confirmation_sends_nothing(browser_page: Page):
+    sent = []
+    _open_people(browser_page)
+    browser_page.route(
+        "**/admin/api/users/*/revoke-sessions",
+        lambda route: (sent.append(1), route.fulfill(status=200, body="{}")),
+    )
+    browser_page.locator(".admin-account-open", has_text="test@example.com").click()
+
+    browser_page.once("dialog", lambda dialog: dialog.dismiss())
+    browser_page.locator("#account-revoke-sessions").click()
+    browser_page.wait_for_timeout(300)
+
+    assert not sent, "a dismissed confirmation still sent the revocation"
+
+
+def test_an_outage_on_a_session_end_is_not_retried(browser_page: Page):
+    calls = []
+    _open_people(browser_page)
+    browser_page.route(
+        "**/admin/api/users/*/revoke-sessions",
+        lambda route: (calls.append(1), route.fulfill(
+            status=503, content_type="application/json",
+            body=json.dumps({"error": "storage_unavailable"}))),
+    )
+    browser_page.locator(".admin-account-open", has_text="test@example.com").click()
+    browser_page.once("dialog", lambda dialog: dialog.accept())
+    browser_page.locator("#account-revoke-sessions").click()
+    browser_page.wait_for_timeout(500)
+
+    assert calls == [1], f"a 503 on a mutation was sent {len(calls)} times"
+
+
+def _accept_email_change_dialogs(new_email: str, *, confirm: bool = True):
+    """Two sequential native dialogs fire in one click here, unlike every
+    other action on this page: a prompt for the new address, then a confirm.
+    Playwright's `once("dialog", ...)` only ever handles the first one, so
+    this needs `on(...)` with type branching instead."""
+    def handle(dialog):
+        if dialog.type == "prompt":
+            dialog.accept(new_email)
+        elif confirm:
+            dialog.accept()
+        else:
+            dialog.dismiss()
+    return handle
+
+
+def test_changing_email_prompts_confirms_and_reports_the_outcome(browser_page: Page):
+    _open_people(browser_page)
+    browser_page.route(
+        "**/admin/api/users/*/change-email",
+        lambda route: route.fulfill(
+            status=200, content_type="application/json",
+            body=json.dumps({"accepted": True, "operation_id": "op-1"})),
+    )
+    browser_page.locator(".admin-account-open", has_text="test@example.com").click()
+
+    browser_page.on("dialog", _accept_email_change_dialogs("new-address@example.com"))
+    browser_page.locator("#account-change-email").click()
+
+    expect(browser_page.locator("#toast")).to_contain_text("changed", ignore_case=True)
+
+
+def test_declining_the_email_change_confirmation_sends_nothing(browser_page: Page):
+    sent = []
+    _open_people(browser_page)
+    browser_page.route(
+        "**/admin/api/users/*/change-email",
+        lambda route: (sent.append(1), route.fulfill(status=200, body="{}")),
+    )
+    browser_page.locator(".admin-account-open", has_text="test@example.com").click()
+
+    browser_page.on("dialog", _accept_email_change_dialogs(
+        "new-address@example.com", confirm=False
+    ))
+    browser_page.locator("#account-change-email").click()
+    browser_page.wait_for_timeout(300)
+
+    assert not sent, "a dismissed confirmation still sent the change"
+
+
+def test_an_invalid_typed_email_is_rejected_before_any_request(browser_page: Page):
+    """Only one dialog should fire here at all: the client-side check refuses
+    before a confirm is ever shown, so a mistyped address never reaches a
+    confirmation dialog that names it."""
+    sent = []
+    _open_people(browser_page)
+    browser_page.route(
+        "**/admin/api/users/*/change-email",
+        lambda route: (sent.append(1), route.fulfill(status=200, body="{}")),
+    )
+    browser_page.locator(".admin-account-open", has_text="test@example.com").click()
+
+    browser_page.once("dialog", lambda dialog: dialog.accept("not-an-email"))
+    browser_page.locator("#account-change-email").click()
+    browser_page.wait_for_timeout(300)
+
+    assert not sent, "an invalid typed address still reached the network"
+    expect(browser_page.locator("#toast")).to_be_visible()
+
+
+def test_a_duplicate_email_gets_its_own_sentence(browser_page: Page):
+    _open_people(browser_page)
+    browser_page.route(
+        "**/admin/api/users/*/change-email",
+        lambda route: route.fulfill(
+            status=409, content_type="application/json",
+            body=json.dumps({"error": "email_already_registered"})),
+    )
+    browser_page.locator(".admin-account-open", has_text="test@example.com").click()
+
+    browser_page.on("dialog", _accept_email_change_dialogs("new-address@example.com"))
+    browser_page.locator("#account-change-email").click()
+
+    expect(browser_page.locator("#toast")).to_contain_text("already", ignore_case=True)
+
+
+def test_an_outage_on_an_email_change_is_not_retried(browser_page: Page):
+    calls = []
+    _open_people(browser_page)
+    browser_page.route(
+        "**/admin/api/users/*/change-email",
+        lambda route: (calls.append(1), route.fulfill(
+            status=503, content_type="application/json",
+            body=json.dumps({"error": "storage_unavailable"}))),
+    )
+    browser_page.locator(".admin-account-open", has_text="test@example.com").click()
+
+    browser_page.on("dialog", _accept_email_change_dialogs("new-address@example.com"))
+    browser_page.locator("#account-change-email").click()
+    browser_page.wait_for_timeout(500)
+
+    assert calls == [1], f"a 503 on a mutation was sent {len(calls)} times"
 
 
 # ── The account page is the one home for what is done to an account ──────────

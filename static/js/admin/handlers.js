@@ -312,6 +312,76 @@ export async function initPeopleTab(services) {
       return;
     }
 
+    if (action === 'revoke-sessions') {
+      /* Confirmed for the same reason send-reset is: no danger-button variant
+         exists, so the weight comes from the words and the record. The
+         confirm copy itself states the residual-JWT-validity caveat, so an
+         operator reads it before committing, not after. */
+      if (!window.confirm(I18n.t('admin.account.confirmRevoke', { email }))) return;
+
+      button.disabled = true;
+      try {
+        await services.revokeSessions(userId);
+        ErrorHandler.showToast(I18n.t('admin.account.revokeAccepted'));
+      } catch (error) {
+        const code = error instanceof AdminRequestError ? error.code : null;
+        const known = [
+          'auth_admin_unavailable', 'auth_admin_unreachable', 'auth_admin_failed',
+          'no_such_account', 'actor_no_longer_administrator',
+        ];
+        ErrorHandler.showToast(
+          known.includes(code) ? I18n.t(`admin.account.${code}`) : I18n.t('admin.account.revokeFailed'),
+          true,
+        );
+      } finally {
+        button.disabled = false;
+      }
+      await openAccount(userId);
+      return;
+    }
+
+    if (action === 'change-email') {
+      /* A prompt, not a form: matching the disable-reason input above rather
+         than inventing a modal this console has never had. Validated
+         client-side before the confirm step is even shown, so a mistyped
+         address never reaches a confirmation dialog that names it. */
+      const newEmail = window.prompt(I18n.t('admin.account.emailPrompt', { email }));
+      if (newEmail === null) return;
+      const trimmed = newEmail.trim();
+      if (!trimmed || !trimmed.includes('@')) {
+        ErrorHandler.showToast(I18n.t('admin.account.invalid_email'), true);
+        return;
+      }
+      /* States plainly that this takes effect immediately with no reader-side
+         confirmation step — the Admin API has no defer-until-confirmed flow,
+         and the operator should read that before committing, not discover it
+         after. */
+      if (!window.confirm(I18n.t('admin.account.confirmEmailChange', { email, newEmail: trimmed }))) {
+        return;
+      }
+
+      button.disabled = true;
+      try {
+        await services.changeEmail(userId, trimmed);
+        ErrorHandler.showToast(I18n.t('admin.account.emailChangeAccepted'));
+      } catch (error) {
+        const code = error instanceof AdminRequestError ? error.code : null;
+        const known = [
+          'email_already_registered', 'auth_admin_unavailable', 'auth_admin_unreachable',
+          'auth_admin_failed', 'no_such_account', 'same_email', 'invalid_email',
+          'cannot_change_own_email', 'actor_no_longer_administrator', 'too_long',
+        ];
+        ErrorHandler.showToast(
+          known.includes(code) ? I18n.t(`admin.account.${code}`) : I18n.t('admin.account.emailChangeFailed'),
+          true,
+        );
+      } finally {
+        button.disabled = false;
+      }
+      await openAccount(userId);
+      return;
+    }
+
     let patch = null;
 
     if (action === 'promote') {

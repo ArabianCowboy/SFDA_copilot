@@ -138,6 +138,10 @@ from web.services.account_recovery import (
     get_recovery_dispatcher,
     recovery_redirect_url,
 )
+from web.services.auth_admin import (
+    InMemoryAuthAdminDispatcher,
+    get_auth_admin_dispatcher,
+)
 from web.services.identity_cache import IdentityFlags, IdentityFlagsCache
 from web.services.settings_service import SettingsService
 from web.services.citations import (
@@ -201,7 +205,7 @@ SUPPORTED_FAQ_LANGS = ("en", "ar")
 # that mixes a fresh template with a stale module is worse than a stale page —
 # post-icon-migration it would render an <i class="bi"> with no icon font behind
 # it, or print a glyph NAME as text. MODULE_IMPORT_MAP below closes that.
-ASSET_VERSION = "warm30"
+ASSET_VERSION = "warm31"
 
 # Product release, rendered in the landing footer. Kept as one constant so
 # the number cannot drift between the page and the module headers.
@@ -943,6 +947,23 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
 
     app.config["recovery_dispatcher"] = recovery_dispatcher
 
+    # Session revocation and email change, both through Supabase Auth Admin.
+    # Same per-call resolution shape as the two dispatchers above, and for the
+    # same reason. The in-memory dispatcher is built with a *reference* to the
+    # same list the in-memory admin backend mutates, so a demo "change email"
+    # is visible on the very next account reload — see auth_admin.py's
+    # InMemoryAuthAdminDispatcher docstring for why that wiring matters.
+    app.config["_testing_auth_admin_dispatcher"] = InMemoryAuthAdminDispatcher(
+        users=app.config["_testing_admin_backend"]._users
+    )
+
+    def auth_admin_dispatcher():
+        if app.config["TESTING"]:
+            return app.config["_testing_auth_admin_dispatcher"]
+        return get_auth_admin_dispatcher()
+
+    app.config["auth_admin_dispatcher"] = auth_admin_dispatcher
+
     # Said once at startup rather than discovered at the first reset attempt.
     #
     # `POST /auth/recover` answers a generic 202 whatever happens, deliberately —
@@ -1081,6 +1102,14 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
     # afternoon of refreshes. Exempting it entirely would let a loop hammer the
     # database instead.
     limiter.limit("60 per minute")(admin_bp)
+    # These two can each end a reader's sessions or redirect their identity,
+    # not merely change a flag — the blueprint's 60/minute is sized for an
+    # operator's ordinary console use, not for what one compromised admin
+    # token could do to many accounts through these two routes specifically.
+    # Applied by endpoint name rather than at definition time in admin.py:
+    # the limiter object does not exist yet when that module is imported.
+    limiter.limit("10 per minute")(app.view_functions["admin.revoke_sessions"])
+    limiter.limit("10 per minute")(app.view_functions["admin.change_email"])
 
     workers = os.getenv("WEB_CONCURRENCY", "1")
     if workers != "1":
