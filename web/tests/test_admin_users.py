@@ -858,3 +858,199 @@ def test_changing_email_is_gated(client):
         "/admin/api/users/test-user-id/change-email",
         json={"email": "new@example.com"}, headers=AUTH,
     ).status_code == 403
+
+
+# ── Pagination ────────────────────────────────────────────────────────────────
+
+
+def _synthetic_user(index: int, email_prefix: str = "synthetic") -> dict:
+    """Construct a minimal user record matching InMemoryAdminBackend's schema."""
+    return {
+        "id": f"synthetic-user-{index:04d}",
+        "email": f"{email_prefix}_{index:04d}@example.com",
+        "role": "user",
+        "tier": "free",
+        "is_disabled": False,
+        "disabled_at": None,
+        "disabled_reason": None,
+        "created_at": f"2026-05-01T{index % 24:02d}:00:00+00:00",
+        "last_sign_in_at": None,
+        "email_identity_verified": True,
+    }
+
+
+def test_users_pagination_returns_ordered_slice_and_full_total(app, client):
+    """A paginated response must return only the requested slice while reporting
+    the full filtered total so the frontend can render an accurate 'Showing X–Y
+    of Z' range rather than confusing page length with total dataset size."""
+    backend_users = app.config["_testing_admin_backend"]._users
+    # 4 initial seeded users + 70 synthetic users = 74 total users (> 1 page of 50)
+    synthetic = [_synthetic_user(i) for i in range(1, 71)]
+    backend_users.extend(synthetic)
+
+    # Page 1 (offset 0, limit 50)
+    page1_resp = client.get("/admin/api/users?limit=50&offset=0", headers=ADMIN)
+    assert page1_resp.status_code == 200
+    page1 = page1_resp.get_json()
+    assert len(page1["users"]) == 50
+    assert page1["total"] == 74
+    assert page1["limit"] == 50
+    assert page1["offset"] == 0
+
+    # Page 2 (offset 50, limit 50)
+    page2_resp = client.get("/admin/api/users?limit=50&offset=50", headers=ADMIN)
+    assert page2_resp.status_code == 200
+    page2 = page2_resp.get_json()
+    assert len(page2["users"]) == 24
+    assert page2["total"] == 74
+    assert page2["limit"] == 50
+    assert page2["offset"] == 50
+
+    # Verify slices are distinct and together cover all 74 accounts in order
+    page1_ids = [u["id"] for u in page1["users"]]
+    page2_ids = [u["id"] for u in page2["users"]]
+    assert not set(page1_ids).intersection(set(page2_ids))
+    all_expected_ids = [u["id"] for u in backend_users]
+    assert page1_ids + page2_ids == all_expected_ids
+
+
+def test_users_search_pagination_preserves_query_and_reports_filtered_total(app, client):
+    """When a search matches more accounts than fit on one page, navigating across
+    pages must maintain the query filter 'q' and report 'total' as the filtered
+    match count — not the unfiltered database total."""
+    backend_users = app.config["_testing_admin_backend"]._users
+    # Seed 60 matching accounts and 15 non-matching accounts
+    matching = [_synthetic_user(i, email_prefix="qa_tester") for i in range(1, 61)]
+    unrelated = [_synthetic_user(i, email_prefix="unrelated") for i in range(1, 16)]
+    backend_users.extend(matching + unrelated)
+
+    # Page 1 of filtered search (q=qa_tester, limit=50, offset=0)
+    page1_resp = client.get("/admin/api/users?q=qa_tester&limit=50&offset=0", headers=ADMIN)
+    assert page1_resp.status_code == 200
+    page1 = page1_resp.get_json()
+    assert len(page1["users"]) == 50
+    assert page1["total"] == 60
+    assert all("qa_tester" in u["email"] for u in page1["users"])
+
+    # Page 2 of filtered search (q=qa_tester, limit=50, offset=50)
+    page2_resp = client.get("/admin/api/users?q=qa_tester&limit=50&offset=50", headers=ADMIN)
+    assert page2_resp.status_code == 200
+    page2 = page2_resp.get_json()
+    assert len(page2["users"]) == 10
+    assert page2["total"] == 60
+    assert all("qa_tester" in u["email"] for u in page2["users"])
+
+    # Verify no overlap between page 1 and page 2, and combined they equal all 60 matches
+    page1_emails = [u["email"] for u in page1["users"]]
+    page2_emails = [u["email"] for u in page2["users"]]
+    assert not set(page1_emails).intersection(set(page2_emails))
+    assert page1_emails + page2_emails == [u["email"] for u in matching]
+
+
+def test_users_pagination_clamping_and_overflow_cap(client):
+    """Limit is clamped to [1, 200] and offset clamped to [0, 1_000_000].
+    The 1,000,000 offset cap prevents Postgres int4 32-bit overflow (SQLSTATE 22003)
+    on adversarial deep offsets while avoiding 500 crashes."""
+    # Default parameters when omitted
+    default_body = client.get("/admin/api/users", headers=ADMIN).get_json()
+    assert default_body["limit"] == 50
+    assert default_body["offset"] == 0
+
+    # Limit lower bound clamp (0 and negative -> 1)
+    zero_limit = client.get("/admin/api/users?limit=0", headers=ADMIN).get_json()
+    assert zero_limit["limit"] == 1
+    assert len(zero_limit["users"]) == 1
+
+    neg_limit = client.get("/admin/api/users?limit=-10", headers=ADMIN).get_json()
+    assert neg_limit["limit"] == 1
+    assert len(neg_limit["users"]) == 1
+
+    # Limit upper bound clamp (> 200 -> 200)
+    large_limit = client.get("/admin/api/users?limit=500", headers=ADMIN).get_json()
+    assert large_limit["limit"] == 200
+
+    # Offset lower bound clamp (negative -> 0)
+    neg_offset = client.get("/admin/api/users?offset=-5", headers=ADMIN).get_json()
+    assert neg_offset["offset"] == 0
+
+    # Offset overflow cap (values beyond 1_000_000 clamped to 1_000_000)
+    overflow_offset = client.get("/admin/api/users?offset=10000000", headers=ADMIN).get_json()
+    assert overflow_offset["offset"] == 1_000_000
+    assert overflow_offset["users"] == []
+
+    # Offset at or beyond int4 max (2,147,483,647) clamped safely without 500
+    int4_overflow = client.get("/admin/api/users?offset=2147483648", headers=ADMIN).get_json()
+    assert int4_overflow["offset"] == 1_000_000
+    assert int4_overflow["users"] == []
+
+    # Malformed limit or offset returns 400 invalid_pagination
+    assert client.get("/admin/api/users?limit=abc", headers=ADMIN).status_code == 400
+    assert client.get("/admin/api/users?limit=abc", headers=ADMIN).get_json() == {
+        "error": "invalid_pagination"
+    }
+    assert client.get("/admin/api/users?offset=xyz", headers=ADMIN).status_code == 400
+    assert client.get("/admin/api/users?offset=xyz", headers=ADMIN).get_json() == {
+        "error": "invalid_pagination"
+    }
+
+
+def test_pagination_parameters_do_not_bypass_authorization(client):
+    """Pagination query parameters must not alter route authentication or authorization
+    checks; unauthenticated and unprivileged requests must still be rejected."""
+    assert client.get("/admin/api/users?limit=10&offset=0").status_code == 401
+    assert client.get("/admin/api/users?limit=10&offset=0", headers=AUTH).status_code == 403
+
+
+def test_audit_route_shares_identical_pagination_parsing_and_overflow_cap(client):
+    """Both /admin/api/users and /admin/api/audit share _parse_pagination_params,
+    guaranteeing identical defaults, boundary clamping, overflow capping, and
+    error contracts across endpoints."""
+    # Defaults
+    default_body = client.get("/admin/api/audit", headers=ADMIN).get_json()
+    assert default_body["limit"] == 50
+    assert default_body["offset"] == 0
+
+    # Limit clamping
+    assert client.get("/admin/api/audit?limit=0", headers=ADMIN).get_json()["limit"] == 1
+    assert client.get("/admin/api/audit?limit=-20", headers=ADMIN).get_json()["limit"] == 1
+    assert client.get("/admin/api/audit?limit=9999", headers=ADMIN).get_json()["limit"] == 200
+
+    # Offset clamping & overflow cap
+    assert client.get("/admin/api/audit?offset=-5", headers=ADMIN).get_json()["offset"] == 0
+    assert client.get("/admin/api/audit?offset=10000000", headers=ADMIN).get_json()["offset"] == 1_000_000
+    assert client.get("/admin/api/audit?offset=2147483648", headers=ADMIN).get_json()["offset"] == 1_000_000
+
+    # Malformed parameter rejection
+    assert client.get("/admin/api/audit?limit=bad", headers=ADMIN).status_code == 400
+    assert client.get("/admin/api/audit?limit=bad", headers=ADMIN).get_json() == {
+        "error": "invalid_pagination"
+    }
+    assert client.get("/admin/api/audit?offset=bad", headers=ADMIN).status_code == 400
+    assert client.get("/admin/api/audit?offset=bad", headers=ADMIN).get_json() == {
+        "error": "invalid_pagination"
+    }
+
+
+def test_parse_pagination_params_helper_direct():
+    """Direct unit test of _parse_pagination_params verifying clamping, defaults,
+    overflow cap, and exception contracts."""
+    from web.api.admin import _parse_pagination_params
+
+    class DummyRequest:
+        def __init__(self, args):
+            self.args = args
+
+    # Defaults
+    assert _parse_pagination_params(DummyRequest({})) == (50, 0)
+
+    # Clamping
+    assert _parse_pagination_params(DummyRequest({"limit": "0", "offset": "-10"})) == (1, 0)
+    assert _parse_pagination_params(DummyRequest({"limit": "500", "offset": "50"})) == (200, 50)
+    assert _parse_pagination_params(DummyRequest({"limit": "25", "offset": "10000000"})) == (25, 1_000_000)
+
+    # Value errors
+    with pytest.raises(ValueError):
+        _parse_pagination_params(DummyRequest({"limit": "invalid"}))
+    with pytest.raises(ValueError):
+        _parse_pagination_params(DummyRequest({"offset": "invalid"}))
+

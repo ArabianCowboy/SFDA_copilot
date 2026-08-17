@@ -239,12 +239,26 @@ def put_settings() -> Response:
     })
 
 
+def _parse_pagination_params(req: Any = None) -> Tuple[int, int]:
+    """Parse and clamp pagination query parameters from the request.
+
+    Clamps limit to [1, 200] (default 50) and offset to [0, 1_000_000] (default 0).
+    The 1,000,000 offset cap prevents Postgres int4 32-bit integer overflow
+    (SQLSTATE 22003) on adversarial deep offsets. Raises TypeError or ValueError
+    if either parameter cannot be parsed as an integer.
+    """
+    if req is None:
+        req = request
+    limit = min(max(int(req.args.get("limit", 50)), 1), 200)
+    offset = min(max(int(req.args.get("offset", 0)), 0), 1_000_000)
+    return limit, offset
+
+
 @admin_bp.route("/api/users")
 def users() -> Response:
     """Accounts, newest first, with their standing."""
     try:
-        limit = min(max(int(request.args.get("limit", 50)), 1), 200)
-        offset = max(int(request.args.get("offset", 0)), 0)
+        limit, offset = _parse_pagination_params(request)
     except (TypeError, ValueError):
         return jsonify({"error": "invalid_pagination"}), 400
 
@@ -744,8 +758,7 @@ def audit() -> Response:
     from web.services.audit import list_entries
 
     try:
-        limit = min(max(int(request.args.get("limit", 50)), 1), 200)
-        offset = max(int(request.args.get("offset", 0)), 0)
+        limit, offset = _parse_pagination_params(request)
     except (TypeError, ValueError):
         return jsonify({"error": "invalid_pagination"}), 400
 
