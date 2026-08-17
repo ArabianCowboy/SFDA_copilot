@@ -356,21 +356,30 @@ public `EXECUTE` on the `handle_new_user` signup trigger, pinning
 
 ---
 
-### An account outside the newest 50 cannot be found or administered — HALF FIXED 2026-08-15
+### ~~An account outside the newest 50 cannot be found or administered~~ — FIXED 2026-08-17
 
-**Update.** The **search box now exists**: `#people-search` in `admin.html`,
-debounced in `initPeopleTab`, passing `q` through to the RPC that always
-accepted it. So an account outside the newest 50 can now be *found*.
+**Resolved.** The search half (`#people-search`, debounced, passing `q`
+through to the RPC) landed 2026-08-15. The pager half — the more dangerous
+part, since a truncated result set looks identical to a complete one — landed
+2026-08-17: `handlers.js` now sends `limit`/`offset` and tracks them in a
+proper state machine (sequence-token + `AbortController` guarded), `ui.js`
+renders a real Next/Previous pager with an explicit "Showing N–M of T" range
+instead of the old bare `N / M` line, and the range/pager gain full EN/AR
+catalogue coverage and RTL mirroring. Two correctness gaps closed alongside
+it: `admin_list_users` now tie-breaks `ORDER BY created_at DESC, id DESC`
+(same-millisecond signups no longer produce non-deterministic page
+boundaries), and `p_search` is now escaped so literal `%`/`_`/`\` in a search
+term can't act as SQL wildcards or crash the RPC. A planned `pg_trgm` index on
+`auth.users.email` was attempted and deliberately deferred — blocked by a
+genuine Supabase permission wall (`postgres` is not a member of
+`supabase_auth_admin`, which owns `auth.users` on this hosted project), not a
+code issue, and safe to defer at today's row count. Full design record,
+including that deferral and its follow-up options, in
+[docs/pagination-implementation-roadmap.md](docs/pagination-implementation-roadmap.md).
 
-**The pager was not built.** `limit` and `offset` are still never sent, so a
-search matching more than 50 accounts silently shows the first 50 and says
-nothing about the rest — which is the more dangerous half of this entry, because
-a truncated result set looks exactly like a complete one. `total` is returned
-and rendered as a bare `N / M` line; that is a count, not a control. Closing
-this properly means a next-page control, or a stated "showing N of M" that reads
-as a limit rather than as a total.
+---
 
-The original diagnosis follows.
+### (original entry, diagnosis superseded above) An account outside the newest 50 cannot be found or administered
 
 **Where:** `static/js/admin/services.js` and `handlers.js` call
 `/admin/api/users` with no query string, so it serves its default page. Found
