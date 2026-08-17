@@ -58,6 +58,8 @@ logs/
 .env.development
 .env.test
 .env.production
+.env*copy*
+.env *
 
 # Data files
 *.csv
