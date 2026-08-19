@@ -22,6 +22,28 @@ const FRAME_SEPARATOR = /\r?\n\r?\n/;
 let identityInFlight = null;
 
 /**
+ * Mint an idempotency key for one logical submission.
+ *
+ * The SERVER cannot mint this. A server-minted id would be fresh on every
+ * retry, so the unique constraint it feeds would never fire and a resend after
+ * a dropped connection would file the same exchange twice. The id has to be
+ * stable across retries of one question, which only the sender knows.
+ *
+ * `crypto.randomUUID` is unavailable on insecure origins and in a few older
+ * browsers; the fallback is not cryptographically strong and does not need to
+ * be. Its only job is to be unlikely to collide with another submission by the
+ * same reader in the same session, and a collision costs a dropped duplicate
+ * rather than anything unsafe.
+ */
+export function newRequestId() {
+  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
+  });
+}
+
+/**
  * Parse one SSE frame into { event, data }.
  * Returns null for comment-only frames (keep-alive pings) and unparseable data.
  */
@@ -150,7 +172,7 @@ export const Services = {
    *  browser that lands on this path. The server accepting `lang` is only half
    *  the fix — nothing was sending it.
    */
-  async sendChatRequest(query, category, token, lang = 'en') {
+  async sendChatRequest(query, category, token, lang = 'en', requestId = null) {
     this.cancelChatRequest();
     this.chatAbortController = new AbortController();
 
@@ -161,7 +183,10 @@ export const Services = {
       method: 'POST',
       headers,
       signal: this.chatAbortController.signal,
-      body: JSON.stringify({ query, category, lang }),
+      body: JSON.stringify({
+        query, category, lang,
+        client_request_id: requestId || newRequestId(),
+      }),
     });
 
     if (!response.ok) {
@@ -189,7 +214,7 @@ export const Services = {
    * `on` is a map of event name -> handler, keeping this module free of any
    * dom/state/ui import (enforced by test_frontend_architecture.py).
    */
-  async streamChatRequest(query, category, token, lang, on = {}) {
+  async streamChatRequest(query, category, token, lang, on = {}, requestId = null) {
     this.cancelChatRequest();
     this.chatAbortController = new AbortController();
 
@@ -201,7 +226,10 @@ export const Services = {
       headers,
       cache: 'no-store',
       signal: this.chatAbortController.signal,
-      body: JSON.stringify({ query, category, lang }),
+      body: JSON.stringify({
+        query, category, lang,
+        client_request_id: requestId || newRequestId(),
+      }),
     });
 
     // Failures before the first frame still carry a real status code, so the

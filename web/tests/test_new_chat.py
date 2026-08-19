@@ -39,6 +39,10 @@ from web.services.result_combiner import SearchResult
 
 
 AUTH = {"Authorization": "Bearer fake_token"}
+# The owner the TESTING bypass resolves to. History is keyed by (owner,
+# conversation), so a bare-id read would return [] and every assertion below
+# that expects emptiness would pass without proving anything.
+OWNER = "test-user-id"
 ANSWER = "Applications must be submitted within 15 days [1]."
 
 
@@ -165,7 +169,11 @@ def test_a_late_append_cannot_resurrect_a_reset_conversation(app, client):
     client.post("/api/conversation/reset", json={}, headers=AUTH)
 
     store = app.config["conversations"]
-    store.append_turn(stale, "late question", "late answer", 6, 8000)
+    # owner_id, because that is what the streaming generator passes. Without it
+    # this writes to (None, stale) — a bucket production never uses — so the
+    # simulated late append would not land where a real one does and the
+    # assertion below would hold for the wrong reason.
+    store.append_turn(stale, "late question", "late answer", 6, 8000, owner_id=OWNER)
 
     ask(client, "second")
     assert app.config["llm_history"][-1] == [], "the late turn leaked into the new conversation"
@@ -297,11 +305,15 @@ def test_a_late_blocking_response_remains_reachable_by_undo(app, client):
     client.post("/api/conversation/reset", json={}, headers=AUTH)
 
     store = app.config["conversations"]
-    store.append_turn(stale, "late question", "late answer", 6, 8000)
+    # owner_id, because that is what the streaming generator passes. Without it
+    # this writes to (None, stale) — a bucket production never uses — so the
+    # simulated late append would not land where a real one does and the
+    # assertion below would hold for the wrong reason.
+    store.append_turn(stale, "late question", "late answer", 6, 8000, owner_id=OWNER)
 
     response = client.post("/api/conversation/reset", json={"undo": True}, headers=AUTH)
     assert response.get_json()["restored"] is True
-    assert any(m["content"] == "late question" for m in store.get(stale))
+    assert any(m["content"] == "late question" for m in store.get(stale, owner_id=OWNER))
 
 
 def test_forget_drops_the_conversation_set_aside(app, client):
@@ -312,7 +324,7 @@ def test_forget_drops_the_conversation_set_aside(app, client):
     client.post("/api/conversation/reset", json={}, headers=AUTH)
     client.post("/api/conversation/reset", json={"forget": True}, headers=AUTH)
 
-    assert app.config["conversations"].get(original) == []
+    assert app.config["conversations"].get(original, owner_id=OWNER) == []
     with client.session_transaction() as flask_session:
         assert flask_session.get("prev_conv_id") is None
 
@@ -327,7 +339,7 @@ def test_forget_drops_the_blocking_paths_set_aside_history(app, client):
     client.post("/api/conversation/reset", json={}, headers=AUTH)
     client.post("/api/conversation/reset", json={"forget": True}, headers=AUTH)
 
-    assert app.config["conversations"].get(original) == []
+    assert app.config["conversations"].get(original, owner_id=OWNER) == []
     with client.session_transaction() as flask_session:
         assert flask_session.get("prev_conv_id") is None
 
@@ -348,7 +360,7 @@ def test_a_second_reset_drops_the_first_ones_leftover(app, client):
     ask(client, "second")
     client.post("/api/conversation/reset", json={}, headers=AUTH)
 
-    assert app.config["conversations"].get(first) == []
+    assert app.config["conversations"].get(first, owner_id=OWNER) == []
 
 
 def test_logout_purges_the_conversation_set_aside(app, client):
@@ -365,7 +377,7 @@ def test_logout_purges_the_conversation_set_aside(app, client):
     client.post("/api/conversation/reset", json={}, headers=AUTH)
     client.post("/auth/logout")
 
-    assert app.config["conversations"].get(original) == []
+    assert app.config["conversations"].get(original, owner_id=OWNER) == []
     with client.session_transaction() as flask_session:
         assert flask_session.get("prev_conv_id") is None
 
@@ -433,7 +445,7 @@ def test_reset_migrates_a_pre_migration_readers_active_history(app, client):
         assert flask_session.get("chat_history") is None
         prev_id = flask_session.get("prev_conv_id")
         assert prev_id, "the legacy history must still be reachable, not dropped"
-    assert app.config["conversations"].get(prev_id) == legacy
+    assert app.config["conversations"].get(prev_id, owner_id=OWNER) == legacy
 
     response = client.post("/api/conversation/reset", json={"undo": True}, headers=AUTH)
     assert response.get_json()["restored"] is True
@@ -466,7 +478,7 @@ def test_a_stray_legacy_cookie_history_does_not_override_the_stores_own_entry(ap
         # still sitting in the cookie).
         assert "chat_history" not in flask_session
         assert "prev_chat_history" not in flask_session
-    history = app.config["conversations"].get(conv_id)
+    history = app.config["conversations"].get(conv_id, owner_id=OWNER)
     assert all(m["content"] != "orphaned" for m in history)
 
 
@@ -493,7 +505,7 @@ def test_an_ordinary_question_migrates_a_dangling_legacy_undo_history(app, clien
         assert "prev_chat_history" not in flask_session, "still riding the cookie"
         prev_id = flask_session.get("prev_conv_id")
         assert prev_id, "the set-aside history must still be reachable, not dropped"
-    assert app.config["conversations"].get(prev_id) == legacy
+    assert app.config["conversations"].get(prev_id, owner_id=OWNER) == legacy
 
     # And it's still genuinely undoable, not merely evicted from the cookie.
     response = client.post("/api/conversation/reset", json={"undo": True}, headers=AUTH)
@@ -586,7 +598,7 @@ def test_the_session_cookie_stays_under_the_browsers_limit_with_incompressible_c
         conv_id = flask_session["conv_id"]
         assert "chat_history" not in flask_session
         assert "prev_chat_history" not in flask_session
-    history = app.config["conversations"].get(conv_id)
+    history = app.config["conversations"].get(conv_id, owner_id=OWNER)
     assert history and history[0]["content"] == incompressible
 
 
