@@ -652,6 +652,33 @@ def test_hydration_never_overwrites_a_window_that_already_has_turns(app):
     assert [m["content"] for m in store.get("c1", owner_id=OWNER)] == ["q1", "a1", "q2", "a2"]
 
 
+# ── Ship state ──────────────────────────────────────────────────────────────
+
+def test_persistence_and_resume_both_default_off():
+    """Neither half turns itself on, and each waits for a different thing.
+
+    `CHAT_PERSISTENCE_ENABLED` waits for the MIGRATION. The schema ships as an
+    unapplied .sql file, so on a deployment with the code and not the tables
+    every RPC answers "function does not exist" — a persistence_unavailable
+    frame and a failure toast under every answer the assistant gives.
+
+    `CHAT_RESUME_LATEST_SESSION` waits for the TRANSCRIPT (step 6). Until it
+    hydrates from these rows, resuming shows a returning reader a blank screen
+    backed by a model that remembers.
+
+    Read off a non-testing app, because under TESTING the in-memory backend is
+    selected unconditionally and would hide the production default.
+    """
+    from web.api.app import _configure_app
+    from flask import Flask
+
+    application = Flask(__name__)
+    _configure_app(application, testing=False)
+
+    assert application.config["CHAT_PERSISTENCE_ENABLED"] is False
+    assert application.config["CHAT_RESUME_LATEST_SESSION"] is False
+
+
 # ── The archive ─────────────────────────────────────────────────────────────
 
 def test_the_archive_records_a_turn_under_pseudonymous_keys(client, backend, monkeypatch):

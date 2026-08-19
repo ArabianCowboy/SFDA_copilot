@@ -950,7 +950,20 @@ def _configure_app(app: Flask, testing: bool) -> None:
         # A deploy switch, not a test switch. Off means chat still answers from
         # the in-RAM window exactly as it did before durable history existed —
         # which is what a deployment without a service-role key gets anyway.
-        CHAT_PERSISTENCE_ENABLED=config.get("server", "chat_persistence", True),
+        #
+        # DEFAULT OFF UNTIL THE MIGRATION IS APPLIED, and the ordering is the
+        # whole reason. The schema ships as an unapplied .sql file
+        # (supabase/README.md routes migrations through MCP apply_migration
+        # against the live project), so on a deployment that has the code but
+        # not the tables, every RPC call answers "function does not exist" —
+        # which becomes a persistence_unavailable frame and a "could not be
+        # saved to your history" toast under EVERY answer the assistant gives.
+        # A feature defaulting on before its schema exists is a feature that
+        # ships as a visible error.
+        #
+        # Turn it on in config.yaml as `server.chat_persistence: true` once
+        # `list_migrations` shows the migration applied.
+        CHAT_PERSISTENCE_ENABLED=config.get("server", "chat_persistence", False),
         # How much of a stored conversation comes back on hydration. Bounded
         # because an unbounded restore meets citations.js's 100-answer tracking
         # cap and drops the citation controls off the oldest answers without
@@ -1276,7 +1289,7 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
         """
         if app.config["TESTING"]:
             return app.config["_testing_chat_backend"]
-        if not app.config.get("CHAT_PERSISTENCE_ENABLED", True):
+        if not app.config.get("CHAT_PERSISTENCE_ENABLED", False):
             return None
         return get_chat_backend()
 

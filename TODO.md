@@ -1215,7 +1215,31 @@ alone.
 
 ---
 
-### Save chat sessions per user
+### Save chat sessions per user — MOSTLY BUILT 2026-08-20, NOT YET LIVE
+
+> **Status in one line:** steps 1-4 of the plan are built, committed and green
+> (461 server, 204 browser); the schema is written but **not applied**, and both
+> feature flags ship **off**, so nothing about this is user-visible yet.
+>
+> **Deliberately not struck through.** The convention in this file is that a
+> struck heading means a reader can see the difference. Here they cannot: with
+> `server.chat_persistence` off and the migration unapplied, chat behaves
+> exactly as it did before. Marking it done would also lose the tracking for
+> steps 5-8, which are the half that reaches the screen.
+>
+> **The three things that turn it on, in order.** They are ordered because each
+> one is unsafe before the one above it:
+> 1. Apply `supabase/migrations/20260818120000_chat_session_persistence.sql`
+>    through MCP `apply_migration`, then rename the file to the version
+>    `list_migrations` reports (`supabase/README.md`). Verify `chat_append_turn`
+>    round-trips and that the `service_role` revokes did not break it — see the
+>    VERIFY AT APPLY TIME note in the migration.
+> 2. Set `server.chat_persistence: true`. Turns are now recorded. Still nothing
+>    visible: the reader's screen is unchanged.
+> 3. Build step 6 (transcript hydration), then set
+>    `server.chat_resume_latest_session: true`. This is the step that makes the
+>    feature real, and the flag must not precede it — see the update below.
+
 
 **Where:** Today a conversation is keyed to a cookie, not to an account.
 Server-side: `ConversationStore` (`web/services/conversation_store.py`), created
@@ -1465,6 +1489,14 @@ constraints, grants or runtime.
 **One gap accepted knowingly**, to fix before the resume flag turns on: with it on, ending a
 conversation and then logging out *before asking anything else* loses the reset, because the
 purged cookie makes the next visit look like a new device.
+
+**Late catch, after the branch was already pushed: `chat_persistence` defaulted ON.** With
+the schema unapplied, that meant a deploy of this code would have called RPCs that do not
+exist, turning every single answer into a "could not be saved to your history" toast. A
+feature that defaults on before its schema exists ships as a visible error. Now defaults
+off, pinned by `test_persistence_and_resume_both_default_off`, which reads the flags off a
+non-testing app because TESTING selects the in-memory backend unconditionally and would have
+hidden the production default.
 
 **And one claim this work cannot yet back.** The RLS policies are unexercised. The service
 role bypasses RLS, so every green test proves the *application's* owner filtering, not the
