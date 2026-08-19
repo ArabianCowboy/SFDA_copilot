@@ -8,7 +8,7 @@ import { DOMCache, ErrorHandler, logError } from './dom.js';
 import { AppState } from './state.js';
 import { AuthView } from './auth-view.js';
 import { UI } from './ui.js';
-import { Services, RECOVERY_STORAGE_KEY } from './services.js';
+import { Services, RECOVERY_STORAGE_KEY, newRequestId } from './services.js';
 import { ThemeManager } from './theme.js';
 import { RobotStateManager } from './robot.js';
 import { I18n } from './i18n.js';
@@ -238,10 +238,15 @@ export const Handlers = {
         return;
       }
 
+      /* Minted HERE, once per logical submission, so a streaming attempt that
+         falls back to the blocking route carries the SAME id. Minting inside
+         each path would make the two look like two different questions to the
+         server and file the exchange twice. */
+      const requestId = newRequestId();
       if (CONFIG.STREAMING && 'body' in Response.prototype) {
-        await this.streamChat(queryText, category, token);
+        await this.streamChat(queryText, category, token, requestId);
       } else {
-        await this.blockingChat(queryText, category, token);
+        await this.blockingChat(queryText, category, token, requestId);
       }
     } catch (error) {
       UI.toggleTypingIndicator(false);
@@ -415,7 +420,7 @@ export const Handlers = {
    *  passages themselves arrive on the terminal `final` frame — there is no
    *  honest way to present them as an answer's sources before the answer
    *  exists, and doing so is what put eight cards under a refusal. */
-  async streamChat(queryText, category, token) {
+  async streamChat(queryText, category, token, requestId = null) {
     const handle = UI.beginStreamingMessage();
     /* Stamped at the start so every exit below can ask whether the
        conversation this answer belongs to still exists. */
@@ -446,9 +451,15 @@ export const Handlers = {
           UI.followStream();
         },
         suggestions: (d) => { handle.suggested = d.suggested_questions || []; },
-        error: (d) => { failed = d; },
+        /* FIRST failure wins, not last. Two error frames can arrive in one
+           stream — a persistence write that did not land, then a suggestions
+           call that also failed — and the second is always the less
+           informative one. Overwriting meant a reader whose answer merely
+           went unsaved was told the message failed to send, which is both
+           wrong and more alarming than the truth. */
+        error: (d) => { failed = failed || d; },
         done: () => { /* terminal; the reader loop ends on its own */ },
-      });
+      }, requestId);
     } catch (error) {
       /* A New chat ended this conversation, rather than the reader pressing
          Stop. The bubble is already leaving the transcript, and finishing it
@@ -520,8 +531,33 @@ export const Handlers = {
       } else {
         UI.markStreamIncomplete(handle, 'error');
       }
-      ErrorHandler.showToast(I18n.t('chat.sendFailed'), true);
-      RobotStateManager.showError();
+
+      /* Two different failures, and they are owed different words. A history
+         write that did not land says nothing about the answer above it — the
+         reader has a complete, normalized, correctly cited response — so
+         calling it "failed to send" describes the wrong thing entirely. */
+      ErrorHandler.showToast(
+        I18n.t(failed?.code === 'persistence_unavailable'
+          ? 'chat.notSaved'
+          : 'chat.sendFailed'),
+        true,
+      );
+
+      /* And the mascot stays out of it when there IS an answer. An error state
+         under a complete, cited answer contradicts the answer — the reader sees
+         the assistant declaring failure over a response it just finished
+         delivering. It fires only where the failure actually cost them
+         something: before `final`, where there is no answer.
+
+         The else is not optional. Suppressing showError() without scheduling a
+         return to idle left Sunny talking forever: this branch returns before
+         the returnToIdle() at the end of the happy path, so the animation had
+         nothing to end it. */
+      if (!handle.final) {
+        RobotStateManager.showError();
+      } else {
+        RobotStateManager.returnToIdle(4000);
+      }
       return;
     }
 
@@ -559,7 +595,7 @@ export const Handlers = {
   },
 
   /** Fallback for browsers without streaming bodies, or CONFIG.STREAMING off. */
-  async blockingChat(queryText, category, token) {
+  async blockingChat(queryText, category, token, requestId = null) {
     const generation = resetGeneration;
     const thinkingTimer = setTimeout(() => {
       RobotStateManager.startThinking();
@@ -567,7 +603,7 @@ export const Handlers = {
     }, 800);
 
     try {
-      const data = await Services.sendChatRequest(queryText, category, token, I18N_LANG);
+      const data = await Services.sendChatRequest(queryText, category, token, I18N_LANG, requestId);
 
       /* `sendChatRequest` sets `Services.chatAbortController` exactly as the
          streaming path does, so `cancelChatRequest` aborts this request too and
@@ -585,6 +621,16 @@ export const Handlers = {
         cited: data.cited ?? null,
         retrieved: data.retrieved ?? (data.sources || []).length,
       });
+
+      /* The blocking route reports the same auxiliary failure the streaming
+         route sends as an `error` frame — it just has a JSON body to say it in.
+         `=== false` rather than falsiness: an older server omits the field
+         entirely, and treating "did not say" as "did not save" would toast a
+         failure on every answer. The mascot stays out of it for the same reason
+         it does on the streaming path — there is a complete answer on screen. */
+      if (data.persisted === false) {
+        ErrorHandler.showToast(I18n.t('chat.notSaved'), true);
+      }
       RobotStateManager.returnToIdle(4000);
     } finally {
       clearTimeout(thinkingTimer);

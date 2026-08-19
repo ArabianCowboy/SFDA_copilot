@@ -15,6 +15,9 @@ runtime:
     sendAria: "Send message"                            # frozen
     cancelAria: "Cancel message"                         # frozen
     sendFailed: "Failed to send message."                # frozen
+    # Distinct from sendFailed on purpose: the answer above this toast is
+    # complete and correctly cited. What did not happen is the filing.
+    notSaved: "This answer could not be saved to your history."
     cancelled: "Chat request cancelled."                 # frozen
     loginRequired: "Please log in to chat with the AI."  # frozen
     sessionUnverified: "Unable to verify your session. Please try again."  # frozen

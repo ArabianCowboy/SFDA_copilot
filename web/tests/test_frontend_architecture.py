@@ -26,6 +26,26 @@ def test_handlers_own_user_facing_service_failures():
     # asserted is that handlers.js — not services.js — surfaces the failure.
     assert "ErrorHandler.showToast(I18n.t('chat.sendFailed')" in source
 
+    # A key present in both catalogues but read by nothing is a failure mode
+    # this repo has shipped twice, and the parity test cannot catch it — it
+    # only proves the Arabic side has whatever the English side has. Both chat
+    # paths surface a persistence failure, so both must reach the key.
+    assert "'chat.notSaved'" in source
+    assert source.count("'chat.notSaved'") >= 2, (
+        "the streaming and blocking paths each report a failed history write"
+    )
+
+    # FIRST error wins. A stream can carry two error frames — a history write
+    # that did not land, then a suggestions call that also failed — and the
+    # second is always the less informative one. Assigning each in turn told a
+    # reader whose answer merely went unsaved that their message failed to send.
+    assert "failed = failed || d" in source, "a later error frame must not mask the first"
+
+    # Suppressing showError() under a complete answer is only half the fix: the
+    # failure branch returns before the happy path's returnToIdle(), so without
+    # its own call the mascot animates forever.
+    assert "RobotStateManager.returnToIdle(4000)" in source
+
 
 def test_profile_flow_uses_the_i18n_catalogue_not_literals():
     """Five call sites in the profile flow used to pass raw English literals

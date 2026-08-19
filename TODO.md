@@ -1215,7 +1215,31 @@ alone.
 
 ---
 
-### Save chat sessions per user
+### Save chat sessions per user — MOSTLY BUILT 2026-08-20, NOT YET LIVE
+
+> **Status in one line:** steps 1-4 of the plan are built, committed and green
+> (461 server, 204 browser); the schema is written but **not applied**, and both
+> feature flags ship **off**, so nothing about this is user-visible yet.
+>
+> **Deliberately not struck through.** The convention in this file is that a
+> struck heading means a reader can see the difference. Here they cannot: with
+> `server.chat_persistence` off and the migration unapplied, chat behaves
+> exactly as it did before. Marking it done would also lose the tracking for
+> steps 5-8, which are the half that reaches the screen.
+>
+> **The three things that turn it on, in order.** They are ordered because each
+> one is unsafe before the one above it:
+> 1. Apply `supabase/migrations/20260818120000_chat_session_persistence.sql`
+>    through MCP `apply_migration`, then rename the file to the version
+>    `list_migrations` reports (`supabase/README.md`). Verify `chat_append_turn`
+>    round-trips and that the `service_role` revokes did not break it — see the
+>    VERIFY AT APPLY TIME note in the migration.
+> 2. Set `server.chat_persistence: true`. Turns are now recorded. Still nothing
+>    visible: the reader's screen is unchanged.
+> 3. Build step 6 (transcript hydration), then set
+>    `server.chat_resume_latest_session: true`. This is the step that makes the
+>    feature real, and the flag must not precede it — see the update below.
+
 
 **Where:** Today a conversation is keyed to a cookie, not to an account.
 Server-side: `ConversationStore` (`web/services/conversation_store.py`), created
@@ -1280,6 +1304,205 @@ CSS (`web/tests/test_css_contract.py`), and an `ASSET_VERSION` bump.
 indefinitely or subject to user-driven deletion / export ("answer receipts").
 And how active SSE streaming interacts with background session switching if a
 reader navigates to an older chat while a generation is in-flight.
+
+**Update 2026-08-18 — planned, not yet built.** A full design record now exists
+in [docs/chat-persistence-implementation-roadmap.md](docs/chat-persistence-implementation-roadmap.md),
+synthesised from two independent delegated designs (Antigravity
+`gemini-3.7-flash-high` for community practice and failure modes, OpenCode
+`gpt-5.6-luna` at xhigh for an independent schema) plus current Supabase
+documentation, with every claim about this repository re-verified against the
+source before being built on — two of the research pass's ranked risks turned out
+to be already handled here and are recorded as such rather than carried forward.
+
+Four things it establishes that this entry did not know:
+
+- **Phase 1 cannot be as invisible as proposed above.** Hydrating the transcript
+  from persisted messages *is* the payoff, because it is what lets
+  `neutraliseRestoredCitations` be replaced by real citation rehydration. A
+  restored answer currently keeps its prose and loses its evidence.
+- **A stored `chunk_id` is not a citation.** Builds are versioned and swappable
+  (`build_registry.py`), so a persisted source needs a content hash and a
+  `corpus_revision`, and must fail closed to an explicit unavailable state — never
+  fall back to document/page, which can plausibly match the wrong passage.
+- **The logout guarantee changes.** Durable per-account history must survive a
+  sign-out that today destroys it. Decided 2026-08-18: logout clears the cookie
+  and the in-RAM cache only, retention ≥ 1 year, with administrator cleanup.
+- **The admin analysis RPC reverses a written position.** *"Know what people
+  actually ask — without reading anyone's conversation"* (above) argues for an
+  identity-free aggregate table instead, and its reasons survive the decision to
+  build cross-user transcript access anyway. Recorded as a reversal, with the
+  disclosure it now owes left open as a decision.
+
+**Revision 2, after an adversarial review pass.** The plan was reviewed by two
+external readers without the codebase and one adversarial pass with it. That pass
+found a bug the first revision would have shipped — `conv_id` is
+`uuid.uuid4().hex` (`app.py:559,1319,1495,1615`), 32 chars with no dashes, and a
+Postgres `uuid` column returns the canonical dashed form, so every equality check
+across the boundary fails silently — plus an unimplementable requirement (a hash of
+the full chunk text, from a payload that carries only a 320-char snippet), a false
+claim about the isolation suite, and a prompt-corruption path where `_truncate`'s
+strict `[u,a,u,a]` assumption meets an interior unpaired row.
+
+It also argued successfully for **deleting about half the design**: the
+reserve-then-finalise state machine bought one thing — a durable record of a
+question whose answer was aborted — at the cost of a status enum, a lease, a
+startup sweep, an abort RPC, 409 semantics, and a `status='complete'` policy that
+then hid the truth from the UI. Worse, reserving before retrieval would have
+regressed `test_a_retrieval_failure_does_not_start_a_conversation`. The
+recommendation is to write at `final`, where `append_turn` already sits.
+
+The other structural change: **reader history and the training archive are now two
+tables.** Folding them together was what made reader deletion, account deletion and
+admin cleanup each destroy training data. Split, a reader's delete really deletes,
+and the archive is append-only with no FK — following `audit_log.actor_id`, which
+already argues that case.
+
+**Consent is a notice, not a gate** (plan §7). A hard gate was drafted and dropped:
+it would have forced a blocking bilingual screen into the first increment and made
+the ephemeral path *permanent*, since a reader who declined would need today's
+cache-and-cookie behaviour maintained indefinitely — a second conversation path
+forever. It was also defending less than it appeared to: the archive row is written
+in the same transaction as the turn, carrying the same question and answer text,
+while `chat_messages` holds that text under a real `owner_id` with a `created_at` in
+the same microsecond, so joining the archive back to a person is a text equality, not
+a hash inversion. The hashing stays — it protects an archive that leaks *alone*, and
+it is what makes erasure-by-owner possible — but it does not carry the weight a gate
+was being built on top of.
+
+So: the notice ships once at first use; `terms_accepted_at` / `terms_version` record
+it; a separate `archive_withdrawn_at` is what actually stops collection, because "no
+gate" and "withdrawal stops new archive rows" would otherwise contradict. All three
+columns join the `profiles_guard_privilege_columns` deny-list — the column grants are
+an allow-list so they are denied by default, but that trigger is a *deliberate*
+deny-list, so a later change bundling them into a grant would make consent writable
+from a browser console with nothing firing. One stable HMAC salt, no rotation
+(rotation is defeated by a stable `session_key` and makes erasure impossible).
+`admin_purge_chat_archive` takes a cutoff or an owner key and **refuses when both are
+null**, which would otherwise delete the entire archive. Export is streamed JSONL,
+`ensure_ascii=False`; there is deliberately no transcript console page.
+
+**Revision 3 is a clean rewrite.** A fourth review pass found the document had been
+revised in place until it contradicted itself — the central write-placement ruling was
+simultaneously open and closed, §7's prose scheduled work its own table put elsewhere,
+and a pair-assembly builder was defending a state the design could no longer reach. It
+also found the sharpest bug yet, which only appears once Phase 1 meets the language
+toggle: after *New chat* the cookie holds a freshly minted id with **no durable row**,
+so a naive "owned cookie → else latest `updated_at`" rule falls through and restores
+the conversation the reader just ended. The cookie needs a third state — deliberately
+empty — that the rule honours rather than overrides.
+
+**Decided 2026-08-18: write at `final`**, in the position `store.append_turn` already
+occupies (`app.py:1398`), rather than a reserve-then-finalise state machine. That
+deletes a status enum, a lease column, a startup sweep, an abort RPC, 409 semantics and
+a `status='complete'` policy that would then have hidden aborted turns from the UI — and
+it avoids regressing `test_a_retrieval_failure_does_not_start_a_conversation`, which
+reserving before retrieval would have broken. The consequence accepted knowingly: a
+question whose answer is aborted mid-stream leaves no durable trace, exactly as today.
+
+**Update 2026-08-19 — steps 2, 3 and 4 are BUILT; step 1 is written and not applied.**
+Both gates green: 448 server tests, 204 browser tests.
+
+Shipped: `web/services/chat_store.py` (`ChatBackend` Protocol, `SupabaseChatBackend`,
+`InMemoryChatBackend`, uuid canonicalisation, HMAC archive keys); `ConversationStore`
+re-keyed to `(owner, conversation)` with a new `replace()` for hydration; the
+current-session rule and hydration in both chat routes; write-at-`final` with a
+client-minted `client_request_id`; `persistence_unavailable` as an `error` frame; a
+second bypass identity (`fake_reader_b_token` → `test-reader-b-id`); `chat.notSaved` in
+both catalogues; `MAX_CHAT_QUERY_CHARS = 8_000`; `ASSET_VERSION` → `warm34`. New:
+`web/tests/test_chat_persistence.py` (28 tests).
+
+**Four plan claims implementation corrected** — the plan carries each as a struck
+paragraph rather than a quiet deletion:
+
+- **§5's "third cookie state" was unnecessary.** Keying the fallback on the *presence* of
+  `conv_id` rather than on whether it resolves makes all three resurrection paths no-ops,
+  because the cookie holds an id in every one of them. The bug was real — reverting to the
+  naive reading fails
+  `test_new_chat_is_not_resurrected_by_the_current_session_rule` — but the fix is one
+  predicate, not a marker three branches of the reset route must remember to write.
+- **§9 overpriced the round trip.** Durable rows are read only when the RAM window is
+  cold, so it is one read per conversation per process, not one per turn. The
+  `(owner, session, last_seq)` caching idea it motivated is dropped.
+- **§6 predicted the isolation assertions would go vacuous; they failed loudly instead** —
+  better, and the reason is worth keeping: the fake second reader shared `test-user-id`,
+  so the rule correctly resumed that owner's own history.
+- **Step 1 shed three things.** Consent columns and the admin RPCs moved to step 7 (one
+  concern per migration; a column no code reads is the untested surface §2.4 objects to),
+  and `chat_delete_session` was deleted outright — readers already delete through an RLS
+  policy, so a service-role RPC doing the same thing is a second privileged path to one
+  effect.
+
+**One thing surfaced that this entry should carry: "New chat" no longer destroys
+anything.** Reset drops the cookie pointer and the RAM window; the rows survive and will
+appear in Phase 2's sidebar. That is correct and expected behaviour, but it makes *undo*
+close to vestigial and means `forget` no longer forgets anything durable. Either the copy
+changes in step 8 or `forget` grows a real delete. Pinned meanwhile by
+`test_a_reset_does_not_delete_the_conversation_behind_it`.
+
+**Blocked on one owner decision: applying the migration.** There is no Supabase CLI, no
+`config.toml` and no Docker here — `supabase/README.md` says migrations go through the MCP
+`apply_migration` tool, straight to the live project.
+`supabase/migrations/20260818120000_chat_session_persistence.sql` must be renamed after
+applying to match whatever version `list_migrations` reports.
+
+**Update 2026-08-20 — two adversarial bug-hunt passes (OpenCode `gpt-5.6-sol`, read-only).**
+Round 1 reviewed the implementation; round 2 reviewed round 1's fixes and found defects in
+them. 461 server tests, 204 browser tests, both green.
+
+**The most consequential finding was not a bug.** The resume-my-last-conversation rule now
+ships behind `CHAT_RESUME_LATEST_SESSION`, **default off**. The visible transcript still
+restores from per-tab `sessionStorage` until step 6, so every case where the fallback fires
+— new device, new tab, the request after a logout — would show a reader a blank screen while
+the model silently received the conversation behind it. On an assistant whose claim is that
+a reader can check where an answer came from, shipping half of that is worse than shipping
+none of it. The machinery is built and pinned by tests that set the flag; step 6 flips it.
+
+Real defects found and fixed:
+
+- **The in-memory test double was laxer than the schema** — it accepted `source_index = 150`,
+  a 400-char snippet and a null document. Every test runs against the double, so three CHECK
+  constraints were being asserted by nobody. Round 2 then caught that the fix validated
+  *before* the replay check while the RPC returns *after* it, making the double stricter than
+  Postgres on the one path where that is wrong.
+- **A cold-hydration race** could erase a completed turn: two tabs both read an empty window,
+  and the slower one installed its stale copy over the newer one.
+- **`revoke insert, update, delete` from `service_role` left `TRUNCATE` standing** — one
+  statement could have erased every citation in the system, bypassing RLS. Now `revoke all`
+  then `grant select`, which also makes "content is written only by `chat_append_turn`" a
+  property the database enforces rather than a convention Flask follows. Confirmed against
+  Supabase docs: `security definer` runs as the function owner, so the RPCs are unaffected.
+- **Two redundant indexes and a missing FK index** — `unique (session_id, seq)` already
+  indexed what `chat_messages_session_seq_idx` re-indexed, while the FK `(session_id,
+  owner_id)` had none.
+- **A `DELETE` grant on the archive** whose comment credited it to a function that ships in
+  step 7. Revoked; the migration that adds the purge RPC grants what it needs.
+- **A JSON scalar `null` aborts `jsonb_array_elements`**, rolling back a turn the reader is
+  already reading — `coalesce` catches SQL NULL only.
+- **The last error frame overwrote the first**, so a reader whose answer merely went unsaved
+  was told their message failed to send; and **suppressing the mascot's error state left it
+  animating forever**, because that branch returns before the happy path's `returnToIdle`.
+
+Also: the migration now parses under the real PostgreSQL grammar (`pglast`/libpg_query,
+PG17) — top level and all three function bodies. That is syntax only, not semantics,
+constraints, grants or runtime.
+
+**One gap accepted knowingly**, to fix before the resume flag turns on: with it on, ending a
+conversation and then logging out *before asking anything else* loses the reset, because the
+purged cookie makes the next visit look like a new device.
+
+**Late catch, after the branch was already pushed: `chat_persistence` defaulted ON.** With
+the schema unapplied, that meant a deploy of this code would have called RPCs that do not
+exist, turning every single answer into a "could not be saved to your history" toast. A
+feature that defaults on before its schema exists ships as a visible error. Now defaults
+off, pinned by `test_persistence_and_resume_both_default_off`, which reads the flags off a
+non-testing app because TESTING selects the in-memory backend unconditionally and would have
+hidden the production default.
+
+**And one claim this work cannot yet back.** The RLS policies are unexercised. The service
+role bypasses RLS, so every green test proves the *application's* owner filtering, not the
+database's. Until a reader JWT hits these tables — a harness that does not exist here, and
+costs more than the migration did — `chat_sessions_select_own` and its three siblings are
+reviewed code, not verified code.
 
 ---
 
