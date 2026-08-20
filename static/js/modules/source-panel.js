@@ -87,6 +87,27 @@ export function documentLabel(name) {
   return cleaned || I18n.t("cite.unknownDocument");
 }
 
+/**
+ * Whether an answer's evidence predates the corpus the app is serving now.
+ *
+ * The server sends three states and the surface shows two. `verified` is the
+ * ordinary case and says nothing. `stale` (the corpus was rebuilt under this
+ * answer) and `unverifiable` (one side or the other carries no build id) both
+ * reduce to the same honest sentence for a reader — we cannot confirm this is
+ * still in the live corpus — so they share one badge, and stay distinct in the
+ * payload where a log or a test can tell them apart.
+ *
+ * MISSING IS NOT DATED. An answer rendered before this field existed, or by a
+ * caller that does not set it, is left alone rather than badged: warning about
+ * every answer is the same as warning about none.
+ *
+ * It lives here rather than in citations.js because citations.js already
+ * imports this module; the reverse would close a cycle.
+ */
+export function isDatedEvidence(evidenceState) {
+  return evidenceState === 'stale' || evidenceState === 'unverifiable';
+}
+
 export const SourcePanel = {
   _panel: null,
   _backdrop: null,
@@ -108,6 +129,7 @@ export const SourcePanel = {
       `<h2 class="source-panel-title" id="source-panel-title"></h2>` +
       `<button type="button" class="source-panel-close">${iconMarkup('close', 16)}</button>` +
       `</div>` +
+      `<p class="source-panel-dated" hidden></p>` +
       `<div class="source-panel-body"></div>` +
       `<div class="passage-card" hidden>` +
       `<div class="passage-card-head">` +
@@ -187,7 +209,8 @@ export const SourcePanel = {
    * Show the evidence for one answer.
    *
    * @param {string} msgId
-   * @param {{sources: object[], cited: number[]|null, retrieved: number}} state
+   * @param {{sources: object[], cited: number[]|null, retrieved: number,
+   *          evidenceState?: 'verified'|'stale'|'unverifiable'}} state
    * @param {{focusIndex?: number, returnFocus?: HTMLElement}} [options]
    */
   open(msgId, state, { focusIndex = null, returnFocus = null } = {}) {
@@ -241,6 +264,9 @@ export const SourcePanel = {
       this._panel.querySelector('.source-panel-body').textContent = '';
       this._closePassage();
       this._panel.querySelector('.source-panel-title').textContent = '';
+      const dated = this._panel.querySelector('.source-panel-dated');
+      dated.textContent = '';
+      dated.hidden = true;
     }
   },
 
@@ -375,6 +401,24 @@ export const SourcePanel = {
       I18n.t('cite.panelTitle');
     this._panel.querySelector('.source-panel-close')
       .setAttribute('aria-label', I18n.t('cite.close'));
+
+    /* Said once, at the top, where a reader decides how much weight to put on
+       what follows — not repeated on every card, which would read as an alarm
+       about each passage rather than a fact about the answer.
+
+       The sentence has to do real work: these passages ARE what the model read,
+       and they are still worth reading, but the corpus has moved since. Wording
+       that only said "may be outdated" would invite the reader to discount
+       evidence that is a faithful record; wording that said nothing would let
+       them quote a superseded regulation to an auditor. */
+    const dated = this._panel.querySelector('.source-panel-dated');
+    if (isDatedEvidence(state?.evidenceState)) {
+      dated.textContent = I18n.t('cite.datedNote');
+      dated.hidden = false;
+    } else {
+      dated.textContent = '';
+      dated.hidden = true;
+    }
 
     const body = this._panel.querySelector('.source-panel-body');
     body.textContent = '';

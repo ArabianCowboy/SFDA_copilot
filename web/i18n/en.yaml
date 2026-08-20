@@ -36,6 +36,18 @@ runtime:
     # already stood, so telling the reader their conversation is unchanged would
     # be the opposite of what happened.
     restoreFailed: "Could not restore the previous conversation."
+    # Shown when the conversation on screen was picked up from the reader's
+    # stored history rather than started in this browser — a new device, a
+    # cleared browser, or the first visit after signing out. It is a
+    # disclosure, not a warning: a conversation that reappears with no
+    # explanation is the part of durable history that could read as the app
+    # acting behind the reader's back.
+    resumed: "Picked up from your history. Start a new chat to begin fresh."
+    resumedDismiss: "Dismiss"
+    # Distinct from an empty transcript on purpose. Rendering nothing would
+    # claim the reader has no stored history; this says the history could not
+    # be read, which is a different fact.
+    historyUnavailable: "Your conversation history could not be loaded."
 
   stage:
     searching: "Searching the guidelines"
@@ -125,6 +137,13 @@ runtime:
     pageShort: "p.{n}"
     pageUnknown: "No page cited"
     tabAria: "Source {n}, page {page}"
+    # Dated evidence. The passage behind a stored citation is exactly what the
+    # model read, kept with the answer — so it still opens. What the reader is
+    # told is that the corpus has moved since, because quoting a superseded
+    # regulation to an auditor is the failure this product cannot afford, and
+    # so is discarding a faithful record because it is old.
+    datedBadge: "Earlier edition"
+    datedNote: "The document set has been rebuilt since this answer. These are the passages it was written from — check the current documents before relying on them."
     tabAriaNoPage: "Source {n}, no page cited"
     closePassage: "Close passage"
     unknownDocument: "Unknown document"

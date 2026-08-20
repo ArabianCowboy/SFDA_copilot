@@ -1215,36 +1215,200 @@ alone.
 
 ---
 
-### Save chat sessions per user — MOSTLY BUILT, RECORDING LIVE, NOT YET VISIBLE
+### Save chat sessions per user — LIVE AND VISIBLE; steps 7-8 remain
 
-> **Status in one line:** steps 1 and 2 are done as of 2026-08-20 — the
-> migration is applied (`supabase/migrations/20260820131914_chat_session_persistence.sql`)
-> and `server.chat_persistence` is **on**, so turns are now recorded to
-> Postgres. Nothing on screen has changed: `chat_resume_latest_session` stays
-> **off** until step 6 (transcript hydration) ships.
+> **Status in one line:** steps 1-6 are done as of 2026-08-20. Turns are
+> recorded to Postgres, `GET /api/chat/history` draws the visible transcript
+> back out of those same rows, restored citations open their stored passages,
+> and `chat_resume_latest_session` is **on** — so a conversation now follows the
+> reader across a reload, a language toggle, and a different device. Steps 7
+> (consent notice, archive purge, export) and 8 (multi-session sidebar) are not
+> built.
 >
-> **Deliberately not struck through.** The convention in this file is that a
-> struck heading means a reader can see the difference. Here they still
-> cannot — chat behaves exactly as it did before, from the reader's side.
-> Marking it done would also lose the tracking for steps 3, 5-8, which are the
-> half that reaches the screen.
+> **Still not struck through, on the same convention as before**, but for the
+> opposite reason. A reader *can* now see the difference — that half is done.
+> What is left is the consent notice this feature owes and the sidebar that
+> makes multiple conversations reachable, and striking the heading would lose
+> the tracking for both.
 >
-> **What changed 2026-08-20.** Applied via MCP `apply_migration`; verified in a
-> rolled-back transaction that `chat_append_turn` and `chat_load_session`
-> round-trip correctly and the `service_role` revokes did not break the
-> `SECURITY DEFINER` path. `get_advisors` shows only the expected
-> `rls_enabled_no_policy` INFO on `chat_archive` (by design) plus one
-> pre-existing, unrelated WARN. `config.yaml` now sets `chat_persistence: true`
-> explicitly; the code-level default stays `False` so a missing config key
-> still fails closed. `test_persistence_and_resume_both_default_off` renamed
-> and updated to assert the new intended state (persistence on, resume off).
+> **What changed 2026-08-20 (steps 5 and 6).**
 >
-> **What is left, in order** — each step is unsafe before the one above it:
+> - **`GET /api/chat/history`** (`web/api/app.py`) serves the current
+>   conversation. It takes **no conversation id**: the server resolves it through
+>   `_resolve_conversation_id`, so the transcript on screen and the history
+>   behind the model are chosen by one piece of code, and a browser cannot ask
+>   for a conversation it does not own. An empty or unowned session is 200 with
+>   no messages; a store failure is **503 `history_unavailable`**, deliberately
+>   not an empty list — an empty transcript is a *claim* that the reader has no
+>   history, and making it while the store is unreachable is the quiet untruth
+>   this product refuses everywhere else.
+> - **`sessionStorage` is gone as a transcript store.** `Transcript.save`,
+>   `Transcript.restore` and `neutraliseRestoredCitations` are **deleted**, not
+>   merely unused: called on a hydrated transcript, that last one would strip
+>   evidence that is present and correct. Worth recording, because it justified
+>   the whole swap: `save()` had exactly one caller — the language toggle — so an
+>   ordinary refresh already lost the conversation, a second device never had
+>   one, and a restored answer's citations were stripped by construction. The
+>   module header claimed it survived a refresh; it did not.
+> - **Hydration renders through `UI.addMessage`**, the same path a live answer
+>   takes, so `bindCitations` and `renderSourceTrigger` run and a restored
+>   answer's controls resolve against real passages. Never re-inject stored
+>   markup here — that is precisely what forced the neutralising.
+> - **`chat_resume_latest_session: true`.** The flag waited for hydration
+>   because, while the transcript lived in per-tab `sessionStorage`, every case
+>   where the fallback fired was a case where the two halves disagreed — a blank
+>   screen backed by a model that remembered. They now agree by construction.
+>
+> **A written design position was reversed, deliberately: a stale citation still
+> opens.** The plan said only `verified` renders as openable evidence, with no
+> document/page fallback (roadmap §"Stale sources"). That rule was aimed at
+> *re-resolving* a `chunk_id` against a rebuilt index, which can surface a
+> plausible but wrong passage. It does not describe what hydration actually does:
+> `chat_message_sources` already stores the document, page, category and snippet
+> **frozen at write time**, so opening a stored citation shows what the model
+> read, not a guess about where that text lives now. Kept strictly, the rule
+> meant one corpus rebuild would silently deaden every citation in every stored
+> conversation at once — and would leave a reader unable to tell "this evidence
+> is dated" from "this answer had no sources", which is the same
+> control-that-does-nothing failure the neutralising was invented to avoid.
+> Two independent research passes reached this conclusion before the code did.
+>
+> So the three states survive as *classification* and drive what the reader is
+> **told**, not what they may open: `verified` says nothing; `stale` and
+> `unverifiable` share one badge (`cite.datedBadge`) plus an explanatory line in
+> the panel (`cite.datedNote`), because to a reader they mean the same thing and
+> they stay distinct only in logs and tests.
+>
+> **`evidence_state` on a live answer is asserted, not computed.** A fresh answer
+> came from the active index, so its evidence is current by construction. The
+> comparison is inference and only hydration needs it — and computing it on the
+> live path would mark every *fresh* answer `unverifiable` on any deployment
+> where `read_active_build_id` finds no pointer (the legacy flat layout), badging
+> the one case that is beyond doubt.
+>
+> **One gap stays open knowingly, and is now disclosed rather than silent.**
+> Ending a conversation and then logging out *before asking anything else*
+> purges the cookie, so the next visit looks like a new device and resumes the
+> conversation that was ended. With hydration on, that comes back as a full
+> visible transcript rather than model-only memory — which an external review
+> argued makes it worse, not better. The mitigation shipped instead of the fix:
+> the route reports `resumed`, and the transcript carries a dismissible notice
+> (`chat.resumed`) saying the conversation was picked up from history, with
+> *New chat* named as the way to start fresh. Closing it properly needs a
+> durable owner-level reset marker; step 8's sidebar retires the question.
+> Note `resumed` is only reported when there are messages — a notice about a
+> thing the reader cannot see is worse than no notice.
+>
+> **Verified against the real database, not only the double.** `chat_append_turn`
+> → `chat_load_session` was round-tripped in a rolled-back transaction on the
+> live project: the user row carries no `corpus_revision` and no sources, the
+> assistant row carries both, and each source arrives as `source_index` +
+> `cited`. That is what `_hydration_payload` reduces, so the shape it consumes is
+> now confirmed against the schema rather than inferred from `InMemoryChatBackend`.
+>
+>
+> **Adversarial review of steps 5-6 (Codex `gpt-5.6-terra`, max effort, read-only),
+> plus one bug found by hand before it ran.** Verdict was *do not ship*; everything
+> below is fixed. 488 server tests, 213 browser tests.
+>
+> - **The transcript guard was keyed to the PAGE, not the reader** — found by hand.
+>   `settleTranscript(null)` fires at startup, so the once-guard was already spent
+>   by the time anyone signed in: on the ordinary path (sign in without a reload)
+>   the transcript was never drawn at all, while the server resumed that reader's
+>   history into the prompt window. A blank screen backed by a model that
+>   remembers — the exact state `chat_resume_latest_session` waited two steps to
+>   avoid, reintroduced by the client. Now keyed to the identity, and settling is
+>   idempotent per reader so a second reader in the same tab gets their own
+>   transcript. Pinned by `test_a_second_reader_in_the_same_tab_gets_their_own_transcript`,
+>   verified to fail against the old guard.
+> - **A late history fetch could resurrect a conversation the reader ended.** The
+>   fetch is dispatched at sign-in and not awaited; pressing *New chat* while it
+>   was in flight put the ended conversation back on screen when it landed.
+>   Identity cannot catch this — it is the same reader pressing the button. A
+>   `transcriptEpoch`, bumped by reset, undo and sign-out, now invalidates a
+>   response whose transcript moved under it. Pinned by
+>   `test_late_history_cannot_resurrect_a_conversation_the_reader_ended`.
+> - **A late fetch could also file history BELOW a live exchange.** Stored turns
+>   are older than anything the tab has done, so they are inserted above the first
+>   live turn rather than appended. Pinned by
+>   `test_history_arriving_late_is_filed_above_the_live_exchange`, using a
+>   controllable fetch so the race is entered deliberately rather than hoped for.
+> - **`CORPUS_REVISION` was read from the pointer file, not from the engine.** The
+>   search engine initialises *before* that read, so an activation in between
+>   recorded a revision the passages did not come from; and a dangling pointer is
+>   returned verbatim while the engine silently falls back to the legacy flat
+>   corpus. Either way a superseded answer would later compare equal and render as
+>   current evidence — on the one product that cannot afford it. Now taken from
+>   `SearchEngine.active_build_id`, which reports what was **loaded** and is `None`
+>   for the legacy layout.
+> - **An outage resolved to "you have no history", permanently.** A failing
+>   `chat_latest_session` was swallowed, a fresh id minted and written to the
+>   cookie — so every later visit found a cookie and never tried to resume again.
+>   One transient failure cost the reader their conversation for good. The rule now
+>   reports a failed resume distinctly; the transcript route answers 503 and rolls
+>   the cookie write back, while the chat routes still answer. This is the same
+>   shape as *"a transient Supabase outage signed readers out"* at the top of this
+>   file, which is why it is written out rather than quietly patched.
+> - **Persistence enabled with no backend answered 200 with an empty transcript**,
+>   while `_persist_turn` already treats that configuration as a failure. Now 503,
+>   closing the read-side half of a gap the write side had already closed.
+> - **An odd hydration limit split an exchange**, returning an answer with no
+>   question and evidence attached. A leading assistant row is dropped, matching
+>   what `ConversationStore.replace` already does for the prompt window.
+> - **Hydrated turns were stamped with the reload time.** Every question in a
+>   reader's history appeared to have been asked just now. `created_at` now
+>   travels; and the in-memory double, which never set it, was corrected — the
+>   same double-laxer-than-the-schema drift this feature was already bitten by
+>   once, caught this time by a test that looked.
+> - **Also fixed:** an identity change without a `SIGNED_OUT` left the previous
+>   reader's passages in an open source panel (`clearReaderScopedUI`); the
+>   transcript response was cacheable (`Cache-Control: private, no-store` plus
+>   `cache: 'no-store'`); the blocking route shipped `evidence_state` that the
+>   client dropped; unused `message_id`/`seq` were removed from the wire; and the
+>   comment at the `CORPUS_REVISION` assignment still described the reversed
+>   "stale is not openable" rule.
+>
+> Two of the review's findings were **not** acted on: it argued for reconciling
+> rather than appending on hydration (the epoch guard plus above-insertion covers
+> the cases it named), and for removing the public `limit` parameter outright
+> (kept, now that a half exchange is impossible, because Phase 2's paging needs it).
+> **Gates:** 488 server tests, 213 browser tests. The two browser tests that went
+> red were the two that pinned the *old* behaviour and were rewritten, not
+> patched — see below.
+>
+> **What is left, in order:**
 > 1. ~~Apply the migration~~ — done 2026-08-20.
 > 2. ~~Set `server.chat_persistence: true`~~ — done 2026-08-20.
-> 3. Build step 6 (transcript hydration), then set
->    `server.chat_resume_latest_session: true`. This is the step that makes the
->    feature real, and the flag must not precede it — see the update below.
+> 3. ~~Build step 6 (transcript hydration), then set
+>    `server.chat_resume_latest_session: true`~~ — done 2026-08-20.
+> 4. Step 7: the consent notice, `terms_accepted_at` / `terms_version` /
+>    `archive_withdrawn_at` and their deny-list entries, `admin_purge_chat_archive`,
+>    the `flask purge-archive` CLI, and JSONL export. **This is the one the
+>    feature now owes a reader**: durable per-account history is live and nothing
+>    has told anyone that logout no longer deletes it.
+> 5. Step 8: the multi-session sidebar, auto-titling, switching, rename, delete.
+>
+> **Two follow-ups this pass deliberately did not build**, recorded so they are
+> not rediscovered:
+>
+> - **`chat_load_session` fetches sources with a correlated `jsonb_agg` subquery
+>   per window row** (migration `:574-592`). The plan called this "sources come
+>   back in the same call to avoid an N+1"; it is an N+1 wearing SQL clothing —
+>   up to 200 index seeks and 200 JSONB builds per call. It did not matter while
+>   `_load_history` was the only caller, because that reads once per process per
+>   conversation. **Step 6 changes the economics**: hydration is now user-
+>   triggered, so it runs on every reload, language toggle and sign-in — the
+>   request that draws the whole screen. One `message_id = any(...)` fetch is the
+>   fix. Not urgent at single-digit readers, where the SSE thread pool and the
+>   single-worker FAISS constraint bind first, but it is now a per-visit cost
+>   rather than an amortised one.
+> - **`ARCHIVE_OWNER_SALT` / `ARCHIVE_SESSION_SALT` are unset on this
+>   deployment**, so every archive row is skipped and the training archive is
+>   empty by configuration, not by accident. `.env.example` calls that a
+>   supported state and the process logs it once at startup. Step 7 should decide
+>   whether the archive is wanted before building a purge path for it.
+> - **`supabase/migrations/20260820140000_revoke_chat_archive_service_role_insert.sql`
+>   is still unapplied.** Unrelated to steps 5-6, so it was not folded into them.
 
 
 **Where:** Today a conversation is keyed to a cookie, not to an account.

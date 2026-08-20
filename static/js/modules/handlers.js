@@ -36,6 +36,13 @@ let pendingUndo = null;
    "the conversation this answer belonged to no longer exists". */
 let resetGeneration = 0;
 
+/* Bumped whenever the transcript on screen stops being the conversation an
+   in-flight history fetch was asked about: a reset, an undo, or a sign-out.
+   Distinct from `resetGeneration`, which guards a streaming ANSWER; this guards
+   the TRANSCRIPT, and the two move independently — an undo restores the
+   transcript without restoring a stream. */
+let transcriptEpoch = 0;
+
 /* Guards the window between a reset's server call and its transcript clear,
    during which a second press would reset the freshly-started conversation. */
 let resetInFlight = false;
@@ -314,6 +321,10 @@ export const Handlers = {
        stamp is bumped before the abort so streamChat's handler sees the new
        value and declines to render into a bubble that is on its way out. */
     resetGeneration += 1;
+    /* And the transcript epoch with it: a history fetch dispatched at sign-in
+       can still be in flight, and letting it land after this would put the
+       conversation the reader just ended straight back on screen. */
+    transcriptEpoch += 1;
     const wasStreaming = AppState.isRequestInProgress();
     /* Captured BEFORE the abort and held directly, rather than read back off
        `activeStream` if the reset fails — see settleAbandonedStream for the
@@ -391,6 +402,11 @@ export const Handlers = {
 
     const fragment = pendingUndo;
     pendingUndo = null;
+    /* An undo puts back a specific transcript. A history fetch that resolves
+       afterwards would append a second copy of the same conversation underneath
+       it, so the epoch moves here too — the screen changed, whichever direction
+       it changed in. */
+    transcriptEpoch += 1;
     UI.restoreTranscript(fragment);
     UI.scrollMessagesToBottom();
     ErrorHandler.showToast(I18n.t('chat.restored'));
@@ -403,6 +419,35 @@ export const Handlers = {
    * backstop, and logout purges both ids outright, so a dropped request costs
    * an unreachable entry an hour of memory rather than correctness.
    */
+  /** The current transcript epoch; see the declaration for what bumps it. */
+  transcriptEpoch() {
+    return transcriptEpoch;
+  },
+
+  /** Declare that what is on screen is no longer the conversation it was. */
+  beginTranscriptEpoch() {
+    transcriptEpoch += 1;
+  },
+
+  /**
+   * Drop everything scoped to the reader who just left, short of a full
+   * sign-out.
+   *
+   * `clearSessionState` is the sign-out path and does more (it ends the server
+   * session and cancels in-flight work). This is the narrower case: the
+   * identity changed under a live page without a `SIGNED_OUT` in between, which
+   * the auth SDK can do. Clearing only the transcript there would leave the
+   * previous reader's passages in an open source panel and their entries in the
+   * citation map — one reader's evidence sitting in the next reader's document,
+   * which is the hazard the transcript's old ownership tag existed to prevent.
+   */
+  clearReaderScopedUI() {
+    this.beginTranscriptEpoch();
+    UI.clearTranscript();
+    SourcePanel.reset();
+    resetCitationState();
+  },
+
   discardUndo() {
     if (!pendingUndo) return;
     pendingUndo = null;
@@ -620,6 +665,11 @@ export const Handlers = {
       UI.addMessage(data.response, 'bot', data.suggested_questions || [], data.sources || [], {
         cited: data.cited ?? null,
         retrieved: data.retrieved ?? (data.sources || []).length,
+        // Always 'verified' from this route today, because a live answer came
+        // from the active index. Carried anyway so the blocking and streaming
+        // paths hand UI the same shape — a field present on one and absent from
+        // the other is how two paths for one contract start to drift.
+        evidenceState: data.evidence_state,
       });
 
       /* The blocking route reports the same auxiliary failure the streaming
@@ -1001,6 +1051,9 @@ export const Handlers = {
        fragment holds the previous reader's answers. */
     pendingUndo = null;
     resetGeneration += 1;
+    // Also invalidates any transcript fetch still in flight, which would
+    // otherwise draw the departing reader's conversation into an empty page.
+    transcriptEpoch += 1;
 
     // An in-flight answer would otherwise keep streaming into the hidden
     // transcript and repopulate the citation map after logout.

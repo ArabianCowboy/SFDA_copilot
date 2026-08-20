@@ -527,6 +527,71 @@ export const Services = {
     }
   },
 
+  /**
+   * The reader's current conversation, as the server understands it.
+   *
+   * NO CONVERSATION ID IS SENT, deliberately. The server applies the
+   * current-session rule and answers with the conversation it picked, so the
+   * transcript on screen and the history behind the model are chosen by one
+   * piece of code rather than two that can disagree — and a browser cannot ask
+   * for a conversation it does not own.
+   *
+   * Returns `{ conversation_id, resumed, messages }`. `resumed` is true only
+   * when the server fell back to the reader's most recent conversation because
+   * this browser named none — a new device, a cleared browser, or the first
+   * request after a logout. The caller owes the reader a notice in that case:
+   * a conversation that reappears without explanation is the one part of this
+   * feature that could read as the app doing something behind their back.
+   *
+   * Throws on any failure, tagged with `.status`, so the caller can tell a
+   * genuinely empty history ("you have not asked anything yet") from an
+   * unreachable store — 503 `history_unavailable`. Those must not look alike:
+   * rendering an empty transcript for the second is a claim the app cannot
+   * back.
+   */
+  async getChatHistory() {
+    const token = await this.getSessionToken();
+    if (!token) return { conversation_id: null, resumed: false, messages: [] };
+
+    // The same 5s ceiling `getIdentity` takes, for the same reason: this call
+    // sits on the path that draws the whole screen, and a hung request would
+    // leave a signed-in reader looking at an empty transcript forever.
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    let response;
+    try {
+      response = await fetch('/api/chat/history', {
+        headers: { Authorization: `Bearer ${token}` },
+        signal: controller.signal,
+        /* This body is one reader's conversation. The server also sends
+           `Cache-Control: private, no-store`; asking here too means a shared
+           machine cannot serve the previous reader's transcript out of the
+           browser's cache even if an intermediary is careless with the header. */
+        cache: 'no-store',
+      });
+    } finally {
+      clearTimeout(timeoutId);
+    }
+
+    /* 401 is an ANSWER, not a fault — the same reading `getIdentity` takes of
+       the same status. Nobody is signed in, so there is no transcript to draw
+       and nothing to report; throwing here would put an error toast under a
+       reader who is simply signed out, and under the `?testing=true` demo
+       path, whose deliberately fake token a real server rejects. */
+    if (response.status === 401) {
+      return { conversation_id: null, resumed: false, messages: [] };
+    }
+
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      const error = new Error(body.error || `History unavailable (${response.status})`);
+      error.status = response.status;
+      error.code = body.code || 'history_unavailable';
+      throw error;
+    }
+    return response.json();
+  },
+
   async getProfile(userId) {
     if (!this.supabase) throw new Error('Supabase client not initialized.');
     const { data, error } = await this.supabase

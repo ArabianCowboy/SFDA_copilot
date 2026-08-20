@@ -32,6 +32,7 @@ import logging
 import os
 import threading
 import uuid
+from datetime import datetime, timezone
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Protocol, Tuple
 
@@ -457,11 +458,20 @@ class InMemoryChatBackend:
 
             user_id = str(uuid.uuid4())
             assistant_id = str(uuid.uuid4())
+            # Mirrors the column's `default now()`. The double omitted this and
+            # every test still passed, because nothing downstream looked — until
+            # the transcript did, and a hydrated turn would have carried no time
+            # at all while the real RPC returns one. That is the same drift this
+            # class was already corrected for once: a double laxer than the
+            # schema lets a test claim a guarantee Postgres makes and the double
+            # does not.
+            occurred_at = datetime.now(timezone.utc).isoformat()
             self._messages[session_id].extend(
                 [
-                    StoredMessage(user_id, seq, "user", question),
+                    StoredMessage(user_id, seq, "user", question, created_at=occurred_at),
                     StoredMessage(
                         assistant_id, seq + 1, "assistant", answer,
+                        created_at=occurred_at,
                         corpus_revision=corpus_revision, model=model,
                         lang=lang, category=category, sources=list(sources or []),
                     ),

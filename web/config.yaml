@@ -46,13 +46,27 @@ server:
   chat_history_char_budget: 60000
 
   # Durable per-user chat history (TODO.md: "Save chat sessions per user").
-  # Step 1 of 3: the migration is applied and turns are now recorded to
-  # Postgres. Still invisible to readers — nothing reads these rows back yet.
-  # Do NOT set chat_resume_latest_session until step 6 (transcript hydration)
-  # ships; turning it on first would have the model silently answer from a
-  # history the screen never shows. See TODO.md for the full sequencing.
+  # Both halves are on. Turns are recorded to Postgres, and GET /api/chat/history
+  # draws the visible transcript back out of the same rows the prompt window is
+  # built from — so a reload, a language toggle and a new device all show the
+  # conversation the model remembers, with its citations openable rather than
+  # neutralised. The resume flag waited for that hydration deliberately: on its
+  # own it made the model answer from a history the screen never showed.
+  #
+  # One gap is open knowingly: ending a conversation and then logging out BEFORE
+  # asking anything else purges the cookie, so the next visit looks like a new
+  # device and resumes the conversation that was ended. The reader is told the
+  # conversation was picked up from their history rather than left to discover
+  # it. Closing it properly needs a durable owner-level reset marker; step 8's
+  # session sidebar retires the question. See TODO.md.
   chat_persistence: true
-  chat_resume_latest_session: false
+  chat_resume_latest_session: true
+
+  # How many stored messages one hydration may draw. Clamped to [1, 200] by
+  # clamp_load_limit. 200 messages is 100 answers, which is exactly the
+  # MAX_TRACKED_ANSWERS cap in citations.js — do not raise one without the other,
+  # or the oldest turns of a long session lose their citation controls silently.
+  chat_hydration_limit: 50
 
   # Rate limiting
   rate_limit:
@@ -60,6 +74,14 @@ server:
     per_hour: 50
     per_minute: 10
     chat_api: "15 per minute"
+    # The transcript read, which fires on every sign-in, reload and language
+    # toggle. It carries its OWN limit rather than inheriting the per_day /
+    # per_hour / per_minute defaults above, and that is deliberate: an explicit
+    # limit replaces the defaults in Flask-Limiter, so a page-load read cannot
+    # spend the 200/day budget an office behind one NAT shares. Generous
+    # because it is a cheap indexed read that draws the screen, and being
+    # refused it leaves a reader looking at an empty conversation.
+    history_api: "30 per minute"
     # Password recovery. Low on purpose: the endpoint is unauthenticated and
     # every accepted call sends mail, and GoTrue's own project-wide ceiling is
     # 30/hour — a caller must not be able to exhaust that in one minute.

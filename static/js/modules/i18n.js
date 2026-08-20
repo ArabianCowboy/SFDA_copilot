@@ -8,9 +8,10 @@
  * Switching language reloads the page. That is deliberate, not a shortcut: it
  * re-renders the server-side strings, resets `dir` cleanly rather than
  * live-flipping a laid-out document, and re-fetches the FAQ in the new
- * language. The one cost — losing the transcript — is bought back by
- * Transcript.save()/restore() below, which also makes the transcript survive
- * an ordinary refresh.
+ * language. The one cost — losing the transcript — used to be bought back by a
+ * markup copy in `sessionStorage`; it is now bought back properly, by hydrating
+ * from durable rows on the way back up, which covers an ordinary refresh and a
+ * second device as well. See `App.hydrateTranscript`.
  */
 
 const TRANSCRIPT_KEY = 'sfda-transcript';
@@ -45,7 +46,6 @@ export const I18n = {
     if (lang === this.lang) return;
     try { localStorage.setItem('lang', lang); } catch { /* private mode */ }
     document.cookie = `lang=${lang};path=/;max-age=31536000;samesite=lax`;
-    Transcript.save();
 
     /* `pick_lang` ranks `?lang=` above the cookie (web/utils/i18n.py), so a URL
        carrying one reloads straight back into the language just left — the
@@ -77,89 +77,31 @@ export const I18n = {
  * outlive the browsing session.
  */
 export const Transcript = {
-  /* Which reader the saved transcript belongs to.
-     sessionStorage is scoped to the TAB, not to the account, and the tab is
-     never reloaded between one reader signing out and the next signing in.
-     Without an owner, a transcript saved by one person is restored for
-     whoever arrives next — which is how a conversation could cross accounts
-     on a shared machine. */
-  _owner: null,
-
-  setOwner(identity) {
-    this._owner = identity || null;
-  },
-
-  save() {
-    try {
-      const messages = document.getElementById('messages');
-      if (!messages) return;
-      /* The opening state is server-rendered in the CURRENT language. Saving
-         it would restore English copy onto an Arabic page after a switch —
-         which is the one thing this module exists to prevent. */
-      const turns = [...messages.children]
-        .filter(el => !el.hasAttribute('data-chat-intro'))
-        .map(el => el.outerHTML)
-        .join('');
-      sessionStorage.setItem(
-        TRANSCRIPT_KEY,
-        JSON.stringify({ owner: this._owner, turns })
-      );
-    } catch { /* quota or private mode */ }
-  },
-
-  /** Drop the saved transcript without reading it. */
-  discard() {
-    try { sessionStorage.removeItem(TRANSCRIPT_KEY); } catch { /* private mode */ }
-  },
-
   /**
-   * Put the transcript back, but only for the reader who saved it.
+   * Clear any transcript this tab saved before step 6.
    *
-   * @param {string|null} identity the signed-in reader, or null if none
-   * @param {(el: Element) => void} [onRestored] runs on each restored turn
+   * ALL THAT REMAINS OF A LARGER OBJECT, and what it used to do is worth
+   * recording because the reasons were sound and the mechanism was not.
    *
-   * `onRestored` is a callback rather than an import: citations.js already
-   * imports I18n from this module, and reaching back into it would make the
-   * two mutually dependent for the sake of one DOM sweep.
+   * `save()` serialized the rendered turns into `sessionStorage` and `restore()`
+   * put the markup back, tagged with `_owner` so one reader's conversation
+   * could not surface for the next person to sign in on the same tab. It had
+   * exactly one caller — the language toggle, which reloads the page — so an
+   * ordinary refresh lost the conversation regardless, a second device never
+   * had one, and a restored answer's citations had to be stripped by
+   * `neutraliseRestoredCitations` because the markup came back and the
+   * passages, which live in module memory, did not.
+   *
+   * The transcript now hydrates from durable per-account rows through
+   * `GET /api/chat/history`, which answers all three. Nothing writes this key
+   * any more; this clears it for a tab still carrying one from an older build,
+   * and for the sign-out path where leaving a previous reader's turns in
+   * storage was the original hazard.
    */
-  restore(identity, onRestored) {
+  discard() {
     try {
-      const saved = sessionStorage.getItem(TRANSCRIPT_KEY);
-      if (!saved) return false;
-
-      /* Consumed whatever happens next. A transcript that fails the ownership
-         check must not be left sitting for the sign-in after this one. */
       sessionStorage.removeItem(TRANSCRIPT_KEY);
-
-      let payload;
-      try {
-        payload = JSON.parse(saved);
-      } catch {
-        return false;   // an untagged entry from before this existed
-      }
-      if (!payload || typeof payload.turns !== 'string') return false;
-      if (!identity || payload.owner !== identity) return false;
-
-      const messages = document.getElementById('messages');
-      if (!messages) return false;
-      // Appended after the freshly rendered intro, not over it.
-      const start = messages.childElementCount;
-      messages.insertAdjacentHTML('beforeend', payload.turns);
-
-      /* Only the MARKUP came back. Anything behind it — an answer's source
-         passages, say — lives in module memory the reload cleared. Scoped to
-         what was just inserted, so restoring cannot touch a live answer. */
-      if (onRestored) {
-        for (let i = start; i < messages.childElementCount; i++) {
-          onRestored(messages.children[i]);
-        }
-      }
-
-      messages.scrollTop = messages.scrollHeight;
-      return true;
-    } catch {
-      return false;
-    }
+    } catch { /* private mode: nothing was stored, nothing to remove */ }
   },
 };
 

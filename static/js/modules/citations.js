@@ -19,7 +19,7 @@
 import { DOMCache } from './dom.js';
 import { iconMarkup } from './icons.js';
 import { I18n } from './i18n.js';
-import { SourcePanel, groupByDocument } from './source-panel.js';
+import { SourcePanel, groupByDocument, isDatedEvidence } from './source-panel.js';
 
 /* Two regexes, deliberately. Sharing one /g regex between .test() in
    acceptNode and .exec() in the replace loop corrupts lastIndex and silently
@@ -195,37 +195,51 @@ export function renderSourceTrigger(state, msgId) {
   const text = DOMCache.createElement('span');
   text.textContent = label;
   button.append(text);
+
+  /* A stored answer whose corpus has been rebuilt under it still opens — the
+     row behind it holds the document, page and passage the model actually
+     read, frozen when the answer was written, so opening it shows what was
+     read rather than a guess about where that text lives now.
+
+     What changes is that the reader is TOLD. Silently serving a passage from a
+     superseded build as though it were current is the one failure this product
+     cannot afford; silently withholding it is barely better, because the
+     reader cannot then tell "this evidence is dated" from "this answer had no
+     sources". `stale` and `unverifiable` are one badge on purpose: to a reader
+     they mean the same thing — we cannot confirm this is still in the live
+     corpus — and they stay distinct in the payload for logs and tests. */
+  if (isDatedEvidence(state?.evidenceState)) {
+    button.dataset.evidence = state.evidenceState;
+    const badge = DOMCache.createElement('span', 'source-trigger-badge');
+    badge.textContent = I18n.t('cite.datedBadge');
+    button.append(badge);
+  }
+
   button.insertAdjacentHTML('beforeend', iconMarkup('chevron-right', 12, 'chev'));
   return button;
 }
+
 
 /** Forget every answer's sources, e.g. on logout. */
 export function resetCitationState() {
   stateByMessage.clear();
 }
 
-/**
- * Strip the source controls from transcript HTML restored across a reload.
+/* `neutraliseRestoredCitations` lived here until step 6 and is deliberately
+   gone rather than merely unused.
  *
- * `stateByMessage` lives in module memory, so a restored answer's passages are
- * genuinely gone — only its markup came back. Unique message ids already make
- * it impossible for those controls to resolve to the WRONG answer's sources,
- * but they would still resolve to nothing: a trigger that opens an empty panel
- * and markers that highlight nothing.
+ * It stripped the source controls from a transcript restored out of
+ * `sessionStorage`, because only the MARKUP came back — `stateByMessage` lives
+ * in module memory, so the passages behind a restored answer were genuinely
+ * lost and its controls would have opened an empty panel. A control that does
+ * nothing is a worse lie than no control, so the markers reverted to plain
+ * text.
  *
- * A control that does nothing is a worse lie than no control, so the markers
- * become plain text again and the trigger is removed. The answer keeps its
- * "[1]" in the prose, which is what it said; it just stops offering to open
- * something it cannot produce.
- */
-export function neutraliseRestoredCitations(scope) {
-  if (!scope) return;
-
-  scope.querySelectorAll('.source-trigger').forEach(el => el.remove());
-  scope.querySelectorAll('.cite-marker').forEach((marker) => {
-    marker.replaceWith(document.createTextNode(`[${marker.dataset.cite}]`));
-  });
-}
+ * The transcript now hydrates from durable rows through the same render path a
+ * live answer takes, so a restored answer arrives WITH its passages and its
+ * controls resolve. Keeping the function would leave a loaded gun: called on a
+ * hydrated transcript it would silently strip evidence that is present and
+ * correct. */
 
 /**
  * One delegated listener set for the whole transcript, so markers created

@@ -369,6 +369,26 @@ class SearchEngine:
         """Return ``True`` when the data index has been successfully loaded."""
         return self._index.is_loaded
 
+    @property
+    def active_build_id(self) -> str | None:
+        """The corpus build these answers are actually being drawn from.
+
+        Delegates to the index, which is what resolved and loaded it. Read at
+        startup into ``CORPUS_REVISION`` and stamped onto every stored answer,
+        so a rehydrated citation can be compared against the corpus being served
+        now and dated when the two differ.
+
+        Deliberately NOT read from ``active_build.txt``: the pointer says what
+        *should* be loaded, this says what *is*. They diverge when an activation
+        lands between this engine initialising and the file being read, and when
+        a dangling pointer names a build that no longer exists — where the index
+        silently falls back to the legacy flat corpus while the file still names
+        the missing build. Either way the pointer would record a revision the
+        passages did not come from, and superseded evidence would render as
+        current.
+        """
+        return self._index.active_build_id
+
     # ------------------------------------------------------------------
     # Lazy initialisation
     # ------------------------------------------------------------------

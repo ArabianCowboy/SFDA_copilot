@@ -333,6 +333,57 @@ def base_url(live_server_url):
     return live_server_url
 
 
+def chat_history(messages=(), *, resumed=False, conversation_id="c0ffee00-0000-4000-8000-000000000001"):
+    """A `GET /api/chat/history` body.
+
+    The transcript is drawn from this endpoint on every sign-in since step 6, so
+    a test that does not route it gets whatever the live test server holds —
+    which is an empty in-memory backend, because the chat routes are themselves
+    mocked and nothing was ever persisted. Empty is the right default (most
+    tests are about one fresh answer), and it is stated here rather than left to
+    coincidence.
+    """
+    return json.dumps({
+        "conversation_id": conversation_id,
+        "resumed": resumed,
+        "messages": list(messages),
+    })
+
+
+def stored_answer(question, answer, *, sources=(), cited=None, evidence_state="verified"):
+    """One stored exchange, in the shape `_hydration_payload` emits.
+
+    Note `index`, not `source_index`: the column is remapped at the Flask
+    boundary precisely so the browser sees the same field name a live answer
+    carries. A fixture that used the column name would pass while the product
+    was broken.
+    """
+    return [
+        {"message_id": "m1", "seq": 1, "role": "user", "content": question},
+        {
+            "message_id": "m2", "seq": 2, "role": "assistant", "content": answer,
+            "evidence_state": evidence_state,
+            "sources": list(sources),
+            "cited": list(cited if cited is not None else [s["index"] for s in sources]),
+            "retrieved": len(sources),
+        },
+    ]
+
+
+def route_chat_history(page, body):
+    """Point the transcript endpoint at a canned body.
+
+    Playwright matches the most recently added handler first, so this overrides
+    `browser_page`'s empty default when a test adds it afterwards.
+    """
+    page.route(
+        "**/api/chat/history",
+        lambda route: route.fulfill(
+            status=200, content_type="application/json", body=body
+        ),
+    )
+
+
 @pytest.fixture
 def browser_page(page):
     """A browser page with deterministic Supabase and chat responses."""
@@ -362,6 +413,17 @@ def browser_page(page):
             status=200,
             content_type="text/event-stream",
             body=SSE_CHAT_MOCK,
+        ),
+    )
+    # Every sign-in draws the transcript from here. Empty by default: these
+    # tests mock the chat routes, so nothing was ever stored, and a test that
+    # wants a stored conversation says so with `route_chat_history`.
+    page.route(
+        "**/api/chat/history",
+        lambda route: route.fulfill(
+            status=200,
+            content_type="application/json",
+            body=chat_history(),
         ),
     )
     return page

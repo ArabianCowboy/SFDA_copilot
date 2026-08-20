@@ -34,6 +34,7 @@ import re
 import pytest
 from playwright.sync_api import expect
 
+from .conftest import chat_history, route_chat_history, stored_answer
 from web.api.app import create_app
 from web.services.result_combiner import SearchResult
 
@@ -798,25 +799,90 @@ SEED_SESSION = (
 
 
 def test_the_button_survives_a_language_switch(authenticated_page):
-    """A restored transcript is still a conversation to end.
+    """A hydrated transcript is still a conversation to end.
 
-    Every other route to a populated transcript goes through UI, which keeps the
-    button in step. Transcript.restore() writes the turns straight in as markup
-    and told it nothing — so after a language switch the reader had a
-    conversation on screen and no visible way to end it, which is the one state
-    this control exists for.
+    The language toggle reloads the page, so the turns on screen afterwards come
+    from `GET /api/chat/history` rather than from anything this tab remembered.
+    They are written in by `UI.hydrateTranscript`, which has to keep the New chat
+    button in step — otherwise the reader has a conversation on screen and no
+    visible way to end it, which is the one state this control exists for.
+
+    That was a real bug on the predecessor of this path: the markup restore
+    wrote turns straight into the DOM and told the button nothing. It is worth
+    pinning through hydration too, because the new path can fail the same way.
     """
     send(authenticated_page)
     expect(authenticated_page.locator(NEW_CHAT)).to_be_visible()
 
     authenticated_page.add_init_script(SEED_SESSION)
-    # Saves the transcript, reloads, restores it. Several toggles exist across
-    # the chrome; only the one on screen is clickable.
+    route_chat_history(
+        authenticated_page,
+        chat_history(stored_answer("What must the PSSF contain?", "A stored answer.")),
+    )
+    # Several toggles exist across the chrome; only the one on screen is
+    # clickable.
     authenticated_page.locator(".lang-toggle-btn").locator("visible=true").first.click()
     authenticated_page.wait_for_load_state("load")
 
     expect(authenticated_page.locator(".chatbot-message")).to_have_count(1)
     expect(authenticated_page.locator(NEW_CHAT)).to_be_visible()
+
+
+def test_a_conversation_picked_up_from_history_says_so(authenticated_page):
+    """The disclosure the resume flag rests on.
+
+    When the server resumed the reader's most recent conversation because this
+    browser named none, the transcript must say where it came from. A
+    conversation that reappears unexplained is the one part of durable history
+    that reads as the app acting behind the reader's back.
+    """
+    authenticated_page.add_init_script(SEED_SESSION)
+    route_chat_history(
+        authenticated_page,
+        chat_history(stored_answer("Earlier question", "Earlier answer."), resumed=True),
+    )
+    authenticated_page.reload()
+    authenticated_page.wait_for_load_state("load")
+
+    expect(authenticated_page.locator("#resumed-notice")).to_be_visible()
+
+    # Dismissible, because it is a disclosure and not a decision.
+    authenticated_page.locator(".resumed-notice-dismiss").click()
+    expect(authenticated_page.locator("#resumed-notice")).to_have_count(0)
+
+
+def test_an_ordinary_reload_is_not_announced_as_resumed(authenticated_page):
+    """`resumed` is false when the cookie named the conversation, and the notice
+    must follow the server rather than the mere presence of stored turns."""
+    authenticated_page.add_init_script(SEED_SESSION)
+    route_chat_history(
+        authenticated_page,
+        chat_history(stored_answer("A question", "An answer."), resumed=False),
+    )
+    authenticated_page.reload()
+    authenticated_page.wait_for_load_state("load")
+
+    expect(authenticated_page.locator(".chatbot-message")).to_have_count(1)
+    expect(authenticated_page.locator("#resumed-notice")).to_have_count(0)
+
+
+def test_ending_a_resumed_conversation_takes_the_notice_with_it(authenticated_page):
+    """The notice explains turns. Once they are gone it explains nothing, and a
+    stale one would describe a conversation the reader is looking at the absence
+    of."""
+    authenticated_page.add_init_script(SEED_SESSION)
+    route_chat_history(
+        authenticated_page,
+        chat_history(stored_answer("Earlier question", "Earlier answer."), resumed=True),
+    )
+    authenticated_page.reload()
+    authenticated_page.wait_for_load_state("load")
+    expect(authenticated_page.locator("#resumed-notice")).to_be_visible()
+
+    authenticated_page.locator(NEW_CHAT).locator("visible=true").first.click()
+
+    expect(authenticated_page.locator("#resumed-notice")).to_have_count(0)
+    expect(authenticated_page.locator(".chatbot-message")).to_have_count(0)
 
 
 # ── When the server says no ─────────────────────────────────────────────────

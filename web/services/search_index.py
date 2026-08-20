@@ -409,6 +409,26 @@ class SearchIndex:
     # ------------------------------------------------------------------
 
     @property
+    def active_build_id(self) -> str | None:
+        """The build this engine actually loaded, or None for the legacy layout.
+
+        DERIVED FROM WHAT WAS LOADED, never from the pointer file, and the
+        distinction is the whole point. `read_active_build_id` reports what
+        `active_build.txt` *says*; this reports what is in RAM. They disagree in
+        two real cases: an activation flipping the pointer between this engine
+        initialising and a later read of the file, and a dangling pointer naming
+        a build that no longer exists — where `resolve_active_build_dir` falls
+        back to the legacy flat corpus while the file still names the missing
+        build.
+
+        Both matter because this string is what a stored citation is compared
+        against. Recording a revision the passages did not come from would let
+        genuinely superseded evidence render as current, which is the one
+        outcome this product cannot afford.
+        """
+        return self._active_build_dir.name if self._active_build_dir else None
+
+    @property
     def embedding_dimension(self) -> int:
         """Return the vector dimensionality of the FAISS index."""
         if self.faiss_index is None:

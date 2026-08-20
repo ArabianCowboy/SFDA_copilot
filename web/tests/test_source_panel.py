@@ -20,7 +20,14 @@ import re
 
 from playwright.sync_api import Page, expect
 
-from .conftest import SSE_DONE_FRAME, SSE_FINAL_FRAME, sse_delta
+from .conftest import (
+    SSE_DONE_FRAME,
+    SSE_FINAL_FRAME,
+    chat_history,
+    route_chat_history,
+    sse_delta,
+    stored_answer,
+)
 
 
 WIDE = {"width": 1600, "height": 900}
@@ -625,47 +632,337 @@ def test_a_transcript_is_not_restored_when_startup_finds_no_reader(sourced_page:
 
 
 
-def test_a_restored_answer_cannot_open_another_answers_sources(sourced_page: Page):
-    """The wrong-evidence bug.
+SEED_SUPABASE_SESSION = (
+    "window.__supabaseState = {"
+    "  user: { id: 'test-user-id', email: 'test@example.com' },"
+    "  profile: { id: 'test-user-id', full_name: 'Test User',"
+    "             preferences: { theme: 'light' } },"
+    "  authCallback: null, lastProfileUpdate: null,"
+    "  sessionError: null, profileError: null, profileUpdateError: null };"
+)
 
-    Message ids used to be a counter reset on every load, while the transcript
-    survives a language switch as saved HTML. A restored answer came back still
-    carrying m1 and the next answer was handed the same id, so the old [1]
-    opened the NEW answer's passages — a citation resolving to evidence from a
-    different question, silently.
+# One stored passage, deliberately unlike anything the live SSE mock returns, so
+# a restored citation opening the WRONG answer's evidence is visible as text
+# rather than inferable from a count.
+STORED_SOURCE = {
+    "index": 1,
+    "cited": True,
+    "document": "Archived Circular 7 — Stored Evidence",
+    "page": 42,
+    "category": "Regulatory",
+    "score": 0.71,
+    "semantic_score": 0.7,
+    "lexical_score": 0.72,
+    "chunk_id": "stored-chunk-1",
+    "snippet": "The passage this stored answer was written from.",
+}
+
+
+def test_a_restored_answer_opens_its_own_stored_evidence(sourced_page: Page):
+    """The payoff of hydration, and the wrong-evidence bug it must not reopen.
+
+    Until step 6 this asserted the INVERSE: a restored answer kept its prose and
+    had its citation controls stripped, because the transcript came back as
+    markup from `sessionStorage` while the passages behind it lived only in
+    module memory. A control that resolves to nothing is a worse lie than no
+    control, so they were removed.
+
+    The turns now come from durable rows, passages included, so the controls
+    resolve — and the older hazard the previous test guarded is still live:
+    message ids were once a per-load counter, so a restored answer and the next
+    fresh answer could share an id and the old [1] would open the NEW answer's
+    evidence. Both properties are asserted here.
     """
     page = sourced_page
     page.set_viewport_size(WIDE)
     _ask(page)
     expect(page.locator(".source-trigger")).to_have_count(1)
 
-    # The Supabase double keeps its session in a page-scoped object, so a
-    # reload would otherwise come back signed out and never restore anything.
-    # Seeding it before the switch keeps the reader logged in across it.
-    page.add_init_script(
-        "window.__supabaseState = {"
-        "  user: { id: 'test-user-id', email: 'test@example.com' },"
-        "  profile: { id: 'test-user-id', full_name: 'Test User',"
-        "             preferences: { theme: 'light' } },"
-        "  authCallback: null, lastProfileUpdate: null,"
-        "  sessionError: null, profileError: null, profileUpdateError: null };"
+    # The Supabase double keeps its session in a page-scoped object, so a reload
+    # would otherwise come back signed out and hydrate nothing.
+    page.add_init_script(SEED_SUPABASE_SESSION)
+    route_chat_history(
+        page,
+        chat_history(stored_answer(
+            "What must the PSSF contain?",
+            "The stored answer, citing [1].",
+            sources=[STORED_SOURCE],
+        )),
     )
 
-    # Switch language: saves the transcript, reloads, restores it. Several
-    # toggles exist across the chrome; only the one on screen is clickable.
     page.locator(".lang-toggle-btn").locator("visible=true").first.click()
     page.wait_for_load_state("load")
     expect(page.locator("#query-input")).to_be_visible()
-    expect(page.locator(".chatbot-message")).not_to_have_count(0)
+    expect(page.locator(".chatbot-message")).to_have_count(1)
 
-    # The restored answer keeps its prose but offers no evidence it cannot
-    # produce — its passages did not survive the reload.
-    expect(page.locator(".source-trigger")).to_have_count(0)
-    expect(page.locator(".cite-marker")).to_have_count(0)
-
-    # A NEW answer gets its own controls, and they resolve to its own sources.
-    _ask(page, "ما الذي يجب أن يتضمنه الملف؟")
+    # The restored answer arrived WITH its evidence.
     expect(page.locator(".source-trigger")).to_have_count(1)
+    expect(page.locator(".cite-marker")).to_have_count(1)
+
+    page.locator(".cite-marker").first.click()
+    expect(page.locator("#source-panel")).to_be_visible()
+    expect(page.locator(".source-panel-body")).to_contain_text("Archived Circular 7")
+
+    # A NEW answer gets its own controls, resolving to its own sources — not to
+    # the stored ones, and not the other way round.
+    #
+    # Asserted against `.source-panel-body`, which `_render` empties on every
+    # open, rather than against the whole panel: `close()` hides the expanded
+    # passage card without clearing it, so the panel's textContent still carries
+    # the previous answer's passage as dead, invisible text. Scoping to the body
+    # asks the question the test means — what is this panel listing NOW.
+    page.keyboard.press("Escape")
+    _ask(page, "ما الذي يجب أن يتضمنه الملف؟")
+    expect(page.locator(".source-trigger")).to_have_count(2)
+
+    page.locator(".chatbot-message").last.locator(".source-trigger").click()
+    expect(page.locator("#source-panel")).to_be_visible()
+    expect(page.locator(".source-panel-body")).to_contain_text("SFDA Guideline Document Number 1")
+    expect(page.locator(".source-panel-body")).not_to_contain_text("Archived Circular 7")
+
+    # And back again — the assertion that makes this test mean something.
+    # Checking only that the NEW answer opens its own evidence would still pass
+    # if the new answer had overwritten the restored one's entry under a
+    # colliding message id, which is precisely the bug that made ids uuids
+    # instead of a per-load counter. The restored answer has to still open its
+    # own archived passage AFTER a second answer exists.
+    page.keyboard.press("Escape")
+    page.locator(".chatbot-message").first.locator(".cite-marker").first.click()
+    expect(page.locator("#source-panel")).to_be_visible()
+    expect(page.locator(".source-panel-body")).to_contain_text("Archived Circular 7")
+    expect(page.locator(".source-panel-body")).not_to_contain_text(
+        "SFDA Guideline Document Number 1"
+    )
+
+
+def test_evidence_from_the_active_build_is_not_badged(sourced_page: Page):
+    """`verified` says nothing. Warning about every answer is the same as
+    warning about none."""
+    page = sourced_page
+    page.set_viewport_size(WIDE)
+    page.add_init_script(SEED_SUPABASE_SESSION)
+    route_chat_history(
+        page,
+        chat_history(stored_answer(
+            "A question", "An answer citing [1].",
+            sources=[STORED_SOURCE], evidence_state="verified",
+        )),
+    )
+    page.reload()
+    page.wait_for_load_state("load")
+
+    expect(page.locator(".source-trigger")).to_have_count(1)
+    expect(page.locator(".source-trigger-badge")).to_have_count(0)
+
+    page.locator(".source-trigger").click()
+    expect(page.locator(".source-panel-dated")).to_be_hidden()
+
+
+def test_evidence_from_a_rebuilt_corpus_is_dated_but_still_opens(sourced_page: Page):
+    """The design position this step reversed, pinned so it cannot drift back.
+
+    An earlier plan had a stale citation render inert — markers reverted to
+    plain text, trigger removed. That would have let one corpus rebuild deaden
+    every citation in every stored conversation at once. The stored row IS what
+    the model read, so it opens; what changes is that the reader is told the
+    document set has moved since.
+    """
+    page = sourced_page
+    page.set_viewport_size(WIDE)
+    page.add_init_script(SEED_SUPABASE_SESSION)
+    route_chat_history(
+        page,
+        chat_history(stored_answer(
+            "A question", "An answer citing [1].",
+            sources=[STORED_SOURCE], evidence_state="stale",
+        )),
+    )
+    page.reload()
+    page.wait_for_load_state("load")
+
+    expect(page.locator(".source-trigger")).to_have_count(1)
+    expect(page.locator(".source-trigger-badge")).to_have_count(1)
+
+    page.locator(".cite-marker").first.click()
+    expect(page.locator("#source-panel")).to_be_visible()
+    expect(page.locator(".source-panel-dated")).to_be_visible()
+    expect(page.locator(".source-panel-body")).to_contain_text("Archived Circular 7")
+
+
+def test_unverifiable_evidence_is_dated_on_the_same_terms(sourced_page: Page):
+    """Three states server-side, two on screen. `stale` and `unverifiable` mean
+    the same thing to a reader — we cannot confirm this is still in the live
+    corpus — and share one badge."""
+    page = sourced_page
+    page.set_viewport_size(WIDE)
+    page.add_init_script(SEED_SUPABASE_SESSION)
+    route_chat_history(
+        page,
+        chat_history(stored_answer(
+            "A question", "An answer citing [1].",
+            sources=[STORED_SOURCE], evidence_state="unverifiable",
+        )),
+    )
+    page.reload()
+    page.wait_for_load_state("load")
+
+    expect(page.locator(".source-trigger-badge")).to_have_count(1)
+
+
+def test_a_second_reader_in_the_same_tab_gets_their_own_transcript(browser_page: Page):
+    """The failure the resume flag spent two steps waiting to avoid, arriving by
+    a different door.
+
+    The app lives at "/" and `AuthView` only toggles `d-none`, so a sign-out
+    followed by a sign-in reloads nothing. A transcript guard keyed to the PAGE
+    rather than to the READER is therefore already spent when the second reader
+    arrives: their transcript is never drawn, while the server — finding no
+    cookie — resumes their most recent conversation into the prompt window. A
+    blank screen backed by a model that remembers, which is exactly the state
+    `chat_resume_latest_session` was held off for until hydration existed.
+
+    Two properties are asserted: the second reader's own turns appear, and the
+    first reader's do not survive into their session.
+    """
+    page = browser_page
+    route_chat_history(
+        page, chat_history(stored_answer("Reader A question", "Reader A answer."))
+    )
+    page.goto("/")
+    page.locator("#auth-button-main").click()
+    page.locator("#login-email").fill("test@example.com")
+    page.locator("#login-password").fill("password123")
+    page.locator("#login-form").evaluate("(form) => form.requestSubmit()")
+    page.locator("#authenticated-view").wait_for(state="visible")
+    expect(page.locator(".chatbot-message")).to_have_count(1)
+    expect(page.locator("#messages")).to_contain_text("Reader A answer.")
+
+    # The second reader's history replaces the first's on the wire, exactly as
+    # the server would answer once the identity behind the cookie changed.
+    route_chat_history(
+        page, chat_history(stored_answer("Reader B question", "Reader B answer."))
+    )
+    page.evaluate(
+        "() => window.__supabaseState.authCallback"
+        "  && window.__supabaseState.authCallback('SIGNED_OUT', null)"
+    )
+    page.evaluate(
+        "() => {"
+        "  const session = { access_token: 'fake_token',"
+        "    user: { id: 'reader-b-id', email: 'reader-b@example.com' } };"
+        "  window.__supabaseState.user = session.user;"
+        "  window.__supabaseState.authCallback"
+        "    && window.__supabaseState.authCallback('SIGNED_IN', session);"
+        "}"
+    )
+
+    expect(page.locator("#messages")).to_contain_text("Reader B answer.")
+    expect(page.locator("#messages")).not_to_contain_text("Reader A answer.")
+
+
+# Holds `/api/chat/history` open until the test releases it, so "the transcript
+# arrives late" is a state the test enters deliberately rather than one it hopes
+# for. Same idea as CONTROLLABLE_CHAT_STREAM in conftest: no timing, no sleeps —
+# the test is the clock. Installed via add_init_script so it wraps fetch before
+# any application module runs.
+CONTROLLABLE_HISTORY = """
+window.__history = {};
+window.__history.ready = new Promise((resolve) => { window.__history.release = resolve; });
+const __origFetch = window.fetch;
+window.fetch = async (input, init) => {
+  const url = typeof input === 'string' ? input : input.url;
+  if (url && url.includes('/api/chat/history')) {
+    const body = await window.__history.ready;
+    return new Response(body, {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+  return __origFetch(input, init);
+};
+"""
+
+
+def test_history_arriving_late_is_filed_above_the_live_exchange(browser_page: Page):
+    """Hydration is not awaited, so it can land after a new answer is on screen.
+
+    A reader who signs in and asks straight away gets their question rendered
+    while the transcript fetch is still in flight. Appending then would file
+    their stored conversation UNDERNEATH the question they just asked — a
+    transcript that reads backwards, on the surface whose whole job is to show
+    what was said and in what order.
+
+    Stored turns are older than anything this tab has done, so they belong above
+    it however late they arrive.
+    """
+    page = browser_page
+    page.add_init_script(CONTROLLABLE_HISTORY)
+    page.goto("/")
+    page.locator("#auth-button-main").click()
+    page.locator("#login-email").fill("test@example.com")
+    page.locator("#login-password").fill("password123")
+    page.locator("#login-form").evaluate("(form) => form.requestSubmit()")
+    page.locator("#authenticated-view").wait_for(state="visible")
+
+    # The transcript is still in flight, so the reader asks into an empty screen.
+    expect(page.locator("#messages")).not_to_contain_text("Older stored answer.")
+    _ask(page, "A brand new question")
+
+    # Only now does the stored conversation arrive.
+    body = chat_history(stored_answer("Older question", "Older stored answer."))
+    page.evaluate("(body) => window.__history.release(body)", body)
+    expect(page.locator("#messages")).to_contain_text("Older stored answer.")
+
+    order = page.evaluate(
+        "() => [...document.querySelectorAll('#messages .message')]"
+        "        .map(el => el.textContent)"
+    )
+    stored_at = next(i for i, t in enumerate(order) if "Older stored answer." in t)
+    fresh_at = next(i for i, t in enumerate(order) if "A brand new question" in t)
+    assert stored_at < fresh_at, (
+        f"stored history was filed below the live exchange: {order}"
+    )
+
+
+def test_late_history_cannot_resurrect_a_conversation_the_reader_ended(browser_page: Page):
+    """New chat must mean New chat, including against a fetch already in flight.
+
+    The server-side rule is careful about this: a cookie that names a
+    conversation is honoured as-is, precisely so a reset is not undone by the
+    resume fallback. But hydration opens a second door the server cannot close —
+    the transcript request is dispatched at sign-in and not awaited, so a reader
+    who presses New chat while it is still travelling would have the ended
+    conversation drawn back onto the screen when it lands.
+
+    Identity alone does not catch this: it is the same reader who pressed the
+    button. The transcript epoch does.
+    """
+    page = browser_page
+    page.add_init_script(CONTROLLABLE_HISTORY)
+    page.goto("/")
+    page.locator("#auth-button-main").click()
+    page.locator("#login-email").fill("test@example.com")
+    page.locator("#login-password").fill("password123")
+    page.locator("#login-form").evaluate("(form) => form.requestSubmit()")
+    page.locator("#authenticated-view").wait_for(state="visible")
+
+    # A turn exists, so New chat is offered at all.
+    _ask(page, "A question in this tab")
+    expect(page.locator(".chatbot-message")).to_have_count(1)
+
+    page.locator(".new-chat-btn").locator("visible=true").first.click()
+    expect(page.locator(".chatbot-message")).to_have_count(0)
+
+    # Only now does the transcript request — dispatched back at sign-in —
+    # finally arrive, carrying a conversation the reader has since ended.
+    body = chat_history(
+        stored_answer("Ended question", "Ended stored answer."), resumed=True
+    )
+    page.evaluate("(body) => window.__history.release(body)", body)
+
+    expect(page.locator("#messages")).not_to_contain_text("Ended stored answer.")
+    expect(page.locator("#resumed-notice")).to_have_count(0)
+    expect(page.locator(".chatbot-message")).to_have_count(0)
 
 
 # ── Arabic ──────────────────────────────────────────────────────────────────

@@ -379,9 +379,35 @@ legacy flat layout** (`build_registry.py:116-128`). A null on either side resolv
 reading the pointer file per turn.
 
 Three states: `verified` (equal), `stale` (different), `unverifiable` (either side null).
-Only `verified` renders as openable evidence. **No document/page fallback** — a document
+
+~~Only `verified` renders as openable evidence. **No document/page fallback** — a document
 and page can plausibly match the wrong passage, and a confidently wrong citation is the
-worst outcome available here.
+worst outcome available here.~~
+
+**Reversed in step 5 (2026-08-20). A stale citation still opens; what changes is what the
+reader is told.** The rule above is right about the act it describes and wrong about the act
+hydration performs, and the two were conflated. Re-resolving a `chunk_id` against a rebuilt
+index *can* surface a plausible but wrong passage — nothing does that, and nothing should.
+But `chat_message_sources` stores the document, page, category and snippet **frozen at write
+time**, so opening a stored citation shows what the model actually read. That is a record,
+not a lookup, and withholding it hides the audit trail rather than protecting it.
+
+Kept strictly the rule had two costs it did not price. One corpus rebuild would deaden every
+citation in every stored conversation **at once**, on the surface built for a reader auditing
+an answer. And an answer whose markers reverted to plain text with no trigger is
+indistinguishable from an answer that cited nothing — the same *control that does nothing*
+failure `neutraliseRestoredCitations` was written to avoid, arrived at from the other side.
+
+So the three states survive as classification and drive disclosure, not access: `verified`
+says nothing, while `stale` and `unverifiable` share one badge and one explanatory line,
+because to a reader they mean the same thing. They remain distinct in the payload, in logs
+and in tests.
+
+One consequence worth stating: **`evidence_state` on a LIVE answer is asserted, not
+computed.** A fresh answer came from the active index, so its currency is known rather than
+inferred; and computing it there would mark every fresh answer `unverifiable` on a
+deployment where `read_active_build_id` finds no pointer — badging the one case beyond
+doubt.
 
 ### RPC signatures
 
@@ -756,8 +782,8 @@ described an increment its own table did not schedule; this is the correction.
 | 2 | `ChatBackend` Protocol + Supabase/InMemory backends; uuid canonicalisation; `ConversationStore` re-key; salt helpers + `.env.example` | `pytest -m "not browser and not integration"` | **done** |
 | 3 | Current-session rule (§5); ownership verification; logout/purge split; second non-admin bypass identity; replacement isolation assertions | `test_session_isolation.py`, `test_new_chat.py` | **done** |
 | 4 | Write at `final`; client-minted `client_request_id`; `persistence_unavailable` as an `error` frame; `handlers.js` toast + robot fix | `test_chat_stream.py`, `test_chat_api.py`; **both catalogues**; `ASSET_VERSION` bump | **done** |
-| 5 | Citation persistence (all retrieved, `cited`) + `corpus_revision` **rendering** gate | `test_citations.py` + sparse-index, NaN, stale-build tests; `ASSET_VERSION` bump | **write path done**; rendering gate open |
-| 6 | Hydration replaces `sessionStorage`; eviction neutralises its own markers | `-m browser`, `test_source_panel.py`; `ASSET_VERSION` bump | open — *prompt-window* hydration ships in step 4; the transcript still restores from `sessionStorage` |
+| 5 | Citation persistence (all retrieved, `cited`) + `corpus_revision` **rendering** gate | `test_citations.py` + sparse-index, NaN, stale-build tests; `ASSET_VERSION` bump | **done 2026-08-20** — with the gate's *rendering* rule reversed; see below |
+| 6 | Hydration replaces `sessionStorage`; eviction neutralises its own markers | `-m browser`, `test_source_panel.py`; `ASSET_VERSION` bump | **done 2026-08-20** — `GET /api/chat/history`; `Transcript.save/restore` and `neutraliseRestoredCitations` deleted; `chat_resume_latest_session` on |
 | 7 | Notice screen + acceptance/withdrawal routes; `profiles` consent columns **and their deny-list entries**; purge CLI; export RPC; frequency RPC | `-m browser`, `test_rtl.py`, `test_css_contract.py`, `test_admin_audit.py`; both catalogues; `ASSET_VERSION` bump | open |
 | 8 | Phase 2 sidebar, titling, rename, delete; `chat_list_sessions` | `-m browser`, `test_css_contract.py`, `test_rtl.py`; `ASSET_VERSION` bump | open |
 

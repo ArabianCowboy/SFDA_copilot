@@ -29,7 +29,7 @@ function createMessageContent(text, isBot) {
   return contentDiv;
 }
 
-function createMessageElement(text, sender, msgId) {
+function createMessageElement(text, sender, msgId, occurredAt = null) {
   const isBot = sender === 'bot';
   const messageWrapper = DOMCache.createElement(
     'div', 'message', isBot ? 'chatbot-message' : 'user-message', 'mb-3'
@@ -51,7 +51,14 @@ function createMessageElement(text, sender, msgId) {
   messageBubble.appendChild(content);
 
   const timestampEl = DOMCache.createElement('time', 'timestamp');
-  const now = new Date();
+  /* WHEN THE TURN HAPPENED, not when the page was drawn. A hydrated transcript
+     rebuilds turns that may be days old, and stamping them with the reload time
+     would tell a reader every question in their history was asked just now — on
+     a tool where "when did I ask this" is part of the record. An unparseable or
+     absent value falls back to now, which is correct for a live message and the
+     honest default for a stored one whose timestamp did not survive. */
+  const stored = occurredAt ? new Date(occurredAt) : null;
+  const now = stored && !Number.isNaN(stored.getTime()) ? stored : new Date();
   /* Locale-aware, and dir="auto" so bidi cannot reorder it: an en-US time
      dropped into an Arabic transcript rendered as "AM 3:17:18" because the
      RTL context reversed the run. The same string in `ar` is Arabic and must
@@ -77,6 +84,26 @@ function decorateMarkdown(scope) {
   scope.querySelectorAll('ul, ol').forEach(el => el.classList.add(CONFIG.CLASSES.MESSAGE_LIST));
   scope.querySelectorAll('pre code').forEach(el => el.parentElement?.classList.add(CONFIG.CLASSES.MESSAGE_CODE_BLOCK));
   scope.querySelectorAll(':not(pre) > code').forEach(el => el.classList.add(CONFIG.CLASSES.MESSAGE_INLINE_CODE));
+}
+
+const RESUMED_NOTICE_ID = 'resumed-notice';
+
+/**
+ * Whether an element inside `#messages` is one of the conversation's turns.
+ *
+ * `#messages` holds two things that are NOT turns and must never be counted,
+ * detached, cleared or restored as if they were: the server-rendered
+ * `[data-chat-intro]` empty state, and the resumed notice. Both would otherwise
+ * be swept into the fragment an undo puts back, and both would make
+ * `updateNewChatAvailability` believe a conversation exists.
+ *
+ * This started as a repeated `!el.hasAttribute('data-chat-intro')` at four call
+ * sites. Adding a second non-turn element to `#messages` is exactly the change
+ * that turns a repeated literal into a bug at whichever site the author forgot,
+ * so the question is asked in one place.
+ */
+function isTranscriptTurn(el) {
+  return !el.hasAttribute('data-chat-intro') && el.id !== RESUMED_NOTICE_ID;
 }
 
 export const UI = {
@@ -124,7 +151,7 @@ export const UI = {
 
   addMessage(text, sender, suggestedQuestions = [], sources = [], meta = null) {
     const msgId = sender === 'bot' ? nextMessageId() : null;
-    const messageEl = createMessageElement(text, sender, msgId);
+    const messageEl = createMessageElement(text, sender, msgId, meta?.occurredAt);
     const container = DOMCache.get(CONFIG.SELECTORS.MESSAGES);
     if (!container) return;
 
@@ -153,6 +180,11 @@ export const UI = {
           sources: reachable,
           cited: meta?.cited ?? null,
           retrieved: meta?.retrieved ?? sources.length,
+          /* Undefined for a caller that does not set it, and that is the
+             correct default — `isDatedEvidence` treats missing as "say
+             nothing" rather than "warn", so an answer rendered by a path that
+             knows nothing about corpus builds is left alone. */
+          evidenceState: meta?.evidenceState,
         }, msgId);
         if (trigger) {
           messageEl.insertBefore(
@@ -354,6 +386,10 @@ export const UI = {
       sources: reachable,
       cited,
       retrieved: final?.retrieved ?? sources.length,
+      // Always 'verified' from the server on a live answer — it was just drawn
+      // from the active index. Read from the frame rather than hardcoded here
+      // so the streaming and hydrated paths share one field name.
+      evidenceState: final?.evidence_state,
     }, handle.msgId);
     if (trigger) {
       handle.messageEl.insertBefore(
@@ -416,6 +452,10 @@ export const UI = {
    */
   clearTranscript() {
     this.detachTranscript();
+    /* The notice describes turns that are no longer on screen. Leaving it up
+       after a clear or a sign-out would explain a conversation the reader is
+       looking at the absence of. */
+    this.hideResumedNotice();
   },
 
   /**
@@ -427,16 +467,18 @@ export const UI = {
    * node. Nodes that leave and come back are therefore wired exactly as they
    * were, and `stateByMessage` still resolves their sources.
    *
-   * Restoring from HTML would not do: that path has to strip its own controls
-   * (see neutraliseRestoredCitations), which is correct across a reload, where
-   * module memory is genuinely gone, and wrong for an undo, where it is not.
+   * Restoring from HTML would not do: nodes rebuilt from markup arrive without
+   * the passages behind their citation controls, because `stateByMessage` lives
+   * in module memory. Across a reload that is unavoidable and the transcript is
+   * hydrated from durable rows instead; for an undo, where module memory is
+   * still intact, moving the live nodes keeps everything resolving.
    */
   detachTranscript() {
     const fragment = document.createDocumentFragment();
     const container = DOMCache.get(CONFIG.SELECTORS.MESSAGES);
     if (container) {
       [...container.children]
-        .filter(el => !el.hasAttribute('data-chat-intro'))
+        .filter(isTranscriptTurn)
         .forEach(el => fragment.appendChild(el));
     }
     this.updateNewChatAvailability();
@@ -454,9 +496,10 @@ export const UI = {
    * the failure mode this codebase already legislates against.
    */
   async playTranscriptExit() {
+    this.hideResumedNotice();
     const container = DOMCache.get(CONFIG.SELECTORS.MESSAGES);
     const turns = container
-      ? [...container.children].filter(el => !el.hasAttribute('data-chat-intro'))
+      ? [...container.children].filter(isTranscriptTurn)
       : [];
 
     if (!turns.length || prefersReducedMotion()) return this.detachTranscript();
@@ -524,7 +567,7 @@ export const UI = {
   updateNewChatAvailability({ animate = true } = {}) {
     const container = DOMCache.get(CONFIG.SELECTORS.MESSAGES);
     const hasTurns = !!container && [...container.children]
-      .some(el => !el.hasAttribute('data-chat-intro'));
+      .some(isTranscriptTurn);
     const available = hasTurns || AppState.isRequestInProgress();
 
     DOMCache.getAll(`.${CONFIG.CLASSES.NEW_CHAT_BTN}`).forEach(btn => {
@@ -550,6 +593,119 @@ export const UI = {
         { once: true }
       );
     });
+  },
+
+  /**
+   * Draw a stored conversation into the transcript.
+   *
+   * THROUGH `addMessage`, deliberately — the same path a live answer takes, so
+   * `bindCitations` and `renderSourceTrigger` run and a restored answer's
+   * controls resolve against real passages. The predecessor of this method
+   * re-injected saved HTML from `sessionStorage`, which is why restored
+   * citations had to be neutralised: the markup came back and the evidence did
+   * not. Never re-inject stored markup here; it would reintroduce exactly that.
+   *
+   * Turns append AFTER the server-rendered `[data-chat-intro]` block, which is
+   * why nothing is cleared first — the intro is the empty state and belongs
+   * above the conversation, not instead of it.
+   *
+   * `#messages` is `role="log" aria-live="polite"`, so drawing a whole
+   * conversation would have a screen reader read every turn aloud. `aria-busy`
+   * marks the bulk insert as one the reader should not be walked through — the
+   * same reasoning `restoreTranscript` already carries for undo.
+   */
+  hydrateTranscript(messages = []) {
+    const container = DOMCache.get(CONFIG.SELECTORS.MESSAGES);
+    if (!container || !messages.length) return;
+
+    /* Everything already on screen, captured before a single turn is drawn.
+       The fetch behind this is not awaited, so a reader who signs in and asks
+       a question straight away can have their new exchange rendered WHILE the
+       history is still in flight — and appending then would file their stored
+       conversation underneath the question they just asked. Stored turns are
+       older than anything this tab has done, so they go above it. */
+    const existing = [...container.children];
+    const anchor = existing.find(isTranscriptTurn) || null;
+
+    container.setAttribute('aria-busy', 'true');
+    messages.forEach((message) => {
+      if (message.role === 'user') {
+        this.addMessage(message.content, 'user', [], [], {
+          occurredAt: message.created_at,
+        });
+        return;
+      }
+      this.addMessage(message.content, 'bot', [], message.sources || [], {
+        cited: message.cited ?? null,
+        retrieved: message.retrieved ?? (message.sources || []).length,
+        evidenceState: message.evidence_state,
+        occurredAt: message.created_at,
+      });
+    });
+
+    /* `addMessage` appends, so the drawn turns are whatever is new. Moving
+       them one at a time before the same anchor preserves their order. */
+    if (anchor) {
+      [...container.children]
+        .filter(el => !existing.includes(el))
+        .forEach(el => container.insertBefore(el, anchor));
+    }
+
+    requestAnimationFrame(() => container.removeAttribute('aria-busy'));
+
+    // Bypasses the entrance animation's reason for existing: a conversation
+    // being restored did not just arrive, and animating it in would say it did.
+    this.updateNewChatAvailability({ animate: false });
+  },
+
+  /**
+   * Say that this conversation was picked up rather than started here.
+   *
+   * Shown only when the server resumed the reader's most recent conversation
+   * because this browser named none — a new device, a cleared browser, or the
+   * first visit after a logout. In every other case the conversation on screen
+   * is the one this browser was already having, and a notice would be noise.
+   *
+   * IT EXISTS FOR ONE KNOWN GAP. Ending a conversation and then logging out
+   * before asking anything else purges the cookie, so the next visit looks like
+   * a new device and resumes the conversation that was ended. Closing that
+   * properly needs a durable owner-level reset marker. Until then this is the
+   * difference between a conversation reappearing unexplained — which would
+   * read as the app doing something behind the reader's back, on the one
+   * product where that is unaffordable — and one that says where it came from
+   * and points at the way to start fresh.
+   *
+   * Dismissible and non-blocking: it is a disclosure, not a decision.
+   */
+  showResumedNotice() {
+    const container = DOMCache.get(CONFIG.SELECTORS.MESSAGES);
+    if (!container || document.getElementById(RESUMED_NOTICE_ID)) return;
+
+    const notice = DOMCache.createElement('div', 'resumed-notice');
+    notice.id = RESUMED_NOTICE_ID;
+    notice.setAttribute('role', 'note');
+
+    const text = DOMCache.createElement('span', 'resumed-notice-text');
+    text.textContent = I18n.t('chat.resumed');
+
+    const dismiss = DOMCache.createElement('button', 'resumed-notice-dismiss');
+    dismiss.type = 'button';
+    dismiss.setAttribute('aria-label', I18n.t('chat.resumedDismiss'));
+    dismiss.innerHTML = iconMarkup('close', 14);
+    dismiss.addEventListener('click', () => notice.remove());
+
+    notice.append(text, dismiss);
+
+    // Above the conversation but below the intro, so it reads as a preface to
+    // what follows rather than a banner about the page.
+    const intro = container.querySelector('[data-chat-intro]');
+    if (intro) intro.after(notice);
+    else container.prepend(notice);
+  },
+
+  /** Remove the resumed notice, e.g. on a reset or a sign-out. */
+  hideResumedNotice() {
+    document.getElementById(RESUMED_NOTICE_ID)?.remove();
   },
 
   /** One-shot screen-reader announcement. */

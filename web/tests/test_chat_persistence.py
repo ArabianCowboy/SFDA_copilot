@@ -693,18 +693,18 @@ def test_hydration_never_overwrites_a_window_that_already_has_turns(app):
 
 # ── Ship state ──────────────────────────────────────────────────────────────
 
-def test_persistence_is_on_and_resume_still_waits_for_the_transcript():
-    """The two flags no longer default the same way, and that is deliberate.
+def test_both_halves_of_persistence_ship_on():
+    """The flags default the same way again, and this time both are on.
 
     `CHAT_PERSISTENCE_ENABLED` waited for the MIGRATION — applied 2026-08-20 as
-    `supabase/migrations/20260820131914_chat_session_persistence.sql`. With the
-    tables live, config.yaml now defaults this on: turns are recorded, and
-    nothing on screen changes yet, because nothing reads these rows back.
+    `supabase/migrations/20260820131914_chat_session_persistence.sql`.
 
-    `CHAT_RESUME_LATEST_SESSION` still waits for the TRANSCRIPT (step 6). Until
-    it hydrates from these rows, resuming shows a returning reader a blank
-    screen backed by a model that remembers. Turning this on first would be
-    worse than shipping neither flag.
+    `CHAT_RESUME_LATEST_SESSION` waited for the TRANSCRIPT, which is step 6:
+    `GET /api/chat/history` now draws the visible transcript from the same rows
+    the prompt window is built from. Before that route existed, resuming showed
+    a returning reader a blank screen backed by a model that remembered — half a
+    feature, and the worse half. The two halves now agree by construction, which
+    is the whole precondition this flag was waiting on.
 
     Read off a non-testing app, because under TESTING the in-memory backend is
     selected unconditionally and would hide the production default.
@@ -716,7 +716,381 @@ def test_persistence_is_on_and_resume_still_waits_for_the_transcript():
     _configure_app(application, testing=False)
 
     assert application.config["CHAT_PERSISTENCE_ENABLED"] is True
-    assert application.config["CHAT_RESUME_LATEST_SESSION"] is False
+    assert application.config["CHAT_RESUME_LATEST_SESSION"] is True
+
+
+# ── The transcript comes back (step 6) ──────────────────────────────────────
+#
+# Everything above proves rows are WRITTEN. This section is the other half: the
+# reader gets them back, with the evidence under each answer still openable.
+# Before `GET /api/chat/history` a restored answer kept its prose and lost its
+# citations, on a product whose first principle is that an answer without a
+# resolvable source is a liability.
+
+def hydrate(client, headers=AUTH, **params):
+    return client.get("/api/chat/history", query_string=params, headers=headers)
+
+
+def test_the_transcript_comes_back_from_the_durable_rows(client):
+    ask(client, "first")
+    ask(client, "second")
+
+    body = hydrate(client).get_json()
+
+    assert [message["role"] for message in body["messages"]] == [
+        "user", "assistant", "user", "assistant",
+    ], "the transcript did not come back oldest-first as an alternating exchange"
+    assert body["messages"][0]["content"] == "first"
+    assert body["messages"][2]["content"] == "second"
+    assert body["conversation_id"] == conversation_of(client)
+
+
+def test_a_stored_source_index_reaches_the_browser_as_index(client):
+    """The remap `_hydration_sources` exists for, and the one bug in this whole
+    step that would render as silence rather than an error.
+
+    The live wire ships `index`; the stored column is `source_index`; the client
+    reads `s.index` in `bindCitations` and `_openPassage`. Ship the column name
+    and every restored citation becomes a control that resolves to nothing.
+    """
+    ask(client)
+
+    answer = hydrate(client).get_json()["messages"][1]
+
+    assert all("index" in source for source in answer["sources"])
+    assert not any("source_index" in source for source in answer["sources"])
+    assert answer["cited"] == [1, 3], "the restored markers are not the ones the model saw"
+
+
+def test_only_the_cited_passages_reach_the_transcript(client, backend):
+    """Stored for the archive, shown to the reader on the same terms as live.
+
+    `_persistable_sources` deliberately stores every RETRIEVED passage, because
+    what search offered and the model declined is unrecoverable after a rebuild.
+    The transcript is not that record: an answer ships the evidence it used, so a
+    restored answer must not grow sources it never displayed.
+    """
+    ask(client)
+
+    answer = hydrate(client).get_json()["messages"][1]
+    stored = backend.load_session(OWNER, conversation_of(client))[1].sources
+
+    assert len(stored) == 4, "precondition: all four retrieved passages were stored"
+    assert [source["index"] for source in answer["sources"]] == [1, 3]
+    assert answer["retrieved"] == 4, "the passage count stopped counting what was retrieved"
+
+
+def test_a_user_message_carries_no_evidence_fields(client):
+    """A question has no sources. Emitting empty ones would invite the client to
+    render a source control under the reader's own words."""
+    ask(client)
+
+    question = hydrate(client).get_json()["messages"][0]
+
+    assert "sources" not in question
+    assert "evidence_state" not in question
+
+
+# ── The evidence state ──────────────────────────────────────────────────────
+
+def test_a_live_answer_is_verified_by_construction(app, client):
+    """Asserted on the wire, never compared — including when nothing can be
+    compared. `read_active_build_id` returns None for the legacy flat layout, and
+    computing the state here would badge every FRESH answer as unverifiable on
+    exactly the deployments least able to explain why."""
+    app.config["CORPUS_REVISION"] = None
+
+    final = dict(frames(ask(client)))["final"]
+
+    assert final["evidence_state"] == "verified"
+
+
+def test_a_stored_answer_from_the_active_build_is_verified(client):
+    ask(client)
+    assert hydrate(client).get_json()["messages"][1]["evidence_state"] == "verified"
+
+
+def test_a_rebuilt_corpus_marks_stored_evidence_stale(app, client):
+    """The case no test environment produces by accident, and the one the whole
+    three-state gate exists for."""
+    ask(client)
+    app.config["CORPUS_REVISION"] = "a-later-build"
+
+    answer = hydrate(client).get_json()["messages"][1]
+
+    assert answer["evidence_state"] == "stale"
+    assert answer["sources"], (
+        "a rebuilt corpus emptied the evidence instead of dating it — the stored "
+        "row IS what the model read, and withholding it hides the audit trail "
+        "rather than protecting it"
+    )
+
+
+def test_an_unreadable_build_pointer_is_unverifiable_not_verified(app, client):
+    """Fails closed. A null on either side is 'we cannot confirm', never 'fine'."""
+    ask(client)
+    app.config["CORPUS_REVISION"] = None
+
+    assert hydrate(client).get_json()["messages"][1]["evidence_state"] == "unverifiable"
+
+
+# ── Who may hydrate ─────────────────────────────────────────────────────────
+
+def test_a_second_reader_cannot_hydrate_the_first_readers_transcript(client):
+    """The owner filter, asserted through the route rather than the backend.
+
+    `test_a_second_reader_cannot_load_the_first_readers_session` proves the RPC
+    filters. This proves the route did not hand B a way around it — which is why
+    the conversation id is never a parameter here.
+    """
+    ask(client, "a question from the first reader", headers=AUTH)
+    a_conversation = conversation_of(client)
+
+    body = hydrate(client, headers=AUTH_B).get_json()
+
+    assert body["conversation_id"] != a_conversation
+    assert body["messages"] == []
+
+
+def test_hydrating_without_signing_in_is_refused(client):
+    assert hydrate(client, headers={}).status_code == 401
+
+
+def test_a_storage_failure_is_not_reported_as_an_empty_history(app, client):
+    """An empty transcript is a CLAIM — that the reader has no history. Making it
+    while the store is unreachable is the quiet untruth this product refuses
+    everywhere else, so the route says 503 instead of shrugging."""
+    class Broken:
+        def latest_session(self, owner_id):
+            raise PersistenceUnavailable("down")
+
+        def load_session(self, *args, **kwargs):
+            raise PersistenceUnavailable("down")
+
+        def append_turn(self, **kwargs):
+            raise PersistenceUnavailable("down")
+
+    app.config["chat_backend"] = lambda: Broken()
+
+    response = hydrate(client)
+
+    assert response.status_code == 503
+    assert response.get_json()["code"] == "history_unavailable"
+
+
+def test_a_resume_outage_is_reported_and_does_not_mint_a_new_conversation(app, client):
+    """An outage is not an answer, and the cookie must not make it permanent.
+
+    `latest_session` failing is not "this reader has no history" — it is "we
+    could not find out". Minting a fresh id and reporting an empty transcript
+    would be wrong twice: the reader is told something untrue, and the id is
+    written to the cookie, so every later visit finds one and never tries to
+    resume again. One transient failure would cost the reader their durable
+    conversation permanently.
+
+    This repository has already paid for exactly this shape once, in
+    `_authenticate_request` — see TODO.md, "a transient Supabase outage signed
+    readers out".
+    """
+    ask(client, "first")
+    original = conversation_of(client)
+    client.post("/auth/logout")
+
+    real = app.config["_testing_chat_backend"]
+
+    class LatestBroken:
+        def latest_session(self, owner_id):
+            raise PersistenceUnavailable("down")
+
+        def load_session(self, *args, **kwargs):
+            return real.load_session(*args, **kwargs)
+
+        def append_turn(self, **kwargs):
+            return real.append_turn(**kwargs)
+
+    app.config["chat_backend"] = lambda: LatestBroken()
+
+    response = hydrate(client)
+    assert response.status_code == 503
+    assert response.get_json()["code"] == "history_unavailable"
+
+    with client.session_transaction() as flask_session:
+        assert flask_session.get("conv_id") is None, (
+            "a failed resume left a minted id in the cookie, which would stop "
+            "the reader's real conversation ever being resumed again"
+        )
+
+    # And once the store recovers, the conversation is still reachable.
+    app.config["chat_backend"] = lambda: real
+    recovered = hydrate(client).get_json()
+    assert recovered["conversation_id"] == original
+    assert recovered["resumed"] is True
+
+
+def test_a_load_failure_after_a_resume_does_not_commit_the_resumed_id(app, client):
+    """The 503 must not quietly keep the id it resolved.
+
+    Committed, a recovered store would feed that conversation into the model on
+    the reader's next question while the screen stayed blank — and a later
+    reload would find a cookie, so the `resumed` disclosure it owes would never
+    be shown either.
+    """
+    ask(client, "first")
+    client.post("/auth/logout")
+
+    real = app.config["_testing_chat_backend"]
+
+    class LoadBroken:
+        def latest_session(self, owner_id):
+            return real.latest_session(owner_id)
+
+        def load_session(self, *args, **kwargs):
+            raise PersistenceUnavailable("down")
+
+        def append_turn(self, **kwargs):
+            return real.append_turn(**kwargs)
+
+    app.config["chat_backend"] = lambda: LoadBroken()
+
+    assert hydrate(client).status_code == 503
+    with client.session_transaction() as flask_session:
+        assert flask_session.get("conv_id") is None
+
+
+def test_persistence_enabled_with_no_backend_is_reported_not_shrugged_off(app, client):
+    """The same gap `_persist_turn` was already fixed for, on the read side.
+
+    `chat_persistence: true` with no backend is a misconfiguration — most often
+    a missing service-role key. Answering "you have no history" hides it behind
+    a plausible-looking empty screen, which is the silent-success failure this
+    feature has now refused twice.
+    """
+    app.config["chat_backend"] = lambda: None
+    app.config["CHAT_PERSISTENCE_ENABLED"] = True
+
+    response = hydrate(client)
+
+    assert response.status_code == 503
+    assert response.get_json()["code"] == "history_unavailable"
+
+
+def test_a_deployment_without_persistence_still_answers_an_empty_transcript(app, client):
+    """The other half of the same distinction: switched off is not broken."""
+    app.config["chat_backend"] = lambda: None
+    app.config["CHAT_PERSISTENCE_ENABLED"] = False
+
+    response = hydrate(client)
+
+    assert response.status_code == 200
+    assert response.get_json()["messages"] == []
+
+
+def test_a_stored_turn_keeps_the_time_it_happened(client):
+    """A hydrated transcript rebuilds turns that may be days old. Stamping them
+    with the reload time would tell a reader every question in their history was
+    asked just now, on a tool where when something was asked is part of the
+    record."""
+    ask(client)
+
+    messages = hydrate(client).get_json()["messages"]
+
+    assert all(message.get("created_at") for message in messages), (
+        "the transcript cannot show when a turn happened if the time never ships"
+    )
+
+
+def test_the_transcript_is_not_cacheable(client):
+    """One reader's conversation must not sit in a shared machine's cache."""
+    ask(client)
+
+    response = hydrate(client)
+
+    assert "no-store" in response.headers.get("Cache-Control", "")
+
+
+# ── Bounds and disclosure ───────────────────────────────────────────────────
+
+def test_the_hydration_limit_is_clamped_at_both_ends(client):
+    for _ in range(3):
+        ask(client)
+
+    assert len(hydrate(client, limit=2).get_json()["messages"]) == 2
+    assert len(hydrate(client, limit=9999).get_json()["messages"]) == 6, "200 is the ceiling"
+    assert len(hydrate(client, limit=-5).get_json()["messages"]) == 0, (
+        "a negative limit must clamp, not raise or invert"
+    )
+
+
+def test_a_window_never_starts_on_an_answer(client):
+    """`chat_load_session` takes the newest N messages, so an ODD limit slices
+    between a question and the answer to it.
+
+    Handing that back would render an answer that appears to have been given to
+    nothing, with evidence attached — on the surface a reader opens to audit
+    what was asked. The half exchange is dropped rather than shown, which is the
+    same repair `ConversationStore.replace` already makes for the prompt window,
+    applied where a reader can see it.
+    """
+    for _ in range(3):
+        ask(client)
+
+    for limit in (1, 3, 5):
+        messages = hydrate(client, limit=limit).get_json()["messages"]
+        assert len(messages) % 2 == 0, f"limit={limit} returned a half exchange"
+        if messages:
+            assert messages[0]["role"] == "user", (
+                f"limit={limit} started the transcript on an answer"
+            )
+
+
+def test_a_conversation_the_cookie_named_is_not_announced_as_resumed(client):
+    ask(client)
+    assert hydrate(client).get_json()["resumed"] is False
+
+
+def test_a_conversation_picked_up_from_history_says_so(client):
+    """The disclosure the flag flip rests on.
+
+    Ending a conversation and logging out before asking anything else purges the
+    cookie, so the next visit looks like a new device and resumes the
+    conversation that was ended. That gap stays open knowingly — this is what
+    keeps it surprising rather than dishonest.
+    """
+    ask(client, "first")
+    original = conversation_of(client)
+    client.post("/auth/logout")
+
+    body = hydrate(client).get_json()
+
+    assert body["conversation_id"] == original
+    assert body["resumed"] is True
+    assert body["messages"][0]["content"] == "first"
+
+
+def test_resumption_is_not_announced_over_an_empty_transcript(app, client):
+    """The rule can resume a session that hydrates to nothing. A notice about a
+    thing the reader cannot see is worse than no notice."""
+    ask(client, "first")
+    client.post("/auth/logout")
+
+    real = app.config["_testing_chat_backend"]
+
+    class Empty:
+        def latest_session(self, owner_id):
+            return real.latest_session(owner_id)
+
+        def load_session(self, *args, **kwargs):
+            return []
+
+        def append_turn(self, **kwargs):
+            return real.append_turn(**kwargs)
+
+    app.config["chat_backend"] = lambda: Empty()
+
+    body = hydrate(client).get_json()
+
+    assert body["messages"] == []
+    assert body["resumed"] is False
 
 
 # ── The archive ─────────────────────────────────────────────────────────────

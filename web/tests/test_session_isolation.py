@@ -279,12 +279,18 @@ def test_a_returning_reader_resumes_nothing_that_belongs_to_someone_else(app, cl
     assert app.config["llm_history"][-1] == []
 
 
-def test_the_resume_fallback_is_off_by_default(app, client):
-    """It stays off until the transcript hydrates from the same rows (step 6).
+def test_the_resume_fallback_is_on_by_default(app, client):
+    """Step 6 flipped it, and this is the assertion that proves the default.
 
-    Turning it on early hands a returning reader a blank screen and a model that
-    remembers — the two halves of one feature disagreeing, on an assistant whose
-    claim is that a reader can check where an answer came from.
+    The sibling tests above set `CHAT_RESUME_LATEST_SESSION` explicitly, so they
+    would keep passing if the shipped default silently reverted. This one sets
+    nothing: it asks whether a returning reader gets their conversation back on
+    the configuration this repository actually ships.
+
+    It replaces `test_the_resume_fallback_is_off_by_default`, which asserted the
+    inverse for a good reason at the time — while the transcript restored from
+    per-tab `sessionStorage`, resuming put history into the prompt that the
+    screen never showed. `GET /api/chat/history` removed that gap.
     """
     drain(client.post("/api/chat/stream", json={"query": "first"}, headers=AUTH))
     with client.session_transaction() as flask_session:
@@ -294,7 +300,10 @@ def test_the_resume_fallback_is_off_by_default(app, client):
     drain(client.post("/api/chat/stream", json={"query": "second"}, headers=AUTH))
 
     with client.session_transaction() as flask_session:
-        assert flask_session["conv_id"] != original
-    assert app.config["llm_history"][-1] == [], (
-        "invisible history reached the prompt while the screen was blank"
-    )
+        assert flask_session["conv_id"] == original, (
+            "a returning reader did not get their own conversation back"
+        )
+    assert app.config["llm_history"][-1] == [
+        {"role": "user", "content": "first"},
+        {"role": "assistant", "content": ANSWER},
+    ], "the resumed conversation never reached the prompt window"

@@ -19,12 +19,16 @@ import { Services, isRecoveryCallback } from './modules/services.js';
 import { Handlers } from './modules/handlers.js';
 import { CustomDropdown } from './modules/dropdown.js';
 import { mountRobots, initLandingRobot, RobotCompanion } from './modules/robot.js';
-import { initCitationInteractions, neutraliseRestoredCitations } from './modules/citations.js';
+import { initCitationInteractions } from './modules/citations.js';
 import { I18n, Transcript, initLanguageToggle } from './modules/i18n.js';
 
 const App = {
-  /* Set once settleTranscript has decided; see there. */
+  /* Which reader the transcript on screen belongs to, and whether the
+     question has been asked at all. Keyed to the identity rather than to a
+     bare boolean; see settleTranscript for why that distinction is
+     load-bearing rather than tidy. */
   _transcriptSettled: false,
+  _settledFor: null,
 
   async loadProfileWithTimeout(userId, timeoutMs = CONFIG.API_TIMEOUT, retries = CONFIG.RETRY_MAX_ATTEMPTS) {
     let delay = CONFIG.RETRY_DELAY_INITIAL;
@@ -79,47 +83,114 @@ const App = {
   },
 
   /**
-   * Decide, once, what happens to the transcript saved by a language switch.
+   * Decide, once, where this reader's transcript comes from.
    *
-   * Deliberately NOT done during init(). Restoring before authentication
-   * resolves means restoring for nobody in particular: if startup then found
-   * no valid session, the previous reader's transcript sat in the DOM behind
-   * the landing view — hidden, not removed, because AuthView only toggles
-   * `d-none` and the app lives at "/" so nothing reloads — and the next
-   * person to sign in had it revealed to them.
+   * Deliberately NOT done during init(). Drawing a conversation before
+   * authentication resolves means drawing it for nobody in particular: if
+   * startup then found no valid session, the previous reader's turns sat in the
+   * DOM behind the landing view — hidden, not removed, because AuthView only
+   * toggles `d-none` and the app lives at "/" so nothing reloads — and the next
+   * person to sign in had them revealed.
    *
    * So the transcript waits for an answer to "who is here?", and is either
-   * restored to the reader who saved it or dropped.
+   * hydrated for the reader it belongs to or left empty.
+   *
+   * WHAT CHANGED IN STEP 6. This used to re-inject rendered markup saved into
+   * per-tab `sessionStorage` by the language toggle, which had three
+   * consequences worth remembering now they are gone: an ordinary refresh lost
+   * the conversation entirely (nothing but `I18n.set` ever saved), a restored
+   * answer's citations had to be stripped because only the markup came back,
+   * and a second device showed nothing at all. The turns now come from the same
+   * durable rows the model's prompt window is built from, so screen and model
+   * agree by construction — which was the precondition the resume flag was
+   * waiting on.
    */
   settleTranscript(user) {
     const identity = user?.id || user?.email || null;
 
-    /* Ownership tracks the current reader ALWAYS, outside the once-guard. A
-       tab that opens signed out settles immediately (nothing to restore), and
-       the sign-in that follows still has to have its transcript tagged — or
-       the next language switch saves one owned by nobody, which then fails
-       its own ownership check on the way back. */
-    if (identity) Transcript.setOwner(identity);
+    /* KEYED TO THE READER, NOT TO THE PAGE, and this is not a refinement — a
+       plain once-per-page guard reintroduces the exact failure the resume flag
+       spent two steps waiting to avoid.
 
-    if (this._transcriptSettled) return;
+       The sequence: reader A signs out and reader B signs in on the same tab.
+       The app lives at "/" and AuthView only toggles `d-none`, so nothing
+       reloads and the guard is already spent. B's transcript is therefore never
+       drawn — while the server, finding no cookie, resumes B's most recent
+       conversation and feeds it into the prompt window. B gets a blank screen
+       backed by a model that remembers, which is precisely the state
+       `chat_resume_latest_session` was held off for.
+
+       Settling more than once is safe because settling is now idempotent per
+       identity: the same reader short-circuits, a different one re-hydrates. */
+    if (this._transcriptSettled && identity === this._settledFor) return;
+
+    const previous = this._settledFor;
     this._transcriptSettled = true;
+    this._settledFor = identity;
 
     if (!identity) {
+      // Clears any `sfda-transcript` entry left in this tab by a build that
+      // predates hydration. Nothing writes that key any more; this is the
+      // sweep, not a mechanism.
       Transcript.discard();
       return;
     }
 
-    /* Markup only — a restored answer's source passages did not survive the
-       reload, so its controls are stripped rather than left resolving to
-       nothing. */
-    Transcript.restore(identity, neutraliseRestoredCitations);
+    /* A reader changed under a live transcript. `clearSessionState` covers the
+       ordinary sign-out, but this path is also reached when a session is
+       replaced without one, and leaving the previous reader's turns on screen
+       for the next person is the hazard the old ownership tag existed to
+       prevent. */
+    if (previous && previous !== identity) Handlers.clearReaderScopedUI();
 
-    /* Every other route to a populated transcript runs through UI, which keeps
-       New chat in step. This one writes the turns in as markup and never told
-       it — so after a language switch the reader had a conversation on screen
-       and no way to end it, which is the state the control exists for.
-       `animate: false`: nothing arrived, the page loaded. */
-    UI.updateNewChatAvailability({ animate: false });
+    Transcript.discard();
+    this.hydrateTranscript(identity);
+  },
+
+  /**
+   * Fetch and draw the signed-in reader's conversation.
+   *
+   * Not awaited by its caller: a slow history read must not hold up the rest of
+   * sign-in, exactly as the identity check is not held up by the profile load.
+   *
+   * A failure is TOLD, not swallowed. An empty transcript is a claim — that the
+   * reader has nothing stored — and making it while the store is unreachable is
+   * the kind of quiet untruth this product refuses everywhere else. The server
+   * answers 503 `history_unavailable` for that case specifically, so the two
+   * are distinguishable here rather than collapsed into "no messages".
+   */
+  async hydrateTranscript(identity) {
+    /* Stamped before the fetch, checked after it. The request is not awaited by
+       its caller, so the transcript can be deliberately emptied while it is in
+       flight — and a stored conversation reappearing after the reader pressed
+       New chat is the resurrection this whole feature is built to prevent,
+       arriving through the one door the server-side rule cannot close.
+
+       Identity alone does not catch it: the same reader is the one pressing the
+       button. `Handlers.beginTranscriptEpoch()` is bumped by every act that
+       means "what is on screen is no longer the conversation I asked about" —
+       reset, undo, and sign-out. */
+    const epoch = Handlers.transcriptEpoch();
+
+    try {
+      const history = await Services.getChatHistory();
+
+      /* Discarded if this is no longer the reader who asked. A sign-out and a
+         second sign-in can both land while the fetch is in flight, and drawing
+         A's conversation into B's session is an account leak, not a cosmetic
+         race. The same shape `getIdentity` already uses, and for the same
+         reason: check who the answer was for before acting on it. */
+      if (identity !== this._settledFor) return;
+      if (epoch !== Handlers.transcriptEpoch()) return;
+
+      UI.hydrateTranscript(history.messages || []);
+      if (history.resumed) UI.showResumedNotice();
+    } catch (error) {
+      if (identity !== this._settledFor) return;
+      if (epoch !== Handlers.transcriptEpoch()) return;
+      logError(error, 'hydrateTranscript');
+      ErrorHandler.showToast(I18n.t('chat.historyUnavailable'), true);
+    }
   },
 
   async handleTestingModeInit() {
@@ -318,7 +389,7 @@ const App = {
         /* Only on an actual sign-out — revoked, expired, or the logout button
            — never on the INITIAL_SESSION event this fires on subscribe. That
            event reports "no session yet" during startup, and clearing on it
-           would wipe the transcript Transcript.restore() had just put back
+           would wipe the transcript hydration had just drawn
            after a language switch.
 
            Without the cleanup here a session that ends anywhere other than the

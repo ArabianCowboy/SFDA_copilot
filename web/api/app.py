@@ -153,8 +153,10 @@ from web.services.build_registry import read_active_build_id
 from web.services.chat_store import (
     InMemoryChatBackend,
     PersistenceUnavailable,
+    StoredMessage,
     archive_keys,
     canonical_uuid,
+    clamp_load_limit,
     get_chat_backend,
     new_conversation_id,
 )
@@ -219,7 +221,7 @@ SUPPORTED_FAQ_LANGS = ("en", "ar")
 # that mixes a fresh template with a stale module is worse than a stale page —
 # post-icon-migration it would render an <i class="bi"> with no icon font behind
 # it, or print a glyph NAME as text. MODULE_IMPORT_MAP below closes that.
-ASSET_VERSION = "warm34"
+ASSET_VERSION = "warm35"
 
 # Product release, rendered in the landing footer. Kept as one constant so
 # the number cannot drift between the page and the module headers.
@@ -659,8 +661,10 @@ def _chat_persistence() -> Optional[Any]:
     return factory() if factory else None
 
 
-def _resolve_conversation_id(backend: Optional[Any], owner_id: Optional[str]) -> str:
-    """The current-session rule. Must run in the view body — see below.
+def _resolve_conversation_id(
+    backend: Optional[Any], owner_id: Optional[str]
+) -> Tuple[str, bool, bool]:
+    """The current-session rule: (conversation_id, resumed, resume_failed).
 
     > **A cookie that names a conversation is honoured as-is. Only a cookie with
     > no conversation at all resumes the owner's most recent one.**
@@ -705,36 +709,51 @@ def _resolve_conversation_id(backend: Optional[Any], owner_id: Optional[str]) ->
             canonical = new_conversation_id()
         if canonical != cookie_id:
             session["conv_id"] = canonical
-        return canonical
+        return canonical, False, False
 
-    # GATED OFF UNTIL THE TRANSCRIPT HYDRATES (step 6), and the reason is that
-    # resuming half a conversation is worse than resuming none of it.
+    # ON SINCE STEP 6. This fires only when there is no cookie at all — a new
+    # device, a cleared browser, or the first request after a logout — and it is
+    # what makes a reader's conversation follow them rather than their browser.
     #
-    # The visible transcript lives in per-tab `sessionStorage` and is dropped on
-    # sign-out, while these rows are per-account and durable. Every case where
-    # this fallback fires is therefore a case where the two disagree: a new
-    # device, a new tab, or the request after a logout shows the reader a BLANK
-    # SCREEN while the model silently receives the conversation behind it. They
-    # then ask "what about the second one?" and get an answer drawn from a
-    # transcript they cannot see — on an assistant whose entire claim is that a
-    # reader can check where an answer came from.
+    # It was held off until the transcript hydrated from these same rows, and
+    # the reason is worth keeping: while the visible transcript lived in per-tab
+    # `sessionStorage`, every case where this fallback fired was a case where
+    # the two disagreed, showing a blank screen backed by a model that
+    # remembered. `GET /api/chat/history` now draws the transcript from the rows
+    # the prompt window is built from, so the two halves agree by construction.
     #
-    # The machinery is built and tested; only the user-visible half is missing.
-    # Step 6 replaces `sessionStorage` restoration with hydration from these
-    # same rows, at which point the two halves agree and this turns on.
+    # THE CALLER IS TOLD WHEN THIS BRANCH RAN, and that is not decoration. One
+    # gap stays open knowingly: ending a conversation and then logging out
+    # BEFORE asking anything else purges the cookie, so the next visit looks
+    # like a new device and resumes the conversation that was ended. Closing it
+    # properly needs a durable owner-level reset marker; until then the reader
+    # is told their conversation was picked up from history rather than left to
+    # discover it, which is the difference between surprising and dishonest.
     if current_app.config.get("CHAT_RESUME_LATEST_SESSION") and backend is not None and owner_id:
         try:
             latest = backend.latest_session(owner_id)
         except PersistenceUnavailable:
-            logger.warning("Could not read the latest session; starting a new one.", exc_info=True)
-            latest = None
+            # AN OUTAGE IS NOT AN ANSWER. Reported to the caller rather than
+            # folded into "no previous conversation", because the two demand
+            # opposite handling: a chat POST should answer anyway, while the
+            # transcript route must refuse and leave the cookie alone. Swallowing
+            # it here meant one transient failure minted a fresh id, wrote it to
+            # the cookie, and thereby made the loss PERMANENT — every later visit
+            # would find a cookie and never try to resume again. This repository
+            # has paid for exactly that shape once already, in
+            # `_authenticate_request` (TODO.md, "a transient Supabase outage
+            # signed readers out").
+            logger.warning("Could not read the latest session.", exc_info=True)
+            minted = new_conversation_id()
+            session["conv_id"] = minted
+            return minted, False, True
         if latest:
             session["conv_id"] = latest
-            return latest
+            return latest, True, False
 
     minted = new_conversation_id()
     session["conv_id"] = minted
-    return minted
+    return minted, False, False
 
 
 def _load_history(
@@ -814,6 +833,125 @@ def _persistable_sources(
         }
         for source in retrieved
     ]
+
+
+# Three states, and only two of them are visible to a reader.
+#
+# `verified` means the answer was drawn from the corpus build that is active
+# right now. `stale` means the corpus was rebuilt under it. `unverifiable` means
+# one side or the other has no build id at all — `read_active_build_id` returns
+# None for the legacy flat layout, and a message written before this shipped has
+# no `corpus_revision`. Both of the latter mean the same thing to a reader (we
+# cannot confirm this passage is still in the live corpus) and are kept apart
+# here because they mean different things in a log and in a test.
+EVIDENCE_VERIFIED = "verified"
+EVIDENCE_STALE = "stale"
+EVIDENCE_UNVERIFIABLE = "unverifiable"
+
+
+def _evidence_state(corpus_revision: Optional[str]) -> str:
+    """What a stored answer's citations can still claim about the live corpus.
+
+    One string comparison, deliberately. The plan for this once required a
+    `chunk_sha256` over the full chunk text, which is unimplementable here — the
+    payload carries a 320-char snippet and never the text — and nothing in this
+    codebase resolves a `chunk_id` back to a passage anyway. Builds are immutable
+    directories, so "a different build" is the only case that matters.
+
+    Note what this is NOT used for. It does not gate whether a citation opens.
+    The row it describes carries the document, page, category and snippet that
+    the model actually read, frozen at write time, so opening it shows what was
+    read rather than a guess about where that text lives now — a different act
+    from re-resolving a `chunk_id` against a rebuilt index, which is the thing
+    the fail-closed rule was written to forbid and which nothing here does. What
+    the state drives is what the reader is TOLD, because a citation that quietly
+    predates the current corpus is the one failure this product cannot afford.
+    """
+    active = current_app.config.get("CORPUS_REVISION")
+    if not corpus_revision or not active:
+        return EVIDENCE_UNVERIFIABLE
+    return EVIDENCE_VERIFIED if corpus_revision == active else EVIDENCE_STALE
+
+
+def _hydration_sources(stored: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """The exact inverse of `_persistable_sources`, and it must stay that way.
+
+    The live wire ships `index` (`citations.py`), the client reads `s.index` in
+    `bindCitations` and `_openPassage`, and the stored rows carry
+    `source_index`. Miss this remap and every restored citation renders as a
+    control that resolves to nothing — which is precisely the state hydration
+    exists to end, arrived at by a different route.
+
+    Keep this function and `_persistable_sources` adjacent and change them
+    together. One projection of these rows already drifted from another once;
+    that is why the write-side remap is a named function rather than a dict
+    literal inside the route, and the read side gets the same treatment.
+    """
+    return [
+        {
+            "index": source.get("source_index"),
+            "cited": bool(source.get("cited")),
+            "document": source.get("document"),
+            "page": source.get("page"),
+            "category": source.get("category"),
+            "score": source.get("score"),
+            "semantic_score": source.get("semantic_score"),
+            "lexical_score": source.get("lexical_score"),
+            "chunk_id": source.get("chunk_id"),
+            "snippet": source.get("snippet"),
+        }
+        for source in stored
+    ]
+
+
+def _hydration_payload(rows: List[StoredMessage]) -> List[Dict[str, Any]]:
+    """Stored rows as the transcript, in the shape a live answer already has.
+
+    ONLY THE CITED PASSAGES SHIP. `_persistable_sources` stores every retrieved
+    passage because what search offered and the model declined is unrecoverable
+    later and is exactly the signal the archive wants. The reader's transcript is
+    not that record: `_finalize_answer` ships the evidence the answer used and
+    reduces the rest to a count, so hydration reproduces that or a restored
+    answer grows sources it never displayed live.
+
+    `retrieved` therefore still counts every stored row, which keeps the "N
+    documents · M passages" line honest across a reload.
+    """
+    rows = list(rows)
+
+    # A WINDOW MUST NOT START MID-EXCHANGE. `chat_load_session` takes the newest
+    # N messages, so an odd limit slices between a question and its answer and
+    # hands back an assistant row whose question is missing — an answer that
+    # appears to have been given to nothing, with evidence attached. The store's
+    # `replace()` already drops a leading assistant message for the prompt
+    # window, on the same reasoning; the transcript deserves it at least as much,
+    # because a reader can see this one.
+    if rows and rows[0].role == "assistant":
+        rows = rows[1:]
+
+    payload: List[Dict[str, Any]] = []
+    for row in rows:
+        # Only what the transcript actually renders. `message_id` and `seq` are
+        # on the row and are deliberately NOT shipped: nothing on the client
+        # reads them, and an unused field on a wire contract is surface that
+        # drifts before it is ever tested. Phase 2's paging will want `seq` and
+        # can add it with the code that uses it.
+        message: Dict[str, Any] = {
+            "role": row.role,
+            "content": row.content,
+            "created_at": row.created_at,
+        }
+        if row.role == "assistant":
+            stored = list(row.sources or [])
+            cited_rows = [source for source in stored if source.get("cited")]
+            message["evidence_state"] = _evidence_state(row.corpus_revision)
+            message["sources"] = _hydration_sources(cited_rows)
+            message["cited"] = [
+                source["index"] for source in message["sources"] if source["index"] is not None
+            ]
+            message["retrieved"] = len(stored)
+        payload.append(message)
+    return payload
 
 
 def _persist_turn(
@@ -1200,6 +1338,13 @@ def _register_testing_doubles(app: Flask) -> None:
     search_engine = MagicMock(spec=ImprovedSearchEngine, is_initialized=lambda: True)
     search_engine.search.return_value = demo_results
 
+    # A real string, not the MagicMock a spec'd attribute would otherwise hand
+    # back. `CORPUS_REVISION` is read from here and stamped onto every stored
+    # answer, then compared on hydration — so an opaque object would make the
+    # comparison pass for the wrong reason and prove nothing about the states
+    # a reader is actually shown.
+    search_engine.active_build_id = "test-build-0001"
+
     app.config["openai_handler"] = handler
     app.config["search_engine"] = search_engine
     logger.info("Mock services registered for testing.")
@@ -1286,23 +1431,29 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
     app.config["_testing_admin_backend"] = InMemoryAdminBackend()
     app.config["_testing_chat_backend"] = InMemoryChatBackend()
 
-    # Resolved ONCE per process, not per turn.
+    # Resolved ONCE per process, not per turn, and taken FROM THE ENGINE rather
+    # than from `active_build.txt`.
     #
-    # This is what a stored citation is checked against on hydration: equal
-    # means the passage still resolves, different means the corpus was rebuilt
-    # under it and the source must not render as openable evidence. A document
-    # and page are NOT an acceptable fallback — they can plausibly match the
-    # wrong passage, and a confidently wrong citation is the worst outcome
-    # available on this product.
+    # This is what a stored citation is compared against on hydration: equal
+    # means the answer came from the corpus now being served, different means
+    # the corpus was rebuilt under it. It does not decide whether the passage
+    # opens — the stored row holds the document, page and snippet frozen at
+    # write time, so opening it shows what the model actually read. It decides
+    # what the reader is TOLD. (An earlier draft made `stale` unopenable; that
+    # was reversed, because one rebuild would then deaden every citation in
+    # every stored conversation at once, and an answer stripped of its controls
+    # is indistinguishable from one that cited nothing.)
     #
-    # Cached rather than re-read because activating a build already requires a
-    # restart (the FAISS index and the model live in this process's RAM), so a
-    # value pinned at load is more truthful than a pointer file read per turn —
-    # and it keeps a filesystem stat off the request path. `None` for the legacy
-    # flat layout resolves as "unverifiable", never as "verified".
-    app.config["CORPUS_REVISION"] = read_active_build_id(
-        PROJECT_ROOT / config.get("paths", "processed_data", "web/processed_data")
-    )
+    # Reading the POINTER instead of the engine was a real hazard: the engine
+    # initialises before this line runs, so an activation in between records a
+    # revision the passages did not come from — and a dangling pointer is kept
+    # verbatim by `read_active_build_id` while the engine silently falls back to
+    # the legacy flat corpus. Either way a stored answer would later compare
+    # equal and render as current evidence when it is not. `active_build_id` is
+    # what was loaded, and it is `None` for the legacy layout, which resolves as
+    # "unverifiable" — never as "verified".
+    engine_for_revision = app.config.get("search_engine")
+    app.config["CORPUS_REVISION"] = getattr(engine_for_revision, "active_build_id", None)
 
     def chat_backend():
         """Durable chat history, or None when this deployment has no database.
@@ -1718,6 +1869,135 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
             or new_conversation_id(),
         }, None
 
+    @app.route("/api/chat/history", methods=["GET"])
+    @auth_required
+    # An explicit limit REPLACES the global per_day/per_hour/per_minute
+    # defaults rather than stacking with them — Flask-Limiter applies its
+    # defaults only to "routes without explicit decorators", and this was also
+    # measured against this app rather than taken on trust. That is the point:
+    # this read fires on every
+    # sign-in, reload and language toggle, so inheriting the 200/day default
+    # would let ordinary navigation exhaust a budget an office behind one NAT
+    # shares with chat itself.
+    @limiter.limit(
+        lambda: config.get("server", "rate_limit", {}).get("history_api", "30 per minute")
+    )
+    def handle_chat_history() -> Union[Response, Tuple[Response, int]]:
+        """The reader's current conversation, drawn from the durable rows.
+
+        THE SERVER PICKS THE CONVERSATION. There is no session id in the query
+        string, and that is the point: `_resolve_conversation_id` is the single
+        place the current-session rule lives, so the transcript and the model's
+        prompt window cannot disagree about which conversation this is, and a
+        client cannot name one it does not own. The owner filter inside
+        `chat_load_session` is the guarantee underneath; this route never gets
+        the chance to weaken it.
+
+        Note this GET WRITES the session cookie when the rule mints or resumes an
+        id, exactly as both POST routes do. That is not a side effect worth
+        avoiding — it is how a reader arriving with no cookie is given one.
+
+        An unowned or empty session answers 200 with no messages rather than 404.
+        The ambiguity that bites people here — an expired credential returning
+        zero rows and reading as an empty chat — needs a client-supplied id to
+        arise, and this route has none: `@auth_required` has already answered 401
+        for "nobody" and 403 for a disabled reader, so an empty list can only
+        mean this conversation has no turns yet.
+        """
+        owner_id = _durable_owner()
+        persistence = _chat_persistence()
+        conversation_id, resumed, resume_failed = _resolve_conversation_id(
+            persistence, owner_id
+        )
+
+        if resume_failed:
+            # The cookie write is rolled back deliberately. Left in place, a
+            # freshly minted id would be found on every later visit and the
+            # reader's durable conversation would never be resumed again — a
+            # transient outage made permanent by the very act of reporting it.
+            session.pop("conv_id", None)
+            return (
+                jsonify(
+                    error="Your conversation history could not be loaded.",
+                    code="history_unavailable",
+                ),
+                503,
+            )
+
+        if not owner_id:
+            # No durable owner: nothing was ever filed for this reader, so an
+            # empty transcript is the truth rather than a shrug.
+            return jsonify(conversation_id=conversation_id, resumed=False, messages=[])
+
+        if persistence is None:
+            # Two different states, and only one of them is quiet. A deployment
+            # with persistence switched off has no history by design; persistence
+            # switched ON with no backend is a misconfiguration, and reporting it
+            # as "you have no history" is the silent-success failure `_persist_turn`
+            # was already fixed for.
+            if current_app.config.get("CHAT_PERSISTENCE_ENABLED", False):
+                logger.error(
+                    "Chat persistence is enabled but no backend is configured; "
+                    "the transcript cannot be loaded. Check SUPABASE_SERVICE_ROLE_KEY."
+                )
+                return (
+                    jsonify(
+                        error="Your conversation history could not be loaded.",
+                        code="history_unavailable",
+                    ),
+                    503,
+                )
+            return jsonify(conversation_id=conversation_id, resumed=False, messages=[])
+
+        requested = request.args.get("limit", type=int)
+        limit = clamp_load_limit(
+            requested if requested is not None else current_app.config["CHAT_HYDRATION_LIMIT"]
+        )
+
+        try:
+            rows = persistence.load_session(owner_id, conversation_id, limit=limit)
+        except PersistenceUnavailable:
+            # Told, not swallowed. `_load_history` degrades to an empty prompt
+            # window because a reader would rather have an answer without prior
+            # context than no answer — but an empty TRANSCRIPT is a claim that
+            # they have no history, and making that claim while the store is
+            # unreachable is the kind of quiet untruth this product's citations
+            # exist to refuse.
+            logger.warning(
+                "Could not hydrate the transcript for conversation %s.",
+                conversation_id,
+                exc_info=True,
+            )
+            # Same rollback, same reason: if the rule RESUMED this id, committing
+            # it now would let a recovered store feed that conversation into the
+            # model on the next question while the screen stayed blank — and
+            # would swallow the `resumed` disclosure a later reload owes, because
+            # the cookie would no longer look like a new device.
+            if resumed:
+                session.pop("conv_id", None)
+            return (
+                jsonify(
+                    error="Your conversation history could not be loaded.",
+                    code="history_unavailable",
+                ),
+                503,
+            )
+
+        messages = _hydration_payload(rows)
+        response = jsonify(
+            conversation_id=conversation_id,
+            # Only claimed when there is something on screen to explain. The
+            # rule can resume a session that then hydrates to nothing; saying
+            # "picked up from your history" over an empty transcript would be a
+            # notice about a thing that did not visibly happen.
+            resumed=bool(resumed and messages),
+            messages=messages,
+        )
+        # This body is one reader's conversation. Nothing should hold a copy of
+        # it — not a shared-machine browser cache, not an intermediary.
+        response.headers["Cache-Control"] = "private, no-store"
+        return response
+
     @app.route("/api/chat/stream", methods=["POST"])
     @auth_required
     @chat_limit
@@ -1744,7 +2024,9 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
         # That constraint governs the COOKIE, not the database — the durable
         # write below sits inside the generator quite legitimately.
         _migrate_legacy_undo_history(store, owner_id)
-        conversation_id = _resolve_conversation_id(persistence, owner_id)
+        conversation_id, _resumed, _resume_failed = _resolve_conversation_id(
+            persistence, owner_id
+        )
         store.adopt_cookie_history(
             conversation_id, session.pop("chat_history", None), owner_id=owner_id
         )
@@ -1816,6 +2098,16 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
                     "cited": cited,
                     "retrieved": len(retrieved),
                     "conversation_id": conversation_id,
+                    # Asserted, not computed, and the distinction matters. A
+                    # live answer was just drawn from the active index, so its
+                    # evidence is current by construction — there is nothing to
+                    # infer. Computing it here would instead make every FRESH
+                    # answer `unverifiable` on any deployment where
+                    # `read_active_build_id` finds no pointer (the legacy flat
+                    # layout), badging the one case that is beyond doubt. It
+                    # ships on the wire so hydration and streaming hand the
+                    # client one shape and it never grows two renderers.
+                    "evidence_state": EVIDENCE_VERIFIED,
                 })
 
                 # Recorded HERE, before suggestions, and the order is the
@@ -1996,7 +2288,9 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
             # rather than a question, so a route that skipped it would resume a
             # different conversation from the one its sibling just resumed, in
             # the same browser.
-            conversation_id = _resolve_conversation_id(persistence, owner_id)
+            conversation_id, _resumed, _resume_failed = _resolve_conversation_id(
+                persistence, owner_id
+            )
             store.adopt_cookie_history(
                 conversation_id, session.pop("chat_history", None), owner_id=owner_id
             )
@@ -2034,6 +2328,9 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
                 cited=cited,
                 retrieved=len(retrieved),
                 conversation_id=conversation_id,
+                # Verified by construction — see the streaming route's `final`
+                # frame for why this is asserted rather than compared.
+                evidence_state=EVIDENCE_VERIFIED,
                 # Reported, not raised. This route has not sent its status line
                 # yet and could return a 5xx — but the answer is complete and
                 # correctly cited, and throwing it away because the filing

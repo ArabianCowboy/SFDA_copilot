@@ -872,6 +872,79 @@
   text-transform: uppercase;
   color: var(--fg-muted);
 }
+/* Dated evidence — a stored answer whose corpus has been rebuilt under it.
+   Marked in --confidence, never --danger: nothing has gone wrong, and the
+   passages behind it are a faithful record of what the model read. What the
+   badge buys is that the reader knows to check the current documents before
+   quoting it, which on a regulatory tool is the whole difference.
+
+   No letter-spacing or text-transform of its own. It inherits both from
+   .source-trigger, so the RTL reset in tokens.css still reaches it — a class
+   rule here would tie on specificity, win on order, and put tracking back into
+   Arabic where it breaks the joins. */
+.source-trigger-badge {
+  display: inline-flex;
+  align-items: center;
+  padding-block: 1px;
+  padding-inline: var(--space-2);
+  border: 1px solid rgb(var(--confidence-rgb) / 0.35);
+  border-radius: var(--radius-xs);
+  background: rgb(var(--confidence-rgb) / 0.10);
+  color: var(--confidence);
+  font-size: var(--fs-050, var(--fs-100));
+}
+
+/* The same fact, said once at the top of the panel, where a reader decides how
+   much weight to give what follows. Not repeated per card: that would read as
+   an alarm about each passage rather than a fact about the answer. */
+.source-panel-dated {
+  margin: 0;
+  padding-block: var(--space-2);
+  padding-inline: var(--space-4);
+  border-block-end: 1px solid var(--hairline);
+  border-inline-start: 2px solid var(--confidence);
+  background: rgb(var(--confidence-rgb) / 0.07);
+  color: var(--fg-muted);
+  font-size: var(--fs-100);
+  line-height: var(--lh-normal, 1.5);
+}
+.source-panel-dated[hidden] { display: none; }
+.source-panel.is-sheet .source-panel-dated { padding-inline: 0 var(--space-3); }
+
+/* "This conversation was picked up from your history."
+
+   A disclosure, not a warning, so it sits in the transcript rather than over
+   it, and dismisses without deciding anything. It is what keeps a conversation
+   resuming on a new device from reading as the app doing something behind the
+   reader's back — the one part of durable history that could. */
+.resumed-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  margin-block: var(--space-3);
+  padding-block: var(--space-2);
+  padding-inline: var(--space-3);
+  border: 1px solid var(--hairline);
+  border-inline-start: 3px solid var(--confidence);
+  border-radius: var(--radius-xs);
+  background: var(--bg-sunken);
+  color: var(--fg-muted);
+  font-size: var(--fs-100);
+}
+.resumed-notice-text { flex: 1 1 auto; }
+.resumed-notice-dismiss {
+  flex: none;
+  display: inline-flex;
+  padding: var(--space-1);
+  border: none;
+  border-radius: var(--radius-xs);
+  background: none;
+  color: var(--fg-muted);
+  cursor: pointer;
+  transition: color var(--duration-s) var(--ease-soft);
+}
+.resumed-notice-dismiss:hover { color: var(--fg-primary); }
+
 .source-panel-close {
   flex: none;
   display: inline-flex;
