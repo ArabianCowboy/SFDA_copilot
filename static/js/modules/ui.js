@@ -8,7 +8,7 @@ import { marked } from 'https://cdn.jsdelivr.net/npm/marked@12.0.2/+esm';
 import DOMPurify from 'https://cdn.jsdelivr.net/npm/dompurify@3.4.13/+esm';
 
 import { CONFIG, prefersReducedMotion } from './config.js';
-import { DOMCache } from './dom.js';
+import { DOMCache, logError } from './dom.js';
 import { AppState } from './state.js';
 import { Utils } from './utils.js';
 import { ThemeManager } from './theme.js';
@@ -87,15 +87,53 @@ function decorateMarkdown(scope) {
 }
 
 const RESUMED_NOTICE_ID = 'resumed-notice';
+const HISTORY_NOTICE_ID = 'history-notice';
+
+/* Bump to re-show the disclosure after its wording materially changes. Part of
+   the storage key rather than a separate flag, so an old acknowledgement simply
+   stops matching instead of having to be found and cleared. */
+const HISTORY_NOTICE_VERSION = 1;
+
+/* Scoped to the READER, not to the browser. A shared machine is the ordinary
+   case here, and a notice one colleague dismissed must not be treated as read
+   by the next person to sign in — the same reader-scoping the transcript
+   already enforces, for the same reason. */
+function historyNoticeKey(identity) {
+  return `sfda-history-notice:${identity}:v${HISTORY_NOTICE_VERSION}`;
+}
+
+/* Both wrapped, because localStorage throws rather than degrades in private
+   mode and behind some enterprise policies — the convention every other storage
+   access in this app already follows. A storage failure means the notice is
+   shown again, which is the safe direction for a disclosure. */
+function historyNoticeSeen(identity) {
+  try {
+    return localStorage.getItem(historyNoticeKey(identity)) !== null;
+  } catch (error) {
+    logError(error, 'historyNoticeSeen');
+    return false;
+  }
+}
+
+function rememberHistoryNotice(identity) {
+  try {
+    localStorage.setItem(historyNoticeKey(identity), String(Date.now()));
+  } catch (error) {
+    logError(error, 'rememberHistoryNotice');
+  }
+}
 
 /**
  * Whether an element inside `#messages` is one of the conversation's turns.
  *
- * `#messages` holds two things that are NOT turns and must never be counted,
+ * `#messages` holds three things that are NOT turns and must never be counted,
  * detached, cleared or restored as if they were: the server-rendered
- * `[data-chat-intro]` empty state, and the resumed notice. Both would otherwise
- * be swept into the fragment an undo puts back, and both would make
- * `updateNewChatAvailability` believe a conversation exists.
+ * `[data-chat-intro]` empty state, the resumed notice, and the durable-history
+ * notice. Each would otherwise be swept into the fragment an undo puts back,
+ * and each would make `updateNewChatAvailability` believe a conversation
+ * exists. The history notice is the sharpest case: it is meant to outlive a
+ * `New chat`, so a miss here deletes the disclosure at exactly the moment the
+ * reader is exercising the control it is telling them about.
  *
  * This started as a repeated `!el.hasAttribute('data-chat-intro')` at four call
  * sites. Adding a second non-turn element to `#messages` is exactly the change
@@ -103,7 +141,11 @@ const RESUMED_NOTICE_ID = 'resumed-notice';
  * so the question is asked in one place.
  */
 function isTranscriptTurn(el) {
-  return !el.hasAttribute('data-chat-intro') && el.id !== RESUMED_NOTICE_ID;
+  return (
+    !el.hasAttribute('data-chat-intro')
+    && el.id !== RESUMED_NOTICE_ID
+    && el.id !== HISTORY_NOTICE_ID
+  );
 }
 
 export const UI = {
@@ -696,16 +738,87 @@ export const UI = {
 
     notice.append(text, dismiss);
 
-    // Above the conversation but below the intro, so it reads as a preface to
-    // what follows rather than a banner about the page.
+    /* Above the conversation but below the intro, so it reads as a preface to
+       what follows rather than a banner about the page — and below the history
+       notice when that is present. The order is the reading order: what is
+       always true about this account first, then what happened to this
+       particular conversation. */
     const intro = container.querySelector('[data-chat-intro]');
-    if (intro) intro.after(notice);
+    const history = document.getElementById(HISTORY_NOTICE_ID);
+    const anchor = history || intro;
+    if (anchor) anchor.after(notice);
     else container.prepend(notice);
   },
 
   /** Remove the resumed notice, e.g. on a reset or a sign-out. */
   hideResumedNotice() {
     document.getElementById(RESUMED_NOTICE_ID)?.remove();
+  },
+
+  /**
+   * Tell the reader their chats are durable, once per reader per device.
+   *
+   * This is the disclosure the feature owed from the moment hydration shipped.
+   * Before it, the transcript died with the tab and saying nothing was
+   * defensible; afterwards a conversation follows the reader across a reload, a
+   * language toggle and a different device, and silence became a claim that is
+   * no longer true.
+   *
+   * Deliberately NOT a toast. `ErrorHandler.showToast` auto-hides, and a
+   * disclosure shown for four seconds is delivered in form only. It sits in the
+   * transcript, survives a `New chat` (see `isTranscriptTurn`), and goes only
+   * when the reader dismisses it.
+   *
+   * Re-showing on a new device is correct rather than a defect: a new device is
+   * exactly where cross-device restoration becomes newly relevant to the person
+   * looking at it.
+   */
+  showHistoryNotice(identity) {
+    const container = DOMCache.get(CONFIG.SELECTORS.MESSAGES);
+    if (!container || !identity) return;
+
+    /* Any notice on screen belongs to whoever was here before. Removing it
+       first is what makes this safe to call on an identity change: the next
+       reader's own acknowledgement decides whether one is drawn again. */
+    this.hideHistoryNotice();
+    if (historyNoticeSeen(identity)) return;
+
+    const notice = DOMCache.createElement('div', 'history-notice');
+    notice.id = HISTORY_NOTICE_ID;
+    notice.setAttribute('role', 'note');
+
+    const body = DOMCache.createElement('div', 'history-notice-body');
+
+    const text = DOMCache.createElement('p', 'history-notice-text');
+    text.textContent = I18n.t('chat.historyNotice');
+
+    const warning = DOMCache.createElement('p', 'history-notice-warning');
+    warning.textContent = I18n.t('chat.historyNoticeWarning');
+
+    body.append(text, warning);
+
+    const dismiss = DOMCache.createElement('button', 'history-notice-dismiss');
+    dismiss.type = 'button';
+    dismiss.setAttribute('aria-label', I18n.t('chat.historyNoticeDismiss'));
+    dismiss.innerHTML = iconMarkup('close', 14);
+    /* Recorded on dismissal, not on display. A notice that was drawn and never
+       read is not an acknowledgement, and stamping it on render would silently
+       spend the one showing this reader gets. */
+    dismiss.addEventListener('click', () => {
+      rememberHistoryNotice(identity);
+      notice.remove();
+    });
+
+    notice.append(body, dismiss);
+
+    const intro = container.querySelector('[data-chat-intro]');
+    if (intro) intro.after(notice);
+    else container.prepend(notice);
+  },
+
+  /** Remove the history notice without recording it as acknowledged. */
+  hideHistoryNotice() {
+    document.getElementById(HISTORY_NOTICE_ID)?.remove();
   },
 
   /** One-shot screen-reader announcement. */

@@ -1215,15 +1215,14 @@ alone.
 
 ---
 
-### Save chat sessions per user — LIVE AND VISIBLE; steps 7-8 remain
+### Save chat sessions per user — LIVE, VISIBLE AND DISCLOSED; step 8 remains
 
-> **Status in one line:** steps 1-6 are done as of 2026-08-20. Turns are
+> **Status in one line:** steps 1-7 are done as of 2026-08-21. Turns are
 > recorded to Postgres, `GET /api/chat/history` draws the visible transcript
 > back out of those same rows, restored citations open their stored passages,
-> and `chat_resume_latest_session` is **on** — so a conversation now follows the
-> reader across a reload, a language toggle, and a different device. Steps 7
-> (consent notice, archive purge, export) and 8 (multi-session sidebar) are not
-> built.
+> `chat_resume_latest_session` is **on** — so a conversation now follows the
+> reader across a reload, a language toggle, and a different device — and a
+> notice finally **says so**. Step 8 (multi-session sidebar) is not built.
 >
 > **Still not struck through, on the same convention as before**, but for the
 > opposite reason. A reader *can* now see the difference — that half is done.
@@ -1376,17 +1375,100 @@ alone.
 > red were the two that pinned the *old* behaviour and were rewritten, not
 > patched — see below.
 >
+>
+> ---
+>
+> **Step 7 shipped as a notice, not a consent system (2026-08-21).** What landed
+> is a bilingual dismissible banner, one hardening migration, and a startup
+> guard. What was *planned* — consent columns, an opt-out toggle, a withdrawal
+> RPC, `admin_purge_chat_archive`, a retention CLI, JSONL export, three new
+> routes and two more migrations — was **cut**. The reasoning, because "we
+> decided not to" ages badly without it:
+>
+> - **The archive is dormant and cutting followed from that.** Both salts are
+>   unset, so `archive_keys()` returns `(None, None)` and every archive insert is
+>   skipped; `chat_archive` holds 0 rows. Controls for a collection process that
+>   is not collecting are worse than absent — a Settings toggle reading
+>   "Research archive: ON" asserts something false to the one person it is meant
+>   to inform.
+> - **Consent was dropped as the wrong instrument, not deferred.** The lawful
+>   basis is legitimate interest on pseudonymized data, so `terms_accepted_at` /
+>   `terms_version` were never needed — and recording consent you did not need
+>   *manufactures* an obligation, since claiming consent as the basis means
+>   proving it was freely given and making withdrawal as easy as granting.
+> - **Three cuts were for correctness, not size**, and are the ones not to
+>   casually re-add:
+>   - **The opt-out toggle had a race.** The archive decision would have been
+>     read from the 30-second identity cache at request start and applied to a
+>     write landing later. Correct needs the decision checked and serialized
+>     *inside* the write transaction.
+>   - **It would also have failed open.** A transient identity-lookup failure
+>     yields the unresolved fallback (`admin_store.py:706`); an `is not None`
+>     check reads that as *opted in*. Privilege fails closed here; a privacy flag
+>     must too.
+>   - **The export's cursor was wrong.** Keyset on `(session_id, seq)` orders by
+>     a random UUID, not by time, so "oldest first" would have been arbitrary.
+> - **The notice deliberately promises no delete control**, because none exists:
+>   the RLS `DELETE` grant is real but no route and no client code calls it. A
+>   draft said "start a new chat, or delete a conversation, to clear one", which
+>   would have made the disclosure the product's newest false claim. Pinned in
+>   both suites so the tempting edit fails.
+> - **And no model provider is named** (owner's decision), so the "never shared
+>   for training" line went too — denying a third party the notice does not
+>   acknowledge invites the question it closes. Verified while drafting, and
+>   worth keeping on record: OpenAI does not train on API data by default (since
+>   2023-03-01), `openai_app.py:377` sends no `store=` parameter, and
+>   `config.yaml:96` sets `embedding_type: local`, so **question text is embedded
+>   on this machine and only answer generation calls out**. Abuse-monitoring logs
+>   retain requests up to 30 days. **Open lever:** OpenAI org-level Zero Data
+>   Retention / Modified Abuse Monitoring would remove that window as a fact
+>   rather than as wording.
+>
+> **The guard is the whole price of deferring.** Cutting the archive's controls
+> is sound only while it is off, and left as a note that is a promise. So
+> `server.archive_disclosed: false` plus `_warn_if_archive_is_undisclosed` logs a
+> loud error at startup if either salt is set while the notice still says nothing
+> about the archive — one config key, one log line, four tests, and "we'll
+> revisit this" now fails visibly if nobody does.
+>
+> **The migration was amended before it was applied, and the live ACLs proved it
+> necessary.** The pending file said `revoke insert`. `service_role` actually
+> held **`INSERT, REFERENCES, SELECT, TRIGGER`** — so a named-verb revoke would
+> have left `REFERENCES` and `TRIGGER` standing, which is exactly what the base
+> migration's own sibling-table comment says `revoke all` exists to prevent. It
+> now revokes all and grants back `SELECT`. **The `DELETE` grant that migration
+> promised was retired rather than kept**: a purge function would be `security
+> definer` and would not need it, so a standing grant could only ever be a second
+> unguarded delete path. Round-tripped after applying in a deliberately aborted
+> transaction — there is no delete path left to clean up a test row —
+> `archive_rows=1, message_rows=2`, confirming `security definer` bypasses the
+> grants as designed.
+>
+> **An adversarial review (Codex `gpt-5.6-terra`, max effort, read-only) is what
+> produced the cut list**, asked to default all 17 planned components to CUT.
+> It cut 13. **Two of its own claims were checked and are wrong**, recorded so
+> the reasoning is not inherited: `get_supabase_admin()` does *not* raise outside
+> an app context — `bool(current_app)` is `False` when unbound so the guard
+> short-circuits, verified by running it — and "salts can never be rotated" was
+> *my* overstatement, since a versioned-key scheme retaining old keys could. Its
+> adjacent point is right and kept: a bare `python -m` does not load `.env`
+> unless it imports `web/utils/config_loader.py`.
+>
+> **Gates:** 497 server tests, 219 browser tests.
+>
 > **What is left, in order:**
 > 1. ~~Apply the migration~~ — done 2026-08-20.
 > 2. ~~Set `server.chat_persistence: true`~~ — done 2026-08-20.
 > 3. ~~Build step 6 (transcript hydration), then set
 >    `server.chat_resume_latest_session: true`~~ — done 2026-08-20.
-> 4. Step 7: the consent notice, `terms_accepted_at` / `terms_version` /
->    `archive_withdrawn_at` and their deny-list entries, `admin_purge_chat_archive`,
->    the `flask purge-archive` CLI, and JSONL export. **This is the one the
->    feature now owes a reader**: durable per-account history is live and nothing
->    has told anyone that logout no longer deletes it.
+> 4. ~~Step 7~~ — done 2026-08-21, **and deliberately much smaller than planned**.
+>    See "Step 7 shipped as a notice, not a consent system" above.
 > 5. Step 8: the multi-session sidebar, auto-titling, switching, rename, delete.
+>    **The notice owes it a sentence**: the copy currently says signing out and
+>    New chat do not delete saved chats, and says nothing about deleting one,
+>    because there is no control that does. `test_the_notice_does_not_promise_a_
+>    delete_control_that_does_not_exist` pins that. When the sidebar ships a
+>    delete, that test changes with it.
 >
 > **Two follow-ups this pass deliberately did not build**, recorded so they are
 > not rediscovered:
@@ -1402,13 +1484,13 @@ alone.
 >   fix. Not urgent at single-digit readers, where the SSE thread pool and the
 >   single-worker FAISS constraint bind first, but it is now a per-visit cost
 >   rather than an amortised one.
-> - **`ARCHIVE_OWNER_SALT` / `ARCHIVE_SESSION_SALT` are unset on this
->   deployment**, so every archive row is skipped and the training archive is
->   empty by configuration, not by accident. `.env.example` calls that a
->   supported state and the process logs it once at startup. Step 7 should decide
->   whether the archive is wanted before building a purge path for it.
-> - **`supabase/migrations/20260820140000_revoke_chat_archive_service_role_insert.sql`
->   is still unapplied.** Unrelated to steps 5-6, so it was not folded into them.
+> - ~~**`ARCHIVE_OWNER_SALT` / `ARCHIVE_SESSION_SALT` are unset**, and step 7
+>   should decide whether the archive is wanted before building a purge path for
+>   it.~~ **Decided 2026-08-21: it stays dormant, and the purge path was not
+>   built.** See the step 7 record above.
+> - ~~**`20260820140000_revoke_chat_archive_service_role_insert.sql` is still
+>   unapplied.**~~ Applied 2026-08-21 as `20260820213833_revoke_chat_archive_
+>   direct_writes`, **amended first** — see the step 7 record above.
 
 
 **Where:** Today a conversation is keyed to a cookie, not to an account.

@@ -81,7 +81,7 @@ applied.
 | `rls_enabled_no_policy` on `public.app_settings` | Intentional. Service-role only; a policy is how you would let the browser in. |
 | `rls_enabled_no_policy` on `public.chatbot_settings` | Unused table from an abandoned design, left untouched rather than dropped by an unrelated migration. |
 | `rls_enabled_no_policy` on `public.audit_log` | Intentional. Written by the admin RPCs and read through them; a policy is how you would let the browser read it directly. Recorded here 2026-08-20 — it had been standing unlisted, which is the thing this table exists to prevent. |
-| `rls_enabled_no_policy` on `public.chat_archive` | Intentional, and rule 5 requires it be said here. The training archive is service-role only by design: no reader may select from it, and its only writer is `chat_append_turn` (`security definer`). A policy is how you would let a browser in, and nothing should be. |
+| `rls_enabled_no_policy` on `public.chat_archive` | Intentional, and rule 5 requires it be said here. The training archive is service-role **read-only** by design: no reader may select from it, and its only writer is `chat_append_turn` (`security definer`). A policy is how you would let a browser in, and nothing should be. `20260820213833` reduced `service_role` from `INSERT, REFERENCES, SELECT, TRIGGER` to `SELECT` — the named-verb revoke in the base migration had left `REFERENCES` and `TRIGGER` standing, which is precisely what that migration's own sibling-table comment warns `revoke all` exists to prevent. |
 | `auth_leaked_password_protection` | A Pro-plan feature; the project is on a lower tier. Tracked in `TODO.md`. |
 
 ## Current shape of `public`
@@ -94,7 +94,7 @@ applied.
 | `chat_sessions` | one per conversation | Created lazily by `chat_append_turn` on the first completed turn, so a reset cannot fill the table with empties. Readers `select`/`delete` their own via RLS; **no insert or update policy exists** and none should. |
 | `chat_messages` | two per turn | The question and the answer, ordered by a per-session `seq` (never a timestamp — see `20260817161427` for what same-millisecond ordering cost the People list). Content is writable only by `chat_append_turn`. |
 | `chat_message_sources` | one per **retrieved** passage | Not one per cited passage: what search offered and the model declined is unrecoverable after a rebuild. `cited` flags which ones the answer used, and `source_index` is the `[n]` the model saw. |
-| `chat_archive` | one per turn | Append-only training record under HMAC'd owner/session keys, with **no FK** to anything — so a reader deleting their history does not delete training data, and vice versa. Skipped entirely when the salts are unset. |
+| `chat_archive` | **0 — dormant** | Append-only training record under HMAC'd owner/session keys, with **no FK** to anything — so a reader deleting their history does not delete training data, and vice versa. Skipped entirely when the salts are unset, which they are, so nothing has ever been written. Since `20260820213833`, `service_role` holds **`SELECT` and nothing else**: the only writer is `chat_append_turn` (`security definer`), and **there is no delete path at all**. See `web/config.yaml`'s `archive_disclosed` for the guard that stops the salts being set without restoring the reader-facing controls that were cut while it was empty. |
 
 `public.users` was dropped on 2026-08-14. It had never held a row: the signup trigger's
 insert into it was added on 2025-12-07, three weeks after the most recent signup, so it

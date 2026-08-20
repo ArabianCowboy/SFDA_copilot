@@ -68,6 +68,22 @@ server:
   # or the oldest turns of a long session lose their citation controls silently.
   chat_hydration_limit: 50
 
+  # Does the reader-facing notice mention the research archive?
+  #
+  # FALSE, and that is the current truth rather than an oversight: both
+  # ARCHIVE_OWNER_SALT and ARCHIVE_SESSION_SALT are unset, so archive_keys()
+  # returns (None, None) and chat_append_turn skips every archive insert. The
+  # archive collects nothing, so the notice says nothing about it — a Settings
+  # toggle reading "Research archive: ON" would tell a reader that a collection
+  # process is running when none is.
+  #
+  # The opt-out toggle, the withdrawal column, the purge RPC, the retention CLI
+  # and the export were all CUT on that basis, not merely deferred. Which means
+  # setting either salt while this is false starts collecting text the reader
+  # was never told about. `_warn_if_archive_is_undisclosed` refuses to let that
+  # happen quietly; see the comment there, and TODO.md.
+  archive_disclosed: false
+
   # Rate limiting
   rate_limit:
     per_day: 200

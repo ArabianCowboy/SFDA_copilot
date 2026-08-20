@@ -675,6 +675,47 @@ before, in `test_chat_persistence.py` and `test_session_isolation.py`:
 
 ## 7. Consent, retention, export — notice at first use
 
+> **REVISION, 2026-08-21 — this section describes a design that was reduced
+> before it was built.** What shipped is the notice and nothing else. The
+> `profiles` consent columns, the acceptance and withdrawal routes,
+> `admin_purge_chat_archive`, `admin_export_chat_archive`,
+> `admin_chat_question_frequency`, the purge CLI and the JSONL export were all
+> **cut, not deferred**. Read the rest of this section as the record of a plan,
+> not of the system.
+>
+> **Why.** The archive is dormant — both salts are unset, `archive_keys()`
+> returns `(None, None)`, `chat_archive` holds 0 rows — so every control here
+> governs a collection process that is not running, and a Settings toggle
+> reading "Research archive: ON" would assert something false to the person it
+> exists to inform. Consent specifically was dropped as the *wrong instrument*
+> rather than as scope: the basis is legitimate interest, and recording consent
+> that was not required manufactures the proof-and-symmetry obligations that
+> come with claiming it.
+>
+> **Three corrections to what is written below**, worth having beside it:
+> - The opt-out flag as designed here (read via `IdentityFlags` behind the
+>   30-second cache) **races**: the decision is taken at request start and
+>   applied to a write that lands later. It needs to be checked and serialized
+>   inside the write transaction.
+> - It also **fails open** — the unresolved-identity fallback would read as
+>   *opted in*.
+> - The **export was pointed the wrong way**. This section specifies an operator
+>   export of `chat_archive`; the access right that is actually owed is the
+>   reader's own history. If an export returns, it should be that one, and its
+>   cursor must order by time — `(session_id, seq)` orders by a random UUID.
+>
+> **And the `DELETE` grant this section's admin RPCs assume was retired**, not
+> granted: `20260820213833_revoke_chat_archive_direct_writes` reduced
+> `service_role` to `SELECT` alone. A `security definer` purge function executes
+> as its owner and needs no table grant, so a standing one could only ever be a
+> second, unguarded delete path.
+>
+> **The gate that keeps this honest:** `server.archive_disclosed` plus
+> `_warn_if_archive_is_undisclosed` — setting either salt while the notice still
+> says nothing about the archive logs a loud error at startup. Reopen this
+> section before enabling collection.
+
+
 **Owner decision: a notice, recorded, not a gate.** Persistence is on regardless.
 The hard gate was considered and dropped: it would have forced a blocking bilingual screen
 into the first increment and made the ephemeral path permanent — a second conversation path
@@ -784,7 +825,7 @@ described an increment its own table did not schedule; this is the correction.
 | 4 | Write at `final`; client-minted `client_request_id`; `persistence_unavailable` as an `error` frame; `handlers.js` toast + robot fix | `test_chat_stream.py`, `test_chat_api.py`; **both catalogues**; `ASSET_VERSION` bump | **done** |
 | 5 | Citation persistence (all retrieved, `cited`) + `corpus_revision` **rendering** gate | `test_citations.py` + sparse-index, NaN, stale-build tests; `ASSET_VERSION` bump | **done 2026-08-20** — with the gate's *rendering* rule reversed; see below |
 | 6 | Hydration replaces `sessionStorage`; eviction neutralises its own markers | `-m browser`, `test_source_panel.py`; `ASSET_VERSION` bump | **done 2026-08-20** — `GET /api/chat/history`; `Transcript.save/restore` and `neutraliseRestoredCitations` deleted; `chat_resume_latest_session` on |
-| 7 | Notice screen + acceptance/withdrawal routes; `profiles` consent columns **and their deny-list entries**; purge CLI; export RPC; frequency RPC | `-m browser`, `test_rtl.py`, `test_css_contract.py`, `test_admin_audit.py`; both catalogues; `ASSET_VERSION` bump | open |
+| 7 | ~~Notice screen + acceptance/withdrawal routes; `profiles` consent columns; purge CLI; export RPC; frequency RPC~~ **Shipped 2026-08-21 as a notice ONLY**, plus the archive revoke and a disclosure guard. Everything else cut — see the revision note under §7 | `-m browser`, `test_rtl.py`, `test_css_contract.py`; both catalogues; `ASSET_VERSION` bump | **done 2026-08-21**, deliberately narrowed |
 | 8 | Phase 2 sidebar, titling, rename, delete; `chat_list_sessions` | `-m browser`, `test_css_contract.py`, `test_rtl.py`; `ASSET_VERSION` bump | open |
 
 **Three things moved out of step 1 during implementation, on the migration README's own

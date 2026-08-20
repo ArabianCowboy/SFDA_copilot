@@ -221,7 +221,7 @@ SUPPORTED_FAQ_LANGS = ("en", "ar")
 # that mixes a fresh template with a stale module is worse than a stale page —
 # post-icon-migration it would render an <i class="bi"> with no icon font behind
 # it, or print a glyph NAME as text. MODULE_IMPORT_MAP below closes that.
-ASSET_VERSION = "warm35"
+ASSET_VERSION = "warm36"
 
 # Product release, rendered in the landing footer. Kept as one constant so
 # the number cannot drift between the page and the module headers.
@@ -1097,6 +1097,49 @@ def _finalize_answer(
 # ──────────────────────────────────────────────────────────
 # Flask Application Factory Components
 # ──────────────────────────────────────────────────────────
+def _warn_if_archive_is_undisclosed(app: Flask) -> bool:
+    """Refuse to let the archive start collecting text nobody was told about.
+
+    Step 7 shipped a durable-history notice and CUT the archive's controls — the
+    opt-out toggle, the withdrawal column, the purge RPC, the retention CLI, the
+    export. That was correct precisely because the archive is dormant: both
+    salts are unset, `archive_keys()` returns ``(None, None)``, and
+    `chat_append_turn` skips every archive insert. Controls for a collection
+    process that is not collecting are worse than absent, because a toggle
+    reading "Research archive: ON" asserts something false.
+
+    But that reasoning has an expiry date, and it is the moment somebody sets a
+    salt. At that instant the archive begins keeping question and answer text
+    that the notice does not mention and the reader cannot opt out of — because
+    the opt-out was cut on the grounds that there was nothing to opt out of.
+
+    Left as a line in a design document, "revisit this before enabling the
+    archive" is a promise. This is the mechanism instead: one loud error at
+    startup, in the same loud-but-once shape as the missing-salt warning in
+    `chat_store.archive_keys` and the missing-key warning in
+    `SupabaseAdminClient`. It does not stop the process — a deployment that has
+    genuinely decided to collect should not be held hostage by a config flag —
+    but it makes the decision impossible to take by accident.
+
+    Returns True when the mismatch is present, so a test can assert on the
+    condition rather than on log plumbing.
+    """
+    salts_set = bool(os.getenv("ARCHIVE_OWNER_SALT")) or bool(os.getenv("ARCHIVE_SESSION_SALT"))
+    if not salts_set or app.config.get("ARCHIVE_DISCLOSED", False):
+        return False
+
+    logger.error(
+        "ARCHIVE_OWNER_SALT/ARCHIVE_SESSION_SALT is set while "
+        "server.archive_disclosed is false. The research archive will begin "
+        "keeping question and answer text that the reader-facing notice does "
+        "not mention, and whose opt-out, purge and export paths were "
+        "deliberately not built while the archive was dormant. Either unset "
+        "the salts, or disclose the archive and restore its controls before "
+        "collecting. See TODO.md, 'Save chat sessions per user'."
+    )
+    return True
+
+
 def _configure_app(app: Flask, testing: bool) -> None:
     """Apply basic configuration and secret key to the Flask app."""
     app.secret_key = config.flask_secret_key or os.urandom(24)
@@ -1136,6 +1179,11 @@ def _configure_app(app: Flask, testing: bool) -> None:
         # cap and drops the citation controls off the oldest answers without
         # saying so — on the product whose central claim is resolvable sources.
         CHAT_HYDRATION_LIMIT=config.get("server", "chat_hydration_limit", 50),
+        # Whether the reader-facing notice mentions the research archive. False
+        # today because the archive collects nothing — see
+        # `_warn_if_archive_is_undisclosed`, which is what stops that pairing
+        # from silently becoming untrue.
+        ARCHIVE_DISCLOSED=config.get("server", "archive_disclosed", False),
         # OFF until step 6 ships transcript hydration. See the long note in
         # `_resolve_conversation_id`: with the transcript still restoring from
         # per-tab sessionStorage, turning this on shows a returning reader an
@@ -1454,6 +1502,8 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
     # "unverifiable" — never as "verified".
     engine_for_revision = app.config.get("search_engine")
     app.config["CORPUS_REVISION"] = getattr(engine_for_revision, "active_build_id", None)
+
+    _warn_if_archive_is_undisclosed(app)
 
     def chat_backend():
         """Durable chat history, or None when this deployment has no database.
