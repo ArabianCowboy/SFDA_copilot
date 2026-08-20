@@ -45,6 +45,14 @@ server:
   # eviction rare in conversations that are already unusually long.
   chat_history_char_budget: 60000
 
+  # Durable per-user chat history (TODO.md: "Save chat sessions per user").
+  # Step 1 of 3: the migration is applied and turns are now recorded to
+  # Postgres. Still invisible to readers — nothing reads these rows back yet.
+  # Do NOT set chat_resume_latest_session until step 6 (transcript hydration)
+  # ships; turning it on first would have the model silently answer from a
+  # history the screen never shows. See TODO.md for the full sequencing.
+  chat_persistence: true
+  chat_resume_latest_session: false
 
   # Rate limiting
   rate_limit:

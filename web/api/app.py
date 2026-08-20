@@ -835,7 +835,36 @@ def _persist_turn(
     at a complete, correctly cited answer; the only honest thing left to do
     about a storage failure is say so and carry on.
     """
-    if backend is None or not owner_id:
+    if not owner_id:
+        # Already logged, per-request, by _durable_owner() when the reader's id
+        # is not uuid-shaped. Nothing new to say here.
+        return True
+
+    if backend is None:
+        # Two different reasons land here, and only one of them is silent.
+        #
+        # CHAT_PERSISTENCE_ENABLED off is a deployment choice — a Supabase-less
+        # install, or the feature not turned on yet — and stays a quiet no-op,
+        # exactly as before this branch existed.
+        #
+        # CHAT_PERSISTENCE_ENABLED on with backend still None means
+        # get_chat_backend() could not build a client — SUPABASE_SERVICE_ROLE_KEY
+        # missing or wrong, most likely. That is a live misconfiguration of a
+        # feature this deployment has promised to run, and returning True here
+        # would report `persisted: true` (blocking route) or send no error frame
+        # at all (streaming route) while nothing was written to Postgres — the
+        # exact silent-success shape this feature's own design record spends
+        # several paragraphs refusing to allow elsewhere (missing archive
+        # salts, a schema-less deploy defaulting the flag on). Fail the same
+        # way: loud in the log, False to the caller, so the reader sees the
+        # existing "could not be saved to your history" toast instead of a
+        # false promise.
+        if current_app.config.get("CHAT_PERSISTENCE_ENABLED", False):
+            logger.error(
+                "chat_persistence is enabled but no chat backend is available "
+                "(conv=%s); this turn was NOT durably recorded.", conversation_id,
+            )
+            return False
         return True
 
     owner_key, session_key = archive_keys(owner_id, conversation_id)
@@ -952,17 +981,17 @@ def _configure_app(app: Flask, testing: bool) -> None:
         # which is what a deployment without a service-role key gets anyway.
         #
         # DEFAULT OFF UNTIL THE MIGRATION IS APPLIED, and the ordering is the
-        # whole reason. The schema ships as an unapplied .sql file
-        # (supabase/README.md routes migrations through MCP apply_migration
-        # against the live project), so on a deployment that has the code but
-        # not the tables, every RPC call answers "function does not exist" —
-        # which becomes a persistence_unavailable frame and a "could not be
-        # saved to your history" toast under EVERY answer the assistant gives.
-        # A feature defaulting on before its schema exists is a feature that
-        # ships as a visible error.
+        # whole reason a bare code deploy without the schema would answer
+        # "function does not exist" on every RPC call — a persistence_unavailable
+        # frame and a "could not be saved to your history" toast under EVERY
+        # answer the assistant gives. A feature defaulting on before its schema
+        # exists is a feature that ships as a visible error.
         #
-        # Turn it on in config.yaml as `server.chat_persistence: true` once
-        # `list_migrations` shows the migration applied.
+        # Applied 2026-08-20: supabase/migrations/20260820131914_chat_session_
+        # persistence.sql is live (`list_migrations` confirms it), so
+        # config.yaml now defaults this on. Turns are recorded; nothing on
+        # screen changes until step 6 (transcript hydration) ships — see
+        # CHAT_RESUME_LATEST_SESSION below.
         CHAT_PERSISTENCE_ENABLED=config.get("server", "chat_persistence", False),
         # How much of a stored conversation comes back on hydration. Bounded
         # because an unbounded restore meets citations.js's 100-answer tracking

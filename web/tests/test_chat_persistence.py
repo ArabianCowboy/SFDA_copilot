@@ -445,6 +445,45 @@ def test_a_storage_failure_still_ships_the_answer(app, client):
     assert "persistence_unavailable" not in names
 
 
+def test_a_misconfigured_backend_fails_loud_not_silent(app, client):
+    """Regression for a gap an external review caught: `backend is None` used
+    to mean "no persistence, silently fine" whether the deployment turned the
+    feature off on purpose (a quiet no-op, correct) or turned it ON and then
+    failed to build a backend — e.g. SUPABASE_SERVICE_ROLE_KEY missing or
+    wrong. The second case was ALSO silent: `persisted: true` on the blocking
+    route and no error frame at all on the streaming one, while nothing
+    reached Postgres. It must now fail exactly like any other storage failure
+    above.
+    """
+    app.config["CHAT_PERSISTENCE_ENABLED"] = True
+    app.config["chat_backend"] = lambda: None
+
+    events = frames(ask(client))
+    assert ("error", {"error": "This answer could not be saved to your history.",
+                      "code": "persistence_unavailable"}) in events
+
+
+def test_a_disabled_deployment_stays_a_quiet_noop(app, client):
+    """The deployment-choice half of the same branch stays silent, as before
+    this fix — a Supabase-less install or the flag simply not turned on yet is
+    not a failure."""
+    app.config["CHAT_PERSISTENCE_ENABLED"] = False
+    app.config["chat_backend"] = lambda: None
+
+    events = frames(ask(client))
+    names = [event for event, _ in events]
+    assert "final" in names and "done" in names
+    assert "persistence_unavailable" not in [data.get("code") for _, data in events]
+
+
+def test_the_blocking_route_reports_persisted_false_for_the_same_gap(app, client):
+    app.config["CHAT_PERSISTENCE_ENABLED"] = True
+    app.config["chat_backend"] = lambda: None
+
+    response = client.post("/api/chat", json={"query": "first"}, headers=AUTH)
+    assert response.get_json()["persisted"] is False
+
+
 def test_the_answer_is_recorded_in_ram_even_when_storage_fails(app, client):
     class Broken:
         def latest_session(self, owner_id):
@@ -654,17 +693,18 @@ def test_hydration_never_overwrites_a_window_that_already_has_turns(app):
 
 # ── Ship state ──────────────────────────────────────────────────────────────
 
-def test_persistence_and_resume_both_default_off():
-    """Neither half turns itself on, and each waits for a different thing.
+def test_persistence_is_on_and_resume_still_waits_for_the_transcript():
+    """The two flags no longer default the same way, and that is deliberate.
 
-    `CHAT_PERSISTENCE_ENABLED` waits for the MIGRATION. The schema ships as an
-    unapplied .sql file, so on a deployment with the code and not the tables
-    every RPC answers "function does not exist" — a persistence_unavailable
-    frame and a failure toast under every answer the assistant gives.
+    `CHAT_PERSISTENCE_ENABLED` waited for the MIGRATION — applied 2026-08-20 as
+    `supabase/migrations/20260820131914_chat_session_persistence.sql`. With the
+    tables live, config.yaml now defaults this on: turns are recorded, and
+    nothing on screen changes yet, because nothing reads these rows back.
 
-    `CHAT_RESUME_LATEST_SESSION` waits for the TRANSCRIPT (step 6). Until it
-    hydrates from these rows, resuming shows a returning reader a blank screen
-    backed by a model that remembers.
+    `CHAT_RESUME_LATEST_SESSION` still waits for the TRANSCRIPT (step 6). Until
+    it hydrates from these rows, resuming shows a returning reader a blank
+    screen backed by a model that remembers. Turning this on first would be
+    worse than shipping neither flag.
 
     Read off a non-testing app, because under TESTING the in-memory backend is
     selected unconditionally and would hide the production default.
@@ -675,7 +715,7 @@ def test_persistence_and_resume_both_default_off():
     application = Flask(__name__)
     _configure_app(application, testing=False)
 
-    assert application.config["CHAT_PERSISTENCE_ENABLED"] is False
+    assert application.config["CHAT_PERSISTENCE_ENABLED"] is True
     assert application.config["CHAT_RESUME_LATEST_SESSION"] is False
 
 
@@ -711,3 +751,27 @@ def test_a_missing_salt_skips_the_archive_and_keeps_the_readers_history(
 
     assert backend.archive == []
     assert backend.load_session(OWNER, conversation_of(client))
+
+
+def test_a_missing_salt_is_logged_once_per_process_not_every_turn(monkeypatch, caplog):
+    """Regression for a gap an external review caught: the skip above used to
+    be silent — no log line at all — contradicting the design record's "a
+    missing salt fails the archive write closed and logs" (roadmap doc). Once
+    per process, not once per turn: .env.example calls an unset salt a
+    SUPPORTED, possibly permanent state, and an ERROR on every single chat
+    turn forever would be noise, not signal.
+    """
+    from web.services import chat_store
+
+    monkeypatch.delenv("ARCHIVE_OWNER_SALT", raising=False)
+    monkeypatch.delenv("ARCHIVE_SESSION_SALT", raising=False)
+    monkeypatch.setattr(chat_store, "_salt_missing_warned", False)
+
+    with caplog.at_level("ERROR"):
+        first = chat_store.archive_keys(OWNER, "conv-1")
+        second = chat_store.archive_keys(OWNER, "conv-2")
+
+    assert first == (None, None)
+    assert second == (None, None)
+    warnings = [r for r in caplog.records if "ARCHIVE_OWNER_SALT" in r.message]
+    assert len(warnings) == 1

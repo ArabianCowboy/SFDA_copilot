@@ -1215,27 +1215,33 @@ alone.
 
 ---
 
-### Save chat sessions per user — MOSTLY BUILT 2026-08-20, NOT YET LIVE
+### Save chat sessions per user — MOSTLY BUILT, RECORDING LIVE, NOT YET VISIBLE
 
-> **Status in one line:** steps 1-4 of the plan are built, committed and green
-> (461 server, 204 browser); the schema is written but **not applied**, and both
-> feature flags ship **off**, so nothing about this is user-visible yet.
+> **Status in one line:** steps 1 and 2 are done as of 2026-08-20 — the
+> migration is applied (`supabase/migrations/20260820131914_chat_session_persistence.sql`)
+> and `server.chat_persistence` is **on**, so turns are now recorded to
+> Postgres. Nothing on screen has changed: `chat_resume_latest_session` stays
+> **off** until step 6 (transcript hydration) ships.
 >
 > **Deliberately not struck through.** The convention in this file is that a
-> struck heading means a reader can see the difference. Here they cannot: with
-> `server.chat_persistence` off and the migration unapplied, chat behaves
-> exactly as it did before. Marking it done would also lose the tracking for
-> steps 5-8, which are the half that reaches the screen.
+> struck heading means a reader can see the difference. Here they still
+> cannot — chat behaves exactly as it did before, from the reader's side.
+> Marking it done would also lose the tracking for steps 3, 5-8, which are the
+> half that reaches the screen.
 >
-> **The three things that turn it on, in order.** They are ordered because each
-> one is unsafe before the one above it:
-> 1. Apply `supabase/migrations/20260818120000_chat_session_persistence.sql`
->    through MCP `apply_migration`, then rename the file to the version
->    `list_migrations` reports (`supabase/README.md`). Verify `chat_append_turn`
->    round-trips and that the `service_role` revokes did not break it — see the
->    VERIFY AT APPLY TIME note in the migration.
-> 2. Set `server.chat_persistence: true`. Turns are now recorded. Still nothing
->    visible: the reader's screen is unchanged.
+> **What changed 2026-08-20.** Applied via MCP `apply_migration`; verified in a
+> rolled-back transaction that `chat_append_turn` and `chat_load_session`
+> round-trip correctly and the `service_role` revokes did not break the
+> `SECURITY DEFINER` path. `get_advisors` shows only the expected
+> `rls_enabled_no_policy` INFO on `chat_archive` (by design) plus one
+> pre-existing, unrelated WARN. `config.yaml` now sets `chat_persistence: true`
+> explicitly; the code-level default stays `False` so a missing config key
+> still fails closed. `test_persistence_and_resume_both_default_off` renamed
+> and updated to assert the new intended state (persistence on, resume off).
+>
+> **What is left, in order** — each step is unsafe before the one above it:
+> 1. ~~Apply the migration~~ — done 2026-08-20.
+> 2. ~~Set `server.chat_persistence: true`~~ — done 2026-08-20.
 > 3. Build step 6 (transcript hydration), then set
 >    `server.chat_resume_latest_session: true`. This is the step that makes the
 >    feature real, and the flag must not precede it — see the update below.
@@ -1439,11 +1445,11 @@ close to vestigial and means `forget` no longer forgets anything durable. Either
 changes in step 8 or `forget` grows a real delete. Pinned meanwhile by
 `test_a_reset_does_not_delete_the_conversation_behind_it`.
 
-**Blocked on one owner decision: applying the migration.** There is no Supabase CLI, no
-`config.toml` and no Docker here — `supabase/README.md` says migrations go through the MCP
-`apply_migration` tool, straight to the live project.
-`supabase/migrations/20260818120000_chat_session_persistence.sql` must be renamed after
-applying to match whatever version `list_migrations` reports.
+**~~Blocked on one owner decision: applying the migration.~~ — RESOLVED 2026-08-20.**
+Applied through the MCP `apply_migration` tool, straight to the live project (there is no
+Supabase CLI, `config.toml` or Docker here — `supabase/README.md`), and renamed to
+`supabase/migrations/20260820131914_chat_session_persistence.sql` to match what
+`list_migrations` reports.
 
 **Update 2026-08-20 — two adversarial bug-hunt passes (OpenCode `gpt-5.6-sol`, read-only).**
 Round 1 reviewed the implementation; round 2 reviewed round 1's fixes and found defects in
@@ -1503,6 +1509,39 @@ role bypasses RLS, so every green test proves the *application's* owner filterin
 database's. Until a reader JWT hits these tables — a harness that does not exist here, and
 costs more than the migration did — `chat_sessions_select_own` and its three siblings are
 reviewed code, not verified code.
+
+**Update 2026-08-20 — two independent post-live reviews (OpenCode `gpt-5.6-terra` at high
+effort; Antigravity `gemini-3.7-flash-high`), each pointed at the roadmap's §11/§12 so they
+would not re-report what two earlier passes already fixed.** `gemini-3.7-flash-high` found
+nothing new, with a specific verification note per risk area. `gpt-5.6-terra`'s first run
+(read-only `plan` agent) died mid-review on a denied tool permission with no way to approve it
+headless; the rerun as `build` (instructed not to edit, and didn't) found four real gaps, all
+verified against the source before acting on them:
+
+- **Fixed.** `_persist_turn` treated `backend is None` as one case, when it is two: the
+  deployment choice ("this install has no database") and a live misconfiguration
+  (`chat_persistence: true`, but `get_chat_backend()` came back empty — most likely
+  `SUPABASE_SERVICE_ROLE_KEY` missing or wrong). Both returned `True` silently — `persisted:
+  true` on the blocking route, no error frame at all on the streaming one — while nothing
+  reached Postgres. Only the first should be quiet; the second now fails exactly like any
+  other storage failure. `web/api/app.py` (`_persist_turn`), three new tests in
+  `web/tests/test_chat_persistence.py`.
+- **Fixed.** `archive_keys()` returning `(None, None)` on a missing salt logged nothing, though
+  the design record above states "a missing salt fails the archive write closed **and logs**."
+  Now logs once per process (not once per turn — `.env.example` calls an unset salt a
+  supported, possibly permanent state, so an ERROR on every turn forever would be noise).
+  `web/services/chat_store.py` (`archive_keys`), one new test.
+- **Written, not applied.** `grant insert, select on public.chat_archive to service_role` is
+  unnecessary — `chat_append_turn` is `SECURITY DEFINER` and never needed the grant to do its
+  own insert — and it is a second, unguarded path into the archive for anything holding the
+  service-role key, bypassing `chat_append_turn`'s owner/session validation and its atomic
+  pairing with a real turn. Nothing in this codebase currently uses that path. Migration
+  drafted at `supabase/migrations/20260820140000_revoke_chat_archive_service_role_insert.sql`;
+  applying it needs the Supabase MCP connection re-authenticated first (session expired
+  mid-review) — an owner decision, same as step 1 originally was.
+- **Fixed (docs only).** The roadmap doc still said "step 1 is written and not applied" in
+  three places after it was applied. Corrected to match `TODO.md` and the real migration
+  state.
 
 ---
 

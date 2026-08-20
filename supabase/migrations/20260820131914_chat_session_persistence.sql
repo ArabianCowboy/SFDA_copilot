@@ -4,9 +4,10 @@
 -- Plan: docs/chat-persistence-implementation-roadmap.md. Read §2.4 before
 -- changing any policy here — the split below is deliberate and narrow.
 --
--- NOT YET APPLIED when this file was written. Per supabase/README.md the
--- filename must match what `list_migrations` reports, so rename this file to the
--- version `apply_migration` assigns.
+-- Applied 2026-08-20 as version 20260820131914 (this filename). Verified at
+-- apply time: chat_append_turn and chat_load_session round-trip correctly and
+-- the service_role revoke did not break the SECURITY DEFINER path — see
+-- TODO.md's "Save chat sessions per user" entry.
 --
 -- TWO ACCESS PATTERNS, ON PURPOSE.
 --

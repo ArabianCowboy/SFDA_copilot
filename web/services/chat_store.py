@@ -123,6 +123,15 @@ def _salt(name: str) -> Optional[bytes]:
     return raw.encode("utf-8") if raw else None
 
 
+# Logged once per process, not once per turn. Unset salts are a SUPPORTED,
+# possibly permanent state (.env.example: "Unset is a supported state and
+# fails in the safe direction") — a deployment may deliberately run without an
+# archive. An ERROR on every single turn forever would be noise, not signal;
+# one line at first use is what the roadmap's "fails closed and logs" actually
+# calls for. Mirrors SupabaseAdminClient._warned in web/utils/supabase_client.py.
+_salt_missing_warned = False
+
+
 def archive_keys(owner_id: str, session_id: str) -> Tuple[Optional[str], Optional[str]]:
     """Pseudonymous digests for the archive, or ``(None, None)``.
 
@@ -139,6 +148,15 @@ def archive_keys(owner_id: str, session_id: str) -> Tuple[Optional[str], Optiona
     owner_salt = _salt("ARCHIVE_OWNER_SALT")
     session_salt = _salt("ARCHIVE_SESSION_SALT")
     if not owner_salt or not session_salt:
+        global _salt_missing_warned
+        if not _salt_missing_warned:
+            logger.error(
+                "ARCHIVE_OWNER_SALT/ARCHIVE_SESSION_SALT is not set; every "
+                "turn's archive row will be skipped for the life of this "
+                "process. The reader's own history is unaffected. Set both in "
+                "the environment to enable the archive."
+            )
+            _salt_missing_warned = True
         return None, None
 
     return (

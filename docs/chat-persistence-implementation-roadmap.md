@@ -5,7 +5,9 @@ user"**. Written the same way as
 [pagination-implementation-roadmap.md](pagination-implementation-roadmap.md): the
 useful half is the cost.
 
-**Revision 4 — steps 2, 3 and 4 are built; step 1 is written and not applied.** Revision 2
+**Revision 4 — steps 1-4 are done: applied 2026-08-20 as
+`supabase/migrations/20260820131914_chat_session_persistence.sql`, and `chat_persistence` is live
+in `config.yaml`.** Revision 2
 was revised in place enough times that it began contradicting itself, so revision 3 was a
 clean rewrite; revision 4 folds in what implementation actually found. §11 records what each
 pass caught, and §8 carries a status column. Where the plan and the code now disagree, the
@@ -750,7 +752,7 @@ described an increment its own table did not schedule; this is the correction.
 
 | # | Step | Gate | Status |
 |---|---|---|---|
-| 1 | Migration: reader tables + archive, policies, grants, RPCs | applies; **RLS proven from a reader JWT** (§9); RPC round-trip by hand | **written, NOT applied** |
+| 1 | Migration: reader tables + archive, policies, grants, RPCs | applies; **RLS proven from a reader JWT** (§9); RPC round-trip by hand | **applied 2026-08-20**; RLS still not proven from a real reader JWT — only service-role bypass so far |
 | 2 | `ChatBackend` Protocol + Supabase/InMemory backends; uuid canonicalisation; `ConversationStore` re-key; salt helpers + `.env.example` | `pytest -m "not browser and not integration"` | **done** |
 | 3 | Current-session rule (§5); ownership verification; logout/purge split; second non-admin bypass identity; replacement isolation assertions | `test_session_isolation.py`, `test_new_chat.py` | **done** |
 | 4 | Write at `final`; client-minted `client_request_id`; `persistence_unavailable` as an `error` frame; `handlers.js` toast + robot fix | `test_chat_stream.py`, `test_chat_api.py`; **both catalogues**; `ASSET_VERSION` bump | **done** |
@@ -782,15 +784,14 @@ so a missed one is a red build, not a cosmetic lapse.
 
 **`TODO.md` is updated in step 1** — §1.6 promised it and no revision-2 step owned it.
 
-**Step 1 is written but NOT applied, and that is a hard boundary rather than an omission.**
-There is no Supabase CLI, no `supabase/config.toml` and no Docker in this project;
-`supabase/README.md` says migrations go through the MCP `apply_migration` tool, straight to
-the live project. Applying is the owner's call, and two consequences follow:
+**~~Step 1 is written but NOT applied~~ — applied 2026-08-20** as
+`supabase/migrations/20260820131914_chat_session_persistence.sql`, matching what
+`list_migrations` reports, through the MCP `apply_migration` tool (there is no Supabase CLI,
+`supabase/config.toml` or Docker in this project — `supabase/README.md`). Verified by hand, in a
+rolled-back transaction, that `chat_append_turn` and `chat_load_session` round-trip and the
+`service_role` revokes did not break the `SECURITY DEFINER` path.
 
-- **The filename is provisional.** The README's rule is that a migration's filename is
-  exactly what `list_migrations` reports, and `apply_migration` assigns the version when it
-  runs. `20260818120000_chat_session_persistence.sql` must be renamed to match afterwards.
-- **Steps 2-6 do not wait on it.** Under TESTING the backend is `InMemoryChatBackend`, which
+- **Steps 2-6 did not wait on it.** Under TESTING the backend is `InMemoryChatBackend`, which
   reimplements the RPC's guarantees rather than approximating them — ownership refusal, seq
   allocation in pairs, replay that does not advance the counter. That is what let steps 2-4
   ship and be tested with the migration still unapplied.
