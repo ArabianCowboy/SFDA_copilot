@@ -819,7 +819,7 @@ described an increment its own table did not schedule; this is the correction.
 
 | # | Step | Gate | Status |
 |---|---|---|---|
-| 1 | Migration: reader tables + archive, policies, grants, RPCs | applies; **RLS proven from a reader JWT** (§9); RPC round-trip by hand | **applied 2026-08-20**; RLS still not proven from a real reader JWT — only service-role bypass so far |
+| 1 | Migration: reader tables + archive, policies, grants, RPCs | applies; **RLS proven from a reader JWT** (§9); RPC round-trip by hand | **applied 2026-08-20; gate CLOSED 2026-08-21** — policies exercised as a real `authenticated` role with real JWT claims; see §9 |
 | 2 | `ChatBackend` Protocol + Supabase/InMemory backends; uuid canonicalisation; `ConversationStore` re-key; salt helpers + `.env.example` | `pytest -m "not browser and not integration"` | **done** |
 | 3 | Current-session rule (§5); ownership verification; logout/purge split; second non-admin bypass identity; replacement isolation assertions | `test_session_isolation.py`, `test_new_chat.py` | **done** |
 | 4 | Write at `final`; client-minted `client_request_id`; `persistence_unavailable` as an `error` frame; `handlers.js` toast + robot fix | `test_chat_stream.py`, `test_chat_api.py`; **both catalogues**; `ASSET_VERSION` bump | **done** |
@@ -904,19 +904,43 @@ garnish, regenerated on demand); `chunk_sha256` resolution; a transcript console
   `--workers 1 --threads 8` as a consequence of process-local history. Durable rows are the
   thing that could relax it — but FAISS and sentence-transformers in RAM still require it, so
   **this changes nothing today**, and any window-caching optimisation may depend on it.
-- **Step 1's gate is the expensive one, and it is now the ONLY thing left in the critical
-  path.** "RLS proven from a reader JWT" has no harness here: nothing mints a reader JWT or
-  holds a PostgREST client as `authenticated`. `pytest.ini`'s `integration` marker and
-  `test_auth.py` are the only precedent. That harness — a project, two real accounts, a
-  signed token — costs more than the migration.
+- ~~**Step 1's gate is the expensive one, and it is now the ONLY thing left in the critical
+  path.**~~ **CLOSED 2026-08-21, and it was not expensive.** This section argued the harness
+  — "a project, two real accounts, a signed token" — costs more than the migration. It does
+  not, because a signed token was never the requirement: PostgREST authenticates a request by
+  setting `role` and `request.jwt.claims` on the connection, and `auth.uid()` reads the `sub`
+  claim out of that GUC. Both are settable directly:
 
-  **Stated plainly, because it is the one claim this document cannot currently back:** the
-  policies in the migration are unexercised. The service role bypasses RLS, so every test
-  that passes above proves the *application's* owner filtering, not the database's. Until a
-  reader JWT hits these tables, `chat_sessions_select_own` and its three siblings are
-  reviewed code, not verified code. `test_a_second_reader_cannot_load_the_first_readers_session`
-  proves the RPC filters by owner; it proves nothing about what a browser holding an anon key
-  could read directly.
+  ```sql
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', reader_id::text, 'role', 'authenticated')::text, true);
+  set local role authenticated;
+  ```
+
+  Two readers were seeded through `chat_append_turn`, the connection dropped to
+  `authenticated` as reader A, and the whole thing aborted so nothing committed. Results, with
+  both readers' rows present in every table:
+
+  | Property | Result |
+  |---|---|
+  | `chat_sessions_select_own` | A sees **1** session of 2 |
+  | `chat_messages_select_own` | A sees **2** messages of 4 |
+  | `chat_message_sources_select_own` | A sees **1** source of 2 |
+  | `chat_archive` readable? | **DENIED** — no grant, no policy |
+  | Forge a `chat_messages` row? | **DENIED** — no insert policy |
+  | Tamper with a stored answer? | **DENIED** — no update policy |
+  | Delete another reader's session | **0 rows** |
+  | Delete own session | **1 row**, children cascaded, **0 orphans** |
+
+  **What this does and does not prove.** It proves the policies themselves: the same `role`
+  and the same claims PostgREST would set, evaluated by the same expressions. It does not
+  exercise PostgREST's own request handling, nor the anon-key path through the JS client — so
+  a browser reading these tables directly is still untested *plumbing*, on *verified* policy.
+  The distinction matters for step 8, which is the first feature to call
+  `chat_sessions_delete_own` from a browser with no Flask route in between.
+
+  The paragraph this replaces said the policies were "reviewed code, not verified code". They
+  are now verified code.
 - **Reader-RLS reads need a browser mock.** `SUPABASE_BROWSER_MOCK` (`conftest.py:13-80`)
   implements `auth` and `profiles` only. If the browser ever reads chat tables directly it
   needs a new `from()` chain; Flask-mediated reads need nothing, since browser tests already

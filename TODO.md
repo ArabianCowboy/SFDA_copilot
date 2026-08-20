@@ -1757,11 +1757,32 @@ off, pinned by `test_persistence_and_resume_both_default_off`, which reads the f
 non-testing app because TESTING selects the in-memory backend unconditionally and would have
 hidden the production default.
 
-**And one claim this work cannot yet back.** The RLS policies are unexercised. The service
+~~**And one claim this work cannot yet back.** The RLS policies are unexercised. The service
 role bypasses RLS, so every green test proves the *application's* owner filtering, not the
 database's. Until a reader JWT hits these tables — a harness that does not exist here, and
 costs more than the migration did — `chat_sessions_select_own` and its three siblings are
-reviewed code, not verified code.
+reviewed code, not verified code.~~
+
+**Backed 2026-08-21. The harness cost nothing, because a signed token was never the
+requirement.** PostgREST authenticates by setting `role` and `request.jwt.claims` on the
+connection, and `auth.uid()` reads `sub` out of that GUC — both settable directly with
+`set_config` and `set local role`. Two readers were seeded through `chat_append_turn`, the
+connection dropped to `authenticated` as reader A, and the transaction aborted so nothing
+committed. With both readers' rows present in every table, A saw **1 session of 2, 2 messages
+of 4, 1 source of 2**; `chat_archive` was **DENIED**; forging a message row and tampering with
+a stored answer were both **DENIED** (no insert or update policy, exactly as designed);
+deleting another reader's session touched **0 rows**; deleting their own touched **1** and
+cascaded to **0 orphans**.
+
+This closes step 1's gate, which had been the only thing outstanding in the feature's critical
+path since 2026-08-20 — and it is worth noting *why* it stayed open: the estimate was wrong,
+not the work. It was priced as needing a Supabase project, two real accounts and a signed
+token, so it was deferred as expensive. It was one query.
+
+**One honest limit.** This exercises the policies, not PostgREST. A browser reading these
+tables through the anon key is still untested *plumbing* on *verified* policy — which is a
+live concern for step 8, the first feature to call `chat_sessions_delete_own` from a browser
+with no Flask route in between.
 
 **Update 2026-08-20 — two independent post-live reviews (OpenCode `gpt-5.6-terra` at high
 effort; Antigravity `gemini-3.7-flash-high`), each pointed at the roadmap's §11/§12 so they
