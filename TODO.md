@@ -1682,7 +1682,10 @@ paragraph rather than a quiet deletion:
   concern per migration; a column no code reads is the untested surface §2.4 objects to),
   and `chat_delete_session` was deleted outright — readers already delete through an RLS
   policy, so a service-role RPC doing the same thing is a second privileged path to one
-  effect.
+  effect. **Epilogue, 2026-08-21:** step 7 then cut the consent columns and the
+  admin RPCs rather than building them — §2.4's objection turned out to apply to the
+  whole feature, not just to its timing. `chat_delete_session` staying deleted is the one
+  decision of the three that survived intact.
 
 **One thing surfaced that this entry should carry: "New chat" no longer destroys
 anything.** Reset drops the cookie pointer and the RAM window; the rows survive and will
@@ -1727,7 +1730,11 @@ Real defects found and fixed:
   indexed what `chat_messages_session_seq_idx` re-indexed, while the FK `(session_id,
   owner_id)` had none.
 - **A `DELETE` grant on the archive** whose comment credited it to a function that ships in
-  step 7. Revoked; the migration that adds the purge RPC grants what it needs.
+  step 7. Revoked. ~~The migration that adds the purge RPC grants what it needs.~~
+  **Superseded 2026-08-21:** no purge RPC shipped, and when one does it will be
+  `security definer` and will not need the grant either — so a standing `DELETE` could
+  only ever be a second, unguarded delete path. `20260820213833` retired the promise and
+  reduced `service_role` to `SELECT` alone.
 - **A JSON scalar `null` aborts `jsonb_array_elements`**, rolling back a turn the reader is
   already reading — `coalesce` catches SQL NULL only.
 - **The last error frame overwrote the first**, so a reader whose answer merely went unsaved
