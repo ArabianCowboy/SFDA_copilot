@@ -48,6 +48,27 @@ runtime:
     # claim the reader has no stored history; this says the history could not
     # be read, which is a different fact.
     historyUnavailable: "Your conversation history could not be loaded."
+    # THE DURABLE-HISTORY DISCLOSURE. Shown once per reader per device.
+    #
+    # Before hydration shipped, the transcript died with the tab, so saying
+    # nothing was defensible. It is not any more: a conversation now follows the
+    # reader across a reload, a language toggle and a different device, and a
+    # regulatory professional who signs out believing their questions are gone
+    # is being misled by omission.
+    #
+    # It deliberately offers NO way to delete a conversation. The RLS grant
+    # exists but nothing calls it — there is no route and no client code — so an
+    # earlier draft's "or delete a conversation to clear one" would have made
+    # this notice the product's newest false claim. That sentence arrives with
+    # the session sidebar that can honour it, not before.
+    historyNotice: "Your chats are saved to your account. They restore on any device. Signing out does not delete them, and neither does starting a new chat."
+    # Not only PII. The realistic risk on this product is not a patient
+    # identifier — it is a regulatory professional pasting an unpublished
+    # dossier, submission correspondence, or a product plan into a free-text
+    # box. The warning has to name that, or it reads as boilerplate about
+    # somebody else's problem.
+    historyNoticeWarning: "Do not enter patient identifiers, clinical-trial subject data, personal information, or confidential or proprietary material."
+    historyNoticeDismiss: "Dismiss"
 
   stage:
     searching: "Searching the guidelines"

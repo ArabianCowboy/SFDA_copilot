@@ -133,6 +133,10 @@ const App = {
       // predates hydration. Nothing writes that key any more; this is the
       // sweep, not a mechanism.
       Transcript.discard();
+      // The disclosure is about a signed-in account. Leaving it over the
+      // landing view would be addressing nobody, and would still be on screen
+      // for whoever signs in next.
+      UI.hideHistoryNotice();
       return;
     }
 
@@ -144,6 +148,14 @@ const App = {
     if (previous && previous !== identity) Handlers.clearReaderScopedUI();
 
     Transcript.discard();
+
+    /* Before hydration, not after, and not inside it. The disclosure is true of
+       the account rather than of any particular conversation, so it must not
+       wait on a network read that may be slow, may 503, or may correctly return
+       nothing — a reader with no stored history yet is precisely someone who has
+       not been told their next question will be kept. */
+    UI.showHistoryNotice(identity);
+
     this.hydrateTranscript(identity);
   },
 

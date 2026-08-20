@@ -945,6 +945,60 @@
 }
 .resumed-notice-dismiss:hover { color: var(--fg-primary); }
 
+/* "Your chats are saved to your account."
+
+   The durable-history disclosure. Shares the resumed notice's shape on purpose
+   — same rail, same sunken ground — because they are the same kind of object:
+   something the app is telling you, not asking you. It differs in weight, and
+   only where the difference is the point: a `--warning` rail rather than
+   `--confidence`, because this one carries an instruction the reader has to
+   act on, and slightly larger text because it is read once rather than
+   glanced at.
+
+   It outlives a `New chat` (see `isTranscriptTurn` in ui.js) and goes only on
+   dismissal, which is what separates a disclosure from a notification. */
+.history-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  margin-block: var(--space-3);
+  padding-block: var(--space-3);
+  padding-inline: var(--space-3);
+  border: 1px solid var(--hairline);
+  border-inline-start: 3px solid var(--warning);
+  border-radius: var(--radius-xs);
+  background: var(--bg-sunken);
+  color: var(--fg-muted);
+  font-size: var(--fs-200);
+  line-height: var(--lh-normal, 1.5);
+}
+.history-notice-body {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.history-notice-text,
+.history-notice-warning { margin-block: 0; }
+/* The one line that asks something of the reader, so it is the one line that
+   is not muted. */
+.history-notice-warning {
+  color: var(--fg-primary);
+  font-weight: var(--fw-medium);
+}
+.history-notice-dismiss {
+  flex: none;
+  display: inline-flex;
+  padding: var(--space-1);
+  border: none;
+  border-radius: var(--radius-xs);
+  background: none;
+  color: var(--fg-muted);
+  cursor: pointer;
+  transition: color var(--duration-s) var(--ease-soft);
+}
+.history-notice-dismiss:hover { color: var(--fg-primary); }
+
 .source-panel-close {
   flex: none;
   display: inline-flex;

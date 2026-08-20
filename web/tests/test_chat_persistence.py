@@ -1149,3 +1149,127 @@ def test_a_missing_salt_is_logged_once_per_process_not_every_turn(monkeypatch, c
     assert second == (None, None)
     warnings = [r for r in caplog.records if "ARCHIVE_OWNER_SALT" in r.message]
     assert len(warnings) == 1
+
+
+# ── The archive's disclosure gate ───────────────────────────────────────────
+#
+# Step 7 shipped a durable-history notice and CUT the archive's controls — the
+# opt-out toggle, the withdrawal column, the purge RPC, the retention CLI, the
+# export. That was sound only because the archive is dormant. Setting a salt
+# ends the dormancy and, with it, the justification. These pin the one mechanism
+# that stops the two from silently disagreeing.
+
+
+@pytest.mark.parametrize(
+    "owner_salt, session_salt",
+    [
+        ("owner-salt", "session-salt"),
+        ("owner-salt", None),  # one salt alone still collects nothing, but the
+        (None, "session-salt"),  # INTENT to enable is what this warns about
+    ],
+)
+def test_enabling_the_archive_requires_its_disclosure(
+    monkeypatch, caplog, owner_salt, session_salt
+):
+    """A salt set while `archive_disclosed` is false is a loud error.
+
+    The reasoning this guards is a pairing, not a single fact: the notice says
+    nothing about the archive BECAUSE the archive collects nothing, and the
+    opt-out was never built BECAUSE there was nothing to opt out of. Setting a
+    salt breaks the first half and leaves the second half standing — text starts
+    being kept that the reader was not told about and cannot decline.
+
+    Either salt alone trips it. Neither one alone actually enables collection
+    (`archive_keys` requires both), but a half-configured archive is somebody
+    part-way through enabling it, which is exactly when the warning is useful
+    rather than after the fact.
+    """
+    from web.api import app as app_module
+
+    monkeypatch.delenv("ARCHIVE_OWNER_SALT", raising=False)
+    monkeypatch.delenv("ARCHIVE_SESSION_SALT", raising=False)
+    if owner_salt:
+        monkeypatch.setenv("ARCHIVE_OWNER_SALT", owner_salt)
+    if session_salt:
+        monkeypatch.setenv("ARCHIVE_SESSION_SALT", session_salt)
+
+    app = create_app(testing=True)
+    app.config["ARCHIVE_DISCLOSED"] = False
+
+    with caplog.at_level("ERROR"):
+        tripped = app_module._warn_if_archive_is_undisclosed(app)
+
+    assert tripped is True
+    assert any("archive_disclosed" in r.message for r in caplog.records), (
+        "the guard must name the config flag an operator has to change"
+    )
+
+
+def test_a_dormant_archive_does_not_warn(monkeypatch, caplog):
+    """The other half of the distinction: unset salts are the supported state.
+
+    `.env.example` calls an unset salt a supported, possibly permanent
+    configuration. Warning about it every boot would make the real warning
+    invisible.
+    """
+    from web.api import app as app_module
+
+    monkeypatch.delenv("ARCHIVE_OWNER_SALT", raising=False)
+    monkeypatch.delenv("ARCHIVE_SESSION_SALT", raising=False)
+
+    app = create_app(testing=True)
+    app.config["ARCHIVE_DISCLOSED"] = False
+
+    with caplog.at_level("ERROR"):
+        assert app_module._warn_if_archive_is_undisclosed(app) is False
+
+    assert not [r for r in caplog.records if "archive_disclosed" in r.message]
+
+
+def test_a_disclosed_archive_does_not_warn(monkeypatch, caplog):
+    """Once the notice covers the archive and its controls are back, the salts
+    are free to be set — the guard exists to force that work, not to forbid the
+    feature."""
+    from web.api import app as app_module
+
+    monkeypatch.setenv("ARCHIVE_OWNER_SALT", "owner-salt")
+    monkeypatch.setenv("ARCHIVE_SESSION_SALT", "session-salt")
+
+    app = create_app(testing=True)
+    app.config["ARCHIVE_DISCLOSED"] = True
+
+    with caplog.at_level("ERROR"):
+        assert app_module._warn_if_archive_is_undisclosed(app) is False
+
+
+def test_the_archive_ships_undisclosed_by_default():
+    """`config.yaml` must not drift out of step with the shipped notice.
+
+    The notice says nothing about the archive. If this flag were ever flipped
+    true without that copy changing, the guard above would fall silent while the
+    thing it guards became true — the failure mode of every flag that describes
+    something other than itself.
+    """
+    app = create_app(testing=True)
+    assert app.config["ARCHIVE_DISCLOSED"] is False
+
+
+def test_the_disclosure_guard_actually_runs_at_startup(monkeypatch, caplog):
+    """The tests above call the guard directly, which proves it is correct and
+    proves nothing about whether anything calls it.
+
+    A guard that is never reached is worse than no guard, because the reasoning
+    it protects gets written down as though it is enforced. So this one goes
+    through `create_app` and asserts on the log, touching the function's name
+    nowhere.
+    """
+    monkeypatch.setenv("ARCHIVE_OWNER_SALT", "owner-salt")
+    monkeypatch.setenv("ARCHIVE_SESSION_SALT", "session-salt")
+
+    with caplog.at_level("ERROR"):
+        create_app(testing=True)
+
+    assert any("archive_disclosed" in r.message for r in caplog.records), (
+        "create_app did not reach the archive disclosure guard"
+    )
+

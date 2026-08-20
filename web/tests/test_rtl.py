@@ -106,6 +106,59 @@ def test_runtime_catalogue_is_inlined_for_the_browser(client):
     assert "page.landing" not in html
 
 
+def _runtime_catalogue(html):
+    """The `window.__I18N` blob, parsed.
+
+    Asserted through JSON rather than by searching the raw HTML because Jinja's
+    `tojson` escapes non-ASCII — Arabic reaches the page as an escaped-unicode sequence, so a
+    substring check for the Arabic itself silently never matches and the test
+    passes for the wrong reason.
+    """
+    import json
+    import re
+
+    match = re.search(r"window\.__I18N = (\{.*?\});", html, re.S)
+    assert match, "the runtime catalogue is not inlined"
+    return json.loads(match.group(1))
+
+
+def test_the_history_notice_ships_in_arabic(client):
+    """The disclosure is only a disclosure in a language the reader reads.
+
+    The notice is built in JS from `window.__I18N`, so the server-side check
+    that matters is that the Arabic strings are actually inlined rather than
+    falling back to English — which is what `t()` does silently for a missing
+    key, and would leave an Arabic reader looking at an English warning about
+    what not to paste.
+    """
+    chat = _runtime_catalogue(page(client, "/?lang=ar"))["chat"]
+
+    assert "تُحفظ" in chat["historyNotice"]          # "are saved"
+    assert "المرضى" in chat["historyNoticeWarning"]  # "patients"
+    # A fallback would put the English sentence here instead.
+    assert "Your chats are saved" not in chat["historyNotice"]
+    assert "Do not enter" not in chat["historyNoticeWarning"]
+
+
+def test_the_history_notice_ships_in_english(client):
+    """The other half, and the one the browser suite asserts against."""
+    chat = _runtime_catalogue(page(client))["chat"]
+
+    assert "Your chats are saved to your account" in chat["historyNotice"]
+    assert "Do not enter patient identifiers" in chat["historyNoticeWarning"]
+
+
+def test_the_notice_promises_no_delete_control_in_either_language(client):
+    """Session delete arrives with step 8's sidebar. Until then the copy must
+    not offer it — in either catalogue, since a translation is exactly where an
+    extra helpful-sounding clause gets added without the English being touched.
+    """
+    for url in ("/", "/?lang=ar"):
+        notice = _runtime_catalogue(page(client, url))["chat"]["historyNotice"]
+        assert "delete a conversation" not in notice
+        assert "حذف محادثة" not in notice  # "delete a conversation"
+
+
 def test_theme_toggle_count_is_stable_across_languages(client):
     """test_theme_toggle.py asserts exactly three. The language switcher uses
     its own class precisely so it cannot inflate this."""
