@@ -17,7 +17,7 @@
  * Step 3 is the authority. Step 2 cannot be, because a token is just a claim,
  * and step 4 never runs on the strength of anything the page already held.
  *
- * @version 3.0.0
+ * @version 0.3.5 (Beta)
  */
 
 import { Services } from './modules/services.js';

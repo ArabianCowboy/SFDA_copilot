@@ -223,7 +223,7 @@ ASSET_VERSION = "warm34"
 
 # Product release, rendered in the landing footer. Kept as one constant so
 # the number cannot drift between the page and the module headers.
-APP_VERSION = "3.0.0"
+APP_VERSION = "0.3.5 (Beta)"
 
 # Every ES module under static/js/modules, mapped to its versioned URL. A
 # browser-native import map is the only way to version static imports without a

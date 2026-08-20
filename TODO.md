@@ -1752,3 +1752,34 @@ down the revocation window they are choosing, and say it out loud in this file.
 The mitigations already shipped — a 5s ceiling, correct outage classification,
 and a client-side guard against double-opening an account — address the harm
 this caused without touching the trade.
+
+---
+
+### Admin broadcast & Reader Notification Center (Popups, Banners, and Inbox History)
+
+**Where:** 
+- Database: `supabase/migrations/` (tables: `public.notifications`, `public.user_notification_reads`, RLS policies, RPC queries for read metrics).
+- Admin Backend: `web/api/admin.py`, `web/services/admin_store.py` (`POST /admin/api/notifications`, `GET /admin/api/notifications/history`, `DELETE /admin/api/notifications/<id>`).
+- Admin UI: `web/templates/admin.html`, `static/js/admin/ui.js`, `handlers.js` (new Notifications management tab with broadcast composer & history table).
+- Reader Backend: `web/api/app.py`, `web/services/notification_service.py` (`GET /api/notifications/active`, `GET /api/notifications/history`, `POST /api/notifications/mark-read`).
+- Reader UI: `web/templates/index.html`, `static/js/modules/ui.js`, `handlers.js` (toast/banner/modal renderer, Notification Bell header icon, unread counter badge, and Inbox history modal/drawer).
+- i18n: `web/i18n/en.yaml`, `web/i18n/ar.yaml` (`admin.notifications.*` and `runtime.notifications.*`).
+
+**Why it is wanted.**
+Operators need a direct mechanism to send real-time or persistent notifications to readers (maintenance, emergency regulatory alerts, feature announcements), while readers need a central inbox to review past notifications they might have dismissed.
+
+**What it involves & key features:**
+- **Notification Types**: 3 display styles:
+  - `toast` (auto-dismissing corner toast for updates/tips).
+  - `banner` (top-of-screen bar for maintenance warnings).
+  - `modal` (urgent backdrop popup requiring explicit acknowledgement).
+- **Reader Notification Center (Inbox)**:
+  - Notification Bell icon in header/sidebar displaying an unread count badge.
+  - Slide-out panel or modal listing historical notifications with Read/Unread status and "Mark all as read" capability.
+- **Admin Management & Analytics**:
+  - Broadcast composer supporting targeting (All users, specific role/tier, or user ID).
+  - Notification history table in admin console showing delivery status and engagement metrics (% of target readers who read/dismissed).
+  - Controls to early-deactivate, delete, or re-send past broadcasts.
+- **Bilingual & Real-time**:
+  - Dual-language fields (`title_en`, `title_ar`, `body_en`, `body_ar`) matching reader UI language.
+  - Hybrid delivery: Supabase Realtime broadcast for active sessions + REST DB query on page load for offline/new sessions.
