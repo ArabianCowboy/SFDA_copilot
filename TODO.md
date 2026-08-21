@@ -13,6 +13,41 @@ says only what it wants is a wish, and the useful half is the cost.
 
 ## Known bugs
 
+### ~~The embedding model loaded twice at startup, and huggingface_hub's own HTTP logging was never quieted~~ — FIXED 2026-08-21
+
+**Where:** `web/services/search_engine.py`, `web/services/search_index.py`,
+`web/utils/local_embedding_client.py`, `web/api/app.py`. Found from a user
+reading their own startup log and describing a wall of `HEAD ... 404 Not
+Found` lines as "400 errors."
+
+**What was wrong.** Two independent things compounded into one confusing
+wall of text. First, `SearchEngine.__init__` built its own
+`SentenceTransformer`-backed embedding client, then constructed `SearchIndex`
+without passing it — so `SearchIndex._validate_manifest()` built a second,
+independent one just to read `embedding_dimension`, doubling every
+HuggingFace Hub HEAD request the library makes on load. `SearchIndex.__init__`
+had accepted an `embedding_client` parameter for exactly this reason since it
+was written, with a docstring saying so; nothing had ever passed one. Second,
+nothing set a log level for `httpx`, `httpcore`, or `huggingface_hub`, so
+every one of those HEAD requests — including the benign 404s those libraries
+always send probing for optional model files a sentence-transformers
+checkpoint doesn't have — printed at INFO by inheriting the root logger.
+
+**What fixed it.** `search_engine.py:212` now passes
+`embedding_client=self._embedding_client` into `SearchIndex(...)`. `app.py`
+sets `httpx`/`httpcore`/`huggingface_hub` to `WARNING`.
+`local_embedding_client.py` tries `SentenceTransformer(model_name,
+local_files_only=True)` first and only falls back to a normal network load on
+`LocalEntryNotFoundError` (a corrupted cache or other failure still raises,
+unchanged). One accepted, narrow behavior change: a transient network failure
+specifically on the now-removed *redundant* second construction can no longer
+crash startup the way `ManifestValidationError` used to guarantee — a genuine
+manifest/model mismatch still does, since that check still runs against the
+injected client's real values. 12 new tests
+(`web/tests/test_search_index_injection.py`) cover the injection path, the
+mismatch-still-fires case, and all three `local_embedding_client.py` loading
+branches.
+
 ### ~~A transient Supabase outage signed readers out~~ — FIXED 2026-08-15
 
 **Where:** `web/api/app.py`, `_authenticate_request`. Found in production on
