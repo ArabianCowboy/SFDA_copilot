@@ -89,7 +89,7 @@ runtime:
   # scripts, need no plural rules, and say the same thing.
   sessions:
     tabChats: "Chats"
-    tabExplore: "Explore"
+    tabFAQ: "FAQ"
     # The tablist's own name. Screen readers announce it before the tabs, so it
     # has to say what the two tabs choose BETWEEN, not repeat one of them.
     tabsAria: "Sidebar contents"
@@ -506,7 +506,7 @@ page:
   # inline catalogue every page ships. The strings the list draws are runtime.
   sidebar:
     tabChats: "Chats"
-    tabExplore: "Explore"
+    tabFAQ: "FAQ"
     tabsAria: "Sidebar contents"
 
   auth:
