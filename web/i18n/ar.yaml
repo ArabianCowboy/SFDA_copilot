@@ -44,7 +44,7 @@ runtime:
   # ثابتة تقول الشيء نفسه وتبقى سليمة نحوياً.
   sessions:
     tabChats: "المحادثات"
-    tabExplore: "استكشاف"
+    tabFAQ: "الأسئلة الشائعة"
     tabsAria: "محتويات الشريط الجانبي"
     listAria: "محادثاتك"
     untitled: "محادثة بلا عنوان"
@@ -405,7 +405,7 @@ page:
 
   sidebar:
     tabChats: "المحادثات"
-    tabExplore: "استكشاف"
+    tabFAQ: "الأسئلة الشائعة"
     tabsAria: "محتويات الشريط الجانبي"
 
   auth:
