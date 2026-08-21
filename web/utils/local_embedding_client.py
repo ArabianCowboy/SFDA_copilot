@@ -1,7 +1,11 @@
+import logging
 import os
 import numpy as np
+from huggingface_hub.utils import LocalEntryNotFoundError
 from sentence_transformers import SentenceTransformer
 from web.utils.config_loader import config as config_loader_module
+
+logger = logging.getLogger(__name__)
 
 
 class LocalEmbeddingClient:
@@ -18,7 +22,14 @@ class LocalEmbeddingClient:
         self.batch_size = config_loader_module.get("data_processing", "embedding_batch_size", 100)
 
         try:
-            self.model = SentenceTransformer(self.model_name)
+            try:
+                self.model = SentenceTransformer(self.model_name, local_files_only=True)
+            except LocalEntryNotFoundError:
+                logger.info(
+                    "Model '%s' not cached locally; downloading for the first time.",
+                    self.model_name,
+                )
+                self.model = SentenceTransformer(self.model_name)
         except Exception as e:
             raise ValueError(f"Failed to load sentence-transformers model {self.model_name}: {str(e)}")
 

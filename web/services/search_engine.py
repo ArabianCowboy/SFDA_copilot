@@ -209,7 +209,9 @@ class SearchEngine:
         self._embedding_dimension: int = self._embedding_client.embedding_dimension
 
         # --- Lazy-loaded components (populated on first search) ---
-        self._index: SearchIndex = SearchIndex(self._index_config)
+        self._index: SearchIndex = SearchIndex(
+            self._index_config, embedding_client=self._embedding_client
+        )
         self._query_processor: QueryProcessor = QueryProcessor(
             embedding_client=self._embedding_client,
             translation_client=self._translation_client,

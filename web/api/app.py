@@ -119,6 +119,9 @@ for module, default_level in [
     level = os.getenv(env_var_name, default_level).upper()
     logging.getLogger(module).setLevel(level)
 
+for _name in ("httpx", "httpcore", "huggingface_hub"):
+    logging.getLogger(_name).setLevel(logging.WARNING)
+
 # ──────────────────────────────────────────────────────────
 # Application-Specific Imports (after logger setup)
 # ──────────────────────────────────────────────────────────
