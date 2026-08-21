@@ -4,7 +4,7 @@
  * AI-powered regulatory guidance for pharmaceutical regulations.
  * This file wires the ES modules together; logic lives under ./modules/.
  *
- * @version 0.4.0 (Beta) — kept in step with APP_VERSION in web/api/app.py, which is
+ * @version 0.4.1 (Beta) — kept in step with APP_VERSION in web/api/app.py, which is
  * the single source the landing footer renders from.
  */
 

@@ -192,6 +192,34 @@ def test_every_retrieved_passage_is_stored_with_its_cited_flag(client, backend):
     assert [s["cited"] for s in assistant_row.sources] == [True, False, True, False]
 
 
+def test_sources_come_back_ordered_by_source_index_regardless_of_insert_order(backend):
+    """`chat_load_session` orders sources with `jsonb_agg(... order by
+    src.source_index)` — a guarantee made on READ, not on write. Every other
+    test in this file happens to insert sources already in index order, which
+    would let `InMemoryChatBackend` echo insert order and still look correct.
+    This one inserts out of order specifically to prove the double enforces
+    the same ordering guarantee the RPC does, not merely whatever order a
+    caller happened to append in."""
+    kwargs = dict(
+        owner_id=OWNER, session_id="s1", client_request_id="r1", question="q",
+        answer="a", lang="en", category="all", model="m", corpus_revision=None,
+        owner_key=None, session_key=None, archive_opted_out=True,
+    )
+    backend.append_turn(
+        sources=[
+            {"source_index": 3, "snippet": "third"},
+            {"source_index": 1, "snippet": "first"},
+            {"source_index": 2, "snippet": "second"},
+        ],
+        **kwargs,
+    )
+
+    _, assistant_row = backend.load_session(OWNER, "s1")
+
+    assert [s["source_index"] for s in assistant_row.sources] == [1, 2, 3]
+    assert [s["snippet"] for s in assistant_row.sources] == ["first", "second", "third"]
+
+
 def test_stored_source_index_is_the_marker_the_model_saw(client, backend):
     """The citation contract, as a database row.
 

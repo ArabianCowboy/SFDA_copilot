@@ -33,7 +33,7 @@ import os
 import threading
 import uuid
 from datetime import datetime, timezone
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Dict, List, Optional, Protocol, Tuple
 
 from web.utils.supabase_client import get_supabase_admin
@@ -778,7 +778,20 @@ class InMemoryChatBackend:
                 m for m in self._messages[str(session_id)]
                 if before_seq is None or m.seq < before_seq
             ]
-            return rows[-clamp_load_limit(limit):]
+            window = rows[-clamp_load_limit(limit):]
+            # chat_load_session orders each message's sources by source_index
+            # on READ (`jsonb_agg(... order by src.source_index)`) — storage
+            # order is not part of the RPC's contract. Sorting here, not at
+            # write time, mirrors that: every existing test happened to insert
+            # sources already in index order, which let this double give the
+            # right answer for the wrong reason (echoing insert order rather
+            # than enforcing the guarantee). A message with no sources is
+            # returned as-is; `replace()` on an empty list is a needless copy.
+            return [
+                replace(m, sources=sorted(m.sources, key=lambda s: s.get("source_index", 0)))
+                if m.sources else m
+                for m in window
+            ]
 
     def latest_session(self, owner_id) -> Optional[str]:
         with self._lock:

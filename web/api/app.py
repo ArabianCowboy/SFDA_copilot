@@ -228,11 +228,11 @@ SUPPORTED_FAQ_LANGS = ("en", "ar")
 # that mixes a fresh template with a stale module is worse than a stale page —
 # post-icon-migration it would render an <i class="bi"> with no icon font behind
 # it, or print a glyph NAME as text. MODULE_IMPORT_MAP below closes that.
-ASSET_VERSION = "warm37"
+ASSET_VERSION = "warm39"
 
 # Product release, rendered in the landing footer. Kept as one constant so
 # the number cannot drift between the page and the module headers.
-APP_VERSION = "0.4.0 (Beta)"
+APP_VERSION = "0.4.1 (Beta)"
 
 # Every ES module under static/js/modules, mapped to its versioned URL. A
 # browser-native import map is the only way to version static imports without a

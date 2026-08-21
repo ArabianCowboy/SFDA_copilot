@@ -41,6 +41,7 @@ export const CONFIG = {
     SUGGESTED_BUTTON: 'suggested-question-enhanced',
     SUGGESTED_ICON: 'suggested-question-icon',
     FAQ_BUTTON: 'faq-button',
+    FAQ_MORE: 'faq-more',
     NEW_CHAT_BTN: 'new-chat-btn',
     /* The conversation sidebar. Class hooks rather than ids for everything the
        list draws, because the sidebar macro renders twice — once as the desktop

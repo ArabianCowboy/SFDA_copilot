@@ -13,6 +13,103 @@ says only what it wants is a wish, and the useful half is the cost.
 
 ## Known bugs
 
+### ~~The FAQ rail gave no feedback on a busy click, and blew past its own chunking rule~~ — FIXED 2026-08-22
+
+**Where:** `static/js/modules/handlers.js` (`handleFaqClick`, `handleSuggestedQuestionClick`),
+`static/js/modules/ui.js` (`UI.Faq`), `static/js/modules/config.js`, `static/css/components.css`
+(`.faq-more`), `web/i18n/{en,ar}.yaml` (`runtime.chat.busy`, `runtime.faq.showMore{One,Many}`).
+Surfaced by an `/impeccable critique` dual-agent review of `_sidebar.html` run after the sidebar's
+Explore tab was renamed to FAQ (commit `cf2a951`).
+
+**What was wrong.** Two P1s in the same component. First, `handleFaqClick` checked
+`AppState.isRequestInProgress()` and returned silently when an answer was still streaming — a dead
+button with no explanation, while every sibling sidebar control (`openSession`, rename, delete) already
+called `_refuseWhileStreaming()` for the identical guard; `handleSuggestedQuestionClick` had the same
+silent gap. Second, the FAQ rail — the default landing panel for a first-time reader — rendered every
+question in a category at once, and two of the four shipped categories (`regulatory`: 5,
+`pharmacovigilance`: 6) exceeded the system's own ≤4-per-group chunking rule, so the component whose job
+is to be the easiest on-ramp presented its heaviest cognitive load exactly when a new reader has the
+least context to filter it.
+
+**What fixed it.** The busy guard now shows a toast (`chat.busy`, new key, not a reuse of
+`sessions.busy` — that string is specifically about switching conversations and would have been the
+wrong sentence) instead of swallowing the click, on both handlers. The FAQ rail caps each category at 4
+questions and appends a `.faq-more` button — visually the same quiet, bordered, full-width control
+`.history-more` already uses for session pagination — that reveals the rest in place on click, no
+accordion, no animation on the revealed items (the reader asked; it should be there the instant they
+look). One shot per category: every shipped category is small enough that "show the rest" is the whole
+interaction, no second layer of pagination. Localized one/many via `I18n.plural`, matching the
+`cite.sourcesOne`/`sourcesMany` pattern already in the catalogue, including that pattern's known,
+already-documented dual-form gap for Arabic's exactly-2 case. `ASSET_VERSION` bumped twice
+(`warm37` → `warm39`) across the two edits.
+
+**Verified live**, not only against the mechanical detector (clean on every touched file, both passes).
+Rendered in the real Flask app (`FLASK_TESTING=true`) in English/LTR and Arabic/RTL: the chunking cap and
+expand button work correctly in both, correct singular/plural copy ("Show 1 more" vs "Show 2 more",
+matching Arabic forms). The busy-guard path doesn't reproduce reliably against the mock backend's
+near-instant responses, so it was verified by patching `AppState.isRequestInProgress` to `true` in the
+live page (via a `import()` of the exact same versioned module instance the page already loaded) and
+clicking a live FAQ button — the toast rendered correctly in both languages and no request fired. 43
+tests green across `test_frontend_architecture.py`, `test_admin_page.py`, `test_composer.py`,
+`test_css_contract.py`.
+
+---
+
+### ~~`chat_load_session` fetches sources with a correlated `jsonb_agg` subquery per window row~~ — FIXED 2026-08-22
+
+**Where:** `supabase/migrations/20260820131914_chat_session_persistence.sql:533-600` defined
+`chat_load_session`. Recorded as a deliberately deferred follow-up in the step-6 persistence record
+below: "up to 200 index seeks and 200 JSONB builds per call." Also touched:
+`web/services/chat_store.py` (`InMemoryChatBackend`), `web/tests/test_chat_persistence.py`.
+
+**What was wrong.** The correlated subquery re-ran `jsonb_agg` once per row in the up-to-200-row
+hydration window — an N+1 wearing SQL clothing. It didn't matter while hydration ran once per process
+per conversation; step 6 made it user-triggered (every reload, language toggle, sign-in), turning it
+into a per-visit cost.
+
+**What fixed it, and the mistake caught along the way.** Two migrations, not one, both applied
+2026-08-21 — the second corrects the first within the same pass, kept as an honest record rather than
+squashed together. `20260821224353_chat_load_session_batch_sources` replaced the correlated subquery
+with a `sources_by_message` CTE grouped by `message_id`, joined back with a plain `join window_rows w
+on w.id = src.message_id`. Live `EXPLAIN (ANALYZE, BUFFERS)` on a seeded 200-message/300-source window
+— required because `chat_load_session` is `security definer` and therefore never inlines, so wrapping
+`EXPLAIN` around a call to the function itself would have shown nothing but an opaque `Function Scan`
+— showed the planner did **not** hash/merge-join that CTE: it ran a Nested Loop Left Join
+(`Inner Unique: true`) that re-executed the `GroupAggregate` over the *entire* window once per outer row
+(`loops=200`). `Rows Removed by Join Filter: 14950` — not the naive `200*100-100 = 19900` a uniform
+full-rescan-every-time model predicts, because `Inner Unique: true` lets the 100 matching (assistant-role)
+outer rows stop early once they hit their own group, while the 100 non-matching (user-role) rows still
+scan all ~100 groups before concluding no match; that mix reconciles to ~14900, matching the observed
+14950 within rounding. Still a per-row re-execution of the whole aggregate, just with early exit on half
+the rows rather than a flat 200x cost — worth stating precisely, since the first version of this record
+implied a simpler mechanism than what Postgres actually did (caught in review). 530ms — worse than the
+7ms the original N+1 cost on the same seeded data. `20260821224534_chat_load_session_batch_sources_fix_join_form`,
+applied minutes later, replaced the join with `where src.message_id = any(array(select id from
+window_rows))`, which the planner instead ran as a single `InitPlan` evaluation, one bitmap index scan
+against the whole id array, one `GroupAggregate` pass, and a merge join — 4.7ms, 19 buffers against the
+original 712 (and the intermediate regression's 712 too, at 75x the runtime).
+
+A companion gap surfaced by review: `InMemoryChatBackend.load_session` (`web/services/chat_store.py`)
+preserved sources in *write* order, while the real RPC has always guaranteed `source_index`-ascending
+order on *read*. Every existing test inserted sources already sorted, so the double gave the right
+answer for the wrong reason. Fixed to sort on read (`load_session` now returns each message with
+`sources` sorted by `source_index`), with a new regression test,
+`test_sources_come_back_ordered_by_source_index_regardless_of_insert_order`, that inserts out of order
+specifically to catch what the old tests could not.
+
+Debated before shipping with an adversarial review (OpenCode/`gpt-5.6-terra`, read-only `plan` agent, no
+repo edits) that pushed back on the original plan's `EXPLAIN`-on-function-call verification approach and
+its pre-commitment to the `= ANY(...)` form over a plain join without live evidence — both concerns the
+join-form regression above then confirmed were real, not hypothetical caution.
+
+**Verified live**, not only against the in-memory double: functional round-trip on the corrected function
+confirmed the full 200-row window, ownership isolation (wrong owner or wrong session → 0 rows), limit
+clamping (`-5` → 1 row, `9999` → 200 rows), every user row's `sources = []`, and every seeded assistant
+row's 3 sources ordered ascending by `source_index`. `get_advisors` (security, performance) showed no new
+findings. 553 tests green in `web/tests/` (excluding the browser/integration markers).
+
+---
+
 ### ~~The embedding model loaded twice at startup, and huggingface_hub's own HTTP logging was never quieted~~ — FIXED 2026-08-21
 
 **Where:** `web/services/search_engine.py`, `web/services/search_index.py`,
@@ -1339,7 +1436,7 @@ alone.
 > **What step 8 shipped (2026-08-21).**
 >
 > - **A segmented sidebar**, not a second drawer. `_sidebar.html` renders one
->   `role="tablist"` — Chats | Explore — into the same macro that already
+>   `role="tablist"` — Chats | FAQ — into the same macro that already
 >   produces the desktop aside and the mobile offcanvas, so the FAQ rail and the
 >   conversation list share the column instead of competing for it. The default
 >   tab is chosen from the data on first load: a reader with history lands on it,
@@ -1736,7 +1833,7 @@ alone.
 > **Two follow-ups this pass deliberately did not build**, recorded so they are
 > not rediscovered:
 >
-> - **`chat_load_session` fetches sources with a correlated `jsonb_agg` subquery
+> - ~~**`chat_load_session` fetches sources with a correlated `jsonb_agg` subquery
 >   per window row** (migration `:574-592`). The plan called this "sources come
 >   back in the same call to avoid an N+1"; it is an N+1 wearing SQL clothing —
 >   up to 200 index seeks and 200 JSONB builds per call. It did not matter while
@@ -1746,7 +1843,9 @@ alone.
 >   request that draws the whole screen. One `message_id = any(...)` fetch is the
 >   fix. Not urgent at single-digit readers, where the SSE thread pool and the
 >   single-worker FAISS constraint bind first, but it is now a per-visit cost
->   rather than an amortised one.
+>   rather than an amortised one.~~ **Fixed 2026-08-22** — see the entry at the
+>   top of Known bugs, which also records a join-form regression caught live
+>   before it shipped.
 > - ~~**`ARCHIVE_OWNER_SALT` / `ARCHIVE_SESSION_SALT` are unset**, and step 7
 >   should decide whether the archive is wanted before building a purge path for
 >   it.~~ **Decided 2026-08-21: it stays dormant, and the purge path was not

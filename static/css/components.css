@@ -772,7 +772,8 @@
 }
 .history-status.is-error { color: var(--warning); }
 .history-retry,
-.history-more {
+.history-more,
+.faq-more {
   display: block;
   inline-size: 100%;
   margin-block-start: var(--space-3);
@@ -788,8 +789,13 @@
   transition: var(--btn-transition);
 }
 .history-retry:hover,
-.history-more:hover { color: var(--fg-primary); background: var(--bg-sunken); }
+.history-more:hover,
+.faq-more:hover { color: var(--fg-primary); background: var(--bg-sunken); }
 .history-more[disabled] { opacity: .5; cursor: progress; }
+/* Closer to the group it belongs to than history-more sits to the list it
+   ends — this one has three or four sibling questions right above it, not a
+   whole scrolled section. */
+.faq-section .faq-more { margin-block-start: var(--space-1); }
 
 /* ——————————————— FAQ rail ———————————————
    The reason the sidebar exists: a first session usually starts by clicking a

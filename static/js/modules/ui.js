@@ -965,7 +965,30 @@ export const UI = {
   },
 
   Faq: {
+    /* Kept so a later "more" click can pull the rest of a category's
+       questions without a second fetch — the payload is small and already in
+       memory once. Cleared on logout/clearButtons like everything else
+       reader-scoped. */
+    _data: null,
+
+    /* The chunking limit a category's first view is held to. Two categories
+       in the shipped corpus run past it (5 and 6 questions); the rest render
+       whole and never show a "more" button at all. */
+    VISIBLE_PER_GROUP: 4,
+
+    _makeQuestionButton(category, short, text, { animate = false, itemIndex = 0 } = {}) {
+      const button = DOMCache.createElement('button', 'nav-link', CONFIG.CLASSES.FAQ_BUTTON);
+      DOMCache.setAttributes(button, { 'data-category': category, 'data-question': text });
+      button.textContent = short;
+      if (animate) {
+        button.style.opacity = '0';
+        button.style.animation = `faqSlideIn 0.3s ease ${itemIndex * 0.05}s forwards`;
+      }
+      return button;
+    },
+
     renderButtons(faqData) {
+      this._data = faqData || {};
       const faqSections = [DOMCache.get(CONFIG.SELECTORS.FAQ_SIDEBAR), DOMCache.get(CONFIG.SELECTORS.FAQ_OFFCANVAS)].filter(Boolean);
       if (!faqSections.length) return;
 
@@ -987,21 +1010,26 @@ export const UI = {
 
           const nav = DOMCache.createElement('nav', 'nav', 'nav-pills', 'flex-column');
 
-          for (const { short, text } of data.questions) {
-            if (!short || !text) continue;
-            const button = DOMCache.createElement('button', 'nav-link', CONFIG.CLASSES.FAQ_BUTTON);
-            DOMCache.setAttributes(button, { 'data-category': category, 'data-question': text });
-            button.textContent = short;
-
-            button.style.opacity = '0';
-            button.style.animation = `faqSlideIn 0.3s ease ${itemIndex * 0.05}s forwards`;
+          /* Hold the first view to the same working-memory limit the rest of
+             the sidebar is built to — a category over it gets a "more" step
+             instead of dumping every question into the reader's first look. */
+          const visibleCount = Math.min(data.questions.length, this.VISIBLE_PER_GROUP);
+          data.questions.slice(0, visibleCount).forEach(({ short, text }) => {
+            if (!short || !text) return;
+            nav.appendChild(this._makeQuestionButton(category, short, text, { animate: true, itemIndex }));
             itemIndex++;
-
-            nav.appendChild(button);
-          }
+          });
 
           fragment.appendChild(header);
           fragment.appendChild(nav);
+
+          const remaining = data.questions.length - visibleCount;
+          if (remaining > 0) {
+            const more = DOMCache.createElement('button', CONFIG.CLASSES.FAQ_MORE);
+            DOMCache.setAttributes(more, { type: 'button', 'data-faq-more': category });
+            more.textContent = I18n.plural(remaining, 'faq.showMoreOne', 'faq.showMoreMany');
+            fragment.appendChild(more);
+          }
         }
 
         return fragment;
@@ -1021,7 +1049,28 @@ export const UI = {
       });
     },
 
+    /* One shot, not a second layer of pagination: every shipped category is
+       small enough that "show the rest" is the whole interaction. Reads the
+       category straight from the last-rendered payload rather than off the
+       button, so the two sidebar copies (desktop aside, mobile offcanvas)
+       each expand independently from the same data without needing their
+       own render pass. No entrance animation — the reader asked for this,
+       so it should be there the instant they look, not staggered in. */
+    expandGroup(category, moreButton) {
+      const data = this._data?.[category];
+      const nav = moreButton?.previousElementSibling;
+      if (!data?.questions?.length || !nav || nav.tagName !== 'NAV') return;
+
+      const alreadyShown = nav.querySelectorAll(`.${CONFIG.CLASSES.FAQ_BUTTON}`).length;
+      data.questions.slice(alreadyShown).forEach(({ short, text }) => {
+        if (!short || !text) return;
+        nav.appendChild(this._makeQuestionButton(category, short, text));
+      });
+      moreButton.remove();
+    },
+
     clearButtons() {
+      this._data = null;
       DOMCache.getAll(`${CONFIG.SELECTORS.FAQ_SIDEBAR}, ${CONFIG.SELECTORS.FAQ_OFFCANVAS}`).forEach(section => {
         section.innerHTML = '';
       });

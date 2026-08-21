@@ -1143,8 +1143,19 @@ export const Handlers = {
   },
 
   async handleFaqClick(event) {
+    const moreButton = event.target.closest(`.${CONFIG.CLASSES.FAQ_MORE}`);
+    if (moreButton) return UI.Faq.expandGroup(moreButton.dataset.faqMore, moreButton);
+
     const button = event.target.closest(`.${CONFIG.CLASSES.FAQ_BUTTON}`);
-    if (!button || AppState.isRequestInProgress()) return;
+    if (!button) return;
+    /* Refuse loudly, not silently: a second question fired mid-stream used to
+       return here with no response at all, which reads as a dead button
+       rather than a busy one. See handleSuggestedQuestionClick below for the
+       identical guard on the composer's suggested-chip path. */
+    if (AppState.isRequestInProgress()) {
+      ErrorHandler.showToast(I18n.t('chat.busy'), true);
+      return;
+    }
 
     DOMCache.getAll(`.${CONFIG.CLASSES.FAQ_BUTTON}.active`).forEach(btn => btn.classList.remove(CONFIG.CLASSES.ACTIVE));
     button.classList.add(CONFIG.CLASSES.ACTIVE);
@@ -1176,7 +1187,11 @@ export const Handlers = {
 
   async handleSuggestedQuestionClick(event) {
     const button = event.target.closest(`.${CONFIG.CLASSES.SUGGESTED_BUTTON}`);
-    if (!button || AppState.isRequestInProgress()) return;
+    if (!button) return;
+    if (AppState.isRequestInProgress()) {
+      ErrorHandler.showToast(I18n.t('chat.busy'), true);
+      return;
+    }
 
     const questionText = button.dataset.questionText;
     if (!questionText) return;

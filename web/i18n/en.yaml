@@ -19,6 +19,10 @@ runtime:
     # complete and correctly cited. What did not happen is the filing.
     notSaved: "This answer could not be saved to your history."
     cancelled: "Chat request cancelled."                 # frozen
+    # Distinct from sessions.busy: this guards a second question (FAQ,
+    # suggested chip) fired while one is already streaming, not a conversation
+    # switch. Refusing silently there read as a dead button — see harden pass.
+    busy: "Wait for the current answer to finish before asking another question."
     loginRequired: "Please log in to chat with the AI."  # frozen
     sessionUnverified: "Unable to verify your session. Please try again."  # frozen
     genericError: "Sorry, I encountered an error while processing your request. Please try again."  # frozen (prefix)
@@ -201,6 +205,11 @@ runtime:
     loadFailed: "Failed to load FAQs."
     loadFailedTesting: "Failed to load FAQs in testing mode."
     empty: "No FAQs available."
+    # A category over the rail's four-per-group limit gets this instead of
+    # dumping every question into the reader's first look; see UI.Faq.
+    # One/many via I18n.plural, matching cite.sourcesOne/sourcesMany's pattern.
+    showMoreOne: "Show 1 more"
+    showMoreMany: "Show {count} more"
 
   theme:
     announced: "Theme changed to {mode} mode"            # frozen
