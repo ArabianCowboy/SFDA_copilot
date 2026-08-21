@@ -1257,7 +1257,21 @@
    it, and dismisses without deciding anything. It is what keeps a conversation
    resuming on a new device from reading as the app doing something behind the
    reader's back — the one part of durable history that could. */
+/* THE READING-EDGE MARK IS A PILL, NOT A THICKENED BORDER, and the reason is
+   the system's own weight vocabulary rather than taste. This stylesheet has
+   exactly three rule weights and each means something: 1px is a hairline, 2px
+   is a mark that carries meaning (`.faq-button.active`, `.history-item.is-active`),
+   and 4px is a meter (the undo countdown, which says so in its own comment).
+   The 3px `border-inline-start` these two notices used to carry was none of the
+   three — an off-vocabulary weight doing a job the system already had a
+   signature for.
+
+   So they now take the same inset 2px pill the active FAQ row and the active
+   conversation row take. Three components, one mark for "this edge is telling
+   you something", on the weight reserved for it. The box keeps its 1px hairline
+   on all four sides. */
 .resumed-notice {
+  position: relative;
   display: flex;
   align-items: flex-start;
   gap: var(--space-3);
@@ -1265,11 +1279,19 @@
   padding-block: var(--space-2);
   padding-inline: var(--space-3);
   border: 1px solid var(--hairline);
-  border-inline-start: 3px solid var(--confidence);
   border-radius: var(--radius-xs);
   background: var(--bg-sunken);
   color: var(--fg-muted);
   font-size: var(--fs-100);
+}
+.resumed-notice::before {
+  content: '';
+  position: absolute;
+  inset-block: var(--space-2);
+  inset-inline-start: 0;
+  inline-size: 2px;
+  border-radius: var(--radius-pill);
+  background: var(--confidence);
 }
 .resumed-notice-text { flex: 1 1 auto; }
 .resumed-notice-dismiss {
@@ -1297,7 +1319,10 @@
 
    It outlives a `New chat` (see `isTranscriptTurn` in ui.js) and goes only on
    dismissal, which is what separates a disclosure from a notification. */
+/* Same mark, the warn ramp instead of the confidence one — see the note above
+   `.resumed-notice` for why this is a pill rather than a 3px border. */
 .history-notice {
+  position: relative;
   display: flex;
   align-items: flex-start;
   gap: var(--space-3);
@@ -1305,12 +1330,26 @@
   padding-block: var(--space-3);
   padding-inline: var(--space-3);
   border: 1px solid var(--hairline);
-  border-inline-start: 3px solid var(--warning);
   border-radius: var(--radius-xs);
   background: var(--bg-sunken);
   color: var(--fg-muted);
   font-size: var(--fs-200);
-  line-height: var(--lh-normal, 1.5);
+  /* `--lh-body`, not `var(--lh-normal, 1.5)`. There is no `--lh-normal` in
+     tokens.css and there never was, so that declaration was a phantom reference
+     resolving to its own fallback every time — it worked, which is why nobody
+     noticed, and it would have kept working while quietly opting this notice
+     out of the type scale. The ramp is tight/snug/body/loose; body is the one
+     that means "set for reading". */
+  line-height: var(--lh-body);
+}
+.history-notice::before {
+  content: '';
+  position: absolute;
+  inset-block: var(--space-3);
+  inset-inline-start: 0;
+  inline-size: 2px;
+  border-radius: var(--radius-pill);
+  background: var(--warning);
 }
 .history-notice-body {
   flex: 1 1 auto;

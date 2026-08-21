@@ -2047,6 +2047,24 @@ verified against the source before acting on them:
 
 ---
 
+### ~~Two notices carried an off-vocabulary rule weight, and one referenced a token that does not exist~~ — FIXED 2026-08-21
+
+**The weight.** `.resumed-notice` and `.history-notice` in `static/css/components.css` each carried `border-inline-start: 3px solid var(--confidence)` / `var(--warning)` on top of a 1px hairline box. `DESIGN.md` had already committed to a three-weight vocabulary in which each weight means something: 1px is a hairline, 2px is a mark that carries meaning (DESIGN.md: "Don't use the 2px rule weight decoratively — it is reserved for marks that carry meaning"), and 4px is a meter (the undo countdown, whose own comment says it is 4px "and not the system's 2px" precisely because a meter is not a rule). 3px was none of the three.
+
+**The fix.** Both notices now use the same inset 2px pseudo-element pill that `.faq-button.active` and `.history-item.is-active` already use — `inset-block`, `inset-inline-start: 0`, `inline-size: 2px`, `border-radius: var(--radius-pill)`. The box keeps a 1px hairline on all four sides. Three components now share one mark for "this edge is telling you something." Note it is a pseudo-element rather than a border, which is what puts it on the reserved weight instead of inventing a fourth.
+
+**The phantom token.** `.history-notice` declared `line-height: var(--lh-normal, 1.5)`. There is no `--lh-normal` in `static/css/tokens.css` and there never was — the ramp is `--lh-tight` / `--lh-snug` / `--lh-body` / `--lh-loose`. The declaration resolved to its own fallback every time, so it worked, which is why it went unnoticed while quietly opting that notice out of the type scale. Now `var(--lh-body)`.
+
+**How it surfaced.** The Impeccable design hook flagged the two borders as a "side-tab accent" pattern. Worth recording that the detector's reason (a thick coloured side border is a recognisable AI-generated tell) was the weaker argument; the one that actually decided it was the project's own weight vocabulary. Both borders predated step 8 — they shipped in steps 6 and 7 — and were deliberately left untouched when step 8 landed rather than being changed as a side effect of an unrelated feature.
+
+**Verification.** Re-rendered and checked in light, dark and Arabic RTL: the pill mirrors to the inline-start edge under `dir="rtl"`, and the dark-mode warn ramp (`#E0A94D`) reads clearly against the dark ground. `grep` confirms no `border-inline-start: 3px` or `border-inline-end: 3px` survives in any of the five stylesheets. Gates: `test_css_contract.py` at zero physical-property violations, 540 server tests, and 242 browser tests. The full browser run also reported one *error* — a Playwright setup timeout in `test_source_panel.py::test_an_error_after_final_keeps_the_canonical_answer`, not an assertion failure — and that whole file then passed 42/42 in isolation. Recorded rather than rounded to "green": it is the intermittent flake already tracked under *"The browser suite flakes intermittently in test_source_panel.py"*, and this pass touched only two notice rules, neither of which the source panel uses.
+
+**Docs.** `DESIGN.md`'s Notices subsection now describes the pill and states the weight reasoning, and a new Don't was added — "Don't invent a rule weight outside the vocabulary" — so the pattern cannot return unremarked. `.impeccable/design.json` was regenerated from that DESIGN.md in the same pass.
+
+This landed alongside a `/impeccable document` merge that added the step-8 sidebar components (sidebar tabs, the conversation row, the two notices) to `DESIGN.md`, which had documented none of steps 6-8's visual surface.
+
+---
+
 ### ~~Consolidate every documentation file into `docs/`~~ — FIXED 2026-08-16
 
 **Resolved, partially by design.** `PRODUCT.md` and `memory-bank`'s two
