@@ -592,6 +592,106 @@ export const Services = {
     return response.json();
   },
 
+  /**
+   * One request against the conversation sidebar's four routes.
+   *
+   * Factored because the four differ only in method, path and body, and the
+   * things they must NOT differ in are exactly the things that get forgotten
+   * one call site at a time: the bearer token, `cache: 'no-store'` (these
+   * bodies are the reader's own questions, and a shared machine must not serve
+   * the previous reader's list out of the browser cache), and an error carrying
+   * both `.status` and `.code` so the caller can tell 409 `generation_in_flight`
+   * from 503 `history_unavailable` from 404.
+   *
+   * 401 RESOLVES rather than throwing, matching `getChatHistory` and
+   * `getIdentity`: nobody is signed in, so there is no list, and an error toast
+   * under a signed-out reader is noise about a state that is correct.
+   */
+  async sessionRequest(path, { method = 'GET', body = null } = {}) {
+    const token = await this.getSessionToken();
+    if (!token) return null;
+
+    const headers = { Authorization: `Bearer ${token}` };
+    if (body) headers['Content-Type'] = 'application/json';
+
+    /* The same 5s ceiling the transcript read takes. The sidebar sits on the
+       path that draws the screen, and a hung request would leave a reader
+       looking at a spinner with no way to retry. */
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    let response;
+    try {
+      response = await fetch(path, {
+        method,
+        headers,
+        cache: 'no-store',
+        credentials: 'same-origin',
+        signal: controller.signal,
+        ...(body ? { body: JSON.stringify(body) } : {}),
+      });
+    } finally {
+      clearTimeout(timeoutId);
+    }
+
+    if (response.status === 401) return null;
+
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      const error = new Error(payload.error || `Request failed (${response.status})`);
+      error.status = response.status;
+      error.code = payload.code || 'unknown';
+      throw error;
+    }
+    return response.json().catch(() => ({}));
+  },
+
+  /**
+   * One page of the reader's conversations.
+   *
+   * `cursor` is the opaque `{updated_at, id}` the previous page returned, and it
+   * is passed back verbatim rather than reconstructed from the last row. The
+   * server decides what continues a page; a client that rebuilt the cursor
+   * would be reimplementing the keyset ordering and would drift the first time
+   * that ordering changed.
+   */
+  async listSessions({ cursor = null } = {}) {
+    const params = new URLSearchParams();
+    if (cursor?.updated_at && cursor?.id) {
+      params.set('cursor_updated_at', cursor.updated_at);
+      params.set('cursor_id', cursor.id);
+    }
+    const query = params.toString();
+    return this.sessionRequest(`/api/chat/sessions${query ? `?${query}` : ''}`);
+  },
+
+  /**
+   * Make one conversation current, server-side.
+   *
+   * The transcript is NOT returned here. Selecting repoints the cookie and
+   * nothing else, and the caller then re-reads `/api/chat/history` — which
+   * still takes no session id, so `_resolve_conversation_id` stays the single
+   * place that decides which conversation this is. Returning the transcript
+   * from this call would put a second such place in the codebase.
+   */
+  async selectSession(sessionId) {
+    return this.sessionRequest(`/api/chat/sessions/${encodeURIComponent(sessionId)}/select`, {
+      method: 'POST',
+    });
+  },
+
+  async renameSession(sessionId, title) {
+    return this.sessionRequest(`/api/chat/sessions/${encodeURIComponent(sessionId)}`, {
+      method: 'PATCH',
+      body: { title },
+    });
+  },
+
+  async deleteSession(sessionId) {
+    return this.sessionRequest(`/api/chat/sessions/${encodeURIComponent(sessionId)}`, {
+      method: 'DELETE',
+    });
+  },
+
   async getProfile(userId) {
     if (!this.supabase) throw new Error('Supabase client not initialized.');
     const { data, error } = await this.supabase

@@ -19,6 +19,14 @@ export const AppState = {
     // resolution, so a check that outlives its view cannot apply itself to
     // the one that replaced it.
     identityCheckId: 0,
+    // Which reader the conversation sidebar was loaded for, and whether its
+    // default tab has been chosen yet. Both are cleared on sign-out and on an
+    // identity change: the list carries the reader's own opening questions, and
+    // the app lives at "/" so nothing reloads on the way out. Declared here
+    // rather than left to `set` on first use so the reader-scoped keys are
+    // visible in one place — `clearSessionState` has to clear every one of them.
+    sidebarOwner: null,
+    sidebarTabSettled: false,
   },
 
   get(key) {

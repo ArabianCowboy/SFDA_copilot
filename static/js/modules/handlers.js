@@ -47,6 +47,20 @@ let transcriptEpoch = 0;
    during which a second press would reset the freshly-started conversation. */
 let resetInFlight = false;
 
+/* Bumped by every act that changes WHICH conversation the sidebar is showing —
+   a selection, a delete that lands on the active row, and a New chat.
+   `transcriptEpoch` guards the transcript's CONTENT against a late history
+   fetch; this guards the sidebar's own asynchronous work against a selection
+   that moved under it, which is a different question with a different answer.
+   A list fetch dispatched for reader A's conversation A must not paint after
+   the reader has already opened conversation B. */
+let selectionEpoch = 0;
+
+/* One switch at a time. Without it, double-clicking a row fires two selects and
+   two transcript reads, and whichever resolves second wins — which is not
+   necessarily the one the reader clicked last. */
+let switchInFlight = false;
+
 /* The handle of the answer currently streaming, or null. Cleared in
  * processChatRequestInternal's finally, alongside setSendingState — the two
  * mark the same thing, the end of one request's lifetime.
@@ -166,6 +180,13 @@ export const Handlers = {
       const button = event.target.closest?.(`.${CONFIG.CLASSES.NEW_CHAT_BTN}`);
       if (button) this.handleNewChat(button);
     });
+
+    /* The conversation sidebar, on the same delegation for the same reason —
+       twice-rendered, and repainted on every rename, delete and page, so a
+       per-instance listener would need re-attaching after each repaint and
+       would eventually fire one action twice. */
+    document.addEventListener('click', (event) => this.handleSidebarClick(event));
+    document.addEventListener('keydown', (event) => this.handleSidebarKeydown(event));
   },
 
   async handleAuthFormSubmit(event, source) {
@@ -224,6 +245,13 @@ export const Handlers = {
     UI.setSendingState(true);
     RobotStateManager.reactToUser();
 
+    /* Whether the exchange reached its end without throwing. The durable write
+       happens server-side at `final`, so this is the client's closest honest
+       proxy for "the sidebar is now out of date" — a new conversation has just
+       acquired its row and its title, or an existing one has moved to the top
+       of the ordering. */
+    let landed = false;
+
     try {
       let token;
       try {
@@ -255,6 +283,7 @@ export const Handlers = {
       } else {
         await this.blockingChat(queryText, category, token, requestId);
       }
+      landed = true;
     } catch (error) {
       UI.toggleTypingIndicator(false);
       if (error?.name === 'AbortError') {
@@ -285,6 +314,21 @@ export const Handlers = {
          than inside streamChat because this is the one exit every path shares,
          including the one that rethrows. */
       activeStream = null;
+
+      /* Re-read the list rather than patching it optimistically. The client
+         cannot know what the row should say: the title is minted server-side by
+         `clamp_title` from the opening question and applied only when the
+         session had none, `updated_at` is set by Postgres, and the message
+         count comes off `next_seq`. Guessing any of those produces a row that
+         disagrees with the database until the next reload. One indexed read,
+         once per completed exchange, is the cheaper kind of correct.
+
+         Not awaited: this runs after the answer is on screen, and a slow list
+         must not hold the composer. */
+      if (landed && AppState.get('sidebarOwner')) {
+        this.loadSessions(AppState.get('sidebarOwner'))
+          .catch(error => logError(error, 'processChatRequestInternal.loadSessions'));
+      }
     }
   },
 
@@ -352,6 +396,14 @@ export const Handlers = {
 
     // An older set-aside conversation is unreachable now that this one replaced it.
     this.discardUndo();
+
+    /* The sidebar follows. A New chat mints a conversation that does not exist
+       in the database yet — session rows are written lazily, by the first
+       completed turn — so there is no row to highlight and the correct state is
+       "none of these". Leaving the previous row marked active would claim the
+       reader's next question joins a conversation they just left. */
+    selectionEpoch += 1;
+    UI.History.setActive(null);
 
     const fragment = await UI.playTranscriptExit();
     if (wasStreaming) dropInFlightExchange(fragment);
@@ -429,6 +481,399 @@ export const Handlers = {
     transcriptEpoch += 1;
   },
 
+  // ── The conversation sidebar ────────────────────────────────────────────
+
+  /** The current selection epoch; see the declaration for what bumps it. */
+  selectionEpoch() {
+    return selectionEpoch;
+  },
+
+  /**
+   * Whether a sidebar action must be refused right now.
+   *
+   * ONE RULE FOR ALL THREE — switch, rename and delete — and it is the whole
+   * mitigation for the two races this feature would otherwise ship.
+   *
+   * Delete is the sharp one. Both chat routes close over their conversation id
+   * and write the turn at `final`, near the end; the sidebar's delete is a
+   * separate request. Delete conversation A while its answer is still streaming
+   * and the late `chat_append_turn` meets `on conflict (id) do nothing`, finds
+   * no row, and CREATES ONE — the conversation the reader deleted comes back,
+   * carrying the answer they thought they had discarded. There is no tombstone
+   * in that table to prevent it.
+   *
+   * Switching is the quieter one. The server keeps writing that answer into the
+   * conversation the reader left, so a conversation they navigated away from
+   * silently gains a turn and the sidebar's title and ordering go stale until
+   * something refreshes them.
+   *
+   * The server refuses both with 409 as well — see `_InFlightGenerations` — so
+   * this is the affordance and that is the guarantee. A control that simply did
+   * nothing would be worse than one that explains itself, which is why the
+   * caller shows `sessions.busy` rather than swallowing the click.
+   */
+  sidebarIsBusy() {
+    return AppState.isRequestInProgress();
+  },
+
+  _refuseWhileStreaming() {
+    ErrorHandler.showToast(I18n.t('sessions.busy'), true);
+  },
+
+  /**
+   * Load the first page of the reader's conversations.
+   *
+   * Not awaited by its caller, for the same reason the transcript read is not:
+   * a slow list must not hold up sign-in. Stamped with the identity it was
+   * dispatched for and checked on the way back, because a sign-out and a second
+   * sign-in can both land while it is in flight and painting reader A's
+   * conversation titles into reader B's sidebar is an account leak, not a
+   * cosmetic race.
+   */
+  async loadSessions(identity) {
+    const epoch = selectionEpoch;
+    UI.History.setStatus('loading');
+    UI.History.setTabLoading(true);
+
+    try {
+      const page = await Services.listSessions();
+      if (epoch !== selectionEpoch) return;
+      if (identity && identity !== AppState.get('sidebarOwner')) return;
+
+      if (!page) {
+        // Signed out. Not an error, and not an empty list either — there is
+        // nobody to have conversations.
+        UI.History.clear();
+        return;
+      }
+
+      UI.History.setSessions({
+        sessions: page.sessions || [],
+        cursor: page.next_cursor || null,
+        active: page.active || null,
+      });
+
+      /* THE DEFAULT TAB IS DECIDED HERE, once, from what came back. A reader
+         with history lands on it; a first-time reader lands on the questions
+         that start a session, which is what this column was originally for.
+         Only on the FIRST load — flipping the tab under a reader who has since
+         chosen the other one would be the app overruling them. */
+      if (!AppState.get('sidebarTabSettled')) {
+        AppState.set('sidebarTabSettled', true);
+        this.showSidebarTab((page.sessions || []).length ? 'chats' : 'explore');
+      }
+    } catch (error) {
+      if (epoch !== selectionEpoch) return;
+      logError(error, 'loadSessions');
+      UI.History.setStatus('error');
+    } finally {
+      UI.History.setTabLoading(false);
+    }
+  },
+
+  async loadMoreSessions() {
+    const { cursor, loadingMore } = UI.History.state;
+    if (!cursor || loadingMore) return;
+
+    const epoch = selectionEpoch;
+    UI.History.setLoadingMore(true);
+    try {
+      const page = await Services.listSessions({ cursor });
+      if (epoch !== selectionEpoch || !page) return UI.History.setLoadingMore(false);
+      UI.History.appendSessions({
+        sessions: page.sessions || [],
+        cursor: page.next_cursor || null,
+      });
+    } catch (error) {
+      logError(error, 'loadMoreSessions');
+      UI.History.setLoadingMore(false);
+      ErrorHandler.showToast(I18n.t('sessions.unavailable'), true);
+    }
+  },
+
+  /**
+   * Open one stored conversation.
+   *
+   * THE WHOLE TRANSITION LIVES HERE, in one place, and that is the point. Six
+   * things are scoped to "the conversation on screen" and every one of them has
+   * to move together: the transcript, the source panel, the citation map, the
+   * resumed notice, the pending undo, and the sidebar's active row. A version of
+   * this that cleared only the transcript would leave the previous
+   * conversation's passages open in the panel beside the new one's answers, and
+   * the reader would have no way to tell whose evidence they were reading.
+   *
+   * The order is: refuse if busy → bump both epochs → repoint the server → clear
+   * → hydrate. The server call comes BEFORE the clear, deliberately: a failed
+   * select must leave the reader where they were rather than on a blank screen
+   * over a conversation the server still thinks is current — the same trade
+   * `resetConversation` already makes for exactly the same reason.
+   */
+  async openSession(sessionId) {
+    if (!sessionId || switchInFlight) return;
+    if (UI.History.state.active === sessionId) return this.closeSidebarDrawer();
+    if (this.sidebarIsBusy()) return this._refuseWhileStreaming();
+
+    switchInFlight = true;
+    try {
+      const result = await Services.selectSession(sessionId);
+      if (!result) return;
+
+      /* Bumped AFTER the server agreed, so a refused switch does not invalidate
+         the history fetch that is legitimately drawing the conversation the
+         reader is still in. */
+      selectionEpoch += 1;
+      this.beginTranscriptEpoch();
+      const epoch = transcriptEpoch;
+
+      /* The undo belongs to the conversation a New chat ended, and the reader
+         has just navigated somewhere else. Restoring it over their selection
+         would put a conversation they did not ask for on top of one they did.
+         The server drops its own half of the pointer in the select route. */
+      pendingUndo = null;
+      ErrorHandler.hideActionToast();
+
+      UI.clearTranscript();
+      SourcePanel.reset();
+      resetCitationState();
+      UI.hideResumedNotice();
+      UI.History.setActive(sessionId);
+      this.closeSidebarDrawer();
+
+      const history = await Services.getChatHistory();
+      /* Checked again after the second await. The reader can press New chat, or
+         pick a different conversation, while this is in flight — and drawing the
+         one they abandoned is the resurrection the epoch exists to stop. */
+      if (epoch !== transcriptEpoch) return;
+
+      UI.hydrateTranscript(history.messages || []);
+      UI.scrollMessagesToBottom();
+      DOMCache.get(CONFIG.SELECTORS.QUERY_INPUT)?.focus();
+    } catch (error) {
+      logError(error, 'openSession');
+      ErrorHandler.showToast(
+        error?.code === 'generation_in_flight'
+          ? I18n.t('sessions.busy')
+          : I18n.t('sessions.switchFailed'),
+        true
+      );
+    } finally {
+      switchInFlight = false;
+    }
+  },
+
+  async saveSessionRename(sessionId, rawTitle) {
+    if (!sessionId) return;
+
+    try {
+      const result = await Services.renameSession(sessionId, rawTitle);
+      if (!result) return UI.History.setPending(null);
+      /* The SERVER's clamped title, never the reader's raw input. `clamp_title`
+         collapses whitespace and cuts on a word boundary at 120 characters, so
+         echoing what was typed would show an untruncated name until the next
+         reload — a row that quietly disagreed with the database. */
+      UI.History.applyRename(sessionId, result.title || null);
+      ErrorHandler.showToast(I18n.t('sessions.renamed'));
+    } catch (error) {
+      logError(error, 'saveSessionRename');
+      UI.History.setPending(null);
+      ErrorHandler.showToast(I18n.t('sessions.renameFailed'), true);
+    }
+  },
+
+  /**
+   * Delete one conversation, having already confirmed it inline.
+   *
+   * NOT OPTIMISTIC. Removing the row before the server agrees would have to be
+   * rolled back on failure — restoring the title, the original index, the
+   * active state and the scroll position — and a rollback that gets any of
+   * those wrong is a delete that appears to half-work. The request is a single
+   * indexed statement; waiting for it costs a moment and removes the whole
+   * class of bug.
+   */
+  async deleteSession(sessionId) {
+    if (!sessionId) return;
+    if (this.sidebarIsBusy()) {
+      UI.History.setPending(null);
+      return this._refuseWhileStreaming();
+    }
+
+    const wasActive = UI.History.state.active === sessionId;
+
+    try {
+      const result = await Services.deleteSession(sessionId);
+      if (!result) return UI.History.setPending(null);
+
+      UI.History.removeSession(sessionId);
+      ErrorHandler.showToast(I18n.t('sessions.deleted'));
+
+      /* The reader deleted the conversation they were IN. The server has already
+         minted a replacement id and rotated the cookie onto it; the screen has
+         to follow, or the next question would join a fresh conversation while
+         the transcript still showed the deleted one's turns. */
+      if (wasActive) {
+        selectionEpoch += 1;
+        this.beginTranscriptEpoch();
+        pendingUndo = null;
+        ErrorHandler.hideActionToast();
+        UI.clearTranscript();
+        SourcePanel.reset();
+        resetCitationState();
+        UI.hideResumedNotice();
+        UI.History.setActive(result.conversation_id || null);
+      }
+    } catch (error) {
+      logError(error, 'deleteSession');
+      UI.History.setPending(null);
+      ErrorHandler.showToast(
+        error?.code === 'generation_in_flight'
+          ? I18n.t('sessions.busy')
+          : I18n.t('sessions.deleteFailed'),
+        true
+      );
+    }
+  },
+
+  /**
+   * Switch the sidebar between its two panels.
+   *
+   * Both panels stay in the DOM and one is `hidden`; rendering only the active
+   * one would throw away the other's scroll position on every switch and would
+   * make the FAQ rail — which app.js fills once, on sign-in — need refetching
+   * each time the reader glanced at their history.
+   *
+   * Applied to BOTH rendered copies of the sidebar in one pass. Tracking them
+   * separately is how the desktop aside and the offcanvas end up on different
+   * tabs, which a reader only discovers by resizing.
+   */
+  showSidebarTab(which) {
+    const isChats = which === 'chats';
+    document.querySelectorAll(`.${CONFIG.CLASSES.SIDEBAR_TAB}`).forEach(tab => {
+      const selected = (tab.dataset.sidebarTab === 'chats') === isChats;
+      tab.classList.toggle('is-active', selected);
+      tab.setAttribute('aria-selected', String(selected));
+      /* A tablist is ONE tab stop: only the selected tab is reachable with Tab,
+         and the arrow keys move between them. Leaving both at 0 costs a
+         keyboard reader an extra stop on every visit to this column. */
+      tab.tabIndex = selected ? 0 : -1;
+    });
+
+    UI.History.panels().forEach(panel => { panel.hidden = !isChats; });
+    DOMCache.getAll(
+      `${CONFIG.SELECTORS.FAQ_SIDEBAR}, ${CONFIG.SELECTORS.FAQ_OFFCANVAS}`
+    ).forEach(panel => { panel.hidden = isChats; });
+  },
+
+  /**
+   * Arrow-key navigation inside the tablist, per the ARIA authoring practice.
+   *
+   * `--flip` exists in the stylesheet for exactly this reason: in Arabic the
+   * tabs are laid out right-to-left, so ArrowRight must move to the PREVIOUS
+   * tab. Reading the document's own direction rather than the language keeps
+   * this correct for any future locale.
+   */
+  handleSidebarTabKeydown(event) {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+    const rtl = document.documentElement.dir === 'rtl';
+    const forward = rtl ? event.key === 'ArrowLeft' : event.key === 'ArrowRight';
+    const current = event.target.dataset.sidebarTab;
+    const next = forward
+      ? (current === 'chats' ? 'explore' : 'chats')
+      : (current === 'explore' ? 'chats' : 'explore');
+    event.preventDefault();
+    this.showSidebarTab(next);
+    /* Focus follows selection, and it has to be the VISIBLE copy: both sidebars
+       hold a tab with this attribute and one of them is in a hidden offcanvas.
+       `offsetParent` is null for a display:none subtree, which is the test. */
+    const tabs = [...document.querySelectorAll(`[data-sidebar-tab="${next}"]`)];
+    (tabs.find(el => el.offsetParent !== null) || tabs[0])?.focus();
+  },
+
+  /**
+   * Dismiss the mobile drawer after a selection.
+   *
+   * ONE OFFCANVAS, ALWAYS. The source panel is the other panel on this page and
+   * the two must never be open together on a phone: overlapping backdrops trap
+   * focus with no reachable dismiss, and the reader's only way out is a reload.
+   * Swapping the sidebar's contents IN PLACE rather than opening a second drawer
+   * is what makes that impossible by construction; this just closes the one
+   * drawer once the reader has chosen from it.
+   */
+  closeSidebarDrawer() {
+    const offcanvas = document.getElementById('sidebarOffcanvas');
+    if (!offcanvas || !window.bootstrap?.Offcanvas) return;
+    window.bootstrap.Offcanvas.getInstance(offcanvas)?.hide();
+  },
+
+  /**
+   * Every sidebar click, through one delegated listener on the document.
+   *
+   * DELEGATED, and not merely as a convenience. The sidebar macro renders twice
+   * and the list repaints on every rename, delete and page — so per-instance
+   * listeners would have to be re-attached after each repaint, which is the
+   * shape that ends up firing one action twice. One listener on the document,
+   * keyed by `data-history-action` and `data-session-id`, cannot.
+   */
+  handleSidebarClick(event) {
+    const tab = event.target.closest?.(`.${CONFIG.CLASSES.SIDEBAR_TAB}`);
+    if (tab) return this.showSidebarTab(tab.dataset.sidebarTab);
+
+    const control = event.target.closest?.('[data-history-action]');
+    if (!control) return;
+
+    const action = control.dataset.historyAction;
+    const sessionId = control.dataset.sessionId;
+
+    switch (action) {
+      case 'open':
+        return this.openSession(sessionId);
+      case 'retry':
+        return this.loadSessions(AppState.get('sidebarOwner'));
+      case 'more':
+        return this.loadMoreSessions();
+      case 'rename':
+        if (this.sidebarIsBusy()) return this._refuseWhileStreaming();
+        return UI.History.setPending({ id: sessionId, mode: 'rename' });
+      case 'rename-cancel':
+        return UI.History.setPending(null);
+      case 'rename-save': {
+        const input = control.closest(`.${CONFIG.CLASSES.HISTORY_ITEM}`)
+          ?.querySelector('[data-rename-input]');
+        return this.saveSessionRename(sessionId, input ? input.value : '');
+      }
+      case 'delete':
+        if (this.sidebarIsBusy()) return this._refuseWhileStreaming();
+        return UI.History.setPending({ id: sessionId, mode: 'delete' });
+      case 'delete-cancel':
+        return UI.History.setPending(null);
+      case 'delete-confirm':
+        return this.deleteSession(sessionId);
+      default:
+        return undefined;
+    }
+  },
+
+  /** Enter commits a rename, Escape abandons it. */
+  handleSidebarKeydown(event) {
+    const tab = event.target.closest?.(`.${CONFIG.CLASSES.SIDEBAR_TAB}`);
+    if (tab) return this.handleSidebarTabKeydown(event);
+
+    const input = event.target.closest?.('[data-rename-input]');
+    if (!input) return;
+
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      this.saveSessionRename(input.dataset.renameInput, input.value);
+    } else if (event.key === 'Escape') {
+      /* Stopped, so the same Escape does not also close the offcanvas. A reader
+         abandoning a rename means "undo this edit", not "leave the sidebar" —
+         and having one key do both, in an order the reader cannot predict, is
+         the ambiguity a nested dismissible surface always brings. */
+      event.preventDefault();
+      event.stopPropagation();
+      UI.History.setPending(null);
+    }
+  },
+
   /**
    * Drop everything scoped to the reader who just left, short of a full
    * sign-out.
@@ -443,6 +888,16 @@ export const Handlers = {
    */
   clearReaderScopedUI() {
     this.beginTranscriptEpoch();
+    /* The sidebar moves with everything else scoped to the reader who left.
+       These rows are their own opening questions, and the app lives at "/" so
+       nothing reloads on the way out — leaving them drawn behind the landing
+       view is the same hazard the transcript's ownership tag existed to
+       prevent, applied to the index of the transcript instead of the transcript.
+       The epoch bump is what stops a list fetch dispatched for them painting
+       into the next reader's column when it lands. */
+    selectionEpoch += 1;
+    UI.History.clear();
+    AppState.set('sidebarTabSettled', false);
     UI.clearTranscript();
     SourcePanel.reset();
     resetCitationState();
@@ -1054,6 +1509,10 @@ export const Handlers = {
     // Also invalidates any transcript fetch still in flight, which would
     // otherwise draw the departing reader's conversation into an empty page.
     transcriptEpoch += 1;
+    // And any sidebar fetch with it. The list carries the departing reader's
+    // own opening questions; landing after a sign-out would paint them into the
+    // column the next person sees.
+    selectionEpoch += 1;
 
     // An in-flight answer would otherwise keep streaming into the hidden
     // transcript and repopulate the citation map after logout.
@@ -1072,6 +1531,9 @@ export const Handlers = {
     SourcePanel.reset();
     resetCitationState();
     UI.Faq.clearButtons();
+    UI.History.clear();
+    AppState.set('sidebarOwner', null);
+    AppState.set('sidebarTabSettled', false);
     try {
       sessionStorage.removeItem('sfda-transcript');
     } catch (error) {

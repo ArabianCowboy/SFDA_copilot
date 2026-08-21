@@ -633,6 +633,76 @@ reads" below.
 
 ## Planned work
 
+### The active conversation is per-browser, not per-tab — and the sidebar makes it easy to trip
+
+**Where:** `_resolve_conversation_id` (`web/api/app.py`) reads `session["conv_id"]`
+out of Flask's signed cookie, which every tab of a browser profile shares. Step
+8's `POST /api/chat/sessions/<id>/select` writes that same key.
+
+**The symptom.** Open two tabs as one reader. Pick conversation A in tab one and
+conversation B in tab two. Tab one still *shows* A, but its next question — and
+the durable write behind it — lands in B. A reload of tab one then replaces A's
+transcript with B's.
+
+**This is older than the sidebar and was not introduced by it.** Two tabs have
+always shared one `conv_id`, so they have always shared one conversation; before
+step 8 there was simply no control that made the collision easy to reach. The
+sidebar does not make it worse, it makes it *findable*, which is the honest
+reason to write it down rather than the reason to have shipped differently.
+
+**Why it was not fixed in step 8.** The fix is not a sidebar change. It is a
+tab-scoped pointer — held in `sessionStorage`, sent on `/api/chat`,
+`/api/chat/stream` and `/api/chat/history`, validated server-side against
+`g.identity` and never trusted as an owner claim — which changes the contract of
+all three chat routes and directly contradicts `/api/chat/history`'s current and
+deliberate design ("THE SERVER PICKS THE CONVERSATION. There is no session id in
+the query string"). That is a coherent change, but it is its own piece of work
+with its own isolation tests, and bundling it into the sidebar would have meant
+rewriting the current-session rule inside a UI step.
+
+**It is the same change as deep-linking.** `/c/<id>` (roadmap §10.3) needs
+exactly this: a conversation id that travels with the request rather than with
+the browser. The two should land together, and the `ConversationStore` owner
+re-key was already done partly in anticipation.
+
+**Until then**, a second tab is a second view of one conversation, which is what
+it has always been.
+
+### ~~Two step-8 migrations are written and not yet applied~~ — APPLIED 2026-08-21
+
+> Applied as `20260821145319_chat_navigation_rpcs` and
+> `20260821145416_chat_first_turn_title`, verified by round-trip in aborted
+> transactions, advisors clean, and both files renamed to the assigned versions.
+> The full record is in the step-8 entry above. Kept, struck through, for the
+> ordering argument it makes — schema before code, because the reverse breaks
+> persistence silently — which is the part worth re-reading next time.
+
+**Where:** `supabase/migrations/20260821145319_chat_navigation_rpcs.sql` and
+`20260821145416_chat_first_turn_title.sql`.
+
+**Why this is its own entry.** The whole test suite — 540 server, 243 browser —
+runs against `InMemoryChatBackend`, which mirrors the RPCs' guarantees rather
+than approximating them: the title's `coalesce`, the rename's refusal to touch
+`updated_at`, the delete's cascade and its idempotency-key cleanup. That is what
+let step 8 be built and tested with the SQL unapplied, exactly as steps 2-6 were.
+It also means **a green suite is not evidence that the database has these
+functions**, and the failure in production is silent in the worst direction: the
+sidebar lists nothing and every rename and delete 503s.
+
+**Order matters and the second one is destructive.** Apply
+`..._chat_navigation_rpcs` first. `..._chat_first_turn_title` then DROPS the live
+13-argument `chat_append_turn` and recreates it with fourteen. `create or
+replace` is not an option — a changed argument list makes a *second* function,
+and PostgREST would find a 13-argument call ambiguous and stop persisting every
+turn on a deployment where the migration reported success. The drop and the
+create are one transaction. What was checked before dropping (callers, grants,
+dependents, rollback) is written into the file's header, per README rule 7.
+
+**Verify after applying**, per `supabase/README.md`: `list_migrations` against
+`ls migrations/`, then `get_advisors security` and `get_advisors performance`.
+Round-trip `chat_append_turn` → `chat_list_sessions` in a deliberately aborted
+transaction and confirm the title lands on the first turn and survives a second.
+
 ### Answer from a second provider — and why the code is the easy half
 
 **Where:** `web/services/openai_app.py` builds one `OpenAI(api_key=...)` client
@@ -1215,21 +1285,177 @@ alone.
 
 ---
 
-### Save chat sessions per user — LIVE, VISIBLE AND DISCLOSED; step 8 remains
+### ~~Save chat sessions per user~~ — COMPLETE 2026-08-21, all eight steps
 
-> **Status in one line:** steps 1-7 are done as of 2026-08-21. Turns are
+> **Status in one line:** steps 1-8 are done as of 2026-08-21. Turns are
 > recorded to Postgres, `GET /api/chat/history` draws the visible transcript
 > back out of those same rows, restored citations open their stored passages,
-> `chat_resume_latest_session` is **on** — so a conversation now follows the
-> reader across a reload, a language toggle, and a different device — and a
-> notice finally **says so**. Step 8 (multi-session sidebar) is not built.
+> `chat_resume_latest_session` is **on**, a notice **says so** — and a sidebar
+> now lists every saved conversation, names each one from its opening question,
+> and lets the reader switch, rename and delete.
 >
-> **Still not struck through, on the same convention as before**, but for the
-> opposite reason. A reader *can* now see the difference — that half is done.
-> What is left is the consent notice this feature owes and the sidebar that
-> makes multiple conversations reachable, and striking the heading would lose
-> the tracking for both.
+> **Struck through at last**, and the convention is worth restating because this
+> entry spent three revisions refusing to be: a heading is struck when a reader
+> can see the difference AND nothing material is outstanding. Both are now true.
+> Two things remain open and are tracked below as their own entries rather than
+> here, because they are not this feature's unfinished half — they are separate
+> changes to the chat routes' contract that this feature made worth doing.
 >
+> **What step 8 shipped (2026-08-21).**
+>
+> - **A segmented sidebar**, not a second drawer. `_sidebar.html` renders one
+>   `role="tablist"` — Chats | Explore — into the same macro that already
+>   produces the desktop aside and the mobile offcanvas, so the FAQ rail and the
+>   conversation list share the column instead of competing for it. The default
+>   tab is chosen from the data on first load: a reader with history lands on it,
+>   a first-time reader lands on the questions this column was originally for.
+>   One offcanvas, always: navigation never spawns a second drawer, which is
+>   what makes the overlapping-backdrop lockout impossible rather than merely
+>   unlikely.
+> - **Four Flask routes** — `GET /api/chat/sessions`,
+>   `POST /api/chat/sessions/<id>/select`, `PATCH`, `DELETE` — over three new
+>   `security definer` RPCs (`20260821145319_chat_navigation_rpcs.sql`):
+>   `chat_list_sessions` (keyset on `(updated_at, id)`), `chat_rename_session`,
+>   `chat_delete_session`.
+> - **First-turn titling, inside the turn's own transaction.**
+>   `20260821145416_chat_first_turn_title.sql` drops and recreates
+>   `chat_append_turn` with `p_title`, applied as `title = coalesce(title, …)` in
+>   the statement that claims the sequence numbers.
+> - **`sessions_api: "60 per minute"`**, its own limit like `history_api`, so
+>   ordinary browsing cannot spend the 200/day budget an office behind one NAT
+>   shares with chat itself.
+> - **Gates:** 540 server tests, 243 browser tests. `ASSET_VERSION` → `warm37`.
+>   Both catalogues carry the new `runtime.sessions` block and `page.sidebar`.
+>
+> **Two written positions were reversed, deliberately.**
+>
+> - **The browser never touches these tables.** The roadmap said step 8 would be
+>   "the first feature to call `chat_sessions_delete_own` from a browser with no
+>   Flask route in between", and had deleted `chat_delete_session` as "a second,
+>   privileged path". Two facts already in the tree retired that. First,
+>   `revoke all on public.chat_sessions from service_role` leaves Flask holding
+>   SELECT and nothing else — the choice was never "browser-direct or an RPC", it
+>   was "browser-direct or nothing". Second, and decisively, a browser-direct
+>   delete **cannot finish the job**: it cannot clear `conv_id`, `prev_conv_id`
+>   or the `ConversationStore` window, and `chat_append_turn`'s
+>   `insert … on conflict (id) do nothing` then lazily recreates the deleted
+>   session on the reader's next question. RLS is back to being defence in depth
+>   rather than the coordinator of a workflow spanning a cookie, a process-local
+>   cache and three tables.
+> - **The notice now names the delete, and the test that forbade it was
+>   inverted.** `test_the_notice_does_not_promise_a_delete_control_that_does_not_
+>   exist` existed because a draft offered a control nothing implemented. There
+>   is now a control, so the assertion flips: a disclosure that omits the one
+>   thing a reader would go looking for is misleading by omission in exactly the
+>   way the draft was misleading by invention. Both the server-side and browser
+>   halves were rewritten with the reasoning in the docstring, since a future
+>   reader will otherwise see a check that got weaker.
+>
+> **A race the plan did not have, closed on the server as well as in the UI.**
+> Both chat routes close over `conversation_id` and write at `final`; the
+> sidebar's delete is a separate request. Delete a conversation mid-stream and
+> the late append meets `on conflict (id) do nothing`, finds no row, and creates
+> one — carrying the answer the reader thought they had discarded, on a
+> regulatory product. `_InFlightGenerations` holds a counted claim on
+> `(owner, conversation)` across the whole generation window; select and delete
+> answer **409 `generation_in_flight`** against it, and the client refuses the
+> controls with an explanatory toast so the reader is told rather than
+> stonewalled. Correct because this app is single-worker by documented contract
+> (`conversation_store.py:15-21`); if that changes the replacement is a tombstone
+> table, not a bigger dict. `test_a_conversation_being_written_to_cannot_be_
+> deleted` drives it through the real generator and was **verified to fail
+> without the guard** — it returns 404, because the session does not exist yet.
+>
+> **Three things deliberately not built**, recorded so they are not
+> rediscovered as oversights:
+>
+> - **No virtualisation.** A bounded 30-row page and a cursor instead. The rows
+>   are short titles, and this panel is already a scroll port inside the
+>   offcanvas body, which is another one — virtualising would unmount rows while
+>   focus and `aria-labelledby` still point at them and would fight Bootstrap's
+>   focus trap, to save a cost that does not exist.
+> - **No `Intl.RelativeTimeFormat`.** Arabic has six plural forms where
+>   `I18n.plural` knows two, `Intl` emits bidi control marks that reorder inside
+>   an RTL column — this repo has already paid for that once, with an en-US time
+>   rendering as "AM 3:17:18" in an Arabic transcript — and the language toggle
+>   reloads the page, so a cached relative string is stale by construction. Five
+>   catalogue-owned day buckets instead, plus the exact timestamp in each row's
+>   `title` attribute.
+> - **No LLM titling and no boilerplate stripping.** `clamp_title` collapses
+>   whitespace and cuts on a word boundary at 120 characters. A phrase list that
+>   stripped "What are the requirements for…" / "ما هي اشتراطات…" is one
+>   language's grammar wearing a general rule's clothing, needs maintaining in
+>   two scripts, and fails by mangling the one string the reader uses to
+>   recognise their own conversation.
+>
+> **The migrations were applied 2026-08-21, and the order was forced.** The new
+> `SupabaseChatBackend` always sends `p_title`, so shipping the code first would
+> have met the live 13-argument `chat_append_turn`, found no matching function,
+> and reported every turn as unsaved. Schema first is the only safe sequence —
+> and it is safe in the other direction too, which was **verified rather than
+> assumed** before applying: a 13-argument named call resolves against the
+> 14-argument function through `p_title`'s default, so the then-deployed code
+> kept working with titles simply staying null.
+>
+> **Timing was the cheapest it will ever be.** `chat_sessions`, `chat_messages`,
+> `chat_message_sources` and `chat_archive` all held **0 rows** — persistence has
+> been on since 2026-08-20 with nobody having chatted since — so there was no
+> backfill, no legacy `title is null` population, and no reader to disrupt. On a
+> populated table this would have shipped a wart: an existing conversation would
+> be named after whatever its reader asked *next*, since `coalesce` fires on the
+> next append rather than on the opening question. That case does not exist here.
+>
+> **The `SECURITY DEFINER` ownership warning in the base migration was checked
+> first**, since `20260821145416` drops and recreates a function that must keep
+> table-write privileges the caller does not have: `apply_migration` runs as
+> `postgres`, all four chat tables are owned by `postgres`, and the recreated
+> function is owned by `postgres`. Confirmed after applying, along with
+> `search_path=""`, `security definer`, and `EXECUTE` granted to `service_role`
+> only on all four functions.
+>
+> **Round-tripped against the real database in aborted transactions** — the same
+> technique the base migration was verified with, and the row counts afterwards
+> confirm nothing committed (still 0/0/0/0). What it proved: the first turn names
+> the session; a second turn does not rename it; a 13-argument call still
+> resolves; `chat_rename_session` returns true and stores the trimmed title;
+> a rename survives every later turn; clearing a name returns the row to null;
+> a stranger's rename and delete both return false; `chat_list_sessions` derives
+> `message_count` correctly and orders newest-activity-first; and an owner delete
+> cascades leaving **0 orphan messages and 0 orphan sources**.
+>
+> **One property could not be shown dynamically and was checked statically
+> instead.** "A turn moves `updated_at`, a rename does not" is untestable inside
+> a single transaction, because `now()` is transaction-start time and does not
+> advance. Read off the installed definitions instead:
+> `chat_append_turn` contains `updated_at = now()` and `chat_rename_session` does
+> not — which is the property, stated where it actually lives.
+>
+> **Advisors after applying: no new findings.** `get_advisors security` returns
+> the four documented `rls_enabled_no_policy` entries and the Pro-plan
+> `auth_leaked_password_protection`; `get_advisors performance` returns five
+> pre-existing `unused_index` INFOs. These migrations add no table and no index,
+> so a clean run was the expected result rather than a lucky one.
+>
+> **One divergence worth recording, on no reachable path.** Flask's `clamp_title`
+> collapses interior whitespace (`"a   b"` → `"a b"`); `chat_rename_session`
+> only `btrim`s and truncates, so it would store `"a   b"`. They never disagree
+> in practice because every caller clamps in Python before the RPC — the SQL
+> bound is the documented backstop for *length*, not a second normaliser. Left
+> as is rather than "fixed" with a third migration, but written down so the next
+> person does not discover it as a surprise.
+>
+> **The research that shaped it.** Two delegated passes, same shape as the ones
+> that produced the roadmap itself: Antigravity `gemini-3.7-flash-high` ranked
+> ten navigation patterns against this specific shell (segmented tabs first,
+> rail-plus-panel rejected on the arithmetic — a 56px rail plus a 240px flyout
+> plus the mascot rail suffocates the 68ch reading measure), and OpenCode
+> `gpt-5.6-terra` at high effort produced fifteen ranked failure modes, of which
+> the delete/stream race, the six-things-move-together switch, and the
+> optimistic-rename ordering trap are all fixed above. **The OpenCode lane was
+> re-dispatched off DeepSeek**, whose free tier now 401s
+> ("Free promotion has ended for DeepSeek V4 Flash Free").
+>
+
 > **What changed 2026-08-20 (steps 5 and 6).**
 >
 > - **`GET /api/chat/history`** (`web/api/app.py`) serves the current
@@ -1463,12 +1689,14 @@ alone.
 >    `server.chat_resume_latest_session: true`~~ — done 2026-08-20.
 > 4. ~~Step 7~~ — done 2026-08-21, **and deliberately much smaller than planned**.
 >    See "Step 7 shipped as a notice, not a consent system" above.
-> 5. Step 8: the multi-session sidebar, auto-titling, switching, rename, delete.
->    **The notice owes it a sentence**: the copy currently says signing out and
->    New chat do not delete saved chats, and says nothing about deleting one,
->    because there is no control that does. `test_the_notice_does_not_promise_a_
->    delete_control_that_does_not_exist` pins that. When the sidebar ships a
->    delete, that test changes with it.
+> 5. ~~Step 8: the multi-session sidebar, auto-titling, switching, rename,
+>    delete~~ — done 2026-08-21. The notice got its sentence and the test that
+>    forbade it was inverted; see the step-8 record above.
+> 6. ~~**Apply the two step-8 migrations.**~~ **Applied 2026-08-21** as
+>    `20260821145319_chat_navigation_rpcs` and
+>    `20260821145416_chat_first_turn_title`, in that order, through the Supabase
+>    MCP `apply_migration` tool; both files renamed to the versions
+>    `list_migrations` assigned. See "The migrations were applied" below.
 >
 > **Two follow-ups this pass deliberately did not build**, recorded so they are
 > not rediscovered:

@@ -48,6 +48,20 @@ MIN_LOAD_LIMIT = 1
 MAX_LOAD_LIMIT = 200
 DEFAULT_LOAD_LIMIT = 50
 
+# The sidebar's page. Smaller than the hydration window on purpose: that one is
+# bounded by what a transcript surface can carry, this one by what a reader will
+# scan before reaching for "load more". 30 fills the column roughly twice over
+# at every breakpoint the sidebar has.
+MIN_LIST_LIMIT = 1
+MAX_LIST_LIMIT = 100
+DEFAULT_LIST_LIMIT = 30
+
+# Mirrors `chat_sessions.title`'s `char_length(title) between 1 and 120`.
+# Clamped in Flask BEFORE the RPC, never left to the CHECK: a constraint
+# violation inside a `security definer` function surfaces a client mistake as a
+# 500, and the roadmap's §3 says so explicitly.
+MAX_TITLE_CHARS = 120
+
 
 class PersistenceUnavailable(RuntimeError):
     """Durable history could not be reached. Never fatal to answering."""
@@ -66,6 +80,42 @@ class AppendResult:
     user_message_id: Optional[str]
     assistant_message_id: Optional[str]
     replayed: bool
+
+
+@dataclass(frozen=True)
+class SessionSummary:
+    """One row of the sidebar. Deliberately not one row of a transcript.
+
+    No preview snippet, and that is a decision rather than an omission: a
+    snippet means joining ``chat_messages`` for every listed conversation on the
+    request that draws the sidebar, and the title is already the opening
+    question. ``message_count`` costs nothing by comparison — it is
+    ``next_seq - 1``, read from a column the session row already carries.
+
+    ``title`` stays optional. Sessions written before first-turn titling shipped
+    have none, and the client renders a localised fallback rather than this
+    layer inventing one from data it does not have.
+    """
+
+    session_id: str
+    title: Optional[str]
+    created_at: Optional[str]
+    updated_at: Optional[str]
+    message_count: int
+
+
+@dataclass(frozen=True)
+class SessionPage:
+    """A page of sessions plus the cursor that continues it.
+
+    The cursor is ``(updated_at, id)`` of the last row, and it is None when the
+    page was not full. "Not full" is the only honest end-of-list signal a keyset
+    pager has — asking for one extra row to detect it would be a second read on
+    every page to save one read at the end.
+    """
+
+    sessions: List[SessionSummary]
+    next_cursor: Optional[Tuple[str, str]]
 
 
 @dataclass(frozen=True)
@@ -175,6 +225,59 @@ def clamp_load_limit(value: Any) -> int:
     return max(MIN_LOAD_LIMIT, min(limit, MAX_LOAD_LIMIT))
 
 
+def clamp_list_limit(value: Any) -> int:
+    """Bound a sidebar page."""
+    try:
+        limit = int(value)
+    except (TypeError, ValueError):
+        return DEFAULT_LIST_LIMIT
+    return max(MIN_LIST_LIMIT, min(limit, MAX_LIST_LIMIT))
+
+
+def clamp_title(value: Any) -> Optional[str]:
+    """A title the ``chat_sessions.title`` CHECK will accept, or None.
+
+    Three things happen here and each closes a specific hole.
+
+    * **Whitespace is collapsed, not merely stripped.** A question pasted out of
+      a PDF arrives full of newlines and runs of spaces; left alone they survive
+      into the sidebar as a title with a hole in the middle, and they count
+      toward the 120-character bound while carrying no information.
+    * **The cut lands on a word boundary** when there is one to land on, with a
+      real ellipsis rather than three periods. A regulatory question truncated
+      mid-word — "Bioequivalence requirements for immediate-rele" — reads as
+      damage rather than as abbreviation.
+    * **Empty becomes None, never ''.** The column's CHECK rejects a
+      zero-length title, and the sidebar already renders an "untitled" fallback
+      for null. Returning '' would turn a blank question into a 500.
+
+    Deliberately NOT done: stripping question boilerplate ("What are the
+    requirements for…", "ما هي اشتراطات…"). A heuristic phrase list is one
+    language's grammar wearing a general rule's clothing, it would have to be
+    maintained in two scripts, and its failure mode is silently mangling the one
+    string the reader uses to recognise their own conversation. The opening
+    question, trimmed, is what they typed.
+    """
+    if value is None:
+        return None
+    collapsed = " ".join(str(value).split())
+    if not collapsed:
+        return None
+    if len(collapsed) <= MAX_TITLE_CHARS:
+        return collapsed
+
+    # One character of the budget belongs to the ellipsis.
+    head = collapsed[: MAX_TITLE_CHARS - 1]
+    # Only rewind to a space when one exists late enough that the result is
+    # still recognisably the question. A 119-character run with no space at all
+    # — plausible in an identifier, a URL, or a language this app does not
+    # segment — is cut where it falls rather than collapsed to nothing.
+    boundary = head.rfind(" ")
+    if boundary >= MAX_TITLE_CHARS // 2:
+        head = head[:boundary]
+    return f"{head.rstrip()}…"
+
+
 # ── the backend contract ────────────────────────────────────────────────────
 
 class ChatBackend(Protocol):
@@ -196,12 +299,19 @@ class ChatBackend(Protocol):
         owner_key: Optional[str],
         session_key: Optional[str],
         archive_opted_out: bool,
+        title: Optional[str] = None,
     ) -> AppendResult:
         """Record one exchange, creating the session if it does not exist.
 
         One transaction: both message rows, every retrieved source, the
-        session's ``updated_at``, and the archive row. A repeated
-        ``client_request_id`` writes nothing and reports ``replayed``.
+        session's ``updated_at``, the title when it has none, and the archive
+        row. A repeated ``client_request_id`` writes nothing and reports
+        ``replayed``.
+
+        ``title`` is a CANDIDATE, applied only when the session has no title
+        yet. Callers pass the current question on every turn and let the
+        database decide; asking "is this the first turn?" first would be a round
+        trip that the answer immediately races.
         """
         ...
 
@@ -221,6 +331,28 @@ class ChatBackend(Protocol):
         """The owner's most recently appended-to session, or None."""
         ...
 
+    def list_sessions(
+        self,
+        owner_id: str,
+        *,
+        limit: int = DEFAULT_LIST_LIMIT,
+        cursor: Optional[Tuple[str, str]] = None,
+    ) -> SessionPage:
+        """One page of the owner's conversations, newest activity first."""
+        ...
+
+    def rename_session(self, owner_id: str, session_id: str, title: Optional[str]) -> bool:
+        """Set one owned session's title. False when it is not theirs.
+
+        Does not touch ``updated_at``: that column means "last spoken in", and a
+        rename must not lift a months-old conversation to the top of Today.
+        """
+        ...
+
+    def delete_session(self, owner_id: str, session_id: str) -> bool:
+        """Delete one owned session and its messages. False when not theirs."""
+        ...
+
 
 class SupabaseChatBackend:
     """The real one: the three RPCs, through the service-role client."""
@@ -231,12 +363,13 @@ class SupabaseChatBackend:
     def append_turn(
         self, *, owner_id, session_id, client_request_id, question, answer,
         sources, lang, category, model, corpus_revision,
-        owner_key, session_key, archive_opted_out,
+        owner_key, session_key, archive_opted_out, title=None,
     ) -> AppendResult:
         try:
             response = self._client.rpc(
                 "chat_append_turn",
                 {
+                    "p_title": clamp_title(title),
                     "p_owner_id": owner_id,
                     "p_session_id": session_id,
                     "p_client_request_id": client_request_id,
@@ -300,6 +433,107 @@ class SupabaseChatBackend:
         if isinstance(data, dict):
             data = data.get("chat_latest_session")
         return str(data) if data else None
+
+    def list_sessions(
+        self, owner_id, *, limit=DEFAULT_LIST_LIMIT, cursor=None
+    ) -> SessionPage:
+        limit = clamp_list_limit(limit)
+        cursor_updated_at, cursor_id = cursor if cursor else (None, None)
+        try:
+            response = self._client.rpc(
+                "chat_list_sessions",
+                {
+                    "p_owner_id": owner_id,
+                    "p_limit": limit,
+                    "p_cursor_updated_at": cursor_updated_at,
+                    "p_cursor_id": cursor_id,
+                },
+            ).execute()
+        except Exception as exception:
+            raise PersistenceUnavailable(str(exception)) from exception
+
+        rows = getattr(response, "data", None) or []
+        sessions = [_row_to_summary(row) for row in rows]
+        return SessionPage(sessions=sessions, next_cursor=_cursor_after(sessions, limit))
+
+    def rename_session(self, owner_id, session_id, title) -> bool:
+        try:
+            response = self._client.rpc(
+                "chat_rename_session",
+                {
+                    "p_owner_id": owner_id,
+                    "p_session_id": session_id,
+                    # Clamped here, not in SQL. The column's CHECK would turn an
+                    # over-long title into a 500 raised inside a `security
+                    # definer` function; this makes it a shorter title.
+                    "p_title": clamp_title(title),
+                },
+            ).execute()
+        except Exception as exception:
+            raise PersistenceUnavailable(str(exception)) from exception
+        return bool(_scalar(response, "chat_rename_session"))
+
+    def delete_session(self, owner_id, session_id) -> bool:
+        try:
+            response = self._client.rpc(
+                "chat_delete_session",
+                {"p_owner_id": owner_id, "p_session_id": session_id},
+            ).execute()
+        except Exception as exception:
+            raise PersistenceUnavailable(str(exception)) from exception
+        return bool(_scalar(response, "chat_delete_session"))
+
+
+def _scalar(response: Any, key: str) -> Any:
+    """Unwrap a scalar-returning RPC, whichever shape PostgREST chose.
+
+    A `returns boolean` function comes back as a bare value, and the same call
+    through a different client version comes back as ``[{"name": value}]``.
+    ``latest_session`` already hedges both ways; this is that hedge, named, so
+    the next scalar RPC does not reinvent it a third time.
+    """
+    data = getattr(response, "data", None)
+    if isinstance(data, list):
+        data = data[0] if data else None
+    if isinstance(data, dict):
+        data = data.get(key, next(iter(data.values()), None))
+    return data
+
+
+def _cursor_after(
+    sessions: List[SessionSummary], limit: int
+) -> Optional[Tuple[str, str]]:
+    """The keyset cursor that continues this page, or None at the end.
+
+    A short page is the end of the list. A FULL page is not proof there is more
+    — the next request may return nothing — but offering the cursor costs one
+    empty read in that case, while withholding it would need a lookahead row on
+    every page to save it.
+    """
+    if len(sessions) < limit or not sessions:
+        return None
+    last = sessions[-1]
+    if not last.updated_at or not last.session_id:
+        # A row with no ordering key cannot be paged past. Ending the list is
+        # the honest answer; a cursor built from a null would silently return
+        # the first page again, forever.
+        return None
+    return (last.updated_at, last.session_id)
+
+
+def _row_to_summary(row: Dict[str, Any]) -> SessionSummary:
+    title = row.get("title")
+    return SessionSummary(
+        session_id=str(row.get("id") or ""),
+        # Preserved as None rather than coerced to ''. "This conversation has no
+        # title" and "its title is empty" are the same fact to the database and
+        # different facts to the client, which renders a localised fallback for
+        # the first and would render a blank row for the second.
+        title=str(title) if title else None,
+        created_at=row.get("created_at"),
+        updated_at=row.get("updated_at"),
+        message_count=int(row.get("message_count") or 0),
+    )
 
 
 def _row_to_message(row: Dict[str, Any]) -> StoredMessage:
@@ -405,7 +639,7 @@ class InMemoryChatBackend:
     def append_turn(
         self, *, owner_id, session_id, client_request_id, question, answer,
         sources, lang, category, model, corpus_revision,
-        owner_key, session_key, archive_opted_out,
+        owner_key, session_key, archive_opted_out, title=None,
     ) -> AppendResult:
         owner_id, session_id = str(owner_id), str(session_id)
         with self._lock:
@@ -443,9 +677,23 @@ class InMemoryChatBackend:
 
             session = existing
             if session is None:
-                session = {"owner_id": owner_id, "next_seq": 1, "order": len(self._sessions)}
+                session = {
+                    "owner_id": owner_id,
+                    "next_seq": 1,
+                    "order": len(self._sessions),
+                    "title": None,
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                }
                 self._sessions[session_id] = session
                 self._messages[session_id] = []
+
+            # Mirrors `title = coalesce(title, …)` in the RPC's seq-claiming
+            # UPDATE: set when null, never overwritten, and applied only on the
+            # new-turn path — the replay branch above has already returned. A
+            # double that overwrote here would let a test prove that renaming a
+            # conversation survives the next turn when in fact it would not.
+            if session.get("title") is None:
+                session["title"] = clamp_title(title)
 
             seq = session["next_seq"]
             session["next_seq"] = seq + 2
@@ -466,6 +714,16 @@ class InMemoryChatBackend:
             # schema lets a test claim a guarantee Postgres makes and the double
             # does not.
             occurred_at = datetime.now(timezone.utc).isoformat()
+            # Mirrors `updated_at = now()` on the seq-claiming UPDATE, and it is
+            # a WALL CLOCK on purpose even though `order` above deliberately is
+            # not. The two answer different questions: `order` only has to rank
+            # this process's own sessions for latest_session, while updated_at
+            # is read by the client, grouped into Today / Yesterday / Older, and
+            # used as half the keyset cursor. A monotonic counter cannot be
+            # grouped by date, and a double that fabricated one would let a test
+            # pass over a sidebar that renders every conversation under the
+            # wrong heading.
+            session["updated_at"] = occurred_at
             self._messages[session_id].extend(
                 [
                     StoredMessage(user_id, seq, "user", question, created_at=occurred_at),
@@ -530,6 +788,73 @@ class InMemoryChatBackend:
                 if session["owner_id"] == str(owner_id)
             ]
             return max(owned)[1] if owned else None
+
+    def list_sessions(
+        self, owner_id, *, limit=DEFAULT_LIST_LIMIT, cursor=None
+    ) -> SessionPage:
+        limit = clamp_list_limit(limit)
+        with self._lock:
+            rows = [
+                SessionSummary(
+                    session_id=session_id,
+                    title=session.get("title"),
+                    created_at=session.get("created_at"),
+                    updated_at=session.get("updated_at"),
+                    # `next_seq - 1`, exactly as the RPC derives it, rather than
+                    # `len(self._messages[...])`. They agree today; deriving it
+                    # the same way is what keeps them agreeing if either side
+                    # ever changes how a turn is counted.
+                    message_count=int(session.get("next_seq", 1)) - 1,
+                )
+                for session_id, session in self._sessions.items()
+                if session["owner_id"] == str(owner_id)
+            ]
+
+            # `order by updated_at desc, id desc`, and the tiebreaker is not
+            # optional here either: two sessions written inside one microsecond
+            # share a timestamp, and without the id the cursor could skip a row
+            # or return one twice forever.
+            rows.sort(key=lambda s: (s.updated_at or "", s.session_id), reverse=True)
+
+            if cursor and cursor[0] and cursor[1]:
+                rows = [
+                    s for s in rows
+                    if (s.updated_at or "", s.session_id) < (cursor[0], cursor[1])
+                ]
+
+            page = rows[:limit]
+            return SessionPage(sessions=page, next_cursor=_cursor_after(page, limit))
+
+    def rename_session(self, owner_id, session_id, title) -> bool:
+        with self._lock:
+            session = self._sessions.get(str(session_id))
+            # "Not yours" and "not there" are the same answer, matching the RPC.
+            if session is None or session["owner_id"] != str(owner_id):
+                return False
+            session["title"] = clamp_title(title)
+            # updated_at is NOT touched. The RPC goes out of its way not to; a
+            # double that bumped it would let a test prove the sidebar holds its
+            # order across a rename when in production it would shuffle.
+            return True
+
+    def delete_session(self, owner_id, session_id) -> bool:
+        with self._lock:
+            key = str(session_id)
+            session = self._sessions.get(key)
+            if session is None or session["owner_id"] != str(owner_id):
+                return False
+            del self._sessions[key]
+            # The cascade, by hand. `chat_messages` goes through the composite
+            # FK's ON DELETE CASCADE and `chat_message_sources` follows from
+            # there, so a double that left messages behind would be laxer than
+            # the schema in the one direction that matters for a delete.
+            self._messages.pop(key, None)
+            # And the idempotency keys with them. Left in place, re-asking the
+            # same question with the same client_request_id after a delete would
+            # report `replayed` and write nothing — a turn that vanishes.
+            for turn_key in [k for k in self._turns if k[0] == key]:
+                del self._turns[turn_key]
+            return True
 
     # Test affordance, not part of the Protocol.
     def sessions_for(self, owner_id: str) -> List[str]:

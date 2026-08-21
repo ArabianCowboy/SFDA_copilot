@@ -13,7 +13,9 @@ Four properties are worth a test because none can be read off the code:
 * dismissal is per READER, not per browser, because a shared machine is the
   ordinary case here;
 * dismissal survives a reload, or the notice is nagware rather than a notice;
-* and the copy does not offer a delete control that does not exist.
+* and the copy names exactly the controls that exist — which in step 8 became
+  an assertion that it DOES name the delete, having been an assertion that it
+  did not. See that test for why the inversion is the promise being kept.
 """
 
 from __future__ import annotations
@@ -128,18 +130,26 @@ def test_a_second_reader_in_the_same_tab_sees_their_own_notice(browser_page: Pag
     expect(page.locator(NOTICE)).to_be_visible()
 
 
-def test_the_notice_does_not_promise_a_delete_control_that_does_not_exist(
+def test_the_notice_names_the_delete_control_now_that_one_exists(
     browser_page: Page,
 ):
-    """A draft of this copy said "start a new chat, or delete a conversation, to
-    clear one". The RLS DELETE grant exists, but no route and no client code
-    calls it — session delete arrives with the sidebar in step 8.
+    """INVERTED IN STEP 8, and the inversion is the point.
 
-    So the sentence would have made the notice, written to stop the product
-    misleading readers, into the product's newest false claim. Asserted on the
-    rendered text rather than left to review, because the tempting edit is to
-    add that clause back the moment someone reads the copy and thinks it sounds
-    incomplete.
+    This test used to assert the notice offered NO way to delete a conversation.
+    A draft of the copy said "start a new chat, or delete a conversation, to
+    clear one" while the RLS DELETE grant existed and nothing called it — no
+    route, no client code — so the sentence would have made the notice, written
+    to stop the product misleading readers, into the product's newest false
+    claim. It was forbidden until a control could honour it.
+
+    Step 8 shipped that control: each sidebar row carries a delete that reaches
+    `DELETE /api/chat/sessions/<id>`. So the claim flips, because a disclosure
+    that omits the one control a reader would go looking for is misleading by
+    omission in the same way the draft was misleading by invention.
+
+    Still asserted on the RENDERED text rather than the catalogue: the notice is
+    assembled in JS, and a copy change that never reaches the DOM is a change to
+    a string nobody reads.
     """
     page = browser_page
     page.goto("/")
@@ -148,7 +158,7 @@ def test_the_notice_does_not_promise_a_delete_control_that_does_not_exist(
     notice = page.locator(NOTICE)
     expect(notice).to_be_visible()
     expect(notice).to_contain_text("neither does starting a new chat")
-    expect(notice).not_to_contain_text("delete a conversation")
+    expect(notice).to_contain_text("delete a conversation from the sidebar")
 
     # And the warning that is the substantive control.
     expect(notice).to_contain_text("Do not enter patient identifiers")

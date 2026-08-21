@@ -451,6 +451,346 @@
 /* No .icon colour rule: the glyph is filled with currentColor, so it follows
    the label through every state for free. */
 
+/* ——————————————— Sidebar tabs ———————————————
+   Two segments over one column. A track with a moving fill rather than an
+   underline: an underline reads as navigation to another page, and this
+   switches what a panel contains without leaving anything.
+
+   The fill is --bg-surface on a --bg-sunken track — the selected segment is
+   RAISED out of the groove, which is the metaphor a physical segmented control
+   already carries, rather than tinted teal. Teal in this app means retrieval;
+   spending it on a view switch would put the loudest colour in the system on
+   the least consequential control in the column, next to a New chat button that
+   has earned a tint and a citation badge that has earned the solid fill. */
+.sidebar-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-1);
+  flex: none;
+  margin-block-end: var(--space-3);
+  padding: 3px;
+  background: var(--bg-sunken);
+  border-radius: var(--radius-pill);
+}
+.sidebar-tab {
+  padding-block: var(--space-2);
+  padding-inline: var(--space-3);
+  min-block-size: 32px;
+  font-family: inherit;
+  font-size: var(--fs-200);
+  font-weight: var(--fw-medium);
+  line-height: 1;
+  color: var(--fg-muted);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  /* No transform in the transition. A segment that lifts on hover would fight
+     the fill sliding under it, and the fill IS the feedback. */
+  transition: color var(--duration-s) var(--ease-soft),
+              background var(--duration-m) var(--ease-soft),
+              box-shadow var(--duration-m) var(--ease-soft);
+}
+.sidebar-tab:hover { color: var(--fg-secondary); }
+/* THE RING IS NOT DECORATION — it is what makes this control legible in dark
+   mode. In light, `--bg-surface` sits above `--bg-sunken` and the selected
+   segment reads as raised out of the groove. In dark the ramp inverts: sunken
+   becomes the LIGHTER of the two, so the same fill reads as recessed, and
+   `--shadow-sm` (a 5%-opacity warm shadow) is invisible against a dark ground —
+   leaving text colour as the only cue. A 1px inset ring defines the chip's edge
+   in both directions and costs no layout, which a real border would. */
+.sidebar-tab.is-active {
+  color: var(--fg-primary);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-sm), inset 0 0 0 1px var(--hairline);
+}
+/* The count of unread-nothing: a quiet dot on Chats while the list is still
+   loading, so the tab does not look empty-but-final before its content lands. */
+/* Attribute, never the id: the macro renders twice, so `#tab-chats` names only
+   the desktop one and the offcanvas copy would silently never pulse. */
+.sidebar-tabs[data-loading="chats"] [data-sidebar-tab="chats"]::after {
+  content: '';
+  display: inline-block;
+  inline-size: 4px;
+  block-size: 4px;
+  margin-inline-start: var(--space-2);
+  vertical-align: middle;
+  border-radius: var(--radius-pill);
+  background: var(--fg-faint);
+  animation: sidebarTabPulse 1.2s var(--ease-soft) infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .sidebar-tabs[data-loading="chats"] [data-sidebar-tab="chats"]::after {
+    animation: none;
+  }
+}
+@keyframes sidebarTabPulse {
+  0%, 100% { opacity: .3; }
+  50%      { opacity: 1; }
+}
+
+/* ——————————————— Conversation history ———————————————
+   The reader's own work, listed. It shares the FAQ rail's column, its scroll
+   behaviour and its group-heading treatment on purpose: two lists in one place
+   that looked like two different systems would make the tab switch feel like a
+   page change.
+
+   Every offset here is logical. This column mirrors wholesale in Arabic, and
+   the row is the densest thing in it — an icon, a truncating title and two
+   actions, all of which have a reading edge. */
+.history-section {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-block-size: 0;
+  overflow-y: auto;
+  /* The list is its own scroll port inside the offcanvas body, which is another
+     one. Without this, reaching the end of the conversations chains the wheel
+     into the drawer and then into the page behind it. */
+  overscroll-behavior: contain;
+  padding-block: var(--space-3);
+  padding-inline-end: var(--space-2);
+  margin-inline-end: calc(var(--space-2) * -1);
+}
+.history-section[hidden] { display: none; }
+.faq-section[hidden] { display: none; }
+
+/* Date buckets, styled as the FAQ's category headings are. Sticky, because the
+   answer to "when was this" must survive scrolling past its own heading — the
+   whole point of grouping by day. */
+.history-group {
+  position: sticky;
+  inset-block-start: 0;
+  z-index: var(--z-base);
+  display: block;
+  padding-block: var(--space-2);
+  margin-block: var(--space-4) var(--space-1);
+  font-family: var(--font-sans);
+  font-size: var(--fs-100);
+  font-weight: var(--fw-medium);
+  letter-spacing: var(--track-caps);
+  text-transform: uppercase;
+  color: var(--fg-muted);
+  /* Opaque, or rows scroll visibly through the heading text. */
+  background: var(--bg-surface);
+}
+.history-group.is-first { margin-block-start: 0; }
+
+.history-list { display: flex; flex-direction: column; gap: 1px; }
+
+/* THE ROW. A grid, not a flex row, and the reason is the middle column:
+   `minmax(0, 1fr)` is what lets the title actually truncate. A flex child
+   defaults to `min-width: auto`, so the title would refuse to shrink below its
+   content and push the actions off the end of the column instead of
+   ellipsing — the single most common way this component is built wrong. */
+.history-item {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-2);
+  padding-block: var(--space-2);
+  padding-inline: var(--space-3);
+  border-radius: var(--radius-sm);
+  transition: background var(--duration-s) var(--ease-soft);
+}
+.history-item:hover,
+.history-item:focus-within { background: var(--bg-sunken); }
+
+/* The open control fills the row. A button rather than a link: this changes
+   what the app is showing, it does not navigate — there is no URL to give it,
+   which is what deep-linking would add later. */
+.history-open {
+  display: contents;
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+/* `display: contents` REMOVES THE BOX, so the global `:focus-visible` outline in
+   base.css has nothing to draw on and a keyboard reader tabbing this list gets
+   no visible focus at all — the one thing `display: contents` costs, and the
+   reason it is usually a mistake on an interactive element.
+   It is still the right choice here: the alternative is nesting the rename and
+   delete buttons INSIDE this one, which is invalid HTML and leaves them
+   unreachable by keyboard in practice. So the ring is moved to the row, which is
+   the box the reader is actually selecting. */
+.history-open:focus-visible { outline: none; }
+.history-item:has(.history-open:focus-visible) {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+.history-item-icon {
+  color: var(--fg-faint);
+  transition: color var(--duration-s) var(--ease-soft);
+}
+.history-item:hover .history-item-icon { color: var(--fg-muted); }
+
+.history-item-title {
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: start;
+  font-size: var(--fs-300);
+  font-weight: var(--fw-body);
+  line-height: var(--lh-snug);
+  color: var(--fg-secondary);
+}
+/* NO `font-style: italic`, and that is an i18n decision rather than a taste one.
+   Arabic script has no italic form, so a browser asked for one synthesises an
+   oblique by shearing the glyphs — which breaks the connected letterforms and
+   reads as a rendering fault rather than as emphasis. The fallback already says
+   "Untitled conversation" in words; the faint colour is the whole cue it needs,
+   and it means the same thing in both scripts. */
+.history-item-title.is-untitled { color: var(--fg-faint); }
+
+/* The selected conversation: a rule on the reading edge and the signal colour,
+   matching .faq-button.active exactly. Two lists in one column that marked
+   "current" two different ways would be two systems. */
+.history-item.is-active { background: var(--signal-tint); }
+.history-item.is-active .history-item-title {
+  color: var(--signal);
+  font-weight: var(--fw-medium);
+}
+.history-item.is-active .history-item-icon { color: var(--signal); }
+.history-item.is-active::before {
+  content: '';
+  position: absolute;
+  inset-block: var(--space-1);
+  inset-inline-start: 0;
+  inline-size: 2px;
+  border-radius: var(--radius-pill);
+  background: var(--signal);
+}
+
+/* Rename and delete. Revealed on hover, on focus within the row, and on the
+   active row — but NEVER hidden from a touch device, which has no hover state
+   at all and would otherwise be left with two controls it can never reach. */
+.history-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity var(--duration-s) var(--ease-soft);
+}
+.history-item:hover .history-item-actions,
+.history-item:focus-within .history-item-actions,
+.history-item.is-active .history-item-actions { opacity: 1; }
+@media (hover: none) {
+  .history-item-actions { opacity: .65; }
+}
+.history-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 26px;
+  block-size: 26px;
+  padding: 0;
+  color: var(--fg-muted);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: color var(--duration-s) var(--ease-soft),
+              background var(--duration-s) var(--ease-soft);
+}
+.history-action:hover { color: var(--fg-primary); background: var(--bg-surface); }
+/* The one destructive control in this column earns the danger colour on hover
+   and not before. At rest it is as quiet as its neighbour, because a row of
+   red bins down a scrolling list would read as a list of errors. */
+.history-action.is-destructive:hover { color: var(--danger); }
+.history-action[disabled] { opacity: .4; cursor: not-allowed; }
+
+/* Inline rename. Replaces the title in place rather than opening a dialog: the
+   reader is naming the thing they are looking at, and a modal would take them
+   out of the column to do it. */
+.history-rename {
+  min-inline-size: 0;
+  padding-block: 2px;
+  padding-inline: var(--space-2);
+  font-family: inherit;
+  font-size: var(--fs-300);
+  line-height: var(--lh-snug);
+  color: var(--fg-primary);
+  background: var(--bg-surface);
+  border: 1px solid var(--signal);
+  border-radius: var(--radius-xs);
+}
+
+/* Inline delete confirmation, in the row's own space. */
+.history-confirm {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding-block-start: var(--space-2);
+  font-size: var(--fs-200);
+  color: var(--fg-secondary);
+}
+.history-confirm-text { flex: 1; min-inline-size: 0; }
+.history-confirm button {
+  padding-block: 2px;
+  padding-inline: var(--space-3);
+  font-family: inherit;
+  font-size: var(--fs-100);
+  font-weight: var(--fw-medium);
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+}
+.history-confirm .is-destructive {
+  color: var(--danger);
+  background: transparent;
+  border: 1px solid var(--danger);
+}
+.history-confirm .is-destructive:hover { color: var(--fg-on-signal); background: var(--danger); }
+.history-confirm .is-keep {
+  color: var(--fg-secondary);
+  background: transparent;
+  border: 1px solid var(--hairline-strong);
+}
+.history-confirm .is-keep:hover { color: var(--fg-primary); background: var(--bg-surface); }
+
+/* Empty, loading and unavailable. Three states, kept visually distinct because
+   collapsing them is how a sidebar ends up telling a reader they have no
+   conversations while the store is unreachable. */
+.history-empty,
+.history-status {
+  margin: 0;
+  padding-block: var(--space-5);
+  padding-inline: var(--space-3);
+  font-size: var(--fs-200);
+  line-height: var(--lh-snug);
+  color: var(--fg-muted);
+  text-align: center;
+}
+.history-empty-hint {
+  display: block;
+  margin-block-start: var(--space-1);
+  color: var(--fg-faint);
+}
+.history-status.is-error { color: var(--warning); }
+.history-retry,
+.history-more {
+  display: block;
+  inline-size: 100%;
+  margin-block-start: var(--space-3);
+  padding-block: var(--space-2);
+  font-family: inherit;
+  font-size: var(--fs-200);
+  font-weight: var(--fw-medium);
+  color: var(--fg-secondary);
+  background: transparent;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: var(--btn-transition);
+}
+.history-retry:hover,
+.history-more:hover { color: var(--fg-primary); background: var(--bg-sunken); }
+.history-more[disabled] { opacity: .5; cursor: progress; }
+
 /* ——————————————— FAQ rail ———————————————
    The reason the sidebar exists: a first session usually starts by clicking a
    question rather than typing one. It takes the height between the identity

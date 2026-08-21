@@ -277,6 +277,39 @@ ICONS: dict[str, str] = {
         '<path d="M8 2.5a.5.5 0 0 1 .5.5v4.5H13a.5.5 0 0 1 0 1H8.5V13a.5.5 0 0 '
         '1-1 0V8.5H3a.5.5 0 0 1 0-1h4.5V3a.5.5 0 0 1 .5-.5"/>'
     ),
+    # ── Conversation history ─────────────────────────────────────────
+    # A speech bubble, not a clock or a document. The row stands for a
+    # conversation the reader had; a clock would say the list is about time and
+    # a page would say it is about a file.
+    #
+    # NONE OF THESE THREE FLIP IN RTL. They are objects, not directions: a
+    # pencil points the way a pencil points in both scripts, and mirroring a
+    # bubble's tail buys nothing while costing the glyph its familiarity.
+    "chat-bubble": (
+        '<path d="M8 1.5c-3.86 0-7 2.46-7 5.5 0 1.7.99 3.22 2.54 4.23a.5.5 0 0 '
+        "1 .22.48c-.07.6-.28 1.2-.6 1.74a5.6 5.6 0 0 0 2.1-1.06.5.5 0 0 1 "
+        ".44-.1c.74.18 1.51.27 2.3.27 3.86 0 7-2.46 7-5.56S11.86 1.5 8 1.5M0 "
+        '7C0 3.3 3.66.5 8 .5S16 3.3 16 7s-3.66 6.5-8 6.5c-.78 0-1.55-.08-2.28'
+        "-.25a6.9 6.9 0 0 1-3.4 1.42.5.5 0 0 1-.46-.8c.42-.55.72-1.2.87-1.88C1"
+        '.03 10.83 0 9.02 0 7"/>'
+    ),
+    # A nib on a stroke. Deliberately not a "gear" or a "more" ellipsis: this
+    # control does one thing and its glyph should say which.
+    "pencil": (
+        '<path d="M12.15 1.35a1.2 1.2 0 0 1 1.7 0l.8.8a1.2 1.2 0 0 1 0 '
+        "1.7l-8.2 8.2a.5.5 0 0 1-.22.13l-3 .9a.5.5 0 0 1-.62-.62l.9-3a.5.5 0 0 "
+        "1 .13-.22zm1 .7a.2.2 0 0 0-.29 0l-.9.9 1.09 1.09.9-.9a.2.2 0 0 0 "
+        '0-.29zm-.8 2.7L11.26 3.66l-6.6 6.6-.54 1.8 1.8-.54z"/>'
+    ),
+    # An open lid, so the glyph reads as "discard" rather than as a closed box.
+    "trash": (
+        '<path d="M6.5 1a.5.5 0 0 0-.5.5V2H3a.5.5 0 0 0 0 1h.55l.6 10.2A1.8 1.8 '
+        "0 0 0 5.95 15h4.1a1.8 1.8 0 0 0 1.8-1.8L12.45 3H13a.5.5 0 0 0 "
+        "0-1h-3v-.5a.5.5 0 0 0-.5-.5zM7 2h2v-.0zM4.55 3h6.9l-.6 10.14a.8.8 0 0 "
+        "1-.8.86h-4.1a.8.8 0 0 1-.8-.86zM6.5 5a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 "
+        '0v-6a.5.5 0 0 1 .5-.5m3 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0v-6a.5.5 0 0 '
+        '1 .5-.5"/>'
+    ),
     # ── Corpus categories ────────────────────────────────────────────
     # One glyph per category, used by BOTH the sidebar's FAQ group headings
     # and the composer's category selector, so the same mark always means the
@@ -398,6 +431,13 @@ RUNTIME_ICON_NAMES: tuple[str, ...] = (
     # runtime subset — iconMarkup returns '' for a name that is not, which
     # would cost a close button its glyph and nothing would say why.
     "close",
+    # The conversation sidebar. Every row and both of its row actions are drawn
+    # by ui.js, so all three are runtime glyphs for the same reason `close` is.
+    # `check` joins them: the inline rename commits with one.
+    "chat-bubble",
+    "pencil",
+    "trash",
+    "check",
     *CATEGORY_ICONS.values(),
 )
 

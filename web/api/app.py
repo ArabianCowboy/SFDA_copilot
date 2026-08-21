@@ -15,7 +15,9 @@ os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 
 import logging
 import sys
+import threading
 import uuid
+from contextlib import contextmanager
 from functools import wraps
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union, Tuple, cast, Sequence, Callable # Added Callable
@@ -156,7 +158,9 @@ from web.services.chat_store import (
     StoredMessage,
     archive_keys,
     canonical_uuid,
+    clamp_list_limit,
     clamp_load_limit,
+    clamp_title,
     get_chat_backend,
     new_conversation_id,
 )
@@ -221,7 +225,7 @@ SUPPORTED_FAQ_LANGS = ("en", "ar")
 # that mixes a fresh template with a stale module is worse than a stale page —
 # post-icon-migration it would render an <i class="bi"> with no icon font behind
 # it, or print a glyph NAME as text. MODULE_IMPORT_MAP below closes that.
-ASSET_VERSION = "warm36"
+ASSET_VERSION = "warm37"
 
 # Product release, rendered in the landing footer. Kept as one constant so
 # the number cannot drift between the page and the module headers.
@@ -954,6 +958,98 @@ def _hydration_payload(rows: List[StoredMessage]) -> List[Dict[str, Any]]:
     return payload
 
 
+class _InFlightGenerations:
+    """Which conversations currently have an answer being generated.
+
+    THIS EXISTS TO CLOSE ONE RACE, and it is worth naming precisely because the
+    fix looks like belt-and-braces until you read `chat_append_turn`.
+
+    Both chat routes close over `conversation_id` before generating and write the
+    turn at `final`, near the end. The sidebar's delete is a different request
+    entirely. So: the reader asks a question in conversation A, deletes A while
+    the answer is still streaming, and the generator's `chat_append_turn` lands
+    afterwards — where it meets
+
+        insert into public.chat_sessions (id, owner_id)
+        values (p_session_id, p_owner_id)
+        on conflict (id) do nothing;
+
+    which finds no row and CREATES ONE. The conversation the reader deleted
+    comes back, carrying the answer they thought they had discarded, on a
+    regulatory product. There is no tombstone in that table to prevent it and
+    adding one would mean a deleted-ids table that every append has to consult.
+
+    The client refuses destructive sidebar actions while a stream is live, and
+    that is the affordance. This is the guarantee: a delete or a rename that
+    arrives anyway — a second tab, a replayed request, a client that skipped the
+    check — is refused with 409 rather than racing.
+
+    A plain dict under a lock is correct here because `conversation_store.py`
+    already documents this app as single-worker (`--workers 1 --threads 8`), for
+    reasons — FAISS and sentence-transformers in RAM — that outlive this. Should
+    that ever change, this becomes per-worker and stops being a guarantee; the
+    replacement is the tombstone, not a bigger dict.
+
+    Counted rather than flagged: one reader can legitimately have two
+    submissions in flight against one conversation (two tabs, or a retry), and a
+    boolean would let the first to finish clear the second's protection.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._counts: Dict[Tuple[str, str], int] = {}
+
+    @contextmanager
+    def hold(self, owner_id: Optional[str], conversation_id: Optional[str]):
+        """Mark a generation live for as long as the block runs.
+
+        A missing owner or conversation is not an error and takes no lock: an
+        unidentified request has nothing durable to protect, which is the same
+        reading `_durable_owner` already takes.
+        """
+        key = (str(owner_id), str(conversation_id)) if owner_id and conversation_id else None
+        if key is not None:
+            with self._lock:
+                self._counts[key] = self._counts.get(key, 0) + 1
+        try:
+            yield
+        finally:
+            # In a `finally`, so a GeneratorExit from a client disconnect — the
+            # ordinary way a stream ends early — releases the hold on its way
+            # past. Without this a cancelled generation would lock its
+            # conversation against deletion for the life of the process.
+            if key is not None:
+                with self._lock:
+                    remaining = self._counts.get(key, 1) - 1
+                    if remaining > 0:
+                        self._counts[key] = remaining
+                    else:
+                        self._counts.pop(key, None)
+
+    def is_live(self, owner_id: Optional[str], conversation_id: Optional[str]) -> bool:
+        if not owner_id or not conversation_id:
+            return False
+        with self._lock:
+            return (str(owner_id), str(conversation_id)) in self._counts
+
+
+def _generations() -> _InFlightGenerations:
+    return current_app.config["generations"]
+
+
+def _no_store(response: Response) -> Response:
+    """Mark a response as one reader's private data.
+
+    Every sidebar response carries conversation titles, which are the reader's
+    own opening questions. On a shared machine a cached list is the previous
+    reader's questions served to the next one — the same reasoning
+    `/api/chat/history` already applies to the transcript, applied to the index
+    of it.
+    """
+    response.headers["Cache-Control"] = "private, no-store"
+    return response
+
+
 def _persist_turn(
     backend: Optional[Any],
     *,
@@ -966,6 +1062,7 @@ def _persist_turn(
     lang: str,
     category: str,
     model: str,
+    title: Optional[str] = None,
 ) -> bool:
     """File one exchange durably. Returns False when it could not be filed.
 
@@ -1024,6 +1121,12 @@ def _persist_turn(
             # history. Losing one archive row is a gap in a dataset; losing the
             # turn is losing the thing the reader is looking at.
             archive_opted_out=owner_key is None or session_key is None,
+            # A CANDIDATE title, sent on every turn. The RPC applies it only when
+            # the session has none, so this both names a new conversation and
+            # leaves a renamed one alone — without this side needing to know
+            # which case it is in, which it could only learn from a read it would
+            # then be racing.
+            title=title,
         )
     except PersistenceUnavailable:
         logger.error("Could not persist a turn (conv=%s).", conversation_id, exc_info=True)
@@ -1469,6 +1572,10 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
     """Register all application routes and blueprints."""
     app.config["FREQUENT_QUESTIONS"] = _load_faq_data()
     app.config["conversations"] = ConversationStore()
+    # Which conversations have an answer in flight right now. Process-local like
+    # the store above, and correct for the same documented reason: one worker.
+    # See the class for the race it closes.
+    app.config["generations"] = _InFlightGenerations()
     # Process-local, same scope contract as ConversationStore above: a cache,
     # never the authority. The database decides who is an administrator.
     app.config["identity_flags"] = IdentityFlagsCache()
@@ -2048,6 +2155,352 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
         response.headers["Cache-Control"] = "private, no-store"
         return response
 
+    # ── The sidebar: list, select, rename, delete ────────────────────────────
+    #
+    # ALL FOUR GO THROUGH FLASK, and the roadmap's §9 expected otherwise: it
+    # described step 8 as "the first feature to call `chat_sessions_delete_own`
+    # from a browser with no Flask route in between". That plan was retired, not
+    # forgotten, for two reasons the navigation migration states in full.
+    #
+    # The one that decides it is not about privilege at all. Deleting the row
+    # `conv_id` names leaves the cookie pointing at a conversation that no longer
+    # exists, and `chat_append_turn`'s `on conflict (id) do nothing` recreates it
+    # on the reader's next question. The reader deletes a conversation and it
+    # comes back. Rotating the cookie, clearing the `ConversationStore` window
+    # and dropping a stale undo pointer are Flask's to do, so the delete has to
+    # arrive here regardless of who is permitted to run the DELETE.
+    #
+    # RLS is unchanged and still the floor. It is defence in depth against a
+    # leaked anon key, not the coordinator of a workflow spanning a cookie, a
+    # process-local cache and three tables.
+
+    def _sidebar_preconditions() -> Tuple[
+        Optional[str], Optional[Any], Optional[Tuple[Response, int]]
+    ]:
+        """(owner, backend, error) for every session route.
+
+        Factored out because the four routes below must agree about what
+        "history is not available" means, and the failure this guards against is
+        one of them quietly deciding an outage is an empty list. `/api/chat/history`
+        already refuses to make that claim; a sidebar that renders "no
+        conversations" over an unreachable store makes the same false statement
+        in a louder place.
+        """
+        owner_id = _durable_owner()
+        persistence = _chat_persistence()
+
+        if persistence is None or not owner_id:
+            # Persistence ON with no backend is a live misconfiguration and says
+            # so; OFF is a deployment choice and stays quiet. The same split
+            # `_persist_turn` and the transcript route already make.
+            if persistence is None and current_app.config.get("CHAT_PERSISTENCE_ENABLED", False):
+                logger.error(
+                    "Chat persistence is enabled but no backend is configured; "
+                    "the conversation list cannot be served."
+                )
+                return None, None, (
+                    jsonify(
+                        error="Your conversations could not be loaded.",
+                        code="history_unavailable",
+                    ),
+                    503,
+                )
+            return owner_id, None, None
+
+        return owner_id, persistence, None
+
+    def _owned_session_id(raw: str) -> Optional[str]:
+        """A canonical uuid, or None when this cannot name a session.
+
+        Canonicalised for the same reason `_resolve_conversation_id` does it:
+        ids minted before the dashed form shipped are 32 hex characters, a
+        `uuid` column returns them dashed, and an un-normalised comparison across
+        that boundary silently never matches. Under TESTING the bypass
+        identities are not uuids at all, but SESSION ids always are — they are
+        minted by `new_conversation_id()` — so this is safe to require here in a
+        way it is not for an owner id.
+        """
+        return canonical_uuid(raw)
+
+    def _session_limit() -> str:
+        return config.get("server", "rate_limit", {}).get("sessions_api", "60 per minute")
+
+    @app.route("/api/chat/sessions", methods=["GET"])
+    @auth_required
+    @limiter.limit(_session_limit)
+    def handle_chat_sessions() -> Union[Response, Tuple[Response, int]]:
+        """One page of the reader's conversations, newest activity first.
+
+        `active` rides the response rather than being inferred client-side. The
+        client cannot know which conversation the server considers current — it
+        is a signed cookie — and a sidebar that highlights the wrong row is
+        worse than one that highlights none, because it is a claim about which
+        conversation the next question will join.
+
+        NOTE this does NOT resolve the current-session rule and so does not mint
+        a cookie. Listing conversations is not starting one, and a GET that
+        silently resumed the reader's most recent conversation would make merely
+        opening the sidebar change which conversation they are in.
+        """
+        owner_id, persistence, error = _sidebar_preconditions()
+        if error:
+            return error
+
+        active = canonical_uuid(session.get("conv_id")) or session.get("conv_id")
+
+        if persistence is None:
+            # No durable owner, or persistence deliberately off. An empty list is
+            # the truth here rather than a shrug — nothing was ever filed.
+            return _no_store(jsonify(sessions=[], next_cursor=None, active=active))
+
+        cursor_updated_at = request.args.get("cursor_updated_at")
+        cursor_id = request.args.get("cursor_id")
+        # Both halves or neither, matching the RPC's own guard. A half cursor is
+        # a client bug, and paging from the top is the recoverable reading of it.
+        cursor = (
+            (cursor_updated_at, cursor_id)
+            if cursor_updated_at and _owned_session_id(cursor_id or "")
+            else None
+        )
+
+        try:
+            page = persistence.list_sessions(
+                owner_id,
+                limit=clamp_list_limit(request.args.get("limit", type=int)),
+                cursor=cursor,
+            )
+        except PersistenceUnavailable:
+            logger.warning("Could not list conversations.", exc_info=True)
+            return (
+                jsonify(
+                    error="Your conversations could not be loaded.",
+                    code="history_unavailable",
+                ),
+                503,
+            )
+
+        return _no_store(jsonify(
+            sessions=[
+                {
+                    "id": s.session_id,
+                    # Null travels as null. The client renders a localised
+                    # "Untitled conversation"; inventing one here would put
+                    # English in an Arabic sidebar.
+                    "title": s.title,
+                    "created_at": s.created_at,
+                    "updated_at": s.updated_at,
+                    "message_count": s.message_count,
+                }
+                for s in page.sessions
+            ],
+            next_cursor=(
+                {"updated_at": page.next_cursor[0], "id": page.next_cursor[1]}
+                if page.next_cursor else None
+            ),
+            active=active,
+        ))
+
+    @app.route("/api/chat/sessions/<session_id>/select", methods=["POST"])
+    @auth_required
+    @limiter.limit(_session_limit)
+    def handle_chat_session_select(session_id: str) -> Union[Response, Tuple[Response, int]]:
+        """Make one owned conversation the current one.
+
+        THE COOKIE IS THE POINTER, and this is the only route that repoints it at
+        an existing conversation. That keeps `_resolve_conversation_id` the single
+        place the current-session rule lives: `/api/chat/history` still takes no
+        session id, still serves whatever the cookie names, and so the transcript
+        and the model's prompt window still cannot disagree about which
+        conversation this is. The client switches by calling this and then
+        re-fetching the transcript, rather than by naming a conversation on the
+        read.
+
+        OWNERSHIP IS VERIFIED BEFORE THE COOKIE MOVES. `load_session` answers []
+        for "not yours" and for "not there" identically, which is exactly the
+        refusal wanted: a reader probing uuids learns nothing, and a hostile id
+        can never be written into the cookie — which would otherwise be a way to
+        make the next question join a stranger's conversation.
+
+        A KNOWN LIMIT, stated because the sidebar makes it reachable rather than
+        theoretical: the cookie is per-BROWSER, not per-tab. Selecting a
+        conversation in one tab changes it in every tab of the same profile. That
+        was already true of `conv_id` before this route existed — two tabs have
+        always shared one conversation — so this does not introduce it, but it
+        does give readers a control that makes it easy to trip. The fix is a
+        tab-scoped pointer sent on every chat request, which is a change to the
+        chat routes' contract rather than to the sidebar; it is recorded in
+        TODO.md rather than smuggled in here.
+        """
+        owner_id, persistence, error = _sidebar_preconditions()
+        if error:
+            return error
+
+        canonical = _owned_session_id(session_id)
+        if not canonical:
+            return jsonify(error="Unknown conversation.", code="not_found"), 404
+
+        if persistence is None or not owner_id:
+            return jsonify(error="Unknown conversation.", code="not_found"), 404
+
+        # A generation in flight is writing into whatever the cookie names right
+        # now. Moving the pointer under it would not corrupt that write — the
+        # generator closed over its own id — but it would leave the reader's
+        # screen and their next question pointing at different conversations
+        # while an answer was still arriving. Refused rather than reconciled.
+        if _generations().is_live(owner_id, canonical_uuid(session.get("conv_id"))):
+            return jsonify(
+                error="An answer is still being generated.", code="generation_in_flight",
+            ), 409
+
+        try:
+            owned = persistence.load_session(owner_id, canonical, limit=1)
+        except PersistenceUnavailable:
+            logger.warning("Could not verify conversation ownership.", exc_info=True)
+            return (
+                jsonify(
+                    error="Your conversations could not be loaded.",
+                    code="history_unavailable",
+                ),
+                503,
+            )
+
+        if not owned:
+            # Not yours, or not there. Deliberately one answer.
+            return jsonify(error="Unknown conversation.", code="not_found"), 404
+
+        store: ConversationStore = current_app.config["conversations"]
+        # The undo set aside by a New chat belongs to the conversation that was
+        # ended, and the reader has just navigated somewhere else. Restoring it
+        # over their selection would put a conversation they did not ask for on
+        # top of one they did.
+        if stale := session.pop("prev_conv_id", None):
+            store.clear(stale)
+        session.pop("prev_chat_history", None)
+
+        session["conv_id"] = canonical
+        return _no_store(jsonify(ok=True, conversation_id=canonical))
+
+    @app.route("/api/chat/sessions/<session_id>", methods=["PATCH"])
+    @auth_required
+    @limiter.limit(_session_limit)
+    def handle_chat_session_rename(session_id: str) -> Union[Response, Tuple[Response, int]]:
+        """Rename one owned conversation.
+
+        The title is clamped HERE, above the database, so an over-long or
+        whitespace-only title is the client error it is rather than a CHECK
+        violation raised inside a `security definer` function and surfacing as a
+        500. `clamp_title` collapses whitespace, cuts on a word boundary at 120
+        characters, and returns None for empty — which the RPC stores as null and
+        the sidebar renders with its untitled fallback, so "clear the name" is a
+        reachable, meaningful action rather than an error.
+        """
+        owner_id, persistence, error = _sidebar_preconditions()
+        if error:
+            return error
+
+        canonical = _owned_session_id(session_id)
+        if not canonical or persistence is None or not owner_id:
+            return jsonify(error="Unknown conversation.", code="not_found"), 404
+
+        payload = request.get_json(silent=True) or {}
+        if "title" not in payload:
+            return jsonify(error="A title is required.", code="invalid_request"), 400
+
+        raw = payload.get("title")
+        if raw is not None and not isinstance(raw, str):
+            return jsonify(error="A title is required.", code="invalid_request"), 400
+
+        title = clamp_title(raw)
+
+        try:
+            renamed = persistence.rename_session(owner_id, canonical, title)
+        except PersistenceUnavailable:
+            logger.warning("Could not rename conversation %s.", canonical, exc_info=True)
+            return (
+                jsonify(error="That conversation could not be renamed.", code="rename_failed"),
+                503,
+            )
+
+        if not renamed:
+            return jsonify(error="Unknown conversation.", code="not_found"), 404
+
+        # The clamped value is echoed rather than the submitted one, so the
+        # sidebar shows what was actually stored. A client that rendered its own
+        # input would show an untruncated title until the next reload.
+        return _no_store(jsonify(ok=True, id=canonical, title=title))
+
+    @app.route("/api/chat/sessions/<session_id>", methods=["DELETE"])
+    @auth_required
+    @limiter.limit(_session_limit)
+    def handle_chat_session_delete(session_id: str) -> Union[Response, Tuple[Response, int]]:
+        """Delete one owned conversation, and everything pointing at it.
+
+        THE DELETE IS THE EASY HALF. The row goes and the cascade takes its
+        messages and sources. What makes this a route rather than a browser call
+        is the three pointers that would otherwise outlive it:
+
+        * `conv_id`, if it names the deleted conversation. Left in place, the
+          next question hits `chat_append_turn`'s `on conflict (id) do nothing`,
+          which finds no row and CREATES ONE — the conversation the reader
+          deleted comes back, with a new answer in it.
+        * `prev_conv_id`, the undo pointer. Left in place, pressing Undo restores
+          a conversation that no longer exists in the database, so the screen
+          shows turns the server cannot produce again.
+        * The `ConversationStore` window, which is the model's memory of the
+          conversation. Left in place, the next answer is informed by a
+          conversation the reader deleted — the exact "blank screen over a server
+          that still remembers" failure the reset route's own comment refuses.
+
+        A generation in flight is refused outright rather than any of this being
+        attempted: the write is already committed to landing and would recreate
+        the row after the delete. See `_InFlightGenerations`.
+        """
+        owner_id, persistence, error = _sidebar_preconditions()
+        if error:
+            return error
+
+        canonical = _owned_session_id(session_id)
+        if not canonical or persistence is None or not owner_id:
+            return jsonify(error="Unknown conversation.", code="not_found"), 404
+
+        if _generations().is_live(owner_id, canonical):
+            return jsonify(
+                error="An answer is still being generated.", code="generation_in_flight",
+            ), 409
+
+        try:
+            deleted = persistence.delete_session(owner_id, canonical)
+        except PersistenceUnavailable:
+            logger.warning("Could not delete conversation %s.", canonical, exc_info=True)
+            return (
+                jsonify(error="That conversation could not be deleted.", code="delete_failed"),
+                503,
+            )
+
+        if not deleted:
+            return jsonify(error="Unknown conversation.", code="not_found"), 404
+
+        store: ConversationStore = current_app.config["conversations"]
+        store.clear(canonical)
+
+        # The undo pointer, if it was the thing just deleted.
+        if canonical_uuid(session.get("prev_conv_id")) == canonical:
+            session.pop("prev_conv_id", None)
+            session.pop("prev_chat_history", None)
+
+        replaced = None
+        if canonical_uuid(session.get("conv_id")) == canonical:
+            # The reader deleted the conversation they were in. Mint a fresh one
+            # rather than resuming their next-most-recent: `_resolve_conversation_id`
+            # resumes only when the cookie names NOTHING, and popping the cookie
+            # here would arm exactly that fallback — so the next reload would
+            # open some older conversation the reader never chose, which is the
+            # resurrection shape the current-session rule exists to prevent.
+            replaced = new_conversation_id()
+            session["conv_id"] = replaced
+
+        return _no_store(jsonify(ok=True, id=canonical, conversation_id=replaced))
+
     @app.route("/api/chat/stream", methods=["POST"])
     @auth_required
     @chat_limit
@@ -2083,6 +2536,15 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
         history = _load_history(
             store, persistence, owner_id, conversation_id, max_pairs, max_chars
         )
+
+        # Claimed in the VIEW BODY, not inside generate(). The generator does not
+        # start running until the WSGI server iterates it, and the sidebar's
+        # delete can arrive in that gap — on a threaded server it demonstrably
+        # does. Holding from here means the protection covers the whole window in
+        # which this conversation is committed to being written to.
+        generations = _generations()
+        hold = generations.hold(owner_id, conversation_id)
+        hold.__enter__()
 
         def generate():
             try:
@@ -2204,6 +2666,9 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
                     lang=lang,
                     category=category,
                     model=getattr(handler, "model", "unknown"),
+                    # The opening question names the conversation. Sent every
+                    # turn; applied by the RPC only when there is no title yet.
+                    title=query,
                 ):
                     # An `error` frame, NOT a new event name. services.js
                     # dispatches with `on[frame.event]?.()`, which silently drops
@@ -2273,9 +2738,24 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
                 # The 200 status line is already sent, so failures after the
                 # first yield can only be reported in-band.
                 yield sse("error", {"error": "An internal server error occurred.", "code": "internal"})
+            finally:
+                # Runs on every exit, GeneratorExit included — which is the one
+                # that matters, because a client cancelling mid-stream is the
+                # ORDINARY way this generator ends. Missing it would leave the
+                # conversation marked live forever and undeletable for the life
+                # of the process.
+                hold.__exit__(None, None, None)
 
-        response = Response(stream_with_context(generate()), mimetype="text/event-stream")
-        sse_headers(response)
+        try:
+            response = Response(stream_with_context(generate()), mimetype="text/event-stream")
+            sse_headers(response)
+        except Exception:
+            # The hold is released by the generator's own `finally`, and only
+            # once it has started running. If constructing the response raises,
+            # nothing ever iterates it, so nothing ever releases — release here
+            # instead of leaking a permanent claim on this conversation.
+            hold.__exit__(None, None, None)
+            raise
         return response
 
     @app.route("/api/chat", methods=["POST"])
@@ -2348,28 +2828,34 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
             chat_history = _load_history(
                 store, persistence, owner_id, conversation_id, max_pairs, max_chars
             )
-            answer, suggested_questions = openai_handler.generate_response(
-                query, llm_context, category, chat_history, lang=lang,
-            )
-            # Same contract as the streaming path's "final" frame — both routes
-            # go through `_finalize_answer`, so they cannot drift.
-            answer, cited, sources = _finalize_answer(answer, retrieved)
+            # Held across generation and the durable write for the same reason
+            # the streaming route holds it: this conversation is committed to
+            # being written to, so it must not be deleted out from under the
+            # write. See _InFlightGenerations.
+            with _generations().hold(owner_id, conversation_id):
+                answer, suggested_questions = openai_handler.generate_response(
+                    query, llm_context, category, chat_history, lang=lang,
+                )
+                # Same contract as the streaming path's "final" frame — both
+                # routes go through `_finalize_answer`, so they cannot drift.
+                answer, cited, sources = _finalize_answer(answer, retrieved)
 
-            store.append_turn(
-                conversation_id, query, answer, max_pairs, max_chars, owner_id=owner_id
-            )
-            persisted = _persist_turn(
-                persistence,
-                owner_id=owner_id,
-                conversation_id=conversation_id,
-                client_request_id=payload["client_request_id"],
-                question=query,
-                answer=answer,
-                sources=_persistable_sources(retrieved, cited),
-                lang=lang,
-                category=category,
-                model=getattr(openai_handler, "model", "unknown"),
-            )
+                store.append_turn(
+                    conversation_id, query, answer, max_pairs, max_chars, owner_id=owner_id
+                )
+                persisted = _persist_turn(
+                    persistence,
+                    owner_id=owner_id,
+                    conversation_id=conversation_id,
+                    client_request_id=payload["client_request_id"],
+                    question=query,
+                    answer=answer,
+                    sources=_persistable_sources(retrieved, cited),
+                    lang=lang,
+                    category=category,
+                    model=getattr(openai_handler, "model", "unknown"),
+                    title=query,
+                )
 
             return jsonify(
                 response=answer,

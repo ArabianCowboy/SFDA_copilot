@@ -15,7 +15,7 @@
   there are exactly three .theme-toggle-btn on the page (landing + these two).
   Rendering one here would make it four.
 #}
-{% macro sidebar_body(suffix='', faq_id='faq-sidebar-section', show_title=true) %}
+{% macro sidebar_body(suffix='', faq_id='faq-sidebar-section', history_id='history-sidebar-section', show_title=true) %}
 {% if show_title %}
 <div class="sidebar-header">
   <h3 class="sidebar-title">
@@ -45,7 +45,65 @@
   {{ icon('plus', 16) }}<span>{{ t('page.chat.newChat') }}</span>
 </button>
 
-<div class="faq-section" id="{{ faq_id }}"></div>
+{#
+  WHAT THIS COLUMN IS FOR, REVISED — and the revision is the honest part.
+
+  The note above says the FAQ rail is what this column is FOR, because a first
+  session usually starts by clicking a question rather than typing one. That is
+  still true of a FIRST session. It stops being true the moment a reader has a
+  second conversation to come back to, and durable history means most sessions
+  now start that way.
+
+  So neither list evicts the other: they share the column through a two-segment
+  switch, and the DEFAULT is what decides which reading wins per reader. ui.js
+  opens on Chats when the list comes back with conversations in it and on
+  Explore when it does not, so a first-time reader still lands on the questions
+  and a returning one lands on their own work. Nobody pays a click for the state
+  they were already in.
+
+  An accordion was the alternative and it loses on arithmetic: this column has
+  roughly 500px between the identity block and the account footer, and two
+  permanent section headers over two independent scrollers leaves each list
+  showing three rows before it needs scrolling — plus a wheel that fights over
+  which of the two nested scroll ports it belongs to.
+
+  ONE `role="tablist"`, RENDERED TWICE. Every id below carries the macro's
+  suffix, including the ones ARIA points at: `aria-controls` and
+  `aria-labelledby` resolve by id against the whole document, so an unsuffixed
+  pair would make the offcanvas tab drive the desktop panel — silently, and only
+  for the readers who use a screen reader.
+#}
+<div class="sidebar-tabs" role="tablist" aria-label="{{ t('page.sidebar.tabsAria') }}"
+     id="sidebar-tabs{{ suffix }}">
+  <button type="button" role="tab" class="sidebar-tab is-active"
+          id="tab-chats{{ suffix }}"
+          data-sidebar-tab="chats"
+          aria-selected="true" aria-controls="{{ history_id }}">
+    {{ t('page.sidebar.tabChats') }}
+  </button>
+  <button type="button" role="tab" class="sidebar-tab"
+          id="tab-explore{{ suffix }}"
+          data-sidebar-tab="explore"
+          {# -1, not absent. A tablist is ONE tab stop: arrow keys move between
+             the tabs and Tab leaves the group entirely. Without this the
+             sidebar costs a keyboard reader an extra Tab on every visit. #}
+          tabindex="-1"
+          aria-selected="false" aria-controls="{{ faq_id }}">
+    {{ t('page.sidebar.tabExplore') }}
+  </button>
+</div>
+
+{#
+  Both panels are always in the DOM and one is `hidden`. Rendering only the
+  active one would throw away the other's scroll position on every switch, and
+  would make the FAQ rail — which app.js fills once, on sign-in — need refetching
+  each time the reader looked at their history.
+#}
+<div class="history-section" id="{{ history_id }}" role="tabpanel"
+     aria-labelledby="tab-chats{{ suffix }}"></div>
+
+<div class="faq-section" id="{{ faq_id }}" role="tabpanel"
+     aria-labelledby="tab-explore{{ suffix }}" hidden></div>
 
 {#
   Account, pinned to the bottom. It is chrome, not content: the reader touches

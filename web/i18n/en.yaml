@@ -56,12 +56,21 @@ runtime:
     # regulatory professional who signs out believing their questions are gone
     # is being misled by omission.
     #
-    # It deliberately offers NO way to delete a conversation. The RLS grant
-    # exists but nothing calls it — there is no route and no client code — so an
-    # earlier draft's "or delete a conversation to clear one" would have made
-    # this notice the product's newest false claim. That sentence arrives with
-    # the session sidebar that can honour it, not before.
-    historyNotice: "Your chats are saved to your account. They restore on any device. Signing out does not delete them, and neither does starting a new chat."
+    # THE DELETE SENTENCE ARRIVED IN STEP 8, and the history of it is the point.
+    # Until the sidebar shipped, this string deliberately offered no way to
+    # delete a conversation: the RLS grant existed but nothing called it, so an
+    # earlier draft's "or delete a conversation to clear one" would have been
+    # the product's newest false claim, and a test pinned it out.
+    #
+    # There is now a control that honours it — `DELETE /api/chat/sessions/<id>`,
+    # reached from the row's own trash button — so the sentence is true and the
+    # test that forbade it changed with the feature, deliberately, exactly as
+    # TODO.md said it would.
+    #
+    # It says "from the sidebar" rather than "in Settings" because that is where
+    # the control is, and a disclosure that sends the reader to the wrong place
+    # is only marginally better than one that names no place at all.
+    historyNotice: "Your chats are saved to your account. They restore on any device. Signing out does not delete them, and neither does starting a new chat — delete a conversation from the sidebar to remove it."
     # Not only PII. The realistic risk on this product is not a patient
     # identifier — it is a regulatory professional pasting an unpublished
     # dossier, submission correspondence, or a product plan into a free-text
@@ -69,6 +78,67 @@ runtime:
     # somebody else's problem.
     historyNoticeWarning: "Do not enter patient identifiers, clinical-trial subject data, personal information, or confidential or proprietary material."
     historyNoticeDismiss: "Dismiss"
+
+  # ── The conversation sidebar (step 8) ───────────────────────────────────
+  # Every string the list draws at runtime. The group headings are catalogue
+  # entries rather than Intl.RelativeTimeFormat output, and that is a decision
+  # rather than a shortcut: Arabic has six plural forms where `I18n.plural`
+  # knows two, Intl emits bidi control characters that reorder inside an RTL
+  # column, and the language toggle reloads the page — so a cached relative
+  # string is stale by construction. Five fixed buckets are grammatical in both
+  # scripts, need no plural rules, and say the same thing.
+  sessions:
+    tabChats: "Chats"
+    tabExplore: "Explore"
+    # The tablist's own name. Screen readers announce it before the tabs, so it
+    # has to say what the two tabs choose BETWEEN, not repeat one of them.
+    tabsAria: "Sidebar contents"
+    listAria: "Your conversations"
+    # Shown for a conversation whose title is null — a session written before
+    # first-turn titling shipped, or one whose name the reader cleared.
+    untitled: "Untitled conversation"
+    today: "Today"
+    yesterday: "Yesterday"
+    previous7: "Previous 7 days"
+    previous30: "Previous 30 days"
+    older: "Older"
+    loadMore: "Load more"
+    loading: "Loading your conversations…"
+    # Distinct from `unavailable` on purpose, and the distinction is the same
+    # one `historyUnavailable` already draws for the transcript: this says the
+    # reader has no saved conversations, which is a claim about them. Making it
+    # while the store is unreachable would be a quiet untruth.
+    empty: "No saved conversations yet."
+    emptyHint: "Ask a question and it will appear here."
+    unavailable: "Your conversations could not be loaded."
+    retry: "Try again"
+    # The row's own accessible name. The count travels because a title alone
+    # cannot distinguish a conversation the reader abandoned after one question
+    # from one they worked in all afternoon.
+    openAria: "Open conversation: {title}"
+    turns: "{count} messages"
+    turnsOne: "{count} message"
+    renameAria: "Rename: {title}"
+    renameLabel: "Conversation name"
+    renameSave: "Save name"
+    renameCancel: "Cancel renaming"
+    renamed: "Conversation renamed"
+    renameFailed: "That conversation could not be renamed."
+    deleteAria: "Delete: {title}"
+    # An inline confirmation, not a modal. Deleting one row out of a list does
+    # not need protected focus, and a dialog would take the reader out of the
+    # column they are working in to answer a question about it.
+    deleteConfirm: "Delete this conversation?"
+    deleteConfirmYes: "Delete"
+    deleteConfirmNo: "Keep"
+    deleted: "Conversation deleted"
+    deleteFailed: "That conversation could not be deleted."
+    switchFailed: "That conversation could not be opened."
+    # Shown when the reader reaches for a sidebar control while an answer is
+    # still arriving. It names the two ways out, because a disabled control that
+    # does not say what would re-enable it is indistinguishable from a broken
+    # one.
+    busy: "Wait for the answer to finish, or cancel it, before changing conversation."
 
   stage:
     searching: "Searching the guidelines"
@@ -429,6 +499,15 @@ page:
     utilityAria: "Language and theme"
     mobileNavAria: "Mobile navigation"
     sidebarAria: "Sidebar"
+
+  # Server-rendered halves of the conversation sidebar. The tab LABELS live here
+  # rather than under `runtime.sessions` because Jinja prints them once, at
+  # render, and a runtime key that no JS ever reads would be dead weight in the
+  # inline catalogue every page ships. The strings the list draws are runtime.
+  sidebar:
+    tabChats: "Chats"
+    tabExplore: "Explore"
+    tabsAria: "Sidebar contents"
 
   auth:
     modalTitle: "Welcome to SFDA Copilot"

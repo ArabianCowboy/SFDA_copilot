@@ -230,6 +230,13 @@ def test_page_strings_never_reach_the_browser(client):
     assert set(config) <= {
         "chat", "stage", "robot", "auth", "profile",
         "faq", "theme", "cite", "lang", "admin",
+        # The conversation sidebar (step 8). Like `chat`, `cite` and `faq`
+        # above, the console does not use it — the whole `runtime:` subtree is
+        # inlined on both pages, and this list is what that subtree contains
+        # rather than what each page reads. The claim being pinned is that the
+        # server-only `page:` block stays server-only, which the assertion above
+        # this one makes.
+        "sessions",
     }
 
     # A value that exists only under page.admin. If it appears, some page string

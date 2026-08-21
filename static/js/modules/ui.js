@@ -1027,4 +1027,489 @@ export const UI = {
       });
     },
   },
+
+  /**
+   * The conversation sidebar.
+   *
+   * ONE STATE, RENDERED TWICE. The sidebar macro produces a desktop aside and an
+   * offcanvas copy, and the failure mode of building this as two lists is that
+   * they diverge — a rename lands in one, a delete in the other, and which one
+   * the reader sees depends on their viewport. So `_state` is the single truth
+   * and `_paint` writes it into both panels from the same builder.
+   *
+   * It is deliberately NOT virtualised. The rows are short titles, not message
+   * cards; the list is bounded by a 30-row page with an explicit "load more";
+   * and this panel is already a scroll port inside the offcanvas body, which is
+   * another one. Adding a virtual window would unmount rows while focus and
+   * `aria-labelledby` still point at them, and would fight Bootstrap's focus
+   * trap — three new failure modes to save a cost that does not yet exist.
+   */
+  History: {
+    /* `status` is one of: idle | loading | ready | error. Four states rather
+       than a boolean, because "loading", "you have no conversations" and "your
+       conversations could not be loaded" are three different claims and
+       collapsing any two of them tells the reader something untrue. */
+    _state: {
+      status: 'idle',
+      sessions: [],
+      cursor: null,
+      active: null,
+      loadingMore: false,
+      /* The row currently being renamed or confirmed for deletion, as
+         `{ id, mode }`. Held in state rather than in the DOM so both rendered
+         copies enter the same mode together — otherwise opening the offcanvas
+         mid-rename would show an un-renaming row. */
+      pending: null,
+    },
+
+    panels() {
+      return [
+        DOMCache.get(CONFIG.SELECTORS.HISTORY_SIDEBAR),
+        DOMCache.get(CONFIG.SELECTORS.HISTORY_OFFCANVAS),
+      ].filter(Boolean);
+    },
+
+    get state() {
+      return this._state;
+    },
+
+    /** Replace the whole list. Used by a first load and by a retry. */
+    setSessions({ sessions, cursor, active }) {
+      this._state = {
+        ...this._state,
+        status: 'ready',
+        sessions: sessions.slice(),
+        cursor: cursor || null,
+        active: active || this._state.active,
+        loadingMore: false,
+        pending: null,
+      };
+      this._paint();
+    },
+
+    /** Append the next page, keeping what is already drawn. */
+    appendSessions({ sessions, cursor }) {
+      /* De-duplicated by id on the way in. A conversation that received a turn
+         between page 1 and page 2 moves to the top of the ordering, and a
+         keyset cursor pointing past its OLD position will hand it back a second
+         time. Without this the reader sees the same conversation twice and a
+         later rename updates only one of them. */
+      const seen = new Set(this._state.sessions.map(s => s.id));
+      this._state = {
+        ...this._state,
+        status: 'ready',
+        sessions: this._state.sessions.concat(sessions.filter(s => !seen.has(s.id))),
+        cursor: cursor || null,
+        loadingMore: false,
+      };
+      this._paint();
+    },
+
+    setStatus(status) {
+      this._state = { ...this._state, status, loadingMore: false };
+      this._paint();
+    },
+
+    setLoadingMore(loading) {
+      this._state = { ...this._state, loadingMore: loading };
+      this._paint();
+    },
+
+    /** Which conversation the row highlight points at. */
+    setActive(sessionId) {
+      this._state = { ...this._state, active: sessionId || null };
+      this._paint();
+    },
+
+    /** Put one row into rename or delete-confirm mode, or clear the mode. */
+    setPending(pending) {
+      this._state = { ...this._state, pending: pending || null };
+      this._paint();
+    },
+
+    /**
+     * Rename one row in place.
+     *
+     * ORDER IS NOT TOUCHED, and that mirrors the database exactly:
+     * `chat_rename_session` deliberately leaves `updated_at` alone, because
+     * that column means "last spoken in". A client that re-sorted here — or
+     * that stamped the row with `Date.now()` optimistically — would lift a
+     * months-old conversation to the top of Today on an edit that changed no
+     * content, and the next list fetch would silently put it back.
+     */
+    applyRename(sessionId, title) {
+      this._state = {
+        ...this._state,
+        sessions: this._state.sessions.map(s => (
+          s.id === sessionId ? { ...s, title } : s
+        )),
+        pending: null,
+      };
+      this._paint();
+    },
+
+    removeSession(sessionId) {
+      this._state = {
+        ...this._state,
+        sessions: this._state.sessions.filter(s => s.id !== sessionId),
+        active: this._state.active === sessionId ? null : this._state.active,
+        pending: null,
+      };
+      this._paint();
+    },
+
+    /**
+     * Forget everything. Called on sign-out and on an identity change.
+     *
+     * These rows are one reader's own questions. Leaving them drawn behind the
+     * landing view is the same hazard the transcript's ownership tag existed to
+     * prevent, and the app lives at "/" so nothing reloads on the way out.
+     */
+    clear() {
+      this._state = {
+        status: 'idle', sessions: [], cursor: null, active: null,
+        loadingMore: false, pending: null,
+      };
+      this._paint();
+    },
+
+    /** Mark the Chats tab as still fetching, in both sidebar copies. */
+    setTabLoading(loading) {
+      document.querySelectorAll('.sidebar-tabs').forEach(tabs => {
+        if (loading) tabs.setAttribute('data-loading', 'chats');
+        else tabs.removeAttribute('data-loading');
+      });
+    },
+
+    /**
+     * Group by calendar day, into five fixed buckets.
+     *
+     * DELIBERATELY NOT `Intl.RelativeTimeFormat`. Three reasons, and the first
+     * is the one that would actually ship broken: Arabic has six plural forms
+     * where `I18n.plural` knows two, so "3 days ago" renders as an
+     * ungrammatical "٣ أيام مضت" under any hand-rolled scheme. Second, `Intl`
+     * emits bidi control characters that reorder inside an RTL column — this
+     * codebase has already paid for that once, with an en-US time rendering as
+     * "AM 3:17:18" in an Arabic transcript. Third, the language toggle reloads
+     * the page, so any cached relative string is stale by construction.
+     *
+     * Fixed bucket names from the catalogue have none of those problems: they
+     * are grammatical in both scripts, need no plural rules, and carry no
+     * direction marks. The precise timestamp is still available on the row —
+     * see `_rowTitleAttr` — for the reader who needs the actual date.
+     *
+     * Buckets are computed from CALENDAR DAYS, not from elapsed hours. An
+     * answer at 23:50 and one at 00:10 are twenty minutes apart and belong under
+     * different headings, which is what a reader means by "yesterday".
+     */
+    _bucketOf(updatedAt) {
+      const when = updatedAt ? new Date(updatedAt) : null;
+      if (!when || Number.isNaN(when.getTime())) return 'older';
+
+      const startOfDay = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+      const days = Math.round(
+        (startOfDay(new Date()) - startOfDay(when)) / 86400000
+      );
+
+      // Negative means a clock skew put the row in the future. Treated as today
+      // rather than dropped into "older", where a conversation the reader just
+      // had would sit at the bottom of their list.
+      if (days <= 0) return 'today';
+      if (days === 1) return 'yesterday';
+      if (days <= 7) return 'previous7';
+      if (days <= 30) return 'previous30';
+      return 'older';
+    },
+
+    _titleOf(session) {
+      return session.title || I18n.t('sessions.untitled');
+    },
+
+    /**
+     * The row's `title` attribute: the full name and the exact time.
+     *
+     * The visible title truncates, so this is where the whole thing stays
+     * readable — and where the precise timestamp lives, since the group heading
+     * only says which day. `toLocaleString(I18n.lang)` and never a hand-built
+     * string, matching what the transcript's own timestamps already do.
+     */
+    _rowTitleAttr(session) {
+      const name = this._titleOf(session);
+      const when = session.updated_at ? new Date(session.updated_at) : null;
+      if (!when || Number.isNaN(when.getTime())) return name;
+      return `${name}\n${when.toLocaleString(I18n.lang)}`;
+    },
+
+    /**
+     * One action button, built node by node.
+     *
+     * DELIBERATELY NOT AN innerHTML TEMPLATE. Every label here interpolates the
+     * conversation's title, and the title is reader input — a question they
+     * typed, which on this product is routinely pasted out of a PDF. Assembling
+     * that into a markup string needs an escape helper that does not exist in
+     * this codebase, and the first person to add one and forget to call it has
+     * written an XSS into the sidebar. `setAttributes` + `textContent` cannot
+     * have that bug at all, which is a better guarantee than remembering.
+     *
+     * The glyph is the one exception and it is safe: `iconMarkup` returns path
+     * data from a fixed server-side registry, with no interpolation of anything
+     * the reader controls.
+     */
+    _actionButton({ action, sessionId, label, icon, size = 14, className = '' }) {
+      const button = DOMCache.createElement(
+        'button', CONFIG.CLASSES.HISTORY_ACTION, ...(className ? [className] : [])
+      );
+      DOMCache.setAttributes(button, {
+        type: 'button',
+        'data-history-action': action,
+        'data-session-id': sessionId,
+        title: label,
+        'aria-label': label,
+      });
+      button.innerHTML = iconMarkup(icon, size);
+      return button;
+    },
+
+    _confirmButton({ action, sessionId, label, className }) {
+      const button = DOMCache.createElement('button', className);
+      DOMCache.setAttributes(button, {
+        type: 'button',
+        'data-history-action': action,
+        'data-session-id': sessionId,
+      });
+      button.textContent = label;
+      return button;
+    },
+
+    _buildRow(session) {
+      const item = DOMCache.createElement('div', CONFIG.CLASSES.HISTORY_ITEM);
+      item.dataset.sessionId = session.id;
+      if (session.id === this._state.active) {
+        item.classList.add(CONFIG.CLASSES.HISTORY_ACTIVE);
+      }
+
+      const pending = this._state.pending;
+      const renaming = pending?.id === session.id && pending.mode === 'rename';
+      const confirming = pending?.id === session.id && pending.mode === 'delete';
+      const name = this._titleOf(session);
+
+      if (renaming) {
+        /* The icon still renders, so the row does not jump one column narrower
+           the instant it enters rename mode. */
+        item.innerHTML = iconMarkup('chat-bubble', 15, 'history-item-icon');
+
+        const input = DOMCache.createElement('input', 'history-rename');
+        DOMCache.setAttributes(input, {
+          type: 'text',
+          value: session.title || '',
+          /* 120, matching `chat_sessions.title`'s CHECK and `clamp_title`'s
+             bound. Enforced here so the reader is stopped at the limit rather
+             than told about it after a round trip that silently truncated. */
+          maxlength: '120',
+          'aria-label': I18n.t('sessions.renameLabel'),
+          /* The name may be Arabic in an English UI or the reverse — it is
+             whatever the reader asked. Detected, never forced. */
+          dir: 'auto',
+          'data-rename-input': session.id,
+        });
+        item.appendChild(input);
+
+        const actions = DOMCache.createElement('div', 'history-item-actions');
+        actions.appendChild(this._actionButton({
+          action: 'rename-save', sessionId: session.id,
+          label: I18n.t('sessions.renameSave'), icon: 'check',
+        }));
+        actions.appendChild(this._actionButton({
+          action: 'rename-cancel', sessionId: session.id,
+          label: I18n.t('sessions.renameCancel'), icon: 'close',
+        }));
+        item.appendChild(actions);
+        return item;
+      }
+
+      /* `display: contents` on this button is what lets one control cover the
+         icon and the title while the two action buttons stay OUTSIDE it —
+         nesting a button inside a button is invalid HTML and, in practice,
+         makes the inner one unreachable by keyboard. */
+      const open = DOMCache.createElement('button', CONFIG.CLASSES.HISTORY_OPEN);
+      DOMCache.setAttributes(open, {
+        type: 'button',
+        'data-history-action': 'open',
+        'data-session-id': session.id,
+        title: this._rowTitleAttr(session),
+        /* The accessible name carries the title AND the length, because a title
+           alone cannot tell a conversation abandoned after one question from
+           one worked in all afternoon — and a screen-reader user cannot see the
+           row's density. */
+        'aria-label': `${I18n.t('sessions.openAria', { title: name })} — ` +
+          I18n.plural(
+            session.message_count || 0, 'sessions.turnsOne', 'sessions.turns'
+          ),
+        ...(session.id === this._state.active ? { 'aria-current': 'true' } : {}),
+      });
+      open.innerHTML = iconMarkup('chat-bubble', 15, 'history-item-icon');
+
+      const label = DOMCache.createElement('span', 'history-item-title');
+      if (!session.title) label.classList.add('is-untitled');
+      /* `dir="auto"` and textContent, never innerHTML: this string is reader
+         input. The direction is detected per row so an Arabic name in an
+         English sidebar — and an English one in an Arabic sidebar — each lay
+         out correctly, and the ellipsis lands on the right end of both. */
+      label.setAttribute('dir', 'auto');
+      label.textContent = name;
+      open.appendChild(label);
+      item.appendChild(open);
+
+      const actions = DOMCache.createElement('div', 'history-item-actions');
+      actions.appendChild(this._actionButton({
+        action: 'rename', sessionId: session.id,
+        label: I18n.t('sessions.renameAria', { title: name }), icon: 'pencil',
+      }));
+      actions.appendChild(this._actionButton({
+        action: 'delete', sessionId: session.id,
+        label: I18n.t('sessions.deleteAria', { title: name }), icon: 'trash',
+        className: 'is-destructive',
+      }));
+      item.appendChild(actions);
+
+      if (confirming) {
+        /* Inline, in the row's own grid, rather than a modal. Deleting one row
+           out of a list needs neither interruption nor protected focus, and a
+           dialog would take the reader out of the column to answer a question
+           about something in it. */
+        const confirm = DOMCache.createElement('div', 'history-confirm');
+        const text = DOMCache.createElement('span', 'history-confirm-text');
+        text.textContent = I18n.t('sessions.deleteConfirm');
+        confirm.appendChild(text);
+        confirm.appendChild(this._confirmButton({
+          action: 'delete-confirm', sessionId: session.id,
+          label: I18n.t('sessions.deleteConfirmYes'), className: 'is-destructive',
+        }));
+        confirm.appendChild(this._confirmButton({
+          action: 'delete-cancel', sessionId: session.id,
+          label: I18n.t('sessions.deleteConfirmNo'), className: 'is-keep',
+        }));
+        item.appendChild(confirm);
+      }
+
+      return item;
+    },
+
+    _buildContent() {
+      const fragment = document.createDocumentFragment();
+      const { status, sessions, cursor, loadingMore } = this._state;
+
+      if (status === 'loading' && !sessions.length) {
+        const status_ = DOMCache.createElement('p', 'history-status');
+        status_.textContent = I18n.t('sessions.loading');
+        fragment.appendChild(status_);
+        return fragment;
+      }
+
+      if (status === 'error') {
+        /* NEVER the empty state. "You have no saved conversations" is a claim
+           about the reader; making it because the store was unreachable is the
+           same quiet untruth `/api/chat/history` answers 503 rather than [] to
+           avoid. The retry is what makes this recoverable rather than final. */
+        const status_ = DOMCache.createElement('p', 'history-status', 'is-error');
+        status_.setAttribute('role', 'status');
+        status_.textContent = I18n.t('sessions.unavailable');
+        const retry = DOMCache.createElement('button', 'history-retry');
+        DOMCache.setAttributes(retry, { type: 'button', 'data-history-action': 'retry' });
+        retry.textContent = I18n.t('sessions.retry');
+        fragment.appendChild(status_);
+        fragment.appendChild(retry);
+        return fragment;
+      }
+
+      if (status === 'ready' && !sessions.length) {
+        const empty = DOMCache.createElement('p', 'history-empty');
+        empty.textContent = I18n.t('sessions.empty');
+        const hint = DOMCache.createElement('span', 'history-empty-hint');
+        hint.textContent = I18n.t('sessions.emptyHint');
+        empty.appendChild(hint);
+        fragment.appendChild(empty);
+        return fragment;
+      }
+
+      if (status === 'idle') return fragment;
+
+      const list = DOMCache.createElement('div', 'history-list');
+      /* `role="list"` explicitly, because `display: flex` on a <ul> strips the
+         implicit list semantics in Safari and VoiceOver. A div carrying the
+         role is unambiguous in every engine. */
+      DOMCache.setAttributes(list, {
+        role: 'list',
+        'aria-label': I18n.t('sessions.listAria'),
+      });
+
+      let lastBucket = null;
+      let first = true;
+      sessions.forEach((session) => {
+        const bucket = this._bucketOf(session.updated_at);
+        if (bucket !== lastBucket) {
+          const heading = DOMCache.createElement('h4', 'history-group');
+          if (first) heading.classList.add('is-first');
+          heading.textContent = I18n.t(`sessions.${bucket}`);
+          list.appendChild(heading);
+          lastBucket = bucket;
+          first = false;
+        }
+        const row = this._buildRow(session);
+        row.setAttribute('role', 'listitem');
+        list.appendChild(row);
+      });
+      fragment.appendChild(list);
+
+      if (cursor) {
+        const more = DOMCache.createElement('button', 'history-more');
+        DOMCache.setAttributes(more, { type: 'button', 'data-history-action': 'more' });
+        if (loadingMore) more.setAttribute('disabled', 'disabled');
+        more.textContent = loadingMore
+          ? I18n.t('sessions.loading')
+          : I18n.t('sessions.loadMore');
+        fragment.appendChild(more);
+      }
+
+      return fragment;
+    },
+
+    /**
+     * Write the state into both panels.
+     *
+     * Scroll position is carried across the repaint. A rename or a delete
+     * rebuilds the whole list, and without this the reader who was forty rows
+     * down would be thrown back to the top by the edit they just made.
+     */
+    _paint() {
+      const panels = this.panels();
+      if (!panels.length) return;
+
+      panels.forEach((panel, index) => {
+        const scroll = panel.scrollTop;
+        panel.innerHTML = '';
+        const content = this._buildContent();
+        // The fragment is consumed by the first append, so the second panel
+        // gets a clone. Same shape UI.Faq already uses.
+        panel.appendChild(index === 0 ? content : content.cloneNode(true));
+        panel.scrollTop = scroll;
+      });
+
+      /* Focus follows the rename input, and only when it has just appeared.
+         Re-focusing on every paint would steal the caret back from a reader
+         mid-word every time an unrelated part of the state changed. */
+      const pending = this._state.pending;
+      if (pending?.mode === 'rename' && !pending.focused) {
+        pending.focused = true;
+        /* The VISIBLE copy. Both panels hold an input with this attribute and
+           one of them is inside a hidden offcanvas; focusing that one moves the
+           caret somewhere the reader cannot see it. `offsetParent` is null for
+           a display:none subtree, which is exactly the test wanted here. */
+        const inputs = [...document.querySelectorAll(`[data-rename-input="${pending.id}"]`)];
+        const visible = inputs.find(el => el.offsetParent !== null) || inputs[0];
+        visible?.focus();
+        visible?.select();
+      }
+    },
+  },
 };

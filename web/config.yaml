@@ -98,6 +98,15 @@ server:
     # because it is a cheap indexed read that draws the screen, and being
     # refused it leaves a reader looking at an empty conversation.
     history_api: "30 per minute"
+    # The sidebar: list, select, rename, delete. One explicit limit for all four
+    # rather than four, because they are one interaction — selecting a
+    # conversation costs a select AND a transcript read, and a reader browsing
+    # their history clicks through several in a row. Higher than history_api for
+    # that reason: these are indexed reads against one owner's rows, and the two
+    # writes are single-row updates. Like history_api this REPLACES the per_day /
+    # per_hour / per_minute defaults, so ordinary navigation cannot spend the
+    # 200/day budget an office behind one NAT shares with chat itself.
+    sessions_api: "60 per minute"
     # Password recovery. Low on purpose: the endpoint is unauthenticated and
     # every accepted call sends mail, and GoTrue's own project-wide ceiling is
     # 30/hour — a caller must not be able to exhaust that in one minute.

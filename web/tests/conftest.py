@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+from datetime import datetime, timezone
 from threading import Thread
 
 import pytest
@@ -378,6 +379,52 @@ def route_chat_history(page, body):
     """
     page.route(
         "**/api/chat/history",
+        lambda route: route.fulfill(
+            status=200, content_type="application/json", body=body
+        ),
+    )
+
+
+def stored_session(session_id, title, *, updated_at=None, message_count=2):
+    """One row of `GET /api/chat/sessions`.
+
+    `updated_at` defaults to NOW rather than to a fixed date, and that is not
+    laziness: the sidebar groups by calendar day, so a hardcoded 2026 timestamp
+    would land every fixture under "Older" and a test asserting on the "Today"
+    heading would pass or fail depending on when it was run. A test that wants a
+    specific bucket passes an explicit offset.
+    """
+    when = updated_at or datetime.now(timezone.utc).isoformat()
+    return {
+        "id": session_id,
+        "title": title,
+        "created_at": when,
+        "updated_at": when,
+        "message_count": message_count,
+    }
+
+
+def chat_sessions(sessions=(), *, next_cursor=None, active=None):
+    """A `GET /api/chat/sessions` body.
+
+    Empty by default, which matters for every test that is NOT about the
+    sidebar: the tab defaults to Chats when the list comes back with rows and to
+    Explore when it does not, so an empty list is what keeps the FAQ rail
+    visible for the suite that clicks it. The live test server produces the same
+    empty list from its in-memory backend, so an unrouted test agrees with a
+    routed one.
+    """
+    return json.dumps({
+        "sessions": list(sessions),
+        "next_cursor": next_cursor,
+        "active": active,
+    })
+
+
+def route_chat_sessions(page, body):
+    """Point the conversation list at a canned body. Same override rule as above."""
+    page.route(
+        "**/api/chat/sessions",
         lambda route: route.fulfill(
             status=200, content_type="application/json", body=body
         ),

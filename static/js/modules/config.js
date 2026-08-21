@@ -42,6 +42,16 @@ export const CONFIG = {
     SUGGESTED_ICON: 'suggested-question-icon',
     FAQ_BUTTON: 'faq-button',
     NEW_CHAT_BTN: 'new-chat-btn',
+    /* The conversation sidebar. Class hooks rather than ids for everything the
+       list draws, because the sidebar macro renders twice — once as the desktop
+       aside, once inside the offcanvas — so an id here would name one of two
+       identical controls and the other would silently do nothing. The rows are
+       identified by `data-session-id`, which is stable across both copies. */
+    SIDEBAR_TAB: 'sidebar-tab',
+    HISTORY_ITEM: 'history-item',
+    HISTORY_OPEN: 'history-open',
+    HISTORY_ACTION: 'history-action',
+    HISTORY_ACTIVE: 'is-active',
     IS_CLEARING: 'is-clearing',
     IS_ACTIVATING: 'is-activating',
     IS_ARRIVING: 'is-arriving',
@@ -59,6 +69,8 @@ export const CONFIG = {
     AUTH_VIEW: '#authenticated-view',
     FAQ_SIDEBAR: '#faq-sidebar-section',
     FAQ_OFFCANVAS: '#faq-offcanvas-section',
+    HISTORY_SIDEBAR: '#history-sidebar-section',
+    HISTORY_OFFCANVAS: '#history-offcanvas-section',
     MESSAGES: '#messages',
     TOAST: '#toast',
     LOGIN_FORM: '#login-form',

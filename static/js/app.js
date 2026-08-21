@@ -137,6 +137,13 @@ const App = {
       // landing view would be addressing nobody, and would still be on screen
       // for whoever signs in next.
       UI.hideHistoryNotice();
+      /* And the sidebar with it. These rows are one reader's own opening
+         questions; the app lives at "/" and nothing reloads on the way out, so
+         leaving them drawn behind the landing view is the same hazard the
+         transcript is cleared here to avoid. */
+      AppState.set('sidebarOwner', null);
+      AppState.set('sidebarTabSettled', false);
+      UI.History.clear();
       return;
     }
 
@@ -157,6 +164,20 @@ const App = {
     UI.showHistoryNotice(identity);
 
     this.hydrateTranscript(identity);
+
+    /* The sidebar loads alongside the transcript, not after it. They are two
+       reads of the same history — the conversation and the index of it — and
+       sequencing them would make the column sit empty for the length of a
+       transcript fetch it does not depend on.
+
+       `sidebarOwner` is set BEFORE the dispatch and checked when it lands, the
+       same identity guard `hydrateTranscript` applies: a sign-out and a second
+       sign-in can both happen while a list is in flight, and painting reader
+       A's conversation titles into reader B's column is an account leak. */
+    AppState.set('sidebarOwner', identity);
+    AppState.set('sidebarTabSettled', false);
+    Handlers.loadSessions(identity)
+      .catch(error => logError(error, 'settleTranscript.loadSessions'));
   },
 
   /**

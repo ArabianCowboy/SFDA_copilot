@@ -148,15 +148,40 @@ def test_the_history_notice_ships_in_english(client):
     assert "Do not enter patient identifiers" in chat["historyNoticeWarning"]
 
 
-def test_the_notice_promises_no_delete_control_in_either_language(client):
-    """Session delete arrives with step 8's sidebar. Until then the copy must
-    not offer it — in either catalogue, since a translation is exactly where an
-    extra helpful-sounding clause gets added without the English being touched.
+def test_the_notice_names_the_delete_control_in_either_language(client):
+    """THIS TEST WAS INVERTED IN STEP 8, deliberately, and the inversion is the
+    record of a promise being kept rather than a check being weakened.
+
+    It used to assert the opposite — that the notice offered NO way to delete a
+    conversation — because the RLS `DELETE` grant existed and nothing called it.
+    A draft that said "start a new chat, or delete a conversation, to clear one"
+    would have made the disclosure the product's newest false claim, so the
+    sentence was forbidden until a control could honour it.
+
+    `DELETE /api/chat/sessions/<id>` is that control, reached from each row's
+    own button in the sidebar. So the claim flips with it: the notice must now
+    NAME the way to delete, in both catalogues, because a disclosure that omits
+    the one control a reader would look for is misleading by omission in exactly
+    the way the original version was misleading by invention.
+
+    Still checked in BOTH languages, for the original reason: a translation is
+    where a clause drifts without the English being touched — in either
+    direction.
     """
-    for url in ("/", "/?lang=ar"):
-        notice = _runtime_catalogue(page(client, url))["chat"]["historyNotice"]
-        assert "delete a conversation" not in notice
-        assert "حذف محادثة" not in notice  # "delete a conversation"
+    english = _runtime_catalogue(page(client, "/"))["chat"]["historyNotice"]
+    assert "delete a conversation" in english
+    assert "sidebar" in english
+
+    arabic = _runtime_catalogue(page(client, "/?lang=ar"))["chat"]["historyNotice"]
+    # "delete the conversation" / "the sidebar" — the control and where it is.
+    assert "احذف المحادثة" in arabic
+    assert "الشريط الجانبي" in arabic
+
+    # And what it still does NOT claim. Deleting removes the reader's own rows;
+    # it does not reach backups or PITR, and the notice must not imply it does.
+    for notice in (english, arabic):
+        assert "permanently" not in notice.lower()
+        assert "نهائي" not in notice
 
 
 def test_theme_toggle_count_is_stable_across_languages(client):

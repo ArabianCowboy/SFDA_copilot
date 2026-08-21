@@ -826,7 +826,69 @@ described an increment its own table did not schedule; this is the correction.
 | 5 | Citation persistence (all retrieved, `cited`) + `corpus_revision` **rendering** gate | `test_citations.py` + sparse-index, NaN, stale-build tests; `ASSET_VERSION` bump | **done 2026-08-20** — with the gate's *rendering* rule reversed; see below |
 | 6 | Hydration replaces `sessionStorage`; eviction neutralises its own markers | `-m browser`, `test_source_panel.py`; `ASSET_VERSION` bump | **done 2026-08-20** — `GET /api/chat/history`; `Transcript.save/restore` and `neutraliseRestoredCitations` deleted; `chat_resume_latest_session` on |
 | 7 | ~~Notice screen + acceptance/withdrawal routes; `profiles` consent columns; purge CLI; export RPC; frequency RPC~~ **Shipped 2026-08-21 as a notice ONLY**, plus the archive revoke and a disclosure guard. Everything else cut — see the revision note under §7 | `-m browser`, `test_rtl.py`, `test_css_contract.py`; both catalogues; `ASSET_VERSION` bump | **done 2026-08-21**, deliberately narrowed |
-| 8 | Phase 2 sidebar, titling, rename, delete; `chat_list_sessions` | `-m browser`, `test_css_contract.py`, `test_rtl.py`; `ASSET_VERSION` bump | open |
+| 8 | Phase 2 sidebar, titling, rename, delete; `chat_list_sessions` | `-m browser`, `test_css_contract.py`, `test_rtl.py`; `ASSET_VERSION` bump | **done 2026-08-21** — with the browser-direct delete reversed and an in-flight refusal added; see below |
+
+**Step 8 shipped 2026-08-21, and two written positions were reversed.**
+
+- **The browser never touches these tables after all.** §9 said step 8 "is the
+  first feature to call `chat_sessions_delete_own` from a browser with no Flask
+  route in between", and §8 deleted `chat_delete_session` on the argument that an
+  RPC would be "a second, privileged path" to what RLS already permits. Both
+  fell to facts already in the tree. First, `revoke all on public.chat_sessions
+  from service_role` leaves Flask holding SELECT and nothing else, so the choice
+  was never "browser-direct or an RPC" — it was "browser-direct or nothing".
+  Second, and decisively, a browser-direct delete cannot finish the job: it
+  cannot clear `conv_id`, `prev_conv_id` or the `ConversationStore` window, and
+  `chat_append_turn`'s `insert … on conflict (id) do nothing` then lazily
+  RECREATES the deleted session on the reader's next question. So all four
+  operations are Flask routes over three new `security definer` RPCs
+  (`20260821145319_chat_navigation_rpcs.sql`), and RLS goes back to being
+  defence in depth rather than the coordinator of a workflow spanning a cookie,
+  a process-local cache and three tables.
+- **Titling is part of the append, not a call after it.**
+  `20260821145416_chat_first_turn_title.sql` drops and recreates
+  `chat_append_turn` with a fourteenth argument, `p_title`, applied as
+  `title = coalesce(title, …)` in the same statement that claims the sequence
+  numbers, under the row lock already held. A separate PATCH would have raced the
+  session lifecycle three ways: it can fail on its own and strand an untitled
+  conversation, it can land on a row the reader renamed or deleted in between,
+  and two first turns from two tabs would both see `title is null`. `create or
+  replace` was not usable — a changed signature makes a second function, and
+  PostgREST would then find a 13-argument call ambiguous and stop persisting
+  every turn on a deployment where the migration "succeeded".
+
+**A race the plan did not have**, found by an adversarial pass and closed
+server-side rather than only in the UI. Both chat routes close over
+`conversation_id` and write at `final`; the sidebar's delete is a separate
+request. Delete a conversation mid-stream and the late append meets
+`on conflict (id) do nothing`, finds no row, and creates one — carrying the
+answer the reader discarded. `_InFlightGenerations` (`web/api/app.py`) holds a
+counted claim on `(owner, conversation)` for the whole generation window and the
+select/delete routes answer 409 `generation_in_flight` against it; the client
+refuses the controls too, so the affordance and the guarantee are separate
+things. Correct because this app is single-worker by documented contract
+(`conversation_store.py:15-21`); if that ever changes the replacement is a
+tombstone table, not a bigger dict. Pinned by
+`test_a_conversation_being_written_to_cannot_be_deleted`, verified to fail
+without the guard.
+
+**One limit is disclosed rather than fixed.** `conv_id` is a per-BROWSER cookie,
+so selecting a conversation in one tab changes it in every tab of the profile.
+That was already true before this step — two tabs have always shared one
+conversation — but the sidebar makes it easy to trip. The fix is a tab-scoped
+pointer sent on every chat request, which is a change to the chat routes'
+contract and not to the sidebar; it is recorded in `TODO.md`, not smuggled in
+here. Deep-linking (§10.3) is the same change and would land with it.
+
+**Also decided:** no virtualisation (a bounded 30-row page and a cursor;
+virtualising a list of short titles inside an offcanvas that already scrolls
+adds focus, ARIA and scroll-chaining failures to save a cost that does not
+exist); no `Intl.RelativeTimeFormat` (Arabic has six plural forms where
+`I18n.plural` knows two, `Intl` emits bidi control marks that reorder in an RTL
+column, and the language toggle reloads the page, so a cached relative string is
+stale by construction — five catalogue-owned day buckets instead); and rename
+deliberately does not touch `updated_at`, so naming a three-month-old
+conversation does not lift it to the top of Today.
 
 **Three things moved out of step 1 during implementation, on the migration README's own
 rule 1 — one concern per migration — and on §2.4's objection to untested surface.**
@@ -844,6 +906,20 @@ rule 1 — one concern per migration — and on §2.4's objection to untested su
 What step 1 does ship: three reader tables, the archive, all policies and grants, and the
 three RPCs steps 3-6 actually call — `chat_append_turn`, `chat_load_session`,
 `chat_latest_session`.
+
+**Step 8's two migrations are applied — 2026-08-21.**
+`20260821145319_chat_navigation_rpcs` (list, rename, delete) and
+`20260821145416_chat_first_turn_title` (the 14-argument `chat_append_turn`), in that order,
+with both filenames matching what `list_migrations` reports. Schema went first because the
+reverse order breaks silently: the new backend always sends `p_title`, and against the old
+13-argument function PostgREST finds no match and every turn reports unsaved. It is safe in
+the other direction too, verified before applying rather than assumed — a 13-argument named
+call resolves through `p_title`'s default, so the then-deployed code kept working with
+titles staying null. All four chat tables held **0 rows** at apply time, so there was no
+backfill and no legacy untitled population to inherit. Round-tripped in aborted transactions
+(0 orphan messages and 0 orphan sources after an owner delete; row counts confirm nothing
+committed), and the advisors returned no new findings — these migrations add no table and no
+index, so a clean run was expected rather than lucky.
 
 Every step touching JS or CSS bumps `ASSET_VERSION` and names both catalogues —
 `test_frontend_architecture.py:134` asserts the Arabic catalogue covers every runtime key,
@@ -941,6 +1017,13 @@ garnish, regenerated on demand); `chunk_sha256` resolution; a transcript console
 
   The paragraph this replaces said the policies were "reviewed code, not verified code". They
   are now verified code.
+
+  **Superseded in part by step 8.** The last sentence above expected step 8 to be the first
+  feature to call `chat_sessions_delete_own` from a browser. It is not: every sidebar
+  operation goes through Flask, for reasons the step-8 note under §8 sets out — the decisive
+  one being that a browser-direct delete cannot clear the cookie or the RAM window, so
+  `chat_append_turn` recreates the session it deleted. The "untested plumbing" observation
+  therefore still stands and is still untested, because nothing exercises it.
 - **Reader-RLS reads need a browser mock.** `SUPABASE_BROWSER_MOCK` (`conftest.py:13-80`)
   implements `auth` and `profiles` only. If the browser ever reads chat tables directly it
   needs a new `from()` chain; Flask-mediated reads need nothing, since browser tests already
@@ -969,19 +1052,28 @@ What is left is scope and copy, none of it blocking:
    question is the client error it is rather than a 500 raised inside a `security definer`
    function.
 3. **Deep-linking** (`/c/<id>`) — interacts with the language toggle and with §6's test shape.
-   Phase 2 at the earliest. **The `ConversationStore` owner re-key was done partly for this**:
-   deep-linking is the first thing that would let a conversation id arrive from somewhere
-   other than the cookie that minted it.
+   ~~Phase 2 at the earliest.~~ **Not built in step 8, and now bundled with the multi-tab
+   fix**, which is the same change: both need a conversation id that travels with the
+   request rather than with the browser. Step 8's `POST /api/chat/sessions/<id>/select`
+   moves the cookie instead, so `_resolve_conversation_id` stays the single place the
+   current-session rule lives and `/api/chat/history` still takes no session id. **The
+   `ConversationStore` owner re-key was done partly for this**: deep-linking is the first
+   thing that would let a conversation id arrive from somewhere other than the cookie that
+   minted it.
 4. **Notice copy** — needs a native-Arabic review pass before step 7. A review task, not an
    engineering one, and it does not gate steps 1-6. `chat.notSaved` shipped in both
    catalogues in step 4 and wants the same pass.
-5. **New, surfaced by implementation: "New chat" no longer destroys anything.** Reset drops
-   the cookie pointer and the RAM window; the rows survive and will appear in Phase 2's
-   sidebar. That is the right behaviour and matches what readers expect elsewhere — but it
-   makes the *undo* affordance close to vestigial, since the conversation is recoverable from
-   the sidebar rather than only from a set-aside pointer, and `forget` no longer forgets
-   anything durable. Either the copy changes in step 8 or `forget` grows a real delete.
-   Pinned meanwhile by `test_a_reset_does_not_delete_the_conversation_behind_it`.
+5. ~~**New, surfaced by implementation: "New chat" no longer destroys anything.**~~
+   **Resolved in step 8: the copy changed and `forget` did not grow a delete.** Reset still
+   drops only the cookie pointer and the RAM window, the rows still survive, and they now
+   genuinely appear in the sidebar — so the notice says so (`chat.historyNotice` names the
+   sidebar's delete, and `test_the_notice_names_the_delete_control_in_either_language`
+   inverted to pin it). Undo was **kept and scoped**, not removed: it still restores the
+   immediate New chat, but a sidebar selection, rename or delete ends it, client-side and
+   server-side, so a stale Undo can never restore an invisible conversation over the one on
+   screen or a conversation the reader has since deleted. Making `forget` destructive was
+   rejected — the sidebar's own delete is the honest place for that, and a second delete
+   path reachable from a toast is not.
 
 ---
 
