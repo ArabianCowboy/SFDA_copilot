@@ -14,8 +14,10 @@ import numpy as np
 import pytest
 
 from web.services.citations import (
+    CitationDiagnostics,
     build_source_payload,
     extract_cited_indices,
+    extract_citation_diagnostics,
     normalize_legacy_citations,
     strip_citation_markers,
 )
@@ -248,6 +250,49 @@ def test_markers_survive_adjacent_punctuation(sources):
 def test_empty_inputs_cite_nothing(sources):
     assert extract_cited_indices("", sources) == []
     assert extract_cited_indices("Text [1].", []) == []
+
+
+# ── CitationDiagnostics — the split extract_cited_indices used to discard ──
+#
+# extract_cited_indices already computed cited/invalid/total internally and
+# threw away everything but cited (invalid only ever reached a log line).
+# extract_citation_diagnostics is that same single parsing pass, returning the
+# full breakdown a hallucination-rate metric needs. extract_cited_indices is
+# now a thin wrapper over it — these tests pin the wrapper relationship as
+# well as the new function's own shape.
+
+def test_diagnostics_reports_invalid_markers_separately_from_cited(sources):
+    diagnostics = extract_citation_diagnostics("Real [1] and invented [7].", sources)
+    assert diagnostics.cited == [1]
+    assert diagnostics.invalid == [7]
+    assert diagnostics.total_markers == 2
+
+
+def test_diagnostics_counts_every_marker_including_duplicates(sources):
+    """total_markers is the denominator for a rate, so duplicates must count."""
+    diagnostics = extract_citation_diagnostics("A [9]. B [9]. C [1].", sources)
+    assert diagnostics.cited == [1]
+    assert diagnostics.invalid == [9, 9]
+    assert diagnostics.total_markers == 3
+
+
+def test_diagnostics_on_a_clean_answer_has_no_invalid_markers(sources):
+    diagnostics = extract_citation_diagnostics("A [2]. B [1]. C [2] again.", sources)
+    assert diagnostics.cited == [1, 2]
+    assert diagnostics.invalid == []
+    assert diagnostics.total_markers == 3
+
+
+def test_diagnostics_on_empty_input_is_all_zero():
+    assert extract_citation_diagnostics("", []) == CitationDiagnostics(
+        cited=[], invalid=[], total_markers=0
+    )
+
+
+def test_extract_cited_indices_matches_diagnostics_cited(sources):
+    """The wrapper's contract: identical to .cited, nothing more."""
+    text = "Real [1] and invented [7]."
+    assert extract_cited_indices(text, sources) == extract_citation_diagnostics(text, sources).cited
 
 
 # ── Where a [n] is not a citation ───────────────────────────────────────────

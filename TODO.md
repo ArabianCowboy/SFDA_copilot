@@ -9,6 +9,25 @@ person can judge the cost rather than rediscover it.
 started. Both are written the same way and for the same reason: an entry that
 says only what it wants is a wish, and the useful half is the cost.
 
+Most entries below are `~~struck~~ — FIXED/RESOLVED` and kept for the reasoning
+trail, not because they're still open. The list below is what actually still
+needs doing.
+
+---
+
+## Open now
+
+- [Leaked-password protection is disabled in Supabase Auth](#leaked-password-protection-is-disabled-in-supabase-auth) — blocked on a Pro-plan upgrade, not code.
+- [The active conversation is per-browser, not per-tab](#the-active-conversation-is-per-browser-not-per-tab--and-the-sidebar-makes-it-easy-to-trip) — same fix as `/c/<id>` deep-linking; not yet started.
+- [Answer from a second provider](#answer-from-a-second-provider--and-why-the-code-is-the-easy-half) — the citation-fidelity harness is built (2026-08-22); still blocked on running it for real against the API.
+- [OpenRouter as one integration instead of several](#openrouter-as-one-integration-instead-of-several) — alternative to the entry above; same harness, same not-yet-run status.
+- [Refactor the profile page](#refactor-the-profile-page) — two live bugs fixed 2026-08-17; identity-field restructuring, signup capture, and modal-vs-page are still open.
+- [Give readers a quota, and limits worth having](#give-readers-a-quota-and-limits-worth-having) — rate limiting is IP-keyed, not reader-keyed; not started.
+- [The browser suite flakes intermittently in test_source_panel.py](#the-browser-suite-flakes-intermittently-in-test_source_panelpy) — undiagnosed; resource-contention evidence only.
+- [Know what people actually ask](#know-what-people-actually-ask--without-reading-anyones-conversation) — an identity-free question log; not started, gated on scale.
+- [Every authenticated request pays a network round trip to verify its token](#every-authenticated-request-pays-a-network-round-trip-to-verify-its-token) — deliberately not done quietly; needs a stated revocation-window trade-off.
+- [Admin broadcast & Reader Notification Center](#admin-broadcast--reader-notification-center-popups-banners-and-inbox-history) — full feature, not started.
+
 ---
 
 ## Known bugs
@@ -283,7 +302,7 @@ unnecessary by it.
 
 ---
 
-### The console cannot change an email address, and deliberately cannot set a password
+### ~~The console cannot change an email address, and deliberately cannot set a password~~ — FIXED 2026-08-17
 
 **Where:** `admin_set_user_flags` reaches `role` and `is_disabled` only. Both
 `auth.users.email` and the credential live in Supabase Auth, not in
@@ -878,6 +897,72 @@ marker points at a passage that does not support the sentence; and whether a
 refusal stays clean. Without that, switching providers is a change to the
 product's central claim made on the basis of price.
 
+**Update 2026-08-22 — the harness exists now; the gate has not been run for
+real yet.** Built from an implementation plan that two independent read-only
+adversarial reviews (OpenCode, `gpt-5.6-terra` and `gpt-5.6-luna`, no repo
+edits) debated before a line of code was written — both found and the plan
+was corrected for real defects in the first draft: a `base_url` constructor
+snippet that would have raised on every ordinary call (`settings` was
+normalized *after* the client was built, not before), an Arabic HHEM-scoring
+assumption with no evidence behind it, arbitrary gate thresholds with no
+sample-size reasoning, and a redundant addendum this file did not need. The
+same "debate the plan before building it" pattern this file already records
+for the `chat_load_session` fix above.
+
+What shipped: `web/services/citations.py` gained `CitationDiagnostics` /
+`extract_citation_diagnostics` — the invalid-marker count
+`extract_cited_indices` always computed internally but only ever logged
+(`citations.py:345-352`) is now a returnable, aggregable number, with
+`extract_cited_indices` itself unchanged as a thin wrapper over it.
+`web/services/citation_eval_metrics.py` is Layer 1 (citation *format*, not
+fidelity — coverage, hallucination rate, refusal cleanliness scoped to
+labelled probes, cross-turn leakage) with a gate that combines an absolute
+floor with a minimum-sample-size guard, specifically so a ten-probe smoke
+run cannot masquerade as evidence for a two-percentage-point claim, and a
+`baseline_fails_floor` state so an already-broken baseline can never
+legitimize an equally broken challenger. `web/services/citation_fidelity.py`
+is Layer 2 — Vectara HHEM, **English only** (the open checkpoint's model
+card documents English; Arabic cross-lingual support is a claimed advantage
+of the commercial HHEM-2.3, not this one), never imported from the request
+path. `scripts/eval_citations.py` is the driver, mirroring
+`eval_retrieval.py`'s load → run → report shape (single-pass, no cache — an
+earlier description of this as a "cache once, evaluate cheaply" split was
+wrong; `eval_retrieval.py` doesn't do that either). `web/tests/data/
+citation_eval.yaml` is the probe set — `pair_id`-linked EN/AR pairs, a
+`refusal` group with ground-truth `expected_refusal` tags, fixed (not
+runtime-generated) cross-turn and legacy-format history so every candidate
+model sees identical injected history, and `multi_source`/`numeric_claims`/
+`conflicting_guidance`/`adversarial` groups that feed the Layer-3 pilot
+rather than an automated gate. `citation_eval_candidates.yaml` lists
+DeepSeek/NVIDIA/OpenRouter candidates, deliberately kept out of
+`config.yaml`'s real `allowed_models` until a model actually clears the
+gate. `OpenAIHandler.__init__` gained an inert `base_url` / `api_key_env` /
+`model_contract` override — `base_url` defaults to `None`, `api_key_env`
+defaults to `OPENAI_API_KEY`, and nothing in `config.yaml` or
+`settings_service.py`'s `GENERATION_KEYS` can reach any of the three, so
+every existing production call is byte-for-byte unchanged; covered by a
+dedicated constructor-equivalence test
+(`web/tests/test_openai_handler_provider_config.py`).
+`docs/citation-eval-judge-protocol.md` is Layer 3's adjudication rubric —
+scoped to a small pilot of the curated `judge: true` subset first, not the
+100–300-probe scale the first draft of this plan assumed before anyone had
+timed how long adjudication actually takes.
+
+73 new tests (68 across four new files, 5 added to `test_citations.py`),
+every one of them offline — stub NLI scorers, mocked handlers and search
+engines, no real HHEM download and no real OpenAI call anywhere in CI —
+plus the existing 626-test non-browser/non-integration suite still green
+against these changes.
+
+**What this does NOT do yet.** Nobody has run `scripts/eval_citations.py`
+against the real API — there is no baseline number, and neither this entry
+nor the OpenRouter one below is unblocked by this update. That run costs
+real money, same posture as `smoke_real.py` ("run it by hand"), and is
+deliberately not something to trigger without asking first. Running it,
+reading the gate report, and — only if it passes — migrating a candidate
+from `citation_eval_candidates.yaml` into `config.yaml`'s real
+`allowed_models` is the remaining work.
+
 Two smaller consequences: `tiktoken` does not apply to a non-OpenAI model, so
 `tokenizer_exact` is permanently False and logged token counts stop meaning
 much; and cost metadata becomes per-provider rather than per-model.
@@ -901,6 +986,10 @@ others arrive together, including a free tier. Optional `HTTP-Referer` and
 `X-Title` headers attribute usage. Compared with wiring each provider
 separately, this is one `base_url`, one secret, and an allowlist that can grow
 without code.
+
+**Update 2026-08-22.** The harness this entry and the one above share as a
+prerequisite now exists — see the update in "Answer from a second provider"
+above for what shipped. Not yet run for real, so this entry stays open too.
 
 **What it would disturb.** Everything in the entry above still applies — the
 citation-fidelity question is about the *model*, and routing through OpenRouter
@@ -1252,7 +1341,7 @@ answers, which on a regulatory surface is the more expensive mistake.
 
 ---
 
-### Account detail view — the home for everything done to one account — MOSTLY BUILT 2026-08-16
+### ~~Account detail view — the home for everything done to one account~~ — BUILT 2026-08-17
 
 **Decided 2026-08-14:** this is where per-account management lives. Email
 changes, password recovery, role, chat access and session revocation all land

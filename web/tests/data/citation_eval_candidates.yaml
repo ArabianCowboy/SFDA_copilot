@@ -1,0 +1,78 @@
+# Candidate providers for the citation-fidelity harness (scripts/eval_citations.py).
+#
+# Deliberately NOT web/config.yaml: this is a list of models being EVALUATED,
+# not models an operator may select in the console. A model migrates into
+# config.yaml's real `openai.allowed_models` only after it clears the gate in
+# citation_eval_metrics.compare_to_baseline — a small, human, reviewed change,
+# exactly like adding any other model there today.
+#
+# Shape is a superset of config.yaml's allowed_models entries (same
+# token_param / supports_temperature / reasoning_efforts / max_output_tokens
+# fields — see web/services/settings_service.py's model_spec()) plus three
+# fields that schema doesn't have, because a harness candidate isn't
+# necessarily OpenAI:
+#
+#   provider      a label for reporting only — not read by OpenAIHandler.
+#   base_url      passed straight into OpenAIHandler's `settings["base_url"]`.
+#   api_key_env   the environment variable OpenAIHandler reads the API key
+#                 from — see `settings["api_key_env"]` in openai_app.py.
+#
+# eval_citations.py builds each candidate's OpenAIHandler with
+# settings["model_contract"] set to this entry's own contract fields, so
+# _request_kwargs uses THIS declared shape instead of falling through to
+# config.yaml's allowlist lookup (which has never heard of these ids) — see
+# OpenAIHandler._request_kwargs's docstring for why that fallback would
+# otherwise be silently wrong.
+#
+# ⚠ Before running the harness against any of these: read the data-handling
+# posture in TODO.md's "OpenRouter as one integration instead of several"
+# entry (undisclosed downstream routing) — the harness sends real retrieved
+# SFDA regulatory passages and it matters who actually serves the request,
+# not just which model id was requested. That's a gate PRECONDITION, not a
+# metric this file or the harness measures.
+
+- id: deepseek-v4-flash
+  label: DeepSeek V4 Flash
+  provider: deepseek
+  base_url: https://api.deepseek.com
+  api_key_env: DEEPSEEK_API_KEY
+  # VERIFY against DeepSeek's current API docs before a real run — these are
+  # transcribed from the provider's published contract, not independently
+  # load-tested against this harness the way config.yaml's own entries were.
+  max_output_tokens: 8192
+  token_param: max_tokens
+  supports_temperature: true
+
+- id: nvidia/nemotron-3.5-lightning-30b-a3b
+  label: NVIDIA Nemotron 3.5 Lightning
+  provider: nvidia
+  base_url: https://integrate.api.nvidia.com/v1
+  api_key_env: NVIDIA_API_KEY
+  # VERIFY before a real run — see the DeepSeek entry's note above.
+  max_output_tokens: 8192
+  token_param: max_tokens
+  supports_temperature: true
+
+# OpenRouter entries use OpenRouter's own model-id namespace
+# (`provider/model[:free]`), routed through one endpoint/key regardless of
+# which of the two candidates above are also configured directly — kept here
+# rather than assumed identical to the direct-provider entries, since
+# OpenRouter's own routing can differ from calling the provider directly (see
+# the TODO.md note referenced above).
+- id: deepseek/deepseek-v4-flash
+  label: DeepSeek V4 Flash (via OpenRouter)
+  provider: openrouter
+  base_url: https://openrouter.ai/api/v1
+  api_key_env: OPENROUTER_API_KEY
+  max_output_tokens: 8192
+  token_param: max_tokens
+  supports_temperature: true
+
+- id: "nvidia/nemotron-3.5-lightning:free"
+  label: NVIDIA Nemotron 3.5 Lightning (via OpenRouter, free tier)
+  provider: openrouter
+  base_url: https://openrouter.ai/api/v1
+  api_key_env: OPENROUTER_API_KEY
+  max_output_tokens: 8192
+  token_param: max_tokens
+  supports_temperature: true

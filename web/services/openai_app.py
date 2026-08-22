@@ -171,16 +171,50 @@ class OpenAIHandler:
         ``handler.model = x`` leaves the two disagreeing with nothing to say so.
         A handler is either wholly old or wholly new, and each request captures
         one reference at the top of the view and keeps it for its lifetime.
+
+        ``settings["base_url"]``, ``settings["api_key_env"]`` and
+        ``settings["model_contract"]`` exist ONLY for the citation-fidelity
+        harness (``scripts/eval_citations.py``) to call a non-OpenAI provider
+        through this same, real prompt-assembly path rather than a
+        reimplementation that risks drifting from what production actually
+        sends. No production caller sets any of the three — ``config.yaml``'s
+        ``allowed_models`` has no such fields and ``settings_service.py``'s
+        ``GENERATION_KEYS`` does not accept them from the console — so for
+        every existing caller this constructor behaves exactly as it did
+        before these three were added.
         """
-        api_key = os.getenv("OPENAI_API_KEY")
+        # Settings normalized BEFORE anything below reads from it — including
+        # the client construction two lines down. An earlier draft of this
+        # constructor built the client first and normalized `settings` after,
+        # which meant a `base_url` read here would call `.get()` on `None`
+        # whenever `OpenAIHandler()` is invoked with no settings argument —
+        # i.e. every normal production construction (`app.py`'s
+        # `OpenAIHandler()` at startup, `scripts/smoke_real.py`). An
+        # adversarial review of this change caught it before it shipped.
+        settings = settings or {}
+
+        # `api_key_env` lets the harness point this handler at a
+        # provider-specific key (e.g. `DEEPSEEK_API_KEY`) without touching
+        # `OPENAI_API_KEY`. Absent — the only case any production caller
+        # exercises — resolves to today's exact env var.
+        api_key_env = settings.get("api_key_env") or "OPENAI_API_KEY"
+        api_key = os.getenv(api_key_env)
         if not api_key:
-            logger.error("OPENAI_API_KEY environment variable not set.")
-            raise ValueError("OPENAI_API_KEY environment variable not set.")
+            logger.error("%s environment variable not set.", api_key_env)
+            raise ValueError(f"{api_key_env} environment variable not set.")
 
         logger.info("Initializing OpenAI client with key starting: %s...", api_key[:5])
-        self.client = OpenAI(api_key=api_key)
+        # `base_url=None` is the OpenAI SDK's own default (its public
+        # endpoint), so an absent override is indistinguishable from today's
+        # behavior at the request level, not just at the settings level.
+        self.client = OpenAI(api_key=api_key, base_url=settings.get("base_url"))
 
-        settings = settings or {}
+        # The harness-only override for _request_kwargs's model-parameter
+        # lookup — see that method for what it replaces and why. Kept as a
+        # single attribute set at construction, same as everything else here,
+        # rather than read from `settings` again later: a handler is either
+        # wholly old or wholly new, and this field is part of that contract.
+        self._model_contract_override = settings.get("model_contract")
 
         def setting(key: str, section_default):
             value = settings.get(key)
@@ -265,8 +299,19 @@ class OpenAIHandler:
         400'd on every single request. The contract lives in config.yaml beside
         the model, because that is where someone deciding to allow a model can
         see what allowing it commits them to.
+
+        ``self._model_contract_override``, when set, is used INSTEAD of the
+        ``config.yaml`` lookup below — the harness-only escape hatch a
+        candidate model needs. ``model_spec(self.model)`` only ever reads
+        ``config.yaml``'s ``allowed_models``; a model that lives only in the
+        harness's own candidate list (not yet promoted into that allowlist)
+        would otherwise silently fall through to the conservative default
+        contract instead of the one the harness actually declared for it —
+        wrong for a reasoning model that rejects ``temperature``, for
+        instance. Unset for every production caller, so the lookup below is
+        unchanged for every model actually offered in the console.
         """
-        spec = model_spec(self.model)
+        spec = self._model_contract_override or model_spec(self.model)
 
         kwargs: dict = {
             "model": self.model,

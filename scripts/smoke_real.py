@@ -96,15 +96,25 @@ print("-" * 70)
 
 import re
 # The same function the route uses, rather than a second copy of the marker
-# grammar — two copies in one repo is how the JS and Python sides drift.
-from web.services.citations import CITATION_MARKER, extract_cited_indices
+# grammar — two copies in one repo is how the JS and Python sides drift. This
+# used to re-derive "hallucinated" by findall-ing every [n] a second time and
+# diffing it against extract_cited_indices's output; extract_cited_indices
+# was already computing that split internally and discarding it, so both
+# copies are gone in favor of the one function that classifies markers once.
+from web.services.citations import extract_citation_diagnostics
 
-valid = extract_cited_indices(answer, sources)
-seen = sorted({int(n) for n in CITATION_MARKER.findall(answer)})
-bad = [n for n in seen if n not in valid]
+diagnostics = extract_citation_diagnostics(answer, sources)
+valid = diagnostics.cited
+bad = sorted(set(diagnostics.invalid))
+seen = sorted(set(valid) | set(bad))
+hallucinated_rate = (
+    len(diagnostics.invalid) / diagnostics.total_markers if diagnostics.total_markers else 0.0
+)
 print(f"\nCITATIONS: {seen or 'NONE'}")
 print(f"  valid (these become the answer's sources): {valid}")
 print(f"  hallucinated (left as literal text by the UI): {bad or 'none'}")
+print(f"  hallucinated_marker_rate: {hallucinated_rate:.1%} "
+      f"({len(diagnostics.invalid)}/{diagnostics.total_markers} markers)")
 legacy = len(re.findall(r"\[Source:", answer))
 print(f"  legacy prose citations remaining: {legacy}")
 

@@ -24,6 +24,7 @@ from __future__ import annotations
 import logging
 import math
 import re
+from dataclasses import dataclass
 from typing import Any, Iterable
 
 logger = logging.getLogger(__name__)
@@ -290,6 +291,83 @@ def _strip_uncitable(text: str) -> str:
     return _UNCITABLE.sub(lambda m: " " * len(m.group(0)), text)
 
 
+@dataclass(frozen=True)
+class CitationDiagnostics:
+    """Every ``[n]`` marker in an answer, classified.
+
+    ``extract_cited_indices`` used to compute this same breakdown and then
+    throw away everything but ``cited`` — ``invalid`` was already being
+    counted, just for a single ``logger.info`` line (see below) with no
+    caller able to turn it into a rate. This is that breakdown made
+    returnable, so a citation-fidelity harness can aggregate it instead of
+    scraping log lines.
+
+    Attributes:
+        cited: Indices present in ``sources`` that the text actually cited —
+            identical to what ``extract_cited_indices`` returns.
+        invalid: Indices the text cited that are NOT in ``sources`` —
+            hallucinated or prompt-drifted markers, in encounter order with
+            duplicates kept (so a rate computed over ``total_markers``
+            reflects how often this happens, not just which values occurred).
+        total_markers: Every ``[n]`` matched, valid or not — the denominator
+            for a hallucinated-marker rate.
+    """
+
+    cited: list[int]
+    invalid: list[int]
+    total_markers: int
+
+
+def extract_citation_diagnostics(text: str, sources: list[dict[str, Any]]) -> CitationDiagnostics:
+    """Classify every ``[n]`` marker in *text* against *sources*.
+
+    The single parsing pass behind both this function and
+    ``extract_cited_indices`` — see that function's docstring for the
+    membership-vs-range rule, the refusal-detection rationale, and what this
+    is and is not evidence of. ``extract_cited_indices`` is a thin wrapper
+    around this that returns only ``.cited``, kept for its existing callers
+    and the citation-panel contract; anything that also wants the
+    hallucinated-marker count should call this directly rather than
+    re-deriving it from a second regex pass (as ``scripts/smoke_real.py`` used
+    to).
+
+    Args:
+        text: The answer, AFTER ``normalize_legacy_citations`` — the same
+            string the reader is shown.
+        sources: The source payload, as built by ``build_source_payload``.
+
+    Returns:
+        A ``CitationDiagnostics`` with empty/zero fields when *text* or
+        *sources* is empty.
+    """
+    if not text or not sources:
+        return CitationDiagnostics(cited=[], invalid=[], total_markers=0)
+
+    valid = {source["index"] for source in sources}
+    cited: set[int] = set()
+    invalid: list[int] = []
+    total = 0
+
+    for match in CITATION_MARKER.finditer(_strip_uncitable(text)):
+        index = int(match.group(1))
+        total += 1
+        if index in valid:
+            cited.add(index)
+        else:
+            invalid.append(index)
+
+    if invalid:
+        # Prompt drift and hallucinated citations both surface here. This is
+        # the telemetry behind the decision to keep showing retrieval
+        # candidates when an answer cites nothing.
+        logger.info(
+            "Ignored %d citation marker(s) outside the source set %s: %s",
+            len(invalid), sorted(valid), sorted(set(invalid)),
+        )
+
+    return CitationDiagnostics(cited=sorted(cited), invalid=invalid, total_markers=total)
+
+
 def extract_cited_indices(text: str, sources: list[dict[str, Any]]) -> list[int]:
     """The source indices *text* actually cites, sorted and deduplicated.
 
@@ -328,27 +406,4 @@ def extract_cited_indices(text: str, sources: list[dict[str, Any]]) -> list[int]
     Returns:
         Sorted unique indices, or ``[]`` when nothing valid was cited.
     """
-    if not text or not sources:
-        return []
-
-    valid = {source["index"] for source in sources}
-    cited: set[int] = set()
-    invalid: list[int] = []
-
-    for match in CITATION_MARKER.finditer(_strip_uncitable(text)):
-        index = int(match.group(1))
-        if index in valid:
-            cited.add(index)
-        else:
-            invalid.append(index)
-
-    if invalid:
-        # Prompt drift and hallucinated citations both surface here. This is
-        # the telemetry behind the decision to keep showing retrieval
-        # candidates when an answer cites nothing.
-        logger.info(
-            "Ignored %d citation marker(s) outside the source set %s: %s",
-            len(invalid), sorted(valid), sorted(set(invalid)),
-        )
-
-    return sorted(cited)
+    return extract_citation_diagnostics(text, sources).cited
