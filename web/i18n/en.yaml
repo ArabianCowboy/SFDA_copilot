@@ -32,22 +32,11 @@ runtime:
     askPrefix: "Ask: {question}"
     jumpToLatest: "Jump to latest"
     jumpToLatestAria: "Scroll to the latest message"
+    # "New chat" is a client-side navigation to `/` now (Decision 2 of
+    # docs/per-tab-conversation-deep-linking-plan.md); Back is the undo, so
+    # there is no undo action, no restored/resetFailed/restoreFailed string,
+    # and no resumed-conversation disclosure to catalogue here any more.
     cleared: "Conversation cleared"
-    undo: "Undo"
-    restored: "Conversation restored"
-    resetFailed: "Could not start a new chat. Your conversation is unchanged."
-    # Deliberately NOT resetFailed: by the time an undo can fail, the reset has
-    # already stood, so telling the reader their conversation is unchanged would
-    # be the opposite of what happened.
-    restoreFailed: "Could not restore the previous conversation."
-    # Shown when the conversation on screen was picked up from the reader's
-    # stored history rather than started in this browser — a new device, a
-    # cleared browser, or the first visit after signing out. It is a
-    # disclosure, not a warning: a conversation that reappears with no
-    # explanation is the part of durable history that could read as the app
-    # acting behind the reader's back.
-    resumed: "Picked up from your history. Start a new chat to begin fresh."
-    resumedDismiss: "Dismiss"
     # Distinct from an empty transcript on purpose. Rendering nothing would
     # claim the reader has no stored history; this says the history could not
     # be read, which is a different fact.

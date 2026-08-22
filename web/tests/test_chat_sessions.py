@@ -1,8 +1,9 @@
-"""The conversation sidebar: listing, titling, switching, renaming, deleting.
+"""The conversation sidebar: listing, titling, renaming, deleting.
 
-Step 8. Everything here is a claim about behaviour that cannot be read off the
-code, and most of it exists because an adversarial review found the failure
-first. The ones worth naming up front:
+Step 8, revised for docs/per-tab-conversation-deep-linking-plan.md. Everything
+here is a claim about behaviour that cannot be read off the code, and most of
+it exists because an adversarial review found the failure first. The ones
+worth naming up front:
 
 * **A delete must not be undone by a write already in flight.**
   `chat_append_turn` opens with `insert … on conflict (id) do nothing`, so a
@@ -11,17 +12,18 @@ first. The ones worth naming up front:
   discarded. There is no tombstone. The refusal is the fix, and it is tested
   from the server side rather than trusted to the client's own guard.
 
-* **Deleting the conversation you are IN has three pointers to clean up**, not
-  one: the cookie, the undo pointer, and the process-local prompt window. Any of
-  them left behind resurrects the conversation on the reader's next question or
-  their next Undo.
+* **Deleting the conversation the URL names is the client's navigation to do,
+  not the server's cookie to rotate.** There is no cookie any more (§5.1,
+  §5.2): the response names the deleted id and nothing else, and the
+  `ConversationStore` window for it is cleared here because that is RAM this
+  process holds, not something RLS reaches.
 
-* **A title is written by the turn, not after it.** A second call would race the
-  session's own lifecycle in three separate ways, all of which end with a title
-  on the wrong row or on no row at all.
+* **A title is written by the turn, not after it.** A second call would race
+  the session's own lifecycle in three separate ways, all of which end with a
+  title on the wrong row or on no row at all.
 
-* **An outage must not render as "you have no conversations."** That is a claim
-  about the reader, and `/api/chat/history` already refuses to make its
+* **An outage must not render as "you have no conversations."** That is a
+  claim about the reader, and `/api/chat/history` already refuses to make its
   equivalent. The list route inherits the rule.
 
 `InMemoryChatBackend` mirrors the RPCs rather than approximating them — the
@@ -33,7 +35,6 @@ merely about the double.
 from __future__ import annotations
 
 import threading
-import time
 
 import pytest
 
@@ -88,23 +89,40 @@ def backend(app) -> InMemoryChatBackend:
     return app.config["_testing_chat_backend"]
 
 
-def ask(client, query="What are the requirements?", headers=AUTH):
-    response = client.post("/api/chat/stream", json={"query": query}, headers=headers)
+def ask(client, query="What are the requirements?", headers=AUTH, **body):
+    """One turn. With no `conversation_id`, this is what a real "New chat"
+    looks like now (Decision 2 of docs/per-tab-conversation-deep-linking-plan.md):
+    a fresh, unrelated conversation — there is no cookie left to continue an
+    old one implicitly, so continuing one is always an explicit
+    `conversation_id=` passed by the caller.
+    """
+    body.setdefault("query", query)
+    response = client.post("/api/chat/stream", json=body, headers=headers)
     response.get_data()
     return response
 
 
-def conversation_of(client) -> str:
-    with client.session_transaction() as flask_session:
-        return flask_session.get("conv_id")
+def conversation_of(response) -> str:
+    """The id a streamed chat response's turn landed under, off its `meta`
+    frame."""
+    import json
+
+    for block in response.get_data(as_text=True).split("\n\n"):
+        if not block.strip():
+            continue
+        event, data = "message", None
+        for line in block.splitlines():
+            if line.startswith("event:"):
+                event = line[len("event:"):].strip()
+            elif line.startswith("data:"):
+                data = json.loads(line[len("data:"):].strip())
+        if event == "meta" and data is not None:
+            return data["conversation_id"]
+    raise AssertionError("no meta frame in the streamed response")
 
 
 def listing(client, headers=AUTH, **params):
     return client.get("/api/chat/sessions", query_string=params, headers=headers)
-
-
-def new_chat(client, headers=AUTH):
-    return client.post("/api/conversation/reset", json={}, headers=headers)
 
 
 # ── Titling: written by the turn that creates the session ────────────────────
@@ -123,8 +141,10 @@ def test_a_later_question_does_not_rename_the_conversation(client, backend):
     turn without first asking whether the session already has a name. Asking
     would be a round trip whose answer the very next turn is racing.
     """
-    ask(client, "First question, which becomes the title")
-    ask(client, "Second question, which must not")
+    response = ask(client, "First question, which becomes the title")
+    conversation_id = conversation_of(response)
+    ask(client, "Second question, which must not", conversation_id=conversation_id,
+        allow_create=False)
 
     assert backend.list_sessions(OWNER).sessions[0].title == (
         "First question, which becomes the title"
@@ -138,14 +158,14 @@ def test_a_rename_survives_every_later_turn(client, backend):
     that renaming works while production silently reverted the name on the
     reader's next question.
     """
-    ask(client, "Original question")
-    session_id = conversation_of(client)
+    response = ask(client, "Original question")
+    session_id = conversation_of(response)
 
     client.patch(
         f"/api/chat/sessions/{session_id}", json={"title": "Bioequivalence file"},
         headers=AUTH,
     )
-    ask(client, "A follow-up")
+    ask(client, "A follow-up", conversation_id=session_id, allow_create=False)
 
     assert backend.list_sessions(OWNER).sessions[0].title == "Bioequivalence file"
 
@@ -195,7 +215,11 @@ def test_the_list_carries_title_time_and_length(client):
     assert row["title"] == "A question"
     assert row["message_count"] == 2      # one pair
     assert row["updated_at"]
-    assert body["active"] == row["id"]
+    assert "active" not in body, (
+        "the client knows its own current conversation from its own URL now "
+        "(§5.3 of docs/per-tab-conversation-deep-linking-plan.md) — a "
+        "cookie-derived answer here would be wrong for every tab but one"
+    )
 
 
 def test_a_reader_never_sees_another_readers_conversations(client, app):
@@ -216,9 +240,7 @@ def test_a_reader_never_sees_another_readers_conversations(client, app):
 
 def test_the_newest_conversation_comes_first(client):
     ask(client, "Oldest")
-    new_chat(client)
     ask(client, "Middle")
-    new_chat(client)
     ask(client, "Newest")
 
     titles = [s["title"] for s in listing(client).get_json()["sessions"]]
@@ -232,8 +254,6 @@ def test_a_full_page_offers_a_cursor_and_a_short_one_does_not(client):
     every page to save one empty read at the end.
     """
     for index in range(3):
-        if index:
-            new_chat(client)
         ask(client, f"Question {index}")
 
     full = listing(client, limit=2).get_json()
@@ -247,8 +267,6 @@ def test_a_full_page_offers_a_cursor_and_a_short_one_does_not(client):
 
 def test_the_cursor_pages_without_repeating_or_skipping(client):
     for index in range(5):
-        if index:
-            new_chat(client)
         ask(client, f"Question {index}")
 
     first = listing(client, limit=2).get_json()
@@ -275,13 +293,13 @@ def test_a_half_cursor_pages_from_the_top_rather_than_returning_nothing(client):
     assert len(body["sessions"]) == 1
 
 
-def test_listing_does_not_start_a_conversation(client):
-    """A GET that resolved the current-session rule would mint a cookie, so
-    merely opening the sidebar would change which conversation the reader's next
-    question joins."""
-    assert conversation_of(client) is None
+def test_listing_does_not_start_a_conversation(client, backend):
+    """A GET must not create a row. Under the deleted cookie rule this used to
+    be phrased as "does not mint a cookie"; there is no session pointer left
+    for a GET to mint at all, so the durable claim is the one still worth
+    making."""
     listing(client)
-    assert conversation_of(client) is None
+    assert backend.list_sessions(OWNER).sessions == []
 
 
 def test_an_outage_is_reported_rather_than_rendered_as_an_empty_list(client, backend, monkeypatch):
@@ -306,86 +324,37 @@ def test_the_list_is_never_cached(client):
     assert listing(client).headers["Cache-Control"] == "private, no-store"
 
 
-# ── Selecting ────────────────────────────────────────────────────────────────
+# ── There is no /select route ────────────────────────────────────────────────
+#
+# docs/per-tab-conversation-deep-linking-plan.md §5.2: its entire job was
+# moving a cookie that no longer exists. Selecting a conversation is
+# navigating to its `/c/<id>` URL now, client-side, with no server round trip.
+# Deleting it also closed a live CSRF hole incidentally — it parsed no body at
+# all, so any cross-site auto-submitting form could repoint a victim's
+# conversation. Pinned here so a future refactor cannot reintroduce an
+# equivalent unprotected endpoint.
 
-def test_selecting_a_conversation_repoints_the_cookie(client):
-    ask(client, "First conversation")
-    first = conversation_of(client)
-    new_chat(client)
-    ask(client, "Second conversation")
-    assert conversation_of(client) != first
+def test_there_is_no_route_that_repoints_a_conversation_by_cookie(client):
+    response = ask(client, "First conversation")
+    session_id = conversation_of(response)
 
-    response = client.post(f"/api/chat/sessions/{first}/select", headers=AUTH)
+    reply = client.post(f"/api/chat/sessions/{session_id}/select", headers=AUTH)
 
-    assert response.status_code == 200
-    assert conversation_of(client) == first
-
-
-def test_the_transcript_follows_the_selection(client):
-    """The point of the whole feature, in one assertion — and the reason
-    `/api/chat/history` still takes no session id. Selecting moves the cookie;
-    the transcript route reads the cookie. One place decides."""
-    ask(client, "First conversation")
-    first = conversation_of(client)
-    new_chat(client)
-    ask(client, "Second conversation")
-
-    client.post(f"/api/chat/sessions/{first}/select", headers=AUTH)
-    messages = client.get("/api/chat/history", headers=AUTH).get_json()["messages"]
-
-    assert messages[0]["content"] == "First conversation"
-
-
-def test_a_reader_cannot_select_another_readers_conversation(client, app):
-    """And the refusal cannot distinguish "not yours" from "not there", so a
-    reader probing uuids learns nothing either way. A hostile id reaching the
-    cookie would make the next question join a stranger's conversation."""
-    other = app.test_client()
-    ask(other, "Reader B's conversation", headers=AUTH_B)
-    stranger = conversation_of(other)
-
-    ask(client, "Reader A's conversation", headers=AUTH)
-    mine = conversation_of(client)
-
-    response = client.post(f"/api/chat/sessions/{stranger}/select", headers=AUTH)
-
-    assert response.status_code == 404
-    assert conversation_of(client) == mine, "a refused select still moved the cookie"
-
-
-def test_selecting_drops_the_undo_a_new_chat_set_aside(client):
-    """The undo belongs to the conversation a New chat ended, and the reader has
-    just navigated somewhere else. Restoring it over their selection would put a
-    conversation they did not ask for on top of one they did."""
-    ask(client, "First conversation")
-    first = conversation_of(client)
-    new_chat(client)               # sets prev_conv_id
-    ask(client, "Second conversation")
-    second = conversation_of(client)
-    new_chat(client)
-
-    client.post(f"/api/chat/sessions/{second}/select", headers=AUTH)
-
-    with client.session_transaction() as flask_session:
-        assert "prev_conv_id" not in flask_session
-
-    # And the undo now genuinely does nothing rather than restoring `first`.
-    client.post("/api/conversation/reset", json={"undo": True}, headers=AUTH)
-    assert conversation_of(client) == second
+    assert reply.status_code in (404, 405)
 
 
 # ── Renaming ─────────────────────────────────────────────────────────────────
 
 def test_renaming_changes_the_title(client, backend):
-    ask(client, "Original")
-    session_id = conversation_of(client)
+    response = ask(client, "Original")
+    session_id = conversation_of(response)
 
-    response = client.patch(
+    reply = client.patch(
         f"/api/chat/sessions/{session_id}", json={"title": "Renamed"}, headers=AUTH
     )
 
-    assert response.status_code == 200
-    assert response.get_json()["title"] == "Renamed"
+    assert reply.status_code == 200
+    assert reply.get_json()["title"] == "Renamed"
     assert backend.list_sessions(OWNER).sessions[0].title == "Renamed"
 
 
@@ -397,9 +366,8 @@ def test_renaming_does_not_move_a_conversation_to_the_top(client):
     drop it at the top of Today, displacing the reader's actual current work on
     an edit that changed no content.
     """
-    ask(client, "Older conversation")
-    older = conversation_of(client)
-    new_chat(client)
+    response = ask(client, "Older conversation")
+    older = conversation_of(response)
     ask(client, "Newer conversation")
 
     client.patch(
@@ -414,110 +382,87 @@ def test_the_server_echoes_the_clamped_title_not_the_submitted_one(client):
     """The client renders what comes back. Echoing the raw input would show an
     untruncated name until the next reload — a row quietly disagreeing with the
     database."""
-    ask(client, "Original")
-    session_id = conversation_of(client)
+    response = ask(client, "Original")
+    session_id = conversation_of(response)
 
-    response = client.patch(
+    reply = client.patch(
         f"/api/chat/sessions/{session_id}", json={"title": "  spaced   out  "},
         headers=AUTH,
     )
 
-    assert response.get_json()["title"] == "spaced out"
+    assert reply.get_json()["title"] == "spaced out"
 
 
 def test_clearing_a_title_is_allowed_and_stores_null(client, backend):
     """"Untitled" is a state the sidebar already renders, so clearing the name is
     a meaningful action rather than an error."""
-    ask(client, "Original")
-    session_id = conversation_of(client)
+    response = ask(client, "Original")
+    session_id = conversation_of(response)
 
-    response = client.patch(
+    reply = client.patch(
         f"/api/chat/sessions/{session_id}", json={"title": "   "}, headers=AUTH
     )
 
-    assert response.status_code == 200
-    assert response.get_json()["title"] is None
+    assert reply.status_code == 200
+    assert reply.get_json()["title"] is None
     assert backend.list_sessions(OWNER).sessions[0].title is None
 
 
 def test_a_rename_without_a_title_field_is_a_client_error(client):
-    ask(client, "Original")
-    session_id = conversation_of(client)
+    response = ask(client, "Original")
+    session_id = conversation_of(response)
 
-    response = client.patch(f"/api/chat/sessions/{session_id}", json={}, headers=AUTH)
+    reply = client.patch(f"/api/chat/sessions/{session_id}", json={}, headers=AUTH)
 
-    assert response.status_code == 400
-    assert response.get_json()["code"] == "invalid_request"
+    assert reply.status_code == 400
+    assert reply.get_json()["code"] == "invalid_request"
 
 
 def test_a_reader_cannot_rename_another_readers_conversation(client, app, backend):
     other = app.test_client()
-    ask(other, "Reader B's conversation", headers=AUTH_B)
-    stranger = conversation_of(other)
+    response = ask(other, "Reader B's conversation", headers=AUTH_B)
+    stranger = conversation_of(response)
 
-    response = client.patch(
+    reply = client.patch(
         f"/api/chat/sessions/{stranger}", json={"title": "Mine now"}, headers=AUTH
     )
 
-    assert response.status_code == 404
+    assert reply.status_code == 404
     assert backend.list_sessions(OWNER_B).sessions[0].title == "Reader B's conversation"
 
 
 # ── Deleting ─────────────────────────────────────────────────────────────────
 
 def test_deleting_removes_the_conversation_and_its_messages(client, backend):
-    ask(client, "Doomed")
-    session_id = conversation_of(client)
+    response = ask(client, "Doomed")
+    session_id = conversation_of(response)
 
-    response = client.delete(f"/api/chat/sessions/{session_id}", headers=AUTH)
+    reply = client.delete(f"/api/chat/sessions/{session_id}", headers=AUTH)
 
-    assert response.status_code == 200
+    assert reply.status_code == 200
     assert backend.list_sessions(OWNER).sessions == []
     assert backend.load_session(OWNER, session_id) == []
 
 
-def test_deleting_the_active_conversation_rotates_the_cookie(client):
-    """THE POINTER IS THE HALF THAT MATTERS.
-
-    Left naming the deleted row, the reader's next question hits
-    `chat_append_turn`'s `on conflict (id) do nothing`, which finds no row and
-    creates one — the conversation they deleted comes back with a new answer in
-    it.
-    """
-    ask(client, "Doomed")
-    session_id = conversation_of(client)
+def test_the_delete_response_names_only_the_deleted_id(client):
+    """No `conversation_id` in the body any more (§5.1, §5.2 of
+    docs/per-tab-conversation-deep-linking-plan.md) — there is no cookie left
+    to rotate, and no replacement to mint. Moving off the deleted
+    conversation's URL, if the client was on it, is the client's job (§4.4)."""
+    response = ask(client, "Doomed")
+    session_id = conversation_of(response)
 
     body = client.delete(f"/api/chat/sessions/{session_id}", headers=AUTH).get_json()
 
-    assert body["conversation_id"]
-    assert body["conversation_id"] != session_id
-    assert conversation_of(client) == body["conversation_id"]
-
-
-def test_the_replacement_conversation_is_minted_rather_than_resumed(client, backend):
-    """Popping the cookie instead of replacing it would ARM the current-session
-    rule, whose fallback resumes the reader's most recent conversation when the
-    cookie names nothing. The next reload would then open some older
-    conversation they never chose — the exact resurrection shape §5 exists to
-    prevent, entered through the delete."""
-    ask(client, "An older conversation")
-    older = conversation_of(client)
-    new_chat(client)
-    ask(client, "The one being deleted")
-    doomed = conversation_of(client)
-
-    client.delete(f"/api/chat/sessions/{doomed}", headers=AUTH)
-
-    assert conversation_of(client) not in (older, doomed)
-    assert client.get("/api/chat/history", headers=AUTH).get_json()["messages"] == []
+    assert body == {"ok": True, "id": session_id}
 
 
 def test_deleting_the_active_conversation_clears_the_models_memory(client, app):
-    """A blank screen over a server that still remembers is the failure the reset
-    route's own comment refuses. Deleting has to clear the prompt window too, or
-    the next answer is informed by a conversation the reader deleted."""
-    ask(client, "A question about paracetamol")
-    session_id = conversation_of(client)
+    """A blank screen over a server that still remembers is the failure this
+    guards against. Deleting has to clear the prompt window too, or the next
+    answer to this id is informed by a conversation the reader deleted."""
+    response = ask(client, "A question about paracetamol")
+    session_id = conversation_of(response)
     store = app.config["conversations"]
     assert store.get(session_id, owner_id=OWNER)
 
@@ -526,40 +471,14 @@ def test_deleting_the_active_conversation_clears_the_models_memory(client, app):
     assert store.get(session_id, owner_id=OWNER) == []
 
 
-def test_deleting_the_conversation_behind_an_undo_disarms_the_undo(client):
-    """Otherwise Undo restores a transcript the database can no longer produce —
-    turns on screen that no longer exist anywhere else."""
-    ask(client, "Doomed conversation")
-    doomed = conversation_of(client)
-    new_chat(client)                      # doomed becomes prev_conv_id
-
-    client.delete(f"/api/chat/sessions/{doomed}", headers=AUTH)
-
-    with client.session_transaction() as flask_session:
-        assert "prev_conv_id" not in flask_session
-
-
-def test_deleting_a_conversation_you_are_not_in_leaves_the_cookie_alone(client):
-    ask(client, "Doomed")
-    doomed = conversation_of(client)
-    new_chat(client)
-    ask(client, "Current")
-    current = conversation_of(client)
-
-    body = client.delete(f"/api/chat/sessions/{doomed}", headers=AUTH).get_json()
-
-    assert body["conversation_id"] is None
-    assert conversation_of(client) == current
-
-
 def test_a_reader_cannot_delete_another_readers_conversation(client, app, backend):
     other = app.test_client()
-    ask(other, "Reader B's conversation", headers=AUTH_B)
-    stranger = conversation_of(other)
+    response = ask(other, "Reader B's conversation", headers=AUTH_B)
+    stranger = conversation_of(response)
 
-    response = client.delete(f"/api/chat/sessions/{stranger}", headers=AUTH)
+    reply = client.delete(f"/api/chat/sessions/{stranger}", headers=AUTH)
 
-    assert response.status_code == 404
+    assert reply.status_code == 404
     assert len(backend.list_sessions(OWNER_B).sessions) == 1
 
 
@@ -567,25 +486,28 @@ def test_a_question_reasked_after_a_delete_is_recorded_rather_than_replayed(clie
     """The idempotency keys go with the cascade.
 
     Left behind, `chat_append_turn`'s replay probe would still find the deleted
-    turn's `client_request_id`, report `replayed`, and write nothing — so the
-    reader re-asks and their turn silently vanishes.
+    turn's `client_request_id`, report `replayed`, and write nothing — so a
+    stale tab that never navigated off the deleted id, and resends the same
+    request, would have its turn silently vanish.
     """
     request_id = "11111111-2222-4333-8444-555555555555"
+    conversation_id = "aaaaaaaa-2222-3333-4444-555555555555"
     client.post(
         "/api/chat/stream",
-        json={"query": "A question", "client_request_id": request_id},
-        headers=AUTH,
-    ).get_data()
-    session_id = conversation_of(client)
-
-    client.delete(f"/api/chat/sessions/{session_id}", headers=AUTH)
-    client.post(
-        "/api/chat/stream",
-        json={"query": "A question", "client_request_id": request_id},
+        json={"query": "A question", "conversation_id": conversation_id,
+              "client_request_id": request_id},
         headers=AUTH,
     ).get_data()
 
-    rows = backend.load_session(OWNER, conversation_of(client))
+    client.delete(f"/api/chat/sessions/{conversation_id}", headers=AUTH)
+    client.post(
+        "/api/chat/stream",
+        json={"query": "A question", "conversation_id": conversation_id,
+              "client_request_id": request_id},
+        headers=AUTH,
+    ).get_data()
+
+    rows = backend.load_session(OWNER, conversation_id)
     assert [row.role for row in rows] == ["user", "assistant"]
 
 
@@ -618,16 +540,15 @@ def test_a_conversation_being_written_to_cannot_be_deleted(app):
 
     app.config["openai_handler"].stream_response.side_effect = slow_stream
 
-    # The cookie has to exist before the racing request can name the id.
-    with client.session_transaction() as flask_session:
-        flask_session["conv_id"] = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
     session_id = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
 
     streamed: list = []
 
     def run_stream():
         response = client.post(
-            "/api/chat/stream", json={"query": "A slow question"}, headers=AUTH
+            "/api/chat/stream",
+            json={"query": "A slow question", "conversation_id": session_id},
+            headers=AUTH,
         )
         streamed.append(response.get_data())
 
@@ -636,10 +557,9 @@ def test_a_conversation_being_written_to_cannot_be_deleted(app):
     assert entered.wait(5), "the stream never started"
 
     try:
-        # A second client, same signed session, exactly as a second tab would be.
+        # A second client, same signed-in reader, exactly as a second tab on
+        # the same URL would be.
         racer = app.test_client()
-        with racer.session_transaction() as flask_session:
-            flask_session["conv_id"] = session_id
         refused = racer.delete(f"/api/chat/sessions/{session_id}", headers=AUTH)
     finally:
         release.set()
@@ -653,36 +573,46 @@ def test_the_refusal_lifts_once_the_answer_has_landed(client, backend):
     """The hold is released in the generator's `finally`, so it covers a client
     disconnect too — the ordinary way a stream ends early. Without that the
     conversation would stay undeletable for the life of the process."""
-    ask(client, "A question")
-    session_id = conversation_of(client)
+    response = ask(client, "A question")
+    session_id = conversation_of(response)
 
-    response = client.delete(f"/api/chat/sessions/{session_id}", headers=AUTH)
+    reply = client.delete(f"/api/chat/sessions/{session_id}", headers=AUTH)
 
-    assert response.status_code == 200
+    assert reply.status_code == 200
     assert backend.list_sessions(OWNER).sessions == []
 
 
 def test_an_abandoned_stream_does_not_leave_a_conversation_undeletable(app):
     """A reader who cancels mid-answer must still be able to delete what they
     were in. `GeneratorExit` is the ordinary exit here, and a hold released only
-    on the success path would strand the conversation forever."""
+    on the success path would strand the conversation forever.
+
+    Both requests explicitly name the same id — there is no cookie left to
+    continue it implicitly — so a hold leaked by the first (crashed) request
+    would make the delete below hang behind it.
+    """
     client = app.test_client()
+    conversation_id = "aaaaaaaa-2222-3333-4444-555555555555"
 
     def explode(*args, **kwargs):
         raise RuntimeError("upstream died mid-answer")
 
     app.config["openai_handler"].stream_response.side_effect = explode
-    client.post("/api/chat/stream", json={"query": "A doomed question"}, headers=AUTH).get_data()
+    client.post(
+        "/api/chat/stream",
+        json={"query": "A doomed question", "conversation_id": conversation_id},
+        headers=AUTH,
+    ).get_data()
 
     # Nothing was persisted — the write happens at `final` — so a fresh turn
     # under the same id is what gives the delete something to remove.
     app.config["openai_handler"].stream_response.side_effect = (
         lambda *a, **k: iter(ANSWER_TOKENS)
     )
-    ask(client, "A question that lands")
+    ask(client, "A question that lands", conversation_id=conversation_id)
 
     assert client.delete(
-        f"/api/chat/sessions/{conversation_of(client)}", headers=AUTH
+        f"/api/chat/sessions/{conversation_id}", headers=AUTH
     ).status_code == 200
 
 
@@ -691,40 +621,33 @@ def test_an_abandoned_stream_does_not_leave_a_conversation_undeletable(app):
 @pytest.mark.parametrize("session_id", ["not-a-uuid", "../../etc/passwd", "1", ""])
 def test_a_session_id_that_is_not_a_uuid_is_refused_everywhere(client, session_id):
     """Canonicalised before anything else looks at it. A value that cannot name a
-    session must never reach the cookie, and must not be distinguishable from an
-    id that names somebody else's."""
-    ask(client, "A question")
-    current = conversation_of(client)
-
+    session must never reach a durable write, and must not be distinguishable
+    from an id that names somebody else's."""
     for response in (
-        client.post(f"/api/chat/sessions/{session_id}/select", headers=AUTH),
         client.patch(f"/api/chat/sessions/{session_id}", json={"title": "x"}, headers=AUTH),
         client.delete(f"/api/chat/sessions/{session_id}", headers=AUTH),
     ):
         assert response.status_code in (404, 405), session_id
 
-    assert conversation_of(client) == current
-
 
 def test_every_session_route_requires_authentication(client):
-    """`@auth_required` on all four, asserted rather than assumed: these routes
+    """`@auth_required` on all three, asserted rather than assumed: these routes
     read and destroy one reader's history."""
-    ask(client, "A question")
-    session_id = conversation_of(client)
+    response = ask(client, "A question")
+    session_id = conversation_of(response)
 
     assert client.get("/api/chat/sessions").status_code == 401
-    assert client.post(f"/api/chat/sessions/{session_id}/select").status_code == 401
     assert client.patch(f"/api/chat/sessions/{session_id}", json={"title": "x"}).status_code == 401
     assert client.delete(f"/api/chat/sessions/{session_id}").status_code == 401
 
 
 def test_a_new_chat_still_leaves_the_conversation_behind_it_in_the_sidebar(client):
-    """The property `test_a_reset_does_not_delete_the_conversation_behind_it`
-    already pins for the rows, now asserted where a reader can actually see it —
-    which is what makes the notice's "starting a new chat does not delete them"
-    a checkable claim rather than a promise."""
+    """"New chat" is a client-side navigation now (Decision 2 of
+    docs/per-tab-conversation-deep-linking-plan.md) with no server round trip
+    at all — asking a second, unrelated question is the whole of it, and the
+    first conversation must still be exactly where it was."""
     ask(client, "The conversation being left")
-    new_chat(client)
+    ask(client, "An unrelated second conversation")
 
     titles = [s["title"] for s in listing(client).get_json()["sessions"]]
-    assert titles == ["The conversation being left"]
+    assert titles == ["An unrelated second conversation", "The conversation being left"]

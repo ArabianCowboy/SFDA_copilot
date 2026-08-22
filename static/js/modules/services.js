@@ -172,7 +172,7 @@ export const Services = {
    *  browser that lands on this path. The server accepting `lang` is only half
    *  the fix — nothing was sending it.
    */
-  async sendChatRequest(query, category, token, lang = 'en', requestId = null) {
+  async sendChatRequest(query, category, token, lang = 'en', requestId = null, conversation = null) {
     this.cancelChatRequest();
     this.chatAbortController = new AbortController();
 
@@ -186,6 +186,13 @@ export const Services = {
       body: JSON.stringify({
         query, category, lang,
         client_request_id: requestId || newRequestId(),
+        // `conversation` carries {id, allowCreate} — the URL-as-pointer
+        // contract (Decision 4). Omitted entirely when null, which is the
+        // absent-not-malformed signal the server's §8 cookie fallback needs.
+        ...(conversation ? {
+          conversation_id: conversation.id,
+          allow_create: conversation.allowCreate,
+        } : {}),
       }),
     });
 
@@ -214,7 +221,7 @@ export const Services = {
    * `on` is a map of event name -> handler, keeping this module free of any
    * dom/state/ui import (enforced by test_frontend_architecture.py).
    */
-  async streamChatRequest(query, category, token, lang, on = {}, requestId = null) {
+  async streamChatRequest(query, category, token, lang, on = {}, requestId = null, conversation = null) {
     this.cancelChatRequest();
     this.chatAbortController = new AbortController();
 
@@ -229,6 +236,11 @@ export const Services = {
       body: JSON.stringify({
         query, category, lang,
         client_request_id: requestId || newRequestId(),
+        // See sendChatRequest's comment — same contract, same reason.
+        ...(conversation ? {
+          conversation_id: conversation.id,
+          allow_create: conversation.allowCreate,
+        } : {}),
       }),
     });
 
@@ -393,38 +405,10 @@ export const Services = {
     }
   },
 
-  /**
-   * End the current conversation server-side, keeping the reader signed in.
-   *
-   * `mode` is `{}` to reset, `{ undo: true }` to put the previous conversation
-   * back, `{ forget: true }` to drop the one an earlier reset set aside.
-   *
-   * Failure THROWS here, unlike endServerSession, and the difference is
-   * deliberate. A logout that cannot reach the server must still sign the
-   * reader out locally. A reset that cannot reach the server must not clear
-   * the transcript: a blank screen over a server that still holds the history
-   * is worse than no reset at all, because the next answer would silently
-   * carry context the reader believes they deleted.
-   */
-  async resetConversation(mode = {}) {
-    const headers = { 'Content-Type': 'application/json' };
-    const token = await this.getSessionToken().catch(() => null);
-    if (token) headers['Authorization'] = `Bearer ${token}`;
-
-    const response = await fetch('/api/conversation/reset', {
-      method: 'POST',
-      headers,
-      cache: 'no-store',
-      credentials: 'same-origin',
-      body: JSON.stringify(mode),
-    });
-
-    if (!response.ok) {
-      const errorJson = await response.json().catch(() => ({}));
-      throw new Error(errorJson.error || `Network error (${response.status})`);
-    }
-    return response.json().catch(() => ({}));
-  },
+  // NO `resetConversation`. `/api/conversation/reset` is deleted server-side
+  // (docs/per-tab-conversation-deep-linking-plan.md §5.1, §5.4) — "New chat"
+  // is a client-side navigation to `/` now (Decision 2), with no server round
+  // trip at all. See `Handlers.handleNewChat`.
 
   async logout() {
     await this.endServerSession();
@@ -528,39 +512,34 @@ export const Services = {
   },
 
   /**
-   * The reader's current conversation, as the server understands it.
+   * One conversation's durable rows, named by the URL (Decision 4 of
+   * docs/per-tab-conversation-deep-linking-plan.md).
    *
-   * NO CONVERSATION ID IS SENT, deliberately. The server applies the
-   * current-session rule and answers with the conversation it picked, so the
-   * transcript on screen and the history behind the model are chosen by one
-   * piece of code rather than two that can disagree — and a browser cannot ask
-   * for a conversation it does not own.
+   * `conversationId` is `Route.current()` — the caller never calls this with
+   * nothing to ask for; `/` is a new conversation and has no history to fetch
+   * (§4.2). Passed through as `?c=<id>` so the server can tell "not yours, or
+   * not there" from "yours, but empty" (§3.3).
    *
-   * Returns `{ conversation_id, resumed, messages }`. `resumed` is true only
-   * when the server fell back to the reader's most recent conversation because
-   * this browser named none — a new device, a cleared browser, or the first
-   * request after a logout. The caller owes the reader a notice in that case:
-   * a conversation that reappears without explanation is the one part of this
-   * feature that could read as the app doing something behind their back.
-   *
-   * Throws on any failure, tagged with `.status`, so the caller can tell a
-   * genuinely empty history ("you have not asked anything yet") from an
-   * unreachable store — 503 `history_unavailable`. Those must not look alike:
-   * rendering an empty transcript for the second is a claim the app cannot
-   * back.
+   * Returns `{ conversation_id, messages }`. Throws on any failure, tagged
+   * with `.status`, so the caller can tell a genuinely empty history ("you
+   * have not asked anything yet") from an unreachable store — 503
+   * `history_unavailable` — or a stale/foreign id — 404 `not_found`. Those
+   * must not look alike: rendering an empty transcript for either would be a
+   * claim the app cannot back.
    */
-  async getChatHistory() {
+  async getChatHistory(conversationId) {
     const token = await this.getSessionToken();
-    if (!token) return { conversation_id: null, resumed: false, messages: [] };
+    if (!token) return { conversation_id: null, messages: [] };
 
     // The same 5s ceiling `getIdentity` takes, for the same reason: this call
     // sits on the path that draws the whole screen, and a hung request would
     // leave a signed-in reader looking at an empty transcript forever.
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 5000);
+    const query = `?c=${encodeURIComponent(conversationId)}`;
     let response;
     try {
-      response = await fetch('/api/chat/history', {
+      response = await fetch(`/api/chat/history${query}`, {
         headers: { Authorization: `Bearer ${token}` },
         signal: controller.signal,
         /* This body is one reader's conversation. The server also sends
@@ -579,7 +558,7 @@ export const Services = {
        reader who is simply signed out, and under the `?testing=true` demo
        path, whose deliberately fake token a real server rejects. */
     if (response.status === 401) {
-      return { conversation_id: null, resumed: false, messages: [] };
+      return { conversation_id: null, messages: [] };
     }
 
     if (!response.ok) {
@@ -664,20 +643,11 @@ export const Services = {
     return this.sessionRequest(`/api/chat/sessions${query ? `?${query}` : ''}`);
   },
 
-  /**
-   * Make one conversation current, server-side.
-   *
-   * The transcript is NOT returned here. Selecting repoints the cookie and
-   * nothing else, and the caller then re-reads `/api/chat/history` — which
-   * still takes no session id, so `_resolve_conversation_id` stays the single
-   * place that decides which conversation this is. Returning the transcript
-   * from this call would put a second such place in the codebase.
-   */
-  async selectSession(sessionId) {
-    return this.sessionRequest(`/api/chat/sessions/${encodeURIComponent(sessionId)}/select`, {
-      method: 'POST',
-    });
-  },
+  // NO `selectSession`. `/api/chat/sessions/<id>/select` is deleted
+  // server-side (docs/per-tab-conversation-deep-linking-plan.md §5.2) — its
+  // entire job was repointing a cookie that no longer exists. Selecting a
+  // conversation is navigating to its `/c/<id>` URL now (`Route.go`), and
+  // the sidebar re-reads `/api/chat/history?c=<id>` directly.
 
   async renameSession(sessionId, title) {
     return this.sessionRequest(`/api/chat/sessions/${encodeURIComponent(sessionId)}`, {

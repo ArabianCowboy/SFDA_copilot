@@ -641,6 +641,14 @@ SEED_SUPABASE_SESSION = (
     "  sessionError: null, profileError: null, profileUpdateError: null };"
 )
 
+# `/` never fetches history any more — Decision 1(a) of
+# docs/per-tab-conversation-deep-linking-plan.md — so a test that wants a
+# stored transcript to hydrate on load must reload AT the conversation's own
+# URL, not at "/". The mock behind `route_chat_history` returns the same
+# canned body regardless of which id is asked for, so any well-formed uuid
+# does; this one is just a fixed, recognisable choice.
+STORED_CONVERSATION_ID = "c0ffee00-0000-4000-8000-0000000000aa"
+
 # One stored passage, deliberately unlike anything the live SSE mock returns, so
 # a restored citation opening the WRONG answer's evidence is visible as text
 # rather than inferable from a count.
@@ -748,7 +756,7 @@ def test_evidence_from_the_active_build_is_not_badged(sourced_page: Page):
             sources=[STORED_SOURCE], evidence_state="verified",
         )),
     )
-    page.reload()
+    page.goto(f"/c/{STORED_CONVERSATION_ID}")
     page.wait_for_load_state("load")
 
     expect(page.locator(".source-trigger")).to_have_count(1)
@@ -777,7 +785,7 @@ def test_evidence_from_a_rebuilt_corpus_is_dated_but_still_opens(sourced_page: P
             sources=[STORED_SOURCE], evidence_state="stale",
         )),
     )
-    page.reload()
+    page.goto(f"/c/{STORED_CONVERSATION_ID}")
     page.wait_for_load_state("load")
 
     expect(page.locator(".source-trigger")).to_have_count(1)
@@ -803,61 +811,10 @@ def test_unverifiable_evidence_is_dated_on_the_same_terms(sourced_page: Page):
             sources=[STORED_SOURCE], evidence_state="unverifiable",
         )),
     )
-    page.reload()
+    page.goto(f"/c/{STORED_CONVERSATION_ID}")
     page.wait_for_load_state("load")
 
     expect(page.locator(".source-trigger-badge")).to_have_count(1)
-
-
-def test_a_second_reader_in_the_same_tab_gets_their_own_transcript(browser_page: Page):
-    """The failure the resume flag spent two steps waiting to avoid, arriving by
-    a different door.
-
-    The app lives at "/" and `AuthView` only toggles `d-none`, so a sign-out
-    followed by a sign-in reloads nothing. A transcript guard keyed to the PAGE
-    rather than to the READER is therefore already spent when the second reader
-    arrives: their transcript is never drawn, while the server — finding no
-    cookie — resumes their most recent conversation into the prompt window. A
-    blank screen backed by a model that remembers, which is exactly the state
-    `chat_resume_latest_session` was held off for until hydration existed.
-
-    Two properties are asserted: the second reader's own turns appear, and the
-    first reader's do not survive into their session.
-    """
-    page = browser_page
-    route_chat_history(
-        page, chat_history(stored_answer("Reader A question", "Reader A answer."))
-    )
-    page.goto("/")
-    page.locator("#auth-button-main").click()
-    page.locator("#login-email").fill("test@example.com")
-    page.locator("#login-password").fill("password123")
-    page.locator("#login-form").evaluate("(form) => form.requestSubmit()")
-    page.locator("#authenticated-view").wait_for(state="visible")
-    expect(page.locator(".chatbot-message")).to_have_count(1)
-    expect(page.locator("#messages")).to_contain_text("Reader A answer.")
-
-    # The second reader's history replaces the first's on the wire, exactly as
-    # the server would answer once the identity behind the cookie changed.
-    route_chat_history(
-        page, chat_history(stored_answer("Reader B question", "Reader B answer."))
-    )
-    page.evaluate(
-        "() => window.__supabaseState.authCallback"
-        "  && window.__supabaseState.authCallback('SIGNED_OUT', null)"
-    )
-    page.evaluate(
-        "() => {"
-        "  const session = { access_token: 'fake_token',"
-        "    user: { id: 'reader-b-id', email: 'reader-b@example.com' } };"
-        "  window.__supabaseState.user = session.user;"
-        "  window.__supabaseState.authCallback"
-        "    && window.__supabaseState.authCallback('SIGNED_IN', session);"
-        "}"
-    )
-
-    expect(page.locator("#messages")).to_contain_text("Reader B answer.")
-    expect(page.locator("#messages")).not_to_contain_text("Reader A answer.")
 
 
 # Holds `/api/chat/history` open until the test releases it, so "the transcript
@@ -897,7 +854,11 @@ def test_history_arriving_late_is_filed_above_the_live_exchange(browser_page: Pa
     """
     page = browser_page
     page.add_init_script(CONTROLLABLE_HISTORY)
-    page.goto("/")
+    # `/` never fetches history (Decision 1a) — reload there and there is no
+    # in-flight request for CONTROLLABLE_HISTORY to hold. A conversation's own
+    # URL does fetch, on an ordinary fresh navigation with no prior
+    # `history.state` to say otherwise, which is what this test needs.
+    page.goto(f"/c/{STORED_CONVERSATION_ID}")
     page.locator("#auth-button-main").click()
     page.locator("#login-email").fill("test@example.com")
     page.locator("#login-password").fill("password123")
@@ -927,15 +888,15 @@ def test_history_arriving_late_is_filed_above_the_live_exchange(browser_page: Pa
 def test_late_history_cannot_resurrect_a_conversation_the_reader_ended(browser_page: Page):
     """New chat must mean New chat, including against a fetch already in flight.
 
-    The server-side rule is careful about this: a cookie that names a
-    conversation is honoured as-is, precisely so a reset is not undone by the
-    resume fallback. But hydration opens a second door the server cannot close —
-    the transcript request is dispatched at sign-in and not awaited, so a reader
-    who presses New chat while it is still travelling would have the ended
-    conversation drawn back onto the screen when it lands.
+    Hydration opens a door the URL alone cannot close: the transcript request
+    is dispatched at sign-in and not awaited, so a reader who presses New chat
+    — a navigation to `/`, per Decision 2 of
+    docs/per-tab-conversation-deep-linking-plan.md — while it is still
+    travelling would have the ended conversation drawn back onto the screen
+    when it lands.
 
     Identity alone does not catch this: it is the same reader who pressed the
-    button. The transcript epoch does.
+    button, on the same tab. The transcript epoch does.
     """
     page = browser_page
     page.add_init_script(CONTROLLABLE_HISTORY)
@@ -955,13 +916,10 @@ def test_late_history_cannot_resurrect_a_conversation_the_reader_ended(browser_p
 
     # Only now does the transcript request — dispatched back at sign-in —
     # finally arrive, carrying a conversation the reader has since ended.
-    body = chat_history(
-        stored_answer("Ended question", "Ended stored answer."), resumed=True
-    )
+    body = chat_history(stored_answer("Ended question", "Ended stored answer."))
     page.evaluate("(body) => window.__history.release(body)", body)
 
     expect(page.locator("#messages")).not_to_contain_text("Ended stored answer.")
-    expect(page.locator("#resumed-notice")).to_have_count(0)
     expect(page.locator(".chatbot-message")).to_have_count(0)
 
 

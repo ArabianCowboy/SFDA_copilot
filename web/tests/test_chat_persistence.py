@@ -99,16 +99,26 @@ def frames(response) -> list[tuple[str, dict]]:
     return parsed
 
 
-def conversation_of(client) -> str:
-    with client.session_transaction() as flask_session:
-        return flask_session["conv_id"]
+def conversation_of(response) -> str:
+    """The id a chat response's turn landed under.
+
+    THE URL IS THE POINTER now (docs/per-tab-conversation-deep-linking-plan.md
+    §1) — there is no session-held `conv_id` to read any more. Every chat
+    route echoes the resolved id on the wire (§3.2), streaming inside the
+    `meta`/`final`/`done` frames and blocking in the JSON body, so this reads
+    it from whichever shape the caller passed.
+    """
+    if response.mimetype == "text/event-stream":
+        meta = next(data for event, data in frames(response) if event == "meta")
+        return meta["conversation_id"]
+    return response.get_json()["conversation_id"]
 
 
 # ── The turn becomes durable ────────────────────────────────────────────────
 
 def test_a_streamed_turn_is_stored_as_a_user_row_and_an_assistant_row(client, backend):
-    ask(client, "How long is the review?")
-    rows = backend.load_session(OWNER, conversation_of(client))
+    response = ask(client, "How long is the review?")
+    rows = backend.load_session(OWNER, conversation_of(response))
 
     assert [row.role for row in rows] == ["user", "assistant"]
     assert rows[0].content == "How long is the review?"
@@ -120,15 +130,15 @@ def test_a_blocking_turn_is_stored_too(client, backend):
     response = client.post("/api/chat", json={"query": "first"}, headers=AUTH)
     assert response.get_json()["persisted"] is True
 
-    rows = backend.load_session(OWNER, conversation_of(client))
+    rows = backend.load_session(OWNER, conversation_of(response))
     assert [row.role for row in rows] == ["user", "assistant"]
 
 
 def test_answer_metadata_lives_on_the_assistant_row_only(client, backend):
     """Both readings pass the schema, so the choice is asserted rather than
     inferred — otherwise two exports of the same turn disagree."""
-    ask(client, lang="ar", category="regulatory")
-    user_row, assistant_row = backend.load_session(OWNER, conversation_of(client))
+    response = ask(client, lang="ar", category="regulatory")
+    user_row, assistant_row = backend.load_session(OWNER, conversation_of(response))
 
     assert assistant_row.model == "gpt-4o-mini"
     assert assistant_row.lang == "ar"
@@ -185,8 +195,8 @@ def test_every_retrieved_passage_is_stored_with_its_cited_flag(client, backend):
     declined is unrecoverable afterwards, because retrieval is not reproducible
     across a corpus rebuild.
     """
-    ask(client)
-    _, assistant_row = backend.load_session(OWNER, conversation_of(client))
+    response = ask(client)
+    _, assistant_row = backend.load_session(OWNER, conversation_of(response))
 
     assert [s["source_index"] for s in assistant_row.sources] == [1, 2, 3, 4]
     assert [s["cited"] for s in assistant_row.sources] == [True, False, True, False]
@@ -229,7 +239,7 @@ def test_stored_source_index_is_the_marker_the_model_saw(client, backend):
     """
     response = ask(client)
     final = next(data for event, data in frames(response) if event == "final")
-    _, assistant_row = backend.load_session(OWNER, conversation_of(client))
+    _, assistant_row = backend.load_session(OWNER, conversation_of(response))
 
     cited_on_the_wire = final["cited"]
     cited_in_the_rows = [s["source_index"] for s in assistant_row.sources if s["cited"]]
@@ -246,31 +256,36 @@ def test_a_turn_records_the_corpus_revision_it_was_answered_from(app, client, ba
     the corpus that produced it. Null is `unverifiable`, never `verified`."""
     app.config["CORPUS_REVISION"] = "build-2026-08-18"
 
-    ask(client)
-    _, assistant_row = backend.load_session(OWNER, conversation_of(client))
+    response = ask(client)
+    _, assistant_row = backend.load_session(OWNER, conversation_of(response))
     assert assistant_row.corpus_revision == "build-2026-08-18"
 
 
 # ── Idempotency ─────────────────────────────────────────────────────────────
 
 def test_a_replayed_request_id_writes_one_turn(client, backend):
+    conversation_id = "aaaaaaaa-2222-3333-4444-555555555555"
     request_id = "11111111-2222-3333-4444-555555555555"
-    ask(client, "same question", client_request_id=request_id)
-    ask(client, "same question", client_request_id=request_id)
+    ask(client, "same question", conversation_id=conversation_id, client_request_id=request_id)
+    ask(client, "same question", conversation_id=conversation_id, client_request_id=request_id)
 
-    rows = backend.load_session(OWNER, conversation_of(client))
+    rows = backend.load_session(OWNER, conversation_id)
     assert len(rows) == 2, "the retry wrote a second copy of the exchange"
 
 
 def test_a_replay_does_not_advance_the_sequence(client, backend):
     """A gap in `seq` is indistinguishable from a deleted message to anything
     reading the transcript, so the counter must not move on a no-op."""
+    conversation_id = "aaaaaaaa-2222-3333-4444-555555555555"
     request_id = "11111111-2222-3333-4444-555555555555"
-    ask(client, "first", client_request_id=request_id)
-    ask(client, "first", client_request_id=request_id)
-    ask(client, "second", client_request_id="66666666-7777-8888-9999-000000000000")
+    ask(client, "first", conversation_id=conversation_id, client_request_id=request_id)
+    ask(client, "first", conversation_id=conversation_id, client_request_id=request_id)
+    ask(
+        client, "second", conversation_id=conversation_id,
+        client_request_id="66666666-7777-8888-9999-000000000000",
+    )
 
-    seqs = [row.seq for row in backend.load_session(OWNER, conversation_of(client))]
+    seqs = [row.seq for row in backend.load_session(OWNER, conversation_id)]
     assert seqs == [1, 2, 3, 4], f"sequence gapped: {seqs}"
 
 
@@ -280,9 +295,10 @@ def test_a_replay_does_not_write_a_second_archive_row(client, backend, monkeypat
     monkeypatch.setenv("ARCHIVE_OWNER_SALT", "owner-salt")
     monkeypatch.setenv("ARCHIVE_SESSION_SALT", "session-salt")
 
+    conversation_id = "aaaaaaaa-2222-3333-4444-555555555555"
     request_id = "11111111-2222-3333-4444-555555555555"
-    ask(client, "same question", client_request_id=request_id)
-    ask(client, "same question", client_request_id=request_id)
+    ask(client, "same question", conversation_id=conversation_id, client_request_id=request_id)
+    ask(client, "same question", conversation_id=conversation_id, client_request_id=request_id)
 
     assert len(backend.archive) == 1
 
@@ -344,10 +360,11 @@ def test_the_archive_dedupes_per_session_not_per_owner(backend):
 def test_a_missing_request_id_still_answers(client, backend):
     """An old client that has not learned to mint one keeps working; it simply
     gets no replay protection."""
-    ask(client, "first")
-    ask(client, "first")
+    conversation_id = "aaaaaaaa-2222-3333-4444-555555555555"
+    ask(client, "first", conversation_id=conversation_id)
+    ask(client, "first", conversation_id=conversation_id)
 
-    assert len(backend.load_session(OWNER, conversation_of(client))) == 4
+    assert len(backend.load_session(OWNER, conversation_id)) == 4
 
 
 # ── Ownership ───────────────────────────────────────────────────────────────
@@ -384,60 +401,24 @@ def test_loading_an_unowned_session_is_indistinguishable_from_an_empty_one(backe
     assert backend.load_session(OWNER_B, "no-such-session") == []
 
 
-# ── The current-session rule ────────────────────────────────────────────────
-
-def test_new_chat_is_not_resurrected_by_the_current_session_rule(client, backend):
-    """The sharpest failure this rule can produce, pinned.
-
-    After a reset the cookie holds a fresh id with no durable row, while the
-    abandoned conversation is the owner's newest by `updated_at`. A rule keyed
-    on 'the cookie's id has no rows' would resume it, and the reader would watch
-    the conversation they just ended come back on the next page reload — which
-    the language toggle performs.
-    """
-    ask(client, "first")
-    ended = conversation_of(client)
-
-    client.post("/api/conversation/reset", json={}, headers=AUTH)
-    ask(client, "second")
-
-    assert conversation_of(client) != ended
-    assert [row.content for row in backend.load_session(OWNER, conversation_of(client))][0] \
-        == "second"
-
-
-def test_a_reset_does_not_delete_the_conversation_behind_it(client, backend):
-    """New chat ends this browser's claim on a conversation, not the
-    conversation. Phase 2's sidebar depends on it still being there."""
-    ask(client, "first")
-    ended = conversation_of(client)
-
-    client.post("/api/conversation/reset", json={}, headers=AUTH)
-    client.post("/api/conversation/reset", json={"forget": True}, headers=AUTH)
-
-    assert backend.load_session(OWNER, ended), "forget deleted durable rows"
-
-
-def test_an_undone_conversation_is_not_resurrected_either(client, backend):
-    """Undo restores the cookie pointer, so the rule sees an id and stands
-    aside. The path exists because `store.clear` drops RAM only, leaving the
-    undone conversation newest by `updated_at`."""
-    ask(client, "first")
-    original = conversation_of(client)
-
-    client.post("/api/conversation/reset", json={}, headers=AUTH)
-    client.post("/api/conversation/reset", json={"undo": True}, headers=AUTH)
-
-    assert conversation_of(client) == original
-
+# NO MORE "CURRENT-SESSION RULE" SECTION. `_resolve_conversation_id`, the
+# cookie it resolved, `/api/conversation/reset` and its `undo`/`forget`
+# branches are all deleted (docs/per-tab-conversation-deep-linking-plan.md
+# §5.1, §5.4) — there is no session-held pointer left for a resurrection to
+# exploit, because every request names its conversation explicitly and
+# `ConversationStore` never resolves one on its own. "New chat" ending one
+# conversation without disturbing another is now a property of two distinct
+# client-minted ids never sharing a bucket, which
+# `web/tests/test_multi_tab_conversations.py` proves through the real
+# multi-tab surface (§7.2) rather than by simulating a cookie here.
 
 def test_hydration_restores_the_prompt_window_after_the_cache_is_lost(app, client):
     """A process restart, the store's TTL, or a new device all land here."""
-    ask(client, "first")
-    conversation = conversation_of(client)
+    response = ask(client, "first")
+    conversation = conversation_of(response)
 
     app.config["conversations"].clear(conversation)
-    ask(client, "second")
+    ask(client, "second", conversation_id=conversation, allow_create=False)
 
     handed_to_the_model = app.config["openai_handler"].stream_response.call_args[0][3]
     assert [message["content"] for message in handed_to_the_model] == [
@@ -451,9 +432,6 @@ def test_a_storage_failure_still_ships_the_answer(app, client):
     """`handlers.js` already names history persistence as an auxiliary failure
     that must render the answer anyway. This is the server half of that."""
     class Broken:
-        def latest_session(self, owner_id):
-            raise PersistenceUnavailable("down")
-
         def load_session(self, *args, **kwargs):
             raise PersistenceUnavailable("down")
 
@@ -514,9 +492,6 @@ def test_the_blocking_route_reports_persisted_false_for_the_same_gap(app, client
 
 def test_the_answer_is_recorded_in_ram_even_when_storage_fails(app, client):
     class Broken:
-        def latest_session(self, owner_id):
-            return None
-
         def load_session(self, *args, **kwargs):
             return []
 
@@ -524,9 +499,9 @@ def test_the_answer_is_recorded_in_ram_even_when_storage_fails(app, client):
             raise PersistenceUnavailable("down")
 
     app.config["chat_backend"] = lambda: Broken()
-    ask(client, "first")
+    response = ask(client, "first")
 
-    window = app.config["conversations"].get(conversation_of(client), owner_id=OWNER)
+    window = app.config["conversations"].get(conversation_of(response), owner_id=OWNER)
     assert [message["content"] for message in window] == ["first", "".join(ANSWER_TOKENS)]
 
 
@@ -537,22 +512,24 @@ def test_conversation_ids_are_minted_in_the_canonical_dashed_form(client):
     and returns the DASHED form, so the value that went in stops comparing equal
     to the one that comes back — two cache entries for one conversation, and a
     client-side comparison that never matches."""
-    ask(client)
-    conversation = conversation_of(client)
+    response = ask(client)
+    conversation = conversation_of(response)
 
     assert "-" in conversation
     assert canonical_uuid(conversation) == conversation
 
 
-def test_a_legacy_undashed_cookie_is_canonicalised_in_place(client, backend):
-    """Cookies outlive the deploy that introduced this; store entries do not."""
+def test_a_legacy_undashed_conversation_id_is_canonicalised_in_place(client, backend):
+    """`_validate_chat_request` canonicalises the CLIENT-SUPPLIED id the same
+    way the deleted cookie rule used to (docs/per-tab-conversation-deep-
+    linking-plan.md §5.1) — a request naming a 32-char undashed id, which
+    predates the dashed form shipping, must still land under the dashed id a
+    `uuid` column round-trips to."""
     legacy = "b6b1a3f0c4d94e2a9f1b7c8d2e3f4a5b"
-    with client.session_transaction() as flask_session:
-        flask_session["conv_id"] = legacy
 
-    ask(client)
+    response = ask(client, conversation_id=legacy)
 
-    conversation = conversation_of(client)
+    conversation = conversation_of(response)
     assert conversation == "b6b1a3f0-c4d9-4e2a-9f1b-7c8d2e3f4a5b"
     assert backend.load_session(OWNER, conversation)
 
@@ -560,13 +537,14 @@ def test_a_legacy_undashed_cookie_is_canonicalised_in_place(client, backend):
 def test_the_final_frame_carries_the_conversation_id(client):
     """It rides meta, final and done — never delta. A uuid per token adds ~29KB
     to an 800-token answer."""
-    events = frames(ask(client))
+    response = ask(client)
+    events = frames(response)
     final = next(data for event, data in events if event == "final")
     meta = next(data for event, data in events if event == "meta")
 
     done = next(data for event, data in events if event == "done")
 
-    assert final["conversation_id"] == meta["conversation_id"] == conversation_of(client)
+    assert final["conversation_id"] == meta["conversation_id"] == conversation_of(response)
     assert done["conversation_id"] == meta["conversation_id"]
     assert all("conversation_id" not in data for event, data in events if event == "delta")
 
@@ -595,13 +573,13 @@ def test_hydration_is_bounded_through_the_request_path(app, client):
     """
     app.config["CHAT_HYDRATION_LIMIT"] = 2
 
+    conversation = "aaaaaaaa-2222-3333-4444-555555555555"
     for turn in range(3):
-        ask(client, f"question {turn}")
-    conversation = conversation_of(client)
+        ask(client, f"question {turn}", conversation_id=conversation)
 
     # Lose the cache, forcing the next request to hydrate from durable rows.
     app.config["conversations"].clear(conversation)
-    ask(client, "question 3")
+    ask(client, "question 3", conversation_id=conversation, allow_create=False)
 
     handed_to_the_model = app.config["openai_handler"].stream_response.call_args[0][3]
     assert [m["content"] for m in handed_to_the_model] == [
@@ -688,8 +666,8 @@ def test_a_non_array_source_payload_becomes_an_empty_list(backend):
 
 def test_the_real_citation_payload_satisfies_the_schema(client, backend):
     """The constraints above are only worth having if the live path clears them."""
-    ask(client)
-    _, assistant_row = backend.load_session(OWNER, conversation_of(client))
+    response = ask(client)
+    _, assistant_row = backend.load_session(OWNER, conversation_of(response))
 
     for source in assistant_row.sources:
         assert 1 <= source["source_index"] <= 99
@@ -721,18 +699,16 @@ def test_hydration_never_overwrites_a_window_that_already_has_turns(app):
 
 # ── Ship state ──────────────────────────────────────────────────────────────
 
-def test_both_halves_of_persistence_ship_on():
-    """The flags default the same way again, and this time both are on.
+def test_persistence_ships_on():
+    """`CHAT_PERSISTENCE_ENABLED` waited for the MIGRATION — applied
+    2026-08-20 as `supabase/migrations/20260820131914_chat_session_
+    persistence.sql` — and ships on by default now that it has landed.
 
-    `CHAT_PERSISTENCE_ENABLED` waited for the MIGRATION — applied 2026-08-20 as
-    `supabase/migrations/20260820131914_chat_session_persistence.sql`.
-
-    `CHAT_RESUME_LATEST_SESSION` waited for the TRANSCRIPT, which is step 6:
-    `GET /api/chat/history` now draws the visible transcript from the same rows
-    the prompt window is built from. Before that route existed, resuming showed
-    a returning reader a blank screen backed by a model that remembered — half a
-    feature, and the worse half. The two halves now agree by construction, which
-    is the whole precondition this flag was waiting on.
+    There is no second flag to check any more. `CHAT_RESUME_LATEST_SESSION`
+    waited for the TRANSCRIPT (`GET /api/chat/history`) and was retired the
+    moment the URL became the pointer (docs/per-tab-conversation-deep-
+    linking-plan.md §5.5, Decision 1a): `/` is always a new conversation, with
+    no cookie-held "most recent session" left to resume.
 
     Read off a non-testing app, because under TESTING the in-memory backend is
     selected unconditionally and would hide the production default.
@@ -744,7 +720,6 @@ def test_both_halves_of_persistence_ship_on():
     _configure_app(application, testing=False)
 
     assert application.config["CHAT_PERSISTENCE_ENABLED"] is True
-    assert application.config["CHAT_RESUME_LATEST_SESSION"] is True
 
 
 # ── The transcript comes back (step 6) ──────────────────────────────────────
@@ -755,22 +730,28 @@ def test_both_halves_of_persistence_ship_on():
 # citations, on a product whose first principle is that an answer without a
 # resolvable source is a liability.
 
-def hydrate(client, headers=AUTH, **params):
-    return client.get("/api/chat/history", query_string=params, headers=headers)
+def hydrate(client, conversation_id, headers=AUTH, **params):
+    """`?c=<id>` names the conversation (Decision 4 of
+    docs/per-tab-conversation-deep-linking-plan.md) — there is no cookie left
+    to fall back to, so every caller must name one explicitly."""
+    return client.get(
+        "/api/chat/history", query_string={"c": conversation_id, **params}, headers=headers
+    )
 
 
 def test_the_transcript_comes_back_from_the_durable_rows(client):
-    ask(client, "first")
-    ask(client, "second")
+    conversation_id = "aaaaaaaa-2222-3333-4444-555555555555"
+    ask(client, "first", conversation_id=conversation_id)
+    ask(client, "second", conversation_id=conversation_id, allow_create=False)
 
-    body = hydrate(client).get_json()
+    body = hydrate(client, conversation_id).get_json()
 
     assert [message["role"] for message in body["messages"]] == [
         "user", "assistant", "user", "assistant",
     ], "the transcript did not come back oldest-first as an alternating exchange"
     assert body["messages"][0]["content"] == "first"
     assert body["messages"][2]["content"] == "second"
-    assert body["conversation_id"] == conversation_of(client)
+    assert body["conversation_id"] == conversation_id
 
 
 def test_a_stored_source_index_reaches_the_browser_as_index(client):
@@ -781,9 +762,9 @@ def test_a_stored_source_index_reaches_the_browser_as_index(client):
     reads `s.index` in `bindCitations` and `_openPassage`. Ship the column name
     and every restored citation becomes a control that resolves to nothing.
     """
-    ask(client)
+    response = ask(client)
 
-    answer = hydrate(client).get_json()["messages"][1]
+    answer = hydrate(client, conversation_of(response)).get_json()["messages"][1]
 
     assert all("index" in source for source in answer["sources"])
     assert not any("source_index" in source for source in answer["sources"])
@@ -798,10 +779,11 @@ def test_only_the_cited_passages_reach_the_transcript(client, backend):
     The transcript is not that record: an answer ships the evidence it used, so a
     restored answer must not grow sources it never displayed.
     """
-    ask(client)
+    response = ask(client)
+    conversation_id = conversation_of(response)
 
-    answer = hydrate(client).get_json()["messages"][1]
-    stored = backend.load_session(OWNER, conversation_of(client))[1].sources
+    answer = hydrate(client, conversation_id).get_json()["messages"][1]
+    stored = backend.load_session(OWNER, conversation_id)[1].sources
 
     assert len(stored) == 4, "precondition: all four retrieved passages were stored"
     assert [source["index"] for source in answer["sources"]] == [1, 3]
@@ -811,9 +793,9 @@ def test_only_the_cited_passages_reach_the_transcript(client, backend):
 def test_a_user_message_carries_no_evidence_fields(client):
     """A question has no sources. Emitting empty ones would invite the client to
     render a source control under the reader's own words."""
-    ask(client)
+    response = ask(client)
 
-    question = hydrate(client).get_json()["messages"][0]
+    question = hydrate(client, conversation_of(response)).get_json()["messages"][0]
 
     assert "sources" not in question
     assert "evidence_state" not in question
@@ -834,17 +816,18 @@ def test_a_live_answer_is_verified_by_construction(app, client):
 
 
 def test_a_stored_answer_from_the_active_build_is_verified(client):
-    ask(client)
-    assert hydrate(client).get_json()["messages"][1]["evidence_state"] == "verified"
+    response = ask(client)
+    assert hydrate(client, conversation_of(response)).get_json()["messages"][1]["evidence_state"] \
+        == "verified"
 
 
 def test_a_rebuilt_corpus_marks_stored_evidence_stale(app, client):
     """The case no test environment produces by accident, and the one the whole
     three-state gate exists for."""
-    ask(client)
+    response = ask(client)
     app.config["CORPUS_REVISION"] = "a-later-build"
 
-    answer = hydrate(client).get_json()["messages"][1]
+    answer = hydrate(client, conversation_of(response)).get_json()["messages"][1]
 
     assert answer["evidence_state"] == "stale"
     assert answer["sources"], (
@@ -856,10 +839,11 @@ def test_a_rebuilt_corpus_marks_stored_evidence_stale(app, client):
 
 def test_an_unreadable_build_pointer_is_unverifiable_not_verified(app, client):
     """Fails closed. A null on either side is 'we cannot confirm', never 'fine'."""
-    ask(client)
+    response = ask(client)
     app.config["CORPUS_REVISION"] = None
 
-    assert hydrate(client).get_json()["messages"][1]["evidence_state"] == "unverifiable"
+    assert hydrate(client, conversation_of(response)).get_json()["messages"][1]["evidence_state"] \
+        == "unverifiable"
 
 
 # ── Who may hydrate ─────────────────────────────────────────────────────────
@@ -868,28 +852,34 @@ def test_a_second_reader_cannot_hydrate_the_first_readers_transcript(client):
     """The owner filter, asserted through the route rather than the backend.
 
     `test_a_second_reader_cannot_load_the_first_readers_session` proves the RPC
-    filters. This proves the route did not hand B a way around it — which is why
-    the conversation id is never a parameter here.
+    filters. This proves the route did not hand B a way around it — a
+    CLIENT-SUPPLIED id naming a conversation the requester does not own
+    answers 404, not an empty transcript (§3.3 of
+    docs/per-tab-conversation-deep-linking-plan.md): `chat_load_session`
+    cannot otherwise tell "not yours" from "yours, but empty".
     """
-    ask(client, "a question from the first reader", headers=AUTH)
-    a_conversation = conversation_of(client)
+    response = ask(client, "a question from the first reader", headers=AUTH)
+    a_conversation = conversation_of(response)
 
-    body = hydrate(client, headers=AUTH_B).get_json()
+    reply = hydrate(client, a_conversation, headers=AUTH_B)
 
-    assert body["conversation_id"] != a_conversation
-    assert body["messages"] == []
+    assert reply.status_code == 404
+    assert reply.get_json()["code"] == "not_found"
 
 
 def test_hydrating_without_signing_in_is_refused(client):
-    assert hydrate(client, headers={}).status_code == 401
+    assert hydrate(client, "aaaaaaaa-2222-3333-4444-555555555555", headers={}).status_code == 401
 
 
-def test_a_storage_failure_is_not_reported_as_an_empty_history(app, client):
+def test_a_storage_failure_is_not_reported_as_an_empty_history(app, client, backend):
     """An empty transcript is a CLAIM — that the reader has no history. Making it
     while the store is unreachable is the quiet untruth this product refuses
     everywhere else, so the route says 503 instead of shrugging."""
+    response = ask(client)
+    conversation_id = conversation_of(response)
+
     class Broken:
-        def latest_session(self, owner_id):
+        def session_exists(self, owner_id, session_id):
             raise PersistenceUnavailable("down")
 
         def load_session(self, *args, **kwargs):
@@ -900,90 +890,17 @@ def test_a_storage_failure_is_not_reported_as_an_empty_history(app, client):
 
     app.config["chat_backend"] = lambda: Broken()
 
-    response = hydrate(client)
+    reply = hydrate(client, conversation_id)
 
-    assert response.status_code == 503
-    assert response.get_json()["code"] == "history_unavailable"
-
-
-def test_a_resume_outage_is_reported_and_does_not_mint_a_new_conversation(app, client):
-    """An outage is not an answer, and the cookie must not make it permanent.
-
-    `latest_session` failing is not "this reader has no history" — it is "we
-    could not find out". Minting a fresh id and reporting an empty transcript
-    would be wrong twice: the reader is told something untrue, and the id is
-    written to the cookie, so every later visit finds one and never tries to
-    resume again. One transient failure would cost the reader their durable
-    conversation permanently.
-
-    This repository has already paid for exactly this shape once, in
-    `_authenticate_request` — see TODO.md, "a transient Supabase outage signed
-    readers out".
-    """
-    ask(client, "first")
-    original = conversation_of(client)
-    client.post("/auth/logout")
-
-    real = app.config["_testing_chat_backend"]
-
-    class LatestBroken:
-        def latest_session(self, owner_id):
-            raise PersistenceUnavailable("down")
-
-        def load_session(self, *args, **kwargs):
-            return real.load_session(*args, **kwargs)
-
-        def append_turn(self, **kwargs):
-            return real.append_turn(**kwargs)
-
-    app.config["chat_backend"] = lambda: LatestBroken()
-
-    response = hydrate(client)
-    assert response.status_code == 503
-    assert response.get_json()["code"] == "history_unavailable"
-
-    with client.session_transaction() as flask_session:
-        assert flask_session.get("conv_id") is None, (
-            "a failed resume left a minted id in the cookie, which would stop "
-            "the reader's real conversation ever being resumed again"
-        )
-
-    # And once the store recovers, the conversation is still reachable.
-    app.config["chat_backend"] = lambda: real
-    recovered = hydrate(client).get_json()
-    assert recovered["conversation_id"] == original
-    assert recovered["resumed"] is True
+    assert reply.status_code == 503
+    assert reply.get_json()["code"] == "history_unavailable"
 
 
-def test_a_load_failure_after_a_resume_does_not_commit_the_resumed_id(app, client):
-    """The 503 must not quietly keep the id it resolved.
-
-    Committed, a recovered store would feed that conversation into the model on
-    the reader's next question while the screen stayed blank — and a later
-    reload would find a cookie, so the `resumed` disclosure it owes would never
-    be shown either.
-    """
-    ask(client, "first")
-    client.post("/auth/logout")
-
-    real = app.config["_testing_chat_backend"]
-
-    class LoadBroken:
-        def latest_session(self, owner_id):
-            return real.latest_session(owner_id)
-
-        def load_session(self, *args, **kwargs):
-            raise PersistenceUnavailable("down")
-
-        def append_turn(self, **kwargs):
-            return real.append_turn(**kwargs)
-
-    app.config["chat_backend"] = lambda: LoadBroken()
-
-    assert hydrate(client).status_code == 503
-    with client.session_transaction() as flask_session:
-        assert flask_session.get("conv_id") is None
-
+# NO MORE "resume" TESTS HERE. `_resolve_conversation_id`'s resume branch,
+# `latest_session` (all three implementations) and the `resumed` field on the
+# wire are all deleted (docs/per-tab-conversation-deep-linking-plan.md §5.5,
+# Decision 1a) — `/` is always a new conversation now, with no cookie-driven
+# fallback for an outage to corrupt.
 
 def test_persistence_enabled_with_no_backend_is_reported_not_shrugged_off(app, client):
     """The same gap `_persist_turn` was already fixed for, on the read side.
@@ -996,7 +913,7 @@ def test_persistence_enabled_with_no_backend_is_reported_not_shrugged_off(app, c
     app.config["chat_backend"] = lambda: None
     app.config["CHAT_PERSISTENCE_ENABLED"] = True
 
-    response = hydrate(client)
+    response = hydrate(client, "aaaaaaaa-2222-3333-4444-555555555555")
 
     assert response.status_code == 503
     assert response.get_json()["code"] == "history_unavailable"
@@ -1007,7 +924,7 @@ def test_a_deployment_without_persistence_still_answers_an_empty_transcript(app,
     app.config["chat_backend"] = lambda: None
     app.config["CHAT_PERSISTENCE_ENABLED"] = False
 
-    response = hydrate(client)
+    response = hydrate(client, "aaaaaaaa-2222-3333-4444-555555555555")
 
     assert response.status_code == 200
     assert response.get_json()["messages"] == []
@@ -1018,9 +935,9 @@ def test_a_stored_turn_keeps_the_time_it_happened(client):
     with the reload time would tell a reader every question in their history was
     asked just now, on a tool where when something was asked is part of the
     record."""
-    ask(client)
+    response = ask(client)
 
-    messages = hydrate(client).get_json()["messages"]
+    messages = hydrate(client, conversation_of(response)).get_json()["messages"]
 
     assert all(message.get("created_at") for message in messages), (
         "the transcript cannot show when a turn happened if the time never ships"
@@ -1029,22 +946,25 @@ def test_a_stored_turn_keeps_the_time_it_happened(client):
 
 def test_the_transcript_is_not_cacheable(client):
     """One reader's conversation must not sit in a shared machine's cache."""
-    ask(client)
+    response = ask(client)
 
-    response = hydrate(client)
+    reply = hydrate(client, conversation_of(response))
 
-    assert "no-store" in response.headers.get("Cache-Control", "")
+    assert "no-store" in reply.headers.get("Cache-Control", "")
 
 
 # ── Bounds and disclosure ───────────────────────────────────────────────────
 
 def test_the_hydration_limit_is_clamped_at_both_ends(client):
+    conversation_id = "aaaaaaaa-2222-3333-4444-555555555555"
     for _ in range(3):
-        ask(client)
+        ask(client, conversation_id=conversation_id)
 
-    assert len(hydrate(client, limit=2).get_json()["messages"]) == 2
-    assert len(hydrate(client, limit=9999).get_json()["messages"]) == 6, "200 is the ceiling"
-    assert len(hydrate(client, limit=-5).get_json()["messages"]) == 0, (
+    assert len(hydrate(client, conversation_id, limit=2).get_json()["messages"]) == 2
+    assert len(hydrate(client, conversation_id, limit=9999).get_json()["messages"]) == 6, (
+        "200 is the ceiling"
+    )
+    assert len(hydrate(client, conversation_id, limit=-5).get_json()["messages"]) == 0, (
         "a negative limit must clamp, not raise or invert"
     )
 
@@ -1059,11 +979,12 @@ def test_a_window_never_starts_on_an_answer(client):
     same repair `ConversationStore.replace` already makes for the prompt window,
     applied where a reader can see it.
     """
+    conversation_id = "aaaaaaaa-2222-3333-4444-555555555555"
     for _ in range(3):
-        ask(client)
+        ask(client, conversation_id=conversation_id)
 
     for limit in (1, 3, 5):
-        messages = hydrate(client, limit=limit).get_json()["messages"]
+        messages = hydrate(client, conversation_id, limit=limit).get_json()["messages"]
         assert len(messages) % 2 == 0, f"limit={limit} returned a half exchange"
         if messages:
             assert messages[0]["role"] == "user", (
@@ -1071,55 +992,8 @@ def test_a_window_never_starts_on_an_answer(client):
             )
 
 
-def test_a_conversation_the_cookie_named_is_not_announced_as_resumed(client):
-    ask(client)
-    assert hydrate(client).get_json()["resumed"] is False
-
-
-def test_a_conversation_picked_up_from_history_says_so(client):
-    """The disclosure the flag flip rests on.
-
-    Ending a conversation and logging out before asking anything else purges the
-    cookie, so the next visit looks like a new device and resumes the
-    conversation that was ended. That gap stays open knowingly — this is what
-    keeps it surprising rather than dishonest.
-    """
-    ask(client, "first")
-    original = conversation_of(client)
-    client.post("/auth/logout")
-
-    body = hydrate(client).get_json()
-
-    assert body["conversation_id"] == original
-    assert body["resumed"] is True
-    assert body["messages"][0]["content"] == "first"
-
-
-def test_resumption_is_not_announced_over_an_empty_transcript(app, client):
-    """The rule can resume a session that hydrates to nothing. A notice about a
-    thing the reader cannot see is worse than no notice."""
-    ask(client, "first")
-    client.post("/auth/logout")
-
-    real = app.config["_testing_chat_backend"]
-
-    class Empty:
-        def latest_session(self, owner_id):
-            return real.latest_session(owner_id)
-
-        def load_session(self, *args, **kwargs):
-            return []
-
-        def append_turn(self, **kwargs):
-            return real.append_turn(**kwargs)
-
-    app.config["chat_backend"] = lambda: Empty()
-
-    body = hydrate(client).get_json()
-
-    assert body["messages"] == []
-    assert body["resumed"] is False
-
+# NO MORE "resumed" DISCLOSURE TESTS HERE — the field, and the fallback it
+# described, are both deleted (§5.5, Decision 1a).
 
 # ── The archive ─────────────────────────────────────────────────────────────
 
@@ -1127,13 +1001,13 @@ def test_the_archive_records_a_turn_under_pseudonymous_keys(client, backend, mon
     monkeypatch.setenv("ARCHIVE_OWNER_SALT", "owner-salt")
     monkeypatch.setenv("ARCHIVE_SESSION_SALT", "session-salt")
 
-    ask(client, "how long is the review?")
+    response = ask(client, "how long is the review?")
 
     assert len(backend.archive) == 1
     row = backend.archive[0]
     assert row["question"] == "how long is the review?"
     assert OWNER not in row["owner_key"]
-    assert conversation_of(client) not in row["session_key"]
+    assert conversation_of(response) not in row["session_key"]
     assert len(row["sources"]) == 4
 
 
@@ -1149,10 +1023,10 @@ def test_a_missing_salt_skips_the_archive_and_keeps_the_readers_history(
     monkeypatch.delenv("ARCHIVE_OWNER_SALT", raising=False)
     monkeypatch.delenv("ARCHIVE_SESSION_SALT", raising=False)
 
-    ask(client, "first")
+    response = ask(client, "first")
 
     assert backend.archive == []
-    assert backend.load_session(OWNER, conversation_of(client))
+    assert backend.load_session(OWNER, conversation_of(response))
 
 
 def test_a_missing_salt_is_logged_once_per_process_not_every_turn(monkeypatch, caplog):

@@ -287,8 +287,18 @@ def test_first_turn_sees_no_history(app, client):
 
 
 def test_history_accumulates_across_turns(app, client):
-    client.post("/api/chat", json={"query": "first question"}, headers=AUTH)
-    client.post("/api/chat", json={"query": "second question"}, headers=AUTH)
+    conversation_id = "aaaaaaaa-2222-3333-4444-555555555555"
+    client.post(
+        "/api/chat",
+        json={"query": "first question", "conversation_id": conversation_id},
+        headers=AUTH,
+    )
+    client.post(
+        "/api/chat",
+        json={"query": "second question", "conversation_id": conversation_id,
+              "allow_create": False},
+        headers=AUTH,
+    )
 
     assert [m["content"] for m in app.config["llm_calls"][1]["history"]] == [
         "first question",
@@ -298,8 +308,13 @@ def test_history_accumulates_across_turns(app, client):
 
 def test_history_is_capped_by_pair_count(app, client):
     max_pairs = app.config["MAX_CHAT_HISTORY_MESSAGE_PAIRS"]
+    conversation_id = "aaaaaaaa-2222-3333-4444-555555555555"
     for i in range(max_pairs + 3):
-        client.post("/api/chat", json={"query": f"question {i}"}, headers=AUTH)
+        client.post(
+            "/api/chat",
+            json={"query": f"question {i}", "conversation_id": conversation_id},
+            headers=AUTH,
+        )
 
     history = app.config["llm_calls"][-1]["history"]
     assert len(history) <= max_pairs * 2

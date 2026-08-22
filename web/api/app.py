@@ -232,7 +232,7 @@ ASSET_VERSION = "warm39"
 
 # Product release, rendered in the landing footer. Kept as one constant so
 # the number cannot drift between the page and the module headers.
-APP_VERSION = "0.4.1 (Beta)"
+APP_VERSION = "0.5.0 (Beta)"
 
 # Every ES module under static/js/modules, mapped to its versioned URL. A
 # browser-native import map is the only way to version static imports without a
@@ -294,13 +294,14 @@ def clear_auth_session() -> None:
 
 
 def _bind_session_to_identity(identity: str) -> None:
-    """Tie the conversation in this cookie to one authenticated reader.
+    """Tie this cookie's legacy conversation litter to one authenticated reader.
 
     The belt to the logout route's braces. Logout is the *cooperative* path and
     plenty of real endings skip it: a closed tab, an expired refresh token, a
     revoked session, a client that never called it. Any of those leaves a valid
-    Flask cookie carrying the previous reader's `conv_id`, and the next person
-    to sign in on that browser would have inherited their history.
+    Flask cookie behind — and a pre-migration one could still be carrying raw
+    `chat_history`/`prev_chat_history` (`CONVERSATION_SESSION_KEYS`, auth.py),
+    which the next person to sign in on that browser would otherwise inherit.
 
     So identity is checked on every authenticated request rather than trusted
     to have been cleaned up on the way out. A change means a different person
@@ -579,56 +580,6 @@ def auth_required(view_func):
     return wrapper
 
 
-def _resolve_and_adopt(
-    store: ConversationStore,
-    existing_id: Optional[str],
-    legacy_history: Optional[List[Dict[str, str]]],
-    owner_id: Optional[str] = None,
-) -> Optional[str]:
-    """Return the id this content lives under, adopting it into the store.
-
-    Mints an id for cookie-only legacy content that predates `conv_id` (a
-    reader who reset, or who used only the blocking chat path, before
-    history moved server-side) so it isn't left stranded in the cookie.
-    Returns None if there's neither an id nor legacy content to adopt.
-
-    If `existing_id` already has its own store entry, `adopt_cookie_history`
-    is a no-op — the store wins over orphaned cookie content rather than
-    attempting a merge, since the two could only exist if a reader used both
-    the blocking and streaming paths before this migration unified them, and
-    there's no principled way to reconcile histories that were already
-    inconsistent with each other.
-    """
-    resolved = existing_id or (new_conversation_id() if legacy_history else None)
-    if resolved:
-        # `owner_id` is not optional in effect, only in signature: adopting under
-        # None while the chat routes file under the real owner would put the
-        # restored history in a bucket the next request cannot see, so an undo
-        # would report success and hand the model nothing.
-        store.adopt_cookie_history(resolved, legacy_history, owner_id=owner_id)
-    return resolved
-
-
-def _migrate_legacy_undo_history(store: ConversationStore, owner_id: Optional[str] = None) -> None:
-    """Move a pre-migration `prev_chat_history` out of the cookie on the next
-    chat request, whichever route it lands on.
-
-    `handle_conversation_reset`'s `undo` branch already adopts this, but only
-    if the reader actually presses Undo. Without this, a reader who reset
-    once on the old blocking implementation and then just kept asking
-    questions — never touching Undo, Forget, or another reset — would have
-    their old set-aside history keep riding the signed cookie on every
-    request indefinitely, which is exactly the cookie-size failure this
-    migration exists to close. Called at the top of both chat routes; a
-    no-op for every session created after this migration shipped.
-    """
-    legacy = session.pop("prev_chat_history", None)
-    if legacy is None:
-        return
-    if prev_id := _resolve_and_adopt(store, session.get("prev_conv_id"), legacy, owner_id):
-        session["prev_conv_id"] = prev_id
-
-
 # ──────────────────────────────────────────────────────────
 # Durable history
 # ──────────────────────────────────────────────────────────
@@ -666,101 +617,6 @@ def _chat_persistence() -> Optional[Any]:
     """The durable backend for this request, or None when there is none."""
     factory = current_app.config.get("chat_backend")
     return factory() if factory else None
-
-
-def _resolve_conversation_id(
-    backend: Optional[Any], owner_id: Optional[str]
-) -> Tuple[str, bool, bool]:
-    """The current-session rule: (conversation_id, resumed, resume_failed).
-
-    > **A cookie that names a conversation is honoured as-is. Only a cookie with
-    > no conversation at all resumes the owner's most recent one.**
-
-    The second half is what makes signing in on a new device, a cleared browser,
-    or the request after a logout land on the reader's own history instead of an
-    empty page — the language toggle reloads the page, so this cannot wait for
-    Phase 2.
-
-    THE FIRST HALF IS WHAT STOPS IT RESURRECTING WHAT "NEW CHAT" ENDED. Three
-    paths would otherwise do exactly that, and all three are invisible until
-    durable rows and a page reload meet:
-
-    1. After a reset the cookie holds a freshly minted id with no durable row.
-       Keying the fallback on "the cookie's id has no rows" would fire here, and
-       the next language toggle would restore the conversation just ended.
-    2. `test_a_late_append_cannot_resurrect_a_reset_conversation` holds today
-       only because a late append lands on a rotated id nothing reads again.
-       With durable rows that append writes real ones and bumps `updated_at`,
-       making the abandoned conversation the owner's newest.
-    3. Undo calls `store.clear`, which drops RAM only — so the conversation just
-       undone is also the newest by `updated_at`.
-
-    Keying on the PRESENCE of `conv_id` rather than on whether it resolves makes
-    all three no-ops: the cookie has an id in every one of them. An earlier
-    draft of the plan proposed a third "deliberately empty" cookie state for
-    this; it is not needed, and a marker that had to be written by three
-    separate branches of the reset route is a marker one of them would forget.
-    """
-    cookie_id = session.get("conv_id")
-    if cookie_id:
-        # Canonicalise in Python, never in SQL: a cast that normalises inside
-        # the database fixes the column and leaves every comparison on this side
-        # still wrong. Ids minted before this change were `uuid4().hex` — 32
-        # chars, no dashes — which a `uuid` column accepts and returns DASHED,
-        # so the value that went in stops comparing equal to the one that comes
-        # back. Rewriting the cookie once is the whole migration: store entries
-        # under the old key are process-local and did not survive the deploy
-        # that introduced this line.
-        canonical = canonical_uuid(cookie_id)
-        if canonical is None:
-            canonical = new_conversation_id()
-        if canonical != cookie_id:
-            session["conv_id"] = canonical
-        return canonical, False, False
-
-    # ON SINCE STEP 6. This fires only when there is no cookie at all — a new
-    # device, a cleared browser, or the first request after a logout — and it is
-    # what makes a reader's conversation follow them rather than their browser.
-    #
-    # It was held off until the transcript hydrated from these same rows, and
-    # the reason is worth keeping: while the visible transcript lived in per-tab
-    # `sessionStorage`, every case where this fallback fired was a case where
-    # the two disagreed, showing a blank screen backed by a model that
-    # remembered. `GET /api/chat/history` now draws the transcript from the rows
-    # the prompt window is built from, so the two halves agree by construction.
-    #
-    # THE CALLER IS TOLD WHEN THIS BRANCH RAN, and that is not decoration. One
-    # gap stays open knowingly: ending a conversation and then logging out
-    # BEFORE asking anything else purges the cookie, so the next visit looks
-    # like a new device and resumes the conversation that was ended. Closing it
-    # properly needs a durable owner-level reset marker; until then the reader
-    # is told their conversation was picked up from history rather than left to
-    # discover it, which is the difference between surprising and dishonest.
-    if current_app.config.get("CHAT_RESUME_LATEST_SESSION") and backend is not None and owner_id:
-        try:
-            latest = backend.latest_session(owner_id)
-        except PersistenceUnavailable:
-            # AN OUTAGE IS NOT AN ANSWER. Reported to the caller rather than
-            # folded into "no previous conversation", because the two demand
-            # opposite handling: a chat POST should answer anyway, while the
-            # transcript route must refuse and leave the cookie alone. Swallowing
-            # it here meant one transient failure minted a fresh id, wrote it to
-            # the cookie, and thereby made the loss PERMANENT — every later visit
-            # would find a cookie and never try to resume again. This repository
-            # has paid for exactly that shape once already, in
-            # `_authenticate_request` (TODO.md, "a transient Supabase outage
-            # signed readers out").
-            logger.warning("Could not read the latest session.", exc_info=True)
-            minted = new_conversation_id()
-            session["conv_id"] = minted
-            return minted, False, True
-        if latest:
-            session["conv_id"] = latest
-            return latest, True, False
-
-    minted = new_conversation_id()
-    session["conv_id"] = minted
-    return minted, False, False
 
 
 def _load_history(
@@ -1066,6 +922,7 @@ def _persist_turn(
     category: str,
     model: str,
     title: Optional[str] = None,
+    allow_create: bool = True,
 ) -> bool:
     """File one exchange durably. Returns False when it could not be filed.
 
@@ -1130,6 +987,10 @@ def _persist_turn(
             # which case it is in, which it could only learn from a read it would
             # then be racing.
             title=title,
+            # Defence in depth only — the real refusal already ran in
+            # `_preflight_conversation`, before generation. See its docstring
+            # and docs/per-tab-conversation-deep-linking-plan.md §3.4.
+            allow_create=allow_create,
         )
     except PersistenceUnavailable:
         logger.error("Could not persist a turn (conv=%s).", conversation_id, exc_info=True)
@@ -1160,6 +1021,41 @@ def _persist_turn(
             "original, not the one just streamed.", conversation_id,
         )
     return True
+
+
+def _preflight_conversation(
+    persistence: Optional[Any], owner_id: Optional[str], conversation_id: str
+) -> bool:
+    """May this owner write into `conversation_id` right now?
+
+    Called only for a request that named an existing conversation and said
+    `allow_create: false` — the shape a `/c/<id>` deep link produces on turn 2
+    onward. A stale or foreign id is refused HERE, before a token is
+    generated, rather than discovered after the answer has already streamed:
+    verified against the actual ordering (`yield sse("final")` precedes
+    `store.append_turn`, which precedes `_persist_turn`), a stale-tab send
+    against a deleted conversation would otherwise pay for a full generation,
+    write the turn into the in-RAM prompt window unconditionally, and only
+    THEN fail to persist — leaving the reader a complete answer for a
+    conversation that no longer exists.
+    See docs/per-tab-conversation-deep-linking-plan.md §3.4.
+
+    An outage answers True — fails open, the same posture `_durable_owner`
+    takes: refusing a legitimate question because the existence check itself
+    could not be reached would be a worse failure than the resurrection this
+    guards against, which `chat_append_turn`'s own `p_allow_create` still
+    refuses at the database regardless.
+    """
+    if persistence is None or not owner_id:
+        return True
+    try:
+        return persistence.session_exists(owner_id, conversation_id)
+    except PersistenceUnavailable:
+        logger.warning(
+            "Could not preflight conversation %s; proceeding without the check.",
+            conversation_id, exc_info=True,
+        )
+        return True
 
 
 def _retrieve_for_prompt(
@@ -1276,9 +1172,12 @@ def _configure_app(app: Flask, testing: bool) -> None:
         #
         # Applied 2026-08-20: supabase/migrations/20260820131914_chat_session_
         # persistence.sql is live (`list_migrations` confirms it), so
-        # config.yaml now defaults this on. Turns are recorded; nothing on
-        # screen changes until step 6 (transcript hydration) ships — see
-        # CHAT_RESUME_LATEST_SESSION below.
+        # config.yaml now defaults this on. Turns are recorded and hydrated
+        # from the URL the client names (docs/per-tab-conversation-deep-
+        # linking-plan.md) — there is no separate "resume my last
+        # conversation" fallback any more; see §1 and §5.5 for why the
+        # cookie-keyed pointer this used to gate is gone rather than merely
+        # turned off.
         CHAT_PERSISTENCE_ENABLED=config.get("server", "chat_persistence", False),
         # How much of a stored conversation comes back on hydration. Bounded
         # because an unbounded restore meets citations.js's 100-answer tracking
@@ -1290,13 +1189,6 @@ def _configure_app(app: Flask, testing: bool) -> None:
         # `_warn_if_archive_is_undisclosed`, which is what stops that pairing
         # from silently becoming untrue.
         ARCHIVE_DISCLOSED=config.get("server", "archive_disclosed", False),
-        # OFF until step 6 ships transcript hydration. See the long note in
-        # `_resolve_conversation_id`: with the transcript still restoring from
-        # per-tab sessionStorage, turning this on shows a returning reader an
-        # empty screen backed by a model that remembers the conversation.
-        # Durable writes, ownership and hydration all work with it off; what it
-        # gates is only the "resume my last conversation" fallback.
-        CHAT_RESUME_LATEST_SESSION=config.get("server", "chat_resume_latest_session", False),
     )
     if testing:
         app.config.update(SERVER_NAME="localhost")
@@ -1375,7 +1267,15 @@ def _init_extensions(app: Flask, testing: bool) -> Limiter:
     Talisman(
         app,
         force_https=should_force_https,
-        content_security_policy=csp
+        content_security_policy=csp,
+        # Both of these already matched Talisman's own defaults and were
+        # therefore silently inherited rather than stated — pinned explicitly
+        # so a future flask-talisman upgrade, or a config refactor that drops
+        # this call's defaults, cannot regress either one without the change
+        # being visible here. See
+        # docs/per-tab-conversation-deep-linking-plan.md §6.1 and §3.5.
+        referrer_policy="strict-origin-when-cross-origin",
+        session_cookie_samesite="Lax",
     )
     logger.info(
         "Talisman initialized. force_https=%s (debug=%s, testing=%s, behind_proxy=%s)",
@@ -1902,8 +1802,14 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
 
     app.config["base_render_context"] = base_render_context
 
-    @app.route("/")
-    def index():
+    def _render_shell() -> Response:
+        """The one HTML shell both `/` and `/c/<uuid>` render.
+
+        Identical either way: same `base_render_context`, same import map,
+        same `?lang=` persistence. `/c/<uuid>` deliberately never reads the
+        uuid to build this response — see that route's docstring for why that
+        is the security property, not an oversight.
+        """
         context = base_render_context()
         response = make_response(render_template(
             "index.html",
@@ -1917,6 +1823,58 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
             response.set_cookie(
                 "lang", context["lang"], max_age=31_536_000, samesite="Lax", path="/"
             )
+        # Without this the document is heuristically cacheable, so a reader can
+        # keep being served a pre-deploy page indefinitely. `no-cache` still lets
+        # it be stored — it just forces revalidation, so this costs nothing today
+        # and bounds the old-client window once the /c/<id> rollout begins.
+        response.headers["Cache-Control"] = "no-cache"
+        return response
+
+    @app.route("/")
+    def index():
+        return _render_shell()
+
+    @app.route("/c/<uuid:conversation_id>")
+    def deep_link(conversation_id) -> Response:
+        """A conversation's URL. Renders exactly what `/` renders.
+
+        Three properties, each a decision — see
+        docs/per-tab-conversation-deep-linking-plan.md §3.1 for the full
+        argument, verified against this app's actual CSRF/oracle posture in
+        the security review:
+
+        NOT `@auth_required`. `/` is not either. A deep link opened by a
+        signed-out reader must land on the landing page and KEEP ITS PATH, so
+        signing in hydrates the conversation they clicked — the client reads
+        `Route.current()` once identity resolves.
+
+        NO OWNERSHIP CHECK, NO SESSION STATE TOUCHED. The response never
+        varies with the id: for a fixed requester, no uuid produces an
+        observable difference from any other. That is what makes this route
+        safe to open blind — a link scanner, an unfurl bot, a forged link in
+        an email — and what stops it from ever being a CSRF vector: unlike
+        `GET /api/chat/history`, this route cannot repoint anything, because
+        it has nothing to repoint. Enforcement lives entirely in the
+        authenticated `GET /api/chat/history?c=<id>`.
+
+        CANONICAL CASE. Werkzeug's `<uuid:>` converter accepts uppercase hex,
+        so `/c/F47AC…` and `/c/f47ac…` would otherwise be two URLs for one
+        conversation — two history entries, two log lines. Redirected to the
+        lowercase canonical form, mirroring `canonical_uuid`'s own
+        dash-normalisation.
+        """
+        canonical = str(conversation_id)
+        raw = request.path[len("/c/"):]
+        if raw != canonical:
+            target = f"/c/{canonical}"
+            if request.query_string:
+                target = f"{target}?{request.query_string.decode()}"
+            return redirect(target, code=301)
+
+        response = _render_shell()
+        # Never indexed, never followed — a conversation's URL is not a page
+        # search should surface, even though it carries no content itself.
+        response.headers["X-Robots-Tag"] = "noindex, nofollow"
         return response
 
     @app.route("/favicon.ico")
@@ -1984,7 +1942,17 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
 
     def _validate_chat_request() -> Tuple[Optional[Dict[str, Any]], Optional[Tuple[Response, int]]]:
         """Parse and validate a chat payload. Returns (payload, error_response)."""
-        body = request.get_json(force=True, silent=True) or {}
+        # NOT `force=True`. That parsed the body regardless of Content-Type,
+        # which made both chat POSTs reachable by a cross-site auto-submitting
+        # form using `enctype="text/plain"` — a CORS-simple content type that
+        # triggers no preflight — combined with this app having no CSRF
+        # protection and `_get_token_from_request` accepting the session
+        # cookie. The client always sends `Content-Type: application/json`
+        # (services.js), so nothing legitimate depends on `force=True`; a
+        # text/plain form cannot forge a real JSON content type past
+        # `silent=True` alone. See
+        # docs/per-tab-conversation-deep-linking-plan.md §3.5.
+        body = request.get_json(silent=True) or {}
         query = (body.get("query") or "").strip()
         category = (body.get("category") or "all").lower()
         lang = (body.get("lang") or "en").lower()
@@ -2011,6 +1979,17 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
             logger.error("Search engine unavailable for chat request.")
             return None, (jsonify(error="Search service is currently unavailable."), 503)
 
+        # `conversation_id`: missing or malformed mints a fresh id, the same
+        # tolerance `client_request_id` gets — a 400 would turn a client bug
+        # into a failed question. THE URL IS THE POINTER (§1), so there is no
+        # cookie left to fall back to: an absent value is simply a fresh
+        # conversation, exactly as if the client had minted one itself and
+        # not yet told the server. §8's rollout window, during which "absent"
+        # had to be told apart from "reset" and "resume" by a cookie, is over.
+        conversation_id = (
+            canonical_uuid(body.get("conversation_id")) or new_conversation_id()
+        )
+
         return {
             "query": query,
             "category": category,
@@ -2027,6 +2006,15 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
             # and it simply gets no replay protection.
             "client_request_id": canonical_uuid(body.get("client_request_id"))
             or new_conversation_id(),
+            "conversation_id": conversation_id,
+            # Default TRUE, not False. An old client never sends this key at
+            # all, and the un-updated caller must keep lazily creating exactly
+            # as it does today — the same "un-updated caller still resolves"
+            # reasoning the `p_allow_create default true` migration comment
+            # gives, applied one layer up. A new client sends it explicitly:
+            # true on a brand-new conversation's first turn, false on every
+            # turn to a conversation the URL already names.
+            "allow_create": bool(body.get("allow_create", True)),
         }, None
 
     @app.route("/api/chat/history", methods=["GET"])
@@ -2043,51 +2031,32 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
         lambda: config.get("server", "rate_limit", {}).get("history_api", "30 per minute")
     )
     def handle_chat_history() -> Union[Response, Tuple[Response, int]]:
-        """The reader's current conversation, drawn from the durable rows.
+        """One conversation's durable rows, named by `?c=<uuid>`.
 
-        THE SERVER PICKS THE CONVERSATION. There is no session id in the query
-        string, and that is the point: `_resolve_conversation_id` is the single
-        place the current-session rule lives, so the transcript and the model's
-        prompt window cannot disagree about which conversation this is, and a
-        client cannot name one it does not own. The owner filter inside
-        `chat_load_session` is the guarantee underneath; this route never gets
-        the chance to weaken it.
+        THE URL IS THE POINTER (§1 of
+        docs/per-tab-conversation-deep-linking-plan.md). `?c=` absent means
+        `/` — a new conversation, Decision 1(a) — and this route answers an
+        empty transcript without touching the backend at all: there is
+        nothing to look up, and no session state to read or write either way.
 
-        Note this GET WRITES the session cookie when the rule mints or resumes an
-        id, exactly as both POST routes do. That is not a side effect worth
-        avoiding — it is how a reader arriving with no cookie is given one.
-
-        An unowned or empty session answers 200 with no messages rather than 404.
-        The ambiguity that bites people here — an expired credential returning
-        zero rows and reading as an empty chat — needs a client-supplied id to
-        arise, and this route has none: `@auth_required` has already answered 401
-        for "nobody" and 403 for a disabled reader, so an empty list can only
-        mean this conversation has no turns yet.
+        A SUPPLIED id that does not exist for this owner answers 404, not an
+        empty transcript. `chat_load_session` alone cannot tell "not yours,
+        or not there" from "yours, but no turns have landed yet", which was
+        harmless while every id was server-minted (yours by construction) but
+        is not once an id can arrive from a URL — a hostile or stale deep
+        link must not render as an ordinary empty conversation (§3.3).
         """
+        requested_id = canonical_uuid(request.args.get("c"))
+        if requested_id is None:
+            return _no_store(jsonify(conversation_id=None, messages=[]))
+
         owner_id = _durable_owner()
         persistence = _chat_persistence()
-        conversation_id, resumed, resume_failed = _resolve_conversation_id(
-            persistence, owner_id
-        )
-
-        if resume_failed:
-            # The cookie write is rolled back deliberately. Left in place, a
-            # freshly minted id would be found on every later visit and the
-            # reader's durable conversation would never be resumed again — a
-            # transient outage made permanent by the very act of reporting it.
-            session.pop("conv_id", None)
-            return (
-                jsonify(
-                    error="Your conversation history could not be loaded.",
-                    code="history_unavailable",
-                ),
-                503,
-            )
 
         if not owner_id:
             # No durable owner: nothing was ever filed for this reader, so an
             # empty transcript is the truth rather than a shrug.
-            return jsonify(conversation_id=conversation_id, resumed=False, messages=[])
+            return _no_store(jsonify(conversation_id=requested_id, messages=[]))
 
         if persistence is None:
             # Two different states, and only one of them is quiet. A deployment
@@ -2107,7 +2076,26 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
                     ),
                     503,
                 )
-            return jsonify(conversation_id=conversation_id, resumed=False, messages=[])
+            return _no_store(jsonify(conversation_id=requested_id, messages=[]))
+
+        try:
+            exists = persistence.session_exists(owner_id, requested_id)
+        except PersistenceUnavailable:
+            logger.warning(
+                "Could not verify conversation %s exists.",
+                requested_id,
+                exc_info=True,
+            )
+            return (
+                jsonify(
+                    error="Your conversation history could not be loaded.",
+                    code="history_unavailable",
+                ),
+                503,
+            )
+        if not exists:
+            # Not yours, or not there. Deliberately one answer.
+            return jsonify(error="Unknown conversation.", code="not_found"), 404
 
         requested = request.args.get("limit", type=int)
         limit = clamp_load_limit(
@@ -2115,7 +2103,7 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
         )
 
         try:
-            rows = persistence.load_session(owner_id, conversation_id, limit=limit)
+            rows = persistence.load_session(owner_id, requested_id, limit=limit)
         except PersistenceUnavailable:
             # Told, not swallowed. `_load_history` degrades to an empty prompt
             # window because a reader would rather have an answer without prior
@@ -2125,16 +2113,9 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
             # exist to refuse.
             logger.warning(
                 "Could not hydrate the transcript for conversation %s.",
-                conversation_id,
+                requested_id,
                 exc_info=True,
             )
-            # Same rollback, same reason: if the rule RESUMED this id, committing
-            # it now would let a recovered store feed that conversation into the
-            # model on the next question while the screen stayed blank — and
-            # would swallow the `resumed` disclosure a later reload owes, because
-            # the cookie would no longer look like a new device.
-            if resumed:
-                session.pop("conv_id", None)
             return (
                 jsonify(
                     error="Your conversation history could not be loaded.",
@@ -2144,19 +2125,9 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
             )
 
         messages = _hydration_payload(rows)
-        response = jsonify(
-            conversation_id=conversation_id,
-            # Only claimed when there is something on screen to explain. The
-            # rule can resume a session that then hydrates to nothing; saying
-            # "picked up from your history" over an empty transcript would be a
-            # notice about a thing that did not visibly happen.
-            resumed=bool(resumed and messages),
-            messages=messages,
-        )
         # This body is one reader's conversation. Nothing should hold a copy of
         # it — not a shared-machine browser cache, not an intermediary.
-        response.headers["Cache-Control"] = "private, no-store"
-        return response
+        return _no_store(jsonify(conversation_id=requested_id, messages=messages))
 
     # ── The sidebar: list, select, rename, delete ────────────────────────────
     #
@@ -2165,13 +2136,13 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
     # from a browser with no Flask route in between". That plan was retired, not
     # forgotten, for two reasons the navigation migration states in full.
     #
-    # The one that decides it is not about privilege at all. Deleting the row
-    # `conv_id` names leaves the cookie pointing at a conversation that no longer
-    # exists, and `chat_append_turn`'s `on conflict (id) do nothing` recreates it
-    # on the reader's next question. The reader deletes a conversation and it
-    # comes back. Rotating the cookie, clearing the `ConversationStore` window
-    # and dropping a stale undo pointer are Flask's to do, so the delete has to
-    # arrive here regardless of who is permitted to run the DELETE.
+    # The one that decides it is not about privilege at all. A tab still
+    # sitting on the deleted conversation's URL sends that id on its next
+    # question, and `chat_append_turn`'s `on conflict (id) do nothing` would
+    # recreate the row — the reader deletes a conversation and it comes back.
+    # Clearing the `ConversationStore` window is Flask's to do (the model's
+    # memory of the conversation, not something RLS reaches), so the delete
+    # has to arrive here regardless of who is permitted to run the DELETE.
     #
     # RLS is unchanged and still the floor. It is defence in depth against a
     # leaked anon key, not the coordinator of a workflow spanning a cookie, a
@@ -2215,7 +2186,7 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
     def _owned_session_id(raw: str) -> Optional[str]:
         """A canonical uuid, or None when this cannot name a session.
 
-        Canonicalised for the same reason `_resolve_conversation_id` does it:
+        Canonicalised for the same reason `canonical_uuid` exists at all:
         ids minted before the dashed form shipped are 32 hex characters, a
         `uuid` column returns them dashed, and an un-normalised comparison across
         that boundary silently never matches. Under TESTING the bypass
@@ -2234,27 +2205,21 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
     def handle_chat_sessions() -> Union[Response, Tuple[Response, int]]:
         """One page of the reader's conversations, newest activity first.
 
-        `active` rides the response rather than being inferred client-side. The
-        client cannot know which conversation the server considers current — it
-        is a signed cookie — and a sidebar that highlights the wrong row is
-        worse than one that highlights none, because it is a claim about which
-        conversation the next question will join.
+        No `active` field. The client knows exactly which conversation is
+        current — it is its own URL (§5.3) — and the server has nothing to add
+        to that; a cookie-derived answer would be wrong for every tab but one.
 
-        NOTE this does NOT resolve the current-session rule and so does not mint
-        a cookie. Listing conversations is not starting one, and a GET that
-        silently resumed the reader's most recent conversation would make merely
-        opening the sidebar change which conversation they are in.
+        NOTE this does NOT touch session state. Listing conversations is not
+        starting one.
         """
         owner_id, persistence, error = _sidebar_preconditions()
         if error:
             return error
 
-        active = canonical_uuid(session.get("conv_id")) or session.get("conv_id")
-
         if persistence is None:
             # No durable owner, or persistence deliberately off. An empty list is
             # the truth here rather than a shrug — nothing was ever filed.
-            return _no_store(jsonify(sessions=[], next_cursor=None, active=active))
+            return _no_store(jsonify(sessions=[], next_cursor=None))
 
         cursor_updated_at = request.args.get("cursor_updated_at")
         cursor_id = request.args.get("cursor_id")
@@ -2300,88 +2265,16 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
                 {"updated_at": page.next_cursor[0], "id": page.next_cursor[1]}
                 if page.next_cursor else None
             ),
-            active=active,
         ))
 
-    @app.route("/api/chat/sessions/<session_id>/select", methods=["POST"])
-    @auth_required
-    @limiter.limit(_session_limit)
-    def handle_chat_session_select(session_id: str) -> Union[Response, Tuple[Response, int]]:
-        """Make one owned conversation the current one.
-
-        THE COOKIE IS THE POINTER, and this is the only route that repoints it at
-        an existing conversation. That keeps `_resolve_conversation_id` the single
-        place the current-session rule lives: `/api/chat/history` still takes no
-        session id, still serves whatever the cookie names, and so the transcript
-        and the model's prompt window still cannot disagree about which
-        conversation this is. The client switches by calling this and then
-        re-fetching the transcript, rather than by naming a conversation on the
-        read.
-
-        OWNERSHIP IS VERIFIED BEFORE THE COOKIE MOVES. `load_session` answers []
-        for "not yours" and for "not there" identically, which is exactly the
-        refusal wanted: a reader probing uuids learns nothing, and a hostile id
-        can never be written into the cookie — which would otherwise be a way to
-        make the next question join a stranger's conversation.
-
-        A KNOWN LIMIT, stated because the sidebar makes it reachable rather than
-        theoretical: the cookie is per-BROWSER, not per-tab. Selecting a
-        conversation in one tab changes it in every tab of the same profile. That
-        was already true of `conv_id` before this route existed — two tabs have
-        always shared one conversation — so this does not introduce it, but it
-        does give readers a control that makes it easy to trip. The fix is a
-        tab-scoped pointer sent on every chat request, which is a change to the
-        chat routes' contract rather than to the sidebar; it is recorded in
-        TODO.md rather than smuggled in here.
-        """
-        owner_id, persistence, error = _sidebar_preconditions()
-        if error:
-            return error
-
-        canonical = _owned_session_id(session_id)
-        if not canonical:
-            return jsonify(error="Unknown conversation.", code="not_found"), 404
-
-        if persistence is None or not owner_id:
-            return jsonify(error="Unknown conversation.", code="not_found"), 404
-
-        # A generation in flight is writing into whatever the cookie names right
-        # now. Moving the pointer under it would not corrupt that write — the
-        # generator closed over its own id — but it would leave the reader's
-        # screen and their next question pointing at different conversations
-        # while an answer was still arriving. Refused rather than reconciled.
-        if _generations().is_live(owner_id, canonical_uuid(session.get("conv_id"))):
-            return jsonify(
-                error="An answer is still being generated.", code="generation_in_flight",
-            ), 409
-
-        try:
-            owned = persistence.load_session(owner_id, canonical, limit=1)
-        except PersistenceUnavailable:
-            logger.warning("Could not verify conversation ownership.", exc_info=True)
-            return (
-                jsonify(
-                    error="Your conversations could not be loaded.",
-                    code="history_unavailable",
-                ),
-                503,
-            )
-
-        if not owned:
-            # Not yours, or not there. Deliberately one answer.
-            return jsonify(error="Unknown conversation.", code="not_found"), 404
-
-        store: ConversationStore = current_app.config["conversations"]
-        # The undo set aside by a New chat belongs to the conversation that was
-        # ended, and the reader has just navigated somewhere else. Restoring it
-        # over their selection would put a conversation they did not ask for on
-        # top of one they did.
-        if stale := session.pop("prev_conv_id", None):
-            store.clear(stale)
-        session.pop("prev_chat_history", None)
-
-        session["conv_id"] = canonical
-        return _no_store(jsonify(ok=True, conversation_id=canonical))
+    # NO /select ROUTE. Its entire job was moving the cookie that named the
+    # current conversation (docs/per-tab-conversation-deep-linking-plan.md
+    # §5.2) — with no cookie, selecting a conversation is navigating to its
+    # URL, which the client does directly. Deleting it also closes a live CSRF
+    # hole incidentally: it parsed no body at all, so any cross-site
+    # auto-submitting form could have repointed a victim's conversation.
+    # `test_there_is_no_route_that_repoints_a_conversation_by_cookie` pins the
+    # absence so a future refactor cannot reintroduce an equivalent endpoint.
 
     @app.route("/api/chat/sessions/<session_id>", methods=["PATCH"])
     @auth_required
@@ -2439,24 +2332,21 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
         """Delete one owned conversation, and everything pointing at it.
 
         THE DELETE IS THE EASY HALF. The row goes and the cascade takes its
-        messages and sources. What makes this a route rather than a browser call
-        is the three pointers that would otherwise outlive it:
+        messages and sources. What makes this a route rather than a browser
+        call is the `ConversationStore` window it would otherwise outlive —
+        the model's memory of the conversation. Left in place, the next
+        answer is informed by a conversation the reader deleted, and
+        `chat_append_turn`'s `on conflict (id) do nothing` would recreate the
+        row the moment a stray write landed on it.
 
-        * `conv_id`, if it names the deleted conversation. Left in place, the
-          next question hits `chat_append_turn`'s `on conflict (id) do nothing`,
-          which finds no row and CREATES ONE — the conversation the reader
-          deleted comes back, with a new answer in it.
-        * `prev_conv_id`, the undo pointer. Left in place, pressing Undo restores
-          a conversation that no longer exists in the database, so the screen
-          shows turns the server cannot produce again.
-        * The `ConversationStore` window, which is the model's memory of the
-          conversation. Left in place, the next answer is informed by a
-          conversation the reader deleted — the exact "blank screen over a server
-          that still remembers" failure the reset route's own comment refuses.
+        No cookie to rotate any more (§5.1/§5.2): the client names the
+        conversation it deletes by its URL, and if that is the route it is
+        currently on, moving off it — to `/` — is the client's job (§4.4),
+        not something this response hands back.
 
-        A generation in flight is refused outright rather than any of this being
-        attempted: the write is already committed to landing and would recreate
-        the row after the delete. See `_InFlightGenerations`.
+        A generation in flight is refused outright rather than any of this
+        being attempted: the write is already committed to landing and would
+        recreate the row after the delete. See `_InFlightGenerations`.
         """
         owner_id, persistence, error = _sidebar_preconditions()
         if error:
@@ -2486,23 +2376,7 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
         store: ConversationStore = current_app.config["conversations"]
         store.clear(canonical)
 
-        # The undo pointer, if it was the thing just deleted.
-        if canonical_uuid(session.get("prev_conv_id")) == canonical:
-            session.pop("prev_conv_id", None)
-            session.pop("prev_chat_history", None)
-
-        replaced = None
-        if canonical_uuid(session.get("conv_id")) == canonical:
-            # The reader deleted the conversation they were in. Mint a fresh one
-            # rather than resuming their next-most-recent: `_resolve_conversation_id`
-            # resumes only when the cookie names NOTHING, and popping the cookie
-            # here would arm exactly that fallback — so the next reload would
-            # open some older conversation the reader never chose, which is the
-            # resurrection shape the current-session rule exists to prevent.
-            replaced = new_conversation_id()
-            session["conv_id"] = replaced
-
-        return _no_store(jsonify(ok=True, id=canonical, conversation_id=replaced))
+        return _no_store(jsonify(ok=True, id=canonical))
 
     @app.route("/api/chat/stream", methods=["POST"])
     @auth_required
@@ -2520,34 +2394,41 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
         max_chars = current_app.config["MAX_CHAT_HISTORY_CHARS"]
 
         client_request_id = payload["client_request_id"]
+        allow_create = payload["allow_create"]
         owner_id = _durable_owner()
         persistence = _chat_persistence()
 
-        # ── Every session touch happens HERE, in the view body. ──
-        # Flask writes Set-Cookie in finalize_request(), which runs after this
-        # function returns but before the WSGI server iterates the generator
-        # below, so a session write inside generate() would be silently dropped.
-        # That constraint governs the COOKIE, not the database — the durable
-        # write below sits inside the generator quite legitimately.
-        _migrate_legacy_undo_history(store, owner_id)
-        conversation_id, _resumed, _resume_failed = _resolve_conversation_id(
-            persistence, owner_id
-        )
+        # THE URL IS THE POINTER (§1). No cookie touched at all, ever —
+        # `_validate_chat_request` has already minted a fresh id for a
+        # missing or malformed value, so this is never None.
+        conversation_id = payload["conversation_id"]
+
+        # Claimed in the VIEW BODY, not inside generate(). The generator does not
+        # start running until the WSGI server iterates it, and the sidebar's
+        # delete can arrive in that gap — on a threaded server it demonstrably
+        # does. Holding from here means the protection covers the whole window in
+        # which this conversation is committed to being written to. The
+        # preflight below runs UNDER this same hold, for the same reason.
+        generations = _generations()
+        hold = generations.hold(owner_id, conversation_id)
+        hold.__enter__()
+
+        # `allow_create=false` says "this conversation already exists; do not
+        # create it". Refused HERE — before retrieval, before a token is
+        # generated, before any response frame — rather than discovered after
+        # the answer has already streamed. See `_preflight_conversation` and
+        # docs/per-tab-conversation-deep-linking-plan.md §3.4.
+        if not allow_create:
+            if not _preflight_conversation(persistence, owner_id, conversation_id):
+                hold.__exit__(None, None, None)
+                return jsonify(error="Unknown conversation.", code="not_found"), 404
+
         store.adopt_cookie_history(
             conversation_id, session.pop("chat_history", None), owner_id=owner_id
         )
         history = _load_history(
             store, persistence, owner_id, conversation_id, max_pairs, max_chars
         )
-
-        # Claimed in the VIEW BODY, not inside generate(). The generator does not
-        # start running until the WSGI server iterates it, and the sidebar's
-        # delete can arrive in that gap — on a threaded server it demonstrably
-        # does. Holding from here means the protection covers the whole window in
-        # which this conversation is committed to being written to.
-        generations = _generations()
-        hold = generations.hold(owner_id, conversation_id)
-        hold.__enter__()
 
         def generate():
             try:
@@ -2672,6 +2553,7 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
                     # The opening question names the conversation. Sent every
                     # turn; applied by the RPC only when there is no title yet.
                     title=query,
+                    allow_create=allow_create,
                 ):
                     # An `error` frame, NOT a new event name. services.js
                     # dispatches with `on[frame.event]?.()`, which silently drops
@@ -2790,52 +2672,46 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
             # introduced the swap actually true.
             openai_handler: OpenAIHandler = current_app.config["openai_handler"]
 
-            # Retrieval stays AHEAD of conversation setup, deliberately. A
-            # SearchEngineError below returns 503 without ever having minted a
-            # `conv_id`, so a failed question does not leave a conversation
-            # behind in the reader's cookie. Pinned by
-            # test_a_retrieval_failure_does_not_start_a_conversation.
-            llm_context, retrieved = _retrieve_for_prompt(
-                search_engine, query, category, openai_handler
-            )
-
             store: ConversationStore = current_app.config["conversations"]
             max_pairs = current_app.config["MAX_CHAT_HISTORY_MESSAGE_PAIRS"]
             max_chars = current_app.config["MAX_CHAT_HISTORY_CHARS"]
 
-            # Same pattern the streaming route uses (see its comment there):
-            # get/create conv_id up front, one-time-migrate any pre-deploy
-            # cookie history into the store under it. No "asking ends the
-            # undo" step here — that was a cookie-byte safety rule (a history
-            # in the cookie could double the session's size against a ~4KB
-            # limit), not a UX decision, and it doesn't apply once history
-            # never touches the cookie. Keeping it would also diverge from
-            # the streaming route, which has never ended the undo on a new
-            # question — asking here now behaves the same way asking there
-            # always has.
             owner_id = _durable_owner()
             persistence = _chat_persistence()
+            generations = _generations()
 
-            _migrate_legacy_undo_history(store, owner_id)
-            # The current-session rule runs on BOTH routes. It resolves a cookie
-            # rather than a question, so a route that skipped it would resume a
-            # different conversation from the one its sibling just resumed, in
-            # the same browser.
-            conversation_id, _resumed, _resume_failed = _resolve_conversation_id(
-                persistence, owner_id
-            )
-            store.adopt_cookie_history(
-                conversation_id, session.pop("chat_history", None), owner_id=owner_id
-            )
+            allow_create = payload["allow_create"]
+            # THE URL IS THE POINTER (§1). `_validate_chat_request` has
+            # already minted a fresh id for a missing or malformed value, so
+            # this is never None.
+            conversation_id = payload["conversation_id"]
 
-            chat_history = _load_history(
-                store, persistence, owner_id, conversation_id, max_pairs, max_chars
-            )
-            # Held across generation and the durable write for the same reason
-            # the streaming route holds it: this conversation is committed to
-            # being written to, so it must not be deleted out from under the
-            # write. See _InFlightGenerations.
-            with _generations().hold(owner_id, conversation_id):
+            # Held and preflighted BEFORE retrieval, so a stale or foreign id
+            # is refused before a token is generated. Taking the hold FIRST,
+            # not after the check, is what makes a concurrent delete lose the
+            # race rather than win it: a delete while a hold is live gets its
+            # own 409 (`handle_chat_session_delete`), so the preflight's
+            # answer cannot go stale underneath this request.
+            hold = generations.hold(owner_id, conversation_id)
+            hold.__enter__()
+            if not allow_create and not _preflight_conversation(
+                persistence, owner_id, conversation_id
+            ):
+                hold.__exit__(None, None, None)
+                return jsonify(error="Unknown conversation.", code="not_found"), 404
+
+            try:
+                llm_context, retrieved = _retrieve_for_prompt(
+                    search_engine, query, category, openai_handler
+                )
+
+                store.adopt_cookie_history(
+                    conversation_id, session.pop("chat_history", None), owner_id=owner_id
+                )
+                chat_history = _load_history(
+                    store, persistence, owner_id, conversation_id, max_pairs, max_chars
+                )
+
                 answer, suggested_questions = openai_handler.generate_response(
                     query, llm_context, category, chat_history, lang=lang,
                 )
@@ -2858,7 +2734,10 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
                     category=category,
                     model=getattr(openai_handler, "model", "unknown"),
                     title=query,
+                    allow_create=allow_create,
                 )
+            finally:
+                hold.__exit__(None, None, None)
 
             return jsonify(
                 response=answer,
@@ -2886,115 +2765,15 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
             logger.error("Unhandled error in /api/chat: %s", exception, exc_info=True)
             return jsonify(error="An internal server error occurred."), 500
 
-    @app.route("/api/conversation/reset", methods=["POST"])
-    @auth_required
-    @limiter.limit(
-        lambda: config.get("server", "rate_limit", {}).get("reset_api", "30 per minute")
-    )
-    def handle_conversation_reset() -> Union[Response, Tuple[Response, int]]:
-        """End the current conversation without ending the session.
-
-        Reset **rotates** `conv_id` rather than deleting its store entry, and the
-        distinction is load-bearing twice over.
-
-        First, correctness. `store.append_turn` runs near the end of the streaming
-        generator, before the "done" frame; `ConversationStore.clear` is a keyed
-        pop with no tombstone. Deleting the entry here would leave a generator
-        that is still winding down free to write the old turn straight back under
-        the same id — so whether a reset held would depend on whether the client's
-        disconnect beat one line of server code. Rotating means a late append
-        lands on an id nothing will ever read again, and the reset holds
-        regardless of timing.
-
-        Second, undo. Because the old conversation is set aside rather than
-        destroyed, undo can restore what the *model* remembers and not merely what
-        the screen shows. A transcript that came back over a server that had
-        forgotten it would be the kind of half-truth this product's own citations
-        rule exists to prevent.
-
-        The set-aside conversation is dropped on the next reset, on `forget`, on
-        logout (`purge_conversation_state`), or by the store's TTL — whichever
-        comes first.
-
-        Both `/api/chat` and `/api/chat/stream` keep their history in the same
-        `ConversationStore`, keyed by `conv_id`, so this rotation covers both
-        paths uniformly — there is nothing path-specific left to rotate.
-        `chat_history` / `prev_chat_history` are no longer written by either
-        route; `_resolve_and_adopt` below only exists to adopt a pre-migration
-        cookie's leftover history into the store under the id being restored
-        or rotated away, so a session that predates this migration does not
-        lose or strand content — it is a no-op for every session created
-        after this migration shipped.
-        """
-        payload = request.get_json(silent=True) or {}
-        store: ConversationStore = current_app.config["conversations"]
-        owner_id = _durable_owner()
-
-        if payload.get("undo"):
-            restored = _resolve_and_adopt(
-                store, session.pop("prev_conv_id", None),
-                session.pop("prev_chat_history", None), owner_id,
-            )
-            if restored:
-                # The empty conversation the reset started. Nothing has read it
-                # — undo is torn down client-side before a new question is sent
-                # — but it is this session's litter either way.
-                if current := session.get("conv_id"):
-                    store.clear(current)
-                session["conv_id"] = restored
-
-            # Nothing set aside is a no-op, NOT an error: a reader whose first
-            # question never reached the server has a transcript to restore and
-            # no server history to go with it, and the two are still consistent
-            # afterwards because there was nothing to be inconsistent about.
-            # Reporting that as a failure would leave their turns discarded.
-            return jsonify(
-                ok=True,
-                restored=bool(restored),
-                conversation_id=session.get("conv_id"),
-            )
-
-        if payload.get("forget"):
-            if stale := session.pop("prev_conv_id", None):
-                store.clear(stale)
-            session.pop("prev_chat_history", None)
-            return jsonify(ok=True, conversation_id=session.get("conv_id"))
-
-        # A reset while an earlier one is still undoable: that older conversation
-        # is now unreachable by any route, so it goes now rather than waiting for
-        # the TTL.
-        if stale := session.pop("prev_conv_id", None):
-            store.clear(stale)
-        session.pop("prev_chat_history", None)
-
-        # Usually just conv_id — but a pre-migration session may instead (or
-        # also) be carrying its live history as session["chat_history"], with
-        # no conv_id at all (a reader who only ever used the blocking path
-        # before this migration). _resolve_and_adopt mints an id for that
-        # legacy content so it rotates into prev_conv_id like everything
-        # else, rather than sitting inert in the cookie until some later
-        # request silently resurrects it under an unrelated conversation.
-        previous = _resolve_and_adopt(
-            store, session.get("conv_id"), session.pop("chat_history", None), owner_id
-        )
-        if previous:
-            session["prev_conv_id"] = previous
-
-        # Canonical dashed form, matching what a `uuid` column round-trips to.
-        #
-        # Reset drops the COOKIE POINTER and the RAM window. It does not delete
-        # a single durable row, and neither does `forget` — a "New chat" that
-        # silently destroyed the conversation behind it would make the sidebar
-        # Phase 2 adds a liar. What ends here is this browser's claim on that
-        # conversation, not the conversation.
-        #
-        # Nor does this create anything: session rows are written lazily by
-        # chat_append_turn on the first completed turn, so this route's 30/min
-        # allowance cannot be used to fill a reader's own sidebar with empty
-        # conversations.
-        conversation_id = new_conversation_id()
-        session["conv_id"] = conversation_id
-        return jsonify(ok=True, conversation_id=conversation_id)
+    # NO /api/conversation/reset ROUTE. It used to rotate the session cookie
+    # that named the current conversation and, on `undo`, restore a set-aside
+    # one — both cookie-keyed mechanisms §5.1 and §5.4 remove. Under
+    # URL-as-truth, "New chat" is a client-side navigation from `/c/<id>` to
+    # `/` (Decision 2 of docs/per-tab-conversation-deep-linking-plan.md) with
+    # nothing for a server round trip to do, and undo is the Back button —
+    # free, per-tab, already understood — rather than a server-held
+    # `prev_conv_id`. `Handlers.handleNewChat` (static/js/modules/handlers.js)
+    # confirms there is no remaining caller of this route.
 
 
 # ──────────────────────────────────────────────────────────

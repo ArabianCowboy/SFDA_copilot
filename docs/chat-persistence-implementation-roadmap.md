@@ -1051,15 +1051,14 @@ What is left is scope and copy, none of it blocking:
    enforced in `_validate_chat_request` as a 400, above the database, so an over-long
    question is the client error it is rather than a 500 raised inside a `security definer`
    function.
-3. **Deep-linking** (`/c/<id>`) — interacts with the language toggle and with §6's test shape.
-   ~~Phase 2 at the earliest.~~ **Not built in step 8, and now bundled with the multi-tab
-   fix**, which is the same change: both need a conversation id that travels with the
-   request rather than with the browser. Step 8's `POST /api/chat/sessions/<id>/select`
-   moves the cookie instead, so `_resolve_conversation_id` stays the single place the
-   current-session rule lives and `/api/chat/history` still takes no session id. **The
-   `ConversationStore` owner re-key was done partly for this**: deep-linking is the first
-   thing that would let a conversation id arrive from somewhere other than the cookie that
-   minted it.
+3. ~~**Deep-linking** (`/c/<id>`)~~ — **done 2026-08-22**, bundled with the multi-tab fix
+   exactly as this entry anticipated: `docs/per-tab-conversation-deep-linking-plan.md`. Not
+   by generalising `POST /api/chat/sessions/<id>/select`'s cookie-move, though — that route,
+   `_resolve_conversation_id`, and the cookie itself are all deleted. The URL is the
+   conversation id, sent by the client on every request; there is no server-side
+   "current conversation" left to resolve. The `ConversationStore` owner re-key mentioned
+   here is exactly what makes two tabs, each naming its own id, unable to reach each
+   other's window.
 4. **Notice copy** — needs a native-Arabic review pass before step 7. A review task, not an
    engineering one, and it does not gate steps 1-6. `chat.notSaved` shipped in both
    catalogues in step 4 and wants the same pass.

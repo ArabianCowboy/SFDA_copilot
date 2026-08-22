@@ -21,26 +21,24 @@ recover_bp = Blueprint('recover', __name__)
 logger = logging.getLogger(__name__)
 
 
-# Session keys holding one reader's conversation. Named once so the purge below
-# and the identity check in app.py cannot drift apart.
+# Session keys holding one reader's legacy conversation litter. Named once so
+# the purge below cannot drift from whatever else reads this list.
 #
-# `conv_id`/`prev_conv_id` key the server-side ConversationStore, where both
-# the streaming and blocking chat routes now hold history — so the purge below
-# has to clear the store entries these key, not just the cookie. `chat_history`
-# and `prev_chat_history` are no longer written by either route; they stay
-# here only as a defensive purge target for any pre-migration cookie still
-# carrying them, so a reader who resets and then signs out (or hands the
-# browser to someone else) does not leave old questions and answers sitting in
-# the next reader's session.
+# NEITHER KEY IS WRITTEN BY EITHER CHAT ROUTE ANY MORE
+# (docs/per-tab-conversation-deep-linking-plan.md §5.1, §5.4): the URL is the
+# pointer now, not a cookie, and `ConversationStore` is keyed
+# `(owner_id, conversation_id)` — a second reader on the same browser cannot
+# reach the first reader's RAM window merely by signing in, because nothing
+# hands them the first reader's conversation id to ask for. What these two
+# keys still guard against is narrower and purely historical: a pre-migration
+# cookie that predates `ConversationStore` entirely and is still carrying raw
+# question/answer JSON. Purged here so a reader who signs out (or hands the
+# browser to someone else) does not leave that old content sitting in the
+# next reader's session.
 CONVERSATION_SESSION_KEYS = (
-    "conv_id",
-    "prev_conv_id",
     "chat_history",
     "prev_chat_history",
 )
-
-# The subset of the above that keys a server-side ConversationStore entry.
-CONVERSATION_ID_KEYS = ("conv_id", "prev_conv_id")
 
 # Markers that describe *who* is holding this cookie rather than what they said.
 #
@@ -56,27 +54,20 @@ IDENTITY_MARKER_KEYS = ("is_admin_hint",)
 
 
 def purge_conversation_state():
-    """Drop this browser session's conversation, server side included.
+    """Drop this browser session's legacy conversation litter.
 
     The Flask session cookie outlives a Supabase sign-out — nothing in the
-    logout path used to touch it — so `conv_id` and `chat_history` survived
-    into the next sign-in **in the same browser**. The streaming route keys the
-    ConversationStore off that same `conv_id` and feeds whatever it finds to
-    the model as context, so the next reader's first question arrived carrying
-    the previous reader's conversation. On a regulatory assistant that is one
+    logout path used to touch it — so a pre-migration `chat_history` used to
+    survive into the next sign-in **in the same browser** and ride straight
+    into the next reader's prompt. On a regulatory assistant that is one
     person's queries becoming part of another person's prompt.
 
-    Clearing the cookie key alone is not enough: the store entry is held
-    server-side and would be re-reachable by anyone who still had the old
-    cookie, so the entry itself goes too.
+    Nothing here clears a `ConversationStore` entry any more: the store is
+    keyed `(owner_id, conversation_id)`, and this browser's next request
+    carries the NEW reader's own owner id — it cannot land in the previous
+    reader's bucket by construction, so there is no id here worth looking up
+    to clear.
     """
-    store = current_app.config.get("conversations")
-    if store is not None:
-        for key in CONVERSATION_ID_KEYS:
-            conversation_id = session.get(key)
-            if conversation_id:
-                store.clear(conversation_id)
-
     for key in CONVERSATION_SESSION_KEYS:
         session.pop(key, None)
 

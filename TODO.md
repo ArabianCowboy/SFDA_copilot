@@ -18,7 +18,6 @@ needs doing.
 ## Open now
 
 - [Leaked-password protection is disabled in Supabase Auth](#leaked-password-protection-is-disabled-in-supabase-auth) — blocked on a Pro-plan upgrade, not code.
-- [The active conversation is per-browser, not per-tab](#the-active-conversation-is-per-browser-not-per-tab--and-the-sidebar-makes-it-easy-to-trip) — same fix as `/c/<id>` deep-linking; not yet started.
 - [Answer from a second provider](#answer-from-a-second-provider--and-why-the-code-is-the-easy-half) — the citation-fidelity harness is built (2026-08-22); still blocked on running it for real against the API.
 - [OpenRouter as one integration instead of several](#openrouter-as-one-integration-instead-of-several) — alternative to the entry above; same harness, same not-yet-run status.
 - [Refactor the profile page](#refactor-the-profile-page) — two live bugs fixed 2026-08-17; identity-field restructuring, signup capture, and modal-vs-page are still open.
@@ -784,40 +783,23 @@ reads" below.
 
 ## Planned work
 
-### The active conversation is per-browser, not per-tab — and the sidebar makes it easy to trip
+### ~~The active conversation is per-browser, not per-tab~~ — CLOSED 2026-08-22
 
-**Where:** `_resolve_conversation_id` (`web/api/app.py`) reads `session["conv_id"]`
-out of Flask's signed cookie, which every tab of a browser profile shares. Step
-8's `POST /api/chat/sessions/<id>/select` writes that same key.
-
-**The symptom.** Open two tabs as one reader. Pick conversation A in tab one and
-conversation B in tab two. Tab one still *shows* A, but its next question — and
-the durable write behind it — lands in B. A reload of tab one then replaces A's
-transcript with B's.
-
-**This is older than the sidebar and was not introduced by it.** Two tabs have
-always shared one `conv_id`, so they have always shared one conversation; before
-step 8 there was simply no control that made the collision easy to reach. The
-sidebar does not make it worse, it makes it *findable*, which is the honest
-reason to write it down rather than the reason to have shipped differently.
-
-**Why it was not fixed in step 8.** The fix is not a sidebar change. It is a
-tab-scoped pointer — held in `sessionStorage`, sent on `/api/chat`,
-`/api/chat/stream` and `/api/chat/history`, validated server-side against
-`g.identity` and never trusted as an owner claim — which changes the contract of
-all three chat routes and directly contradicts `/api/chat/history`'s current and
-deliberate design ("THE SERVER PICKS THE CONVERSATION. There is no session id in
-the query string"). That is a coherent change, but it is its own piece of work
-with its own isolation tests, and bundling it into the sidebar would have meant
-rewriting the current-session rule inside a UI step.
-
-**It is the same change as deep-linking.** `/c/<id>` (roadmap §10.3) needs
-exactly this: a conversation id that travels with the request rather than with
-the browser. The two should land together, and the `ConversationStore` owner
-re-key was already done partly in anticipation.
-
-**Until then**, a second tab is a second view of one conversation, which is what
-it has always been.
+> Closed by `docs/per-tab-conversation-deep-linking-plan.md`, landed the same
+> day as roadmap §10.3's `/c/<id>` deep-linking — this entry already argued the
+> two were one change: *"a conversation id that travels with the request
+> rather than with the browser."* The mechanism disagrees with what this entry
+> proposed, though: not a `sessionStorage`-held tab-scoped pointer, but no
+> pointer at all. The URL is the conversation id. `session["conv_id"]`, the
+> cookie it named, `_resolve_conversation_id` and
+> `POST /api/chat/sessions/<id>/select` are all deleted rather than
+> generalised — see the plan's §1.2 for why a tab-scoped `sessionStorage`
+> pointer would have reintroduced the exact collision this entry describes
+> (it is cloned verbatim on tab duplication). Two tabs are now two independent
+> conversations by construction: each carries its own client-minted id, and
+> `ConversationStore`'s owner re-key — already anticipated here — is what
+> stops one from ever reaching the other's window. Pinned by
+> `web/tests/test_multi_tab_conversations.py`.
 
 ### ~~Two step-8 migrations are written and not yet applied~~ — APPLIED 2026-08-21
 

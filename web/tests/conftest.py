@@ -12,9 +12,39 @@ from werkzeug.serving import make_server
 
 
 SUPABASE_BROWSER_MOCK = """
+// The mock previously kept its session in a page-scoped object alone, so a
+// second tab in the same browser context — or a reload of this one — came back
+// signed out no matter what the first tab had done. `services.js` avoids that
+// for the real client by persisting the session in `window.localStorage`,
+// which every same-origin tab in a context actually shares; this double does
+// the same, under its own key, so multi-tab tests see what a real second tab
+// would see. `sessionStorage` is deliberately not used here for the same
+// reason `services.js:131-149` keeps it per-tab for recovery: it does not
+// survive a duplicated tab, which is exactly the sharing this needs.
+const MOCK_SESSION_KEY = '__mock_supabase_user';
+
+function readStoredUser() {
+  try {
+    const raw = window.localStorage.getItem(MOCK_SESSION_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredUser(user) {
+  try {
+    if (user) window.localStorage.setItem(MOCK_SESSION_KEY, JSON.stringify(user));
+    else window.localStorage.removeItem(MOCK_SESSION_KEY);
+  } catch {
+    // A private/locked-down context that throws on setItem behaves like a
+    // tab that never persisted a session — the mock degrades the same way.
+  }
+}
+
 export function createClient() {
   const state = window.__supabaseState = window.__supabaseState || {
-    user: null,
+    user: readStoredUser(),
     profile: {
       id: 'test-user-id',
       full_name: 'Test User',
@@ -58,6 +88,7 @@ export function createClient() {
           };
         }
         state.user = { id: 'test-user-id', email };
+        writeStoredUser(state.user);
         const currentSession = session();
         queueMicrotask(() => state.authCallback?.('SIGNED_IN', currentSession));
         return { data: { user: state.user, session: currentSession }, error: null };
@@ -70,6 +101,7 @@ export function createClient() {
       },
       async signOut() {
         state.user = null;
+        writeStoredUser(null);
         state.lastSignOutScope = arguments[0]?.scope ?? 'default';
         queueMicrotask(() => state.authCallback?.('SIGNED_OUT', null));
         return { error: null };
@@ -114,8 +146,15 @@ export function createClient() {
 # One canned SSE exchange, in the order the real route emits.
 # "Mock regulatory answer" is split across two delta frames so the tests
 # exercise incremental assembly rather than a single-shot write.
+#
+# `conversation_id` is a real uuid, not the string "test" this used to carry:
+# the client now reconciles `Route.current()` against `meta`'s id (§3.2 of
+# the deep-linking plan) and replaces the URL with whatever it is told, so a
+# non-uuid value here would send every test that sends a message to
+# `/c/test` — a path `Route.current()` cannot even parse back out. Matches
+# `chat_history()`'s default id so the two agree when a test routes both.
 SSE_CHAT_MOCK = (
-    'event: meta\ndata: {"conversation_id":"test","category":"all","lang":"en","model":"mock"}\n\n'
+    'event: meta\ndata: {"conversation_id":"c0ffee00-0000-4000-8000-000000000001","category":"all","lang":"en","model":"mock"}\n\n'
     'event: stage\ndata: {"stage":"searching"}\n\n'
     'event: stage\ndata: {"stage":"retrieved","count":0}\n\n'
     'event: stage\ndata: {"stage":"drafting"}\n\n'
@@ -208,8 +247,10 @@ def _sse_final(response: str, sources: list, cited: list, retrieved: int) -> str
 
 
 def _sse_exchange(response: str, sources: list, cited: list, retrieved: int) -> str:
+    # See SSE_CHAT_MOCK's comment: a real uuid, not "test" — the client
+    # reconciles the URL against it.
     return (
-        'event: meta\ndata: {"conversation_id":"test","category":"all","lang":"en","model":"mock"}\n\n'
+        'event: meta\ndata: {"conversation_id":"c0ffee00-0000-4000-8000-000000000001","category":"all","lang":"en","model":"mock"}\n\n'
         'event: stage\ndata: {"stage":"searching"}\n\n'
         f'event: stage\ndata: {{"stage":"retrieved","count":{retrieved}}}\n\n'
         'event: stage\ndata: {"stage":"drafting"}\n\n'
@@ -334,8 +375,11 @@ def base_url(live_server_url):
     return live_server_url
 
 
-def chat_history(messages=(), *, resumed=False, conversation_id="c0ffee00-0000-4000-8000-000000000001"):
+def chat_history(messages=(), *, conversation_id="c0ffee00-0000-4000-8000-000000000001"):
     """A `GET /api/chat/history` body.
+
+    No `resumed` field — the fallback it described is deleted
+    (docs/per-tab-conversation-deep-linking-plan.md §5.5, Decision 1a).
 
     The transcript is drawn from this endpoint on every sign-in since step 6, so
     a test that does not route it gets whatever the live test server holds —
@@ -346,7 +390,6 @@ def chat_history(messages=(), *, resumed=False, conversation_id="c0ffee00-0000-4
     """
     return json.dumps({
         "conversation_id": conversation_id,
-        "resumed": resumed,
         "messages": list(messages),
     })
 
@@ -374,11 +417,21 @@ def stored_answer(question, answer, *, sources=(), cited=None, evidence_state="v
 def route_chat_history(page, body):
     """Point the transcript endpoint at a canned body.
 
-    Playwright matches the most recently added handler first, so this overrides
-    `browser_page`'s empty default when a test adds it afterwards.
+    Registered on `page.context`, not `page` — Playwright matches the most
+    recently added handler first regardless of which level registered it, so
+    this still overrides `browser_page`'s default; routing it at the context
+    level is what lets a sibling tab see the same override instead of hitting
+    the real network.
+
+    Trailing `*`, not a bare path: `getChatHistory(id)` appends `?c=<id>`
+    once a conversation is named by the URL rather than the cookie (the
+    deep-linking plan's Decision 4), and a glob with no wildcard after the
+    path only matches a bare request with no query string at all — silently
+    falling through to the real network otherwise, which is unreachable from
+    a test and answers with a genuine 404.
     """
-    page.route(
-        "**/api/chat/history",
+    page.context.route(
+        "**/api/chat/history*",
         lambda route: route.fulfill(
             status=200, content_type="application/json", body=body
         ),
@@ -404,8 +457,11 @@ def stored_session(session_id, title, *, updated_at=None, message_count=2):
     }
 
 
-def chat_sessions(sessions=(), *, next_cursor=None, active=None):
+def chat_sessions(sessions=(), *, next_cursor=None):
     """A `GET /api/chat/sessions` body.
+
+    No `active` field — the client knows its own current conversation from
+    its own URL now (§5.3 of docs/per-tab-conversation-deep-linking-plan.md).
 
     Empty by default, which matters for every test that is NOT about the
     sidebar: the tab defaults to Chats when the list comes back with rows and to
@@ -417,13 +473,12 @@ def chat_sessions(sessions=(), *, next_cursor=None, active=None):
     return json.dumps({
         "sessions": list(sessions),
         "next_cursor": next_cursor,
-        "active": active,
     })
 
 
 def route_chat_sessions(page, body):
     """Point the conversation list at a canned body. Same override rule as above."""
-    page.route(
+    page.context.route(
         "**/api/chat/sessions",
         lambda route: route.fulfill(
             status=200, content_type="application/json", body=body
@@ -433,8 +488,18 @@ def route_chat_sessions(page, body):
 
 @pytest.fixture
 def browser_page(page):
-    """A browser page with deterministic Supabase and chat responses."""
-    page.route(
+    """A browser page with deterministic Supabase and chat responses.
+
+    Every mock here is registered on `page.context`, not `page`. Playwright
+    documents `BrowserContext.route()` as intercepting "network requests made
+    by any page in the browser context" — which is what lets a test open a
+    genuine second tab (`browser_page.context.new_page()`) and have it inherit
+    the same mocks and, via the Supabase double's localStorage-backed session,
+    the same signed-in identity, with no per-page repetition and no real
+    network reachable from either tab.
+    """
+    context = page.context
+    context.route(
         "**/@supabase/supabase-js@2.39.7/+esm",
         lambda route: route.fulfill(
             status=200,
@@ -442,7 +507,7 @@ def browser_page(page):
             body=SUPABASE_BROWSER_MOCK,
         ),
     )
-    page.route(
+    context.route(
         "**/api/chat",
         lambda route: route.fulfill(
             status=200,
@@ -454,7 +519,7 @@ def browser_page(page):
     # for the fallback path. Playwright delivers this whole body as a single
     # chunk, which is a useful check in itself: the SSE reader must not assume
     # one frame per chunk.
-    page.route(
+    context.route(
         "**/api/chat/stream",
         lambda route: route.fulfill(
             status=200,
@@ -465,8 +530,8 @@ def browser_page(page):
     # Every sign-in draws the transcript from here. Empty by default: these
     # tests mock the chat routes, so nothing was ever stored, and a test that
     # wants a stored conversation says so with `route_chat_history`.
-    page.route(
-        "**/api/chat/history",
+    context.route(
+        "**/api/chat/history*",
         lambda route: route.fulfill(
             status=200,
             content_type="application/json",
@@ -496,7 +561,7 @@ def sourced_page(authenticated_page):
     Registered after login so it wins over the empty-sources route in
     ``browser_page`` — Playwright matches the most recently added handler first.
     """
-    authenticated_page.route(
+    authenticated_page.context.route(
         "**/api/chat/stream",
         lambda route: route.fulfill(
             status=200,
@@ -513,7 +578,7 @@ def _stream_route(page, body: str):
     Registered after login so it wins over the empty-sources route in
     ``browser_page`` — Playwright matches the most recently added handler first.
     """
-    page.route(
+    page.context.route(
         "**/api/chat/stream",
         lambda route: route.fulfill(
             status=200, content_type="text/event-stream", body=body,

@@ -14,6 +14,7 @@ import { RobotStateManager } from './robot.js';
 import { I18n } from './i18n.js';
 import { SourcePanel } from './source-panel.js';
 import { resetCitationState } from './citations.js';
+import { Route } from './route.js';
 
 /* Sent with every chat request so the model answers in the reader's language. */
 const I18N_LANG = I18n.lang;
@@ -26,25 +27,22 @@ const STAGE_LABELS = {
   finalizing: () => I18n.t('stage.finalizing'),
 };
 
-/* The turns a New chat took off screen, held live so an undo can put the same
-   nodes back rather than rebuild them from markup. Null whenever there is
-   nothing to restore. */
-let pendingUndo = null;
-
 /* Bumped by every reset. A streaming request stamps itself with the value it
    started under, so its abort handler can tell "the reader pressed Stop" from
    "the conversation this answer belonged to no longer exists". */
 let resetGeneration = 0;
 
 /* Bumped whenever the transcript on screen stops being the conversation an
-   in-flight history fetch was asked about: a reset, an undo, or a sign-out.
-   Distinct from `resetGeneration`, which guards a streaming ANSWER; this guards
-   the TRANSCRIPT, and the two move independently — an undo restores the
-   transcript without restoring a stream. */
+   in-flight history fetch was asked about: a New chat, a sidebar switch, a
+   delete, or a sign-out. Distinct from `resetGeneration`, which guards a
+   streaming ANSWER; this guards the TRANSCRIPT, and the two move
+   independently — a sidebar switch restores a different transcript without
+   touching any stream. */
 let transcriptEpoch = 0;
 
-/* Guards the window between a reset's server call and its transcript clear,
-   during which a second press would reset the freshly-started conversation. */
+/* Guards the window a New chat's own transcript-exit animation runs in,
+   during which a second press would re-enter this function over its own
+   in-progress navigation. */
 let resetInFlight = false;
 
 /* Bumped by every act that changes WHICH conversation the sidebar is showing —
@@ -56,68 +54,21 @@ let resetInFlight = false;
    the reader has already opened conversation B. */
 let selectionEpoch = 0;
 
-/* One switch at a time. Without it, double-clicking a row fires two selects and
-   two transcript reads, and whichever resolves second wins — which is not
-   necessarily the one the reader clicked last. */
-let switchInFlight = false;
-
 /* The handle of the answer currently streaming, or null. Cleared in
  * processChatRequestInternal's finally, alongside setSendingState — the two
  * mark the same thing, the end of one request's lifetime.
  *
- * Published because handleNewChat can end up owning that bubble. It aborts the
- * stream before calling the server, and streamChat then walks away without
- * touching the bubble — correctly, since on the normal path the bubble is a
- * fraction of a second from leaving the transcript entirely. When the server
- * call FAILS the transcript stays put, and the bubble stays with it: spinning,
- * still aria-busy, with no stream behind it and nothing coming back for it. */
+ * Published because handleNewChat can end up owning that bubble. It aborts
+ * the stream, and streamChat then walks away without touching the bubble —
+ * correctly, since the bubble is a fraction of a second from leaving the
+ * transcript entirely (§4.4's `handleNewChat` is now a pure client-side
+ * navigation, so there is no server round trip left that could fail and
+ * leave it stranded — the abort itself is the only event to react to). */
 let activeStream = null;
 
-/**
- * Close out a bubble a failed reset abandoned.
- *
- * Takes the handle rather than reading `activeStream` itself, and that is the
- * whole point. A reset releases the composer the moment it aborts, so the
- * reader can start a NEW question during the server round trip — and by the
- * time a failure comes back, `activeStream` points at that new, legitimately
- * streaming answer. Reading it here would kill the wrong bubble.
- *
- * Whether there is anything to close out is then read off the bubble rather
- * than tracked: aria-busy means "still mid-flight", set by
- * beginStreamingMessage and removed by every path that finishes one, and
- * dropInFlightExchange already relies on exactly that. So a handle whose stream
- * finished on its own before the reset failed filters itself out.
- *
- * Marked `cancelled` rather than `error`: nothing went wrong with the answer,
- * the reader ended it. That the reset then failed is a separate fact, and the
- * toast carries it.
- */
-function settleAbandonedStream(handle) {
-  if (!handle?.messageEl?.hasAttribute('aria-busy')) return;
-  UI.markStreamIncomplete(handle, 'cancelled');
-  RobotStateManager.resetToIdle();
-}
-
-/**
- * Drop the exchange that was still streaming when a reset landed.
- *
- * A cancelled turn is never written to server history — the streaming
- * generator skips append_turn when the client disconnects — so restoring it
- * would put a question and a half-answer on screen that the model has no
- * record of. The invariant undo keeps is that the transcript shows what the
- * model remembers, and this is what maintains it.
- *
- * The in-flight bubble is the one still carrying aria-busy:
- * beginStreamingMessage sets it and finishStreamingMessage removes it, so the
- * marker already exists and needs no bookkeeping of its own.
- */
-function dropInFlightExchange(fragment) {
-  const answer = fragment.querySelector('[aria-busy="true"]');
-  if (!answer) return;
-  const question = answer.previousElementSibling;
-  answer.remove();
-  if (question?.classList.contains('user-message')) question.remove();
-}
+/* The conversation id the currently-streaming request belongs to, or null.
+   Moves with `activeStream` — see its own comment. */
+let activeStreamConversationId = null;
 
 /* Ticks down the advisory cooldown on the reset button. Advisory only: GoTrue
    enforces one mail per address per minute and the server enforces its own rate
@@ -228,11 +179,6 @@ export const Handlers = {
   },
 
   async processChatRequestInternal(queryText, category = '') {
-    /* Before anything touches the transcript, not after. An undo that survived
-       into a new question would splice the old conversation around the new
-       one, and the server has already moved on. */
-    this.discardUndo();
-
     /* A new question makes whatever the panel is showing stale — it would sit
        beside an answer it has nothing to do with, in the one column the reader
        is watching for the new one. Here rather than in beginStreamingMessage,
@@ -251,6 +197,9 @@ export const Handlers = {
        acquired its row and its title, or an existing one has moved to the top
        of the ordering. */
     let landed = false;
+    /* Hoisted out of the try so the catch below can roll a failed first-turn
+       mint back — see there for why. */
+    let conversation = null;
 
     try {
       let token;
@@ -278,14 +227,47 @@ export const Handlers = {
          each path would make the two look like two different questions to the
          server and file the exchange twice. */
       const requestId = newRequestId();
-      if (CONFIG.STREAMING && 'body' in Response.prototype) {
-        await this.streamChat(queryText, category, token, requestId);
+
+      /* §4.2: the conversation id, minted client-side exactly once, before
+         the first request — never server-side, and never re-derived per
+         attempt. If the URL already names one this is turn 2+ of an
+         existing conversation and creation is refused; otherwise this is a
+         brand-new conversation and `Route.enter` moves the URL to `/c/<id>`
+         BEFORE the request goes out, replacing `/` rather than stacking on
+         it. A server-minted id would leave the URL unable to change until
+         the first frame arrived, and then changing it would move the ground
+         out from under a running stream. */
+      const existing = Route.current();
+      if (existing) {
+        conversation = { id: existing, allowCreate: false };
       } else {
-        await this.blockingChat(queryText, category, token, requestId);
+        conversation = { id: crypto.randomUUID(), allowCreate: true };
+        Route.enter(conversation.id);
+      }
+
+      if (CONFIG.STREAMING && 'body' in Response.prototype) {
+        await this.streamChat(queryText, category, token, requestId, conversation);
+      } else {
+        await this.blockingChat(queryText, category, token, requestId, conversation);
       }
       landed = true;
     } catch (error) {
       UI.toggleTypingIndicator(false);
+
+      /* The URL moved to `/c/<id>` before this attempt even reached the
+         network, on the assumption it would land. It did not — and unlike a
+         message failing against an EXISTING conversation (which stays
+         exactly where it was), a freshly minted id that never lands must not
+         linger as the URL: a same-tab retry would read it back from
+         `Route.current()`, send it with `allow_create: false` as though it
+         were turn 2 of a real conversation, and the preflight (§3.4) would
+         404 a question that was never anything but the first. Rolled back
+         only if nothing has navigated elsewhere since — a New chat or a
+         sidebar click during this same failure must not be undone by it. */
+      if (conversation?.allowCreate && Route.current() === conversation.id) {
+        Route.replace(null);
+      }
+
       if (error?.name === 'AbortError') {
         RobotStateManager.resetToIdle();
         return;
@@ -310,10 +292,11 @@ export const Handlers = {
       RobotStateManager.showError();
     } finally {
       UI.setSendingState(false);
-      /* Both lines mark the same moment — this request is over. Here rather
+      /* All three mark the same moment — this request is over. Here rather
          than inside streamChat because this is the one exit every path shares,
          including the one that rethrows. */
       activeStream = null;
+      activeStreamConversationId = null;
 
       /* Re-read the list rather than patching it optimistically. The client
          cannot know what the row should say: the title is minted server-side by
@@ -335,18 +318,13 @@ export const Handlers = {
   /**
    * End the conversation without ending the session.
    *
-   * The server call goes FIRST and is awaited, and a failure leaves the
-   * transcript untouched. The first draft of this cleared optimistically and
-   * reconciled with the server afterwards; that was wrong twice over. It made
-   * correctness depend on a later call landing — over a beacon that cannot
-   * carry an Authorization header, across a language switch that reloads the
-   * page — and its failure mode was the single worst state available here: a
-   * blank screen over a server that still holds the history, so the next
-   * answer silently carries context the reader believes they deleted.
-   *
-   * The server rotates the conversation rather than deleting it, which is why
-   * undo can restore what the model remembers and not merely what the screen
-   * showed. See the route in web/api/app.py.
+   * DECISION 2 (docs/per-tab-conversation-deep-linking-plan.md): "New chat"
+   * is a navigation from `/c/<id>` to `/`, and undo is the Back button —
+   * free, per-tab, already understood. There is no server call here any
+   * more, and that is not an omission: a client-supplied conversation id has
+   * no cookie to rotate, which was the entirety of what the old server round
+   * trip did. `prev_conv_id`/`prev_chat_history` and the toast's undo action
+   * are gone with it.
    */
   async handleNewChat(button) {
     if (resetInFlight) return;
@@ -370,32 +348,16 @@ export const Handlers = {
        conversation the reader just ended straight back on screen. */
     transcriptEpoch += 1;
     const wasStreaming = AppState.isRequestInProgress();
-    /* Captured BEFORE the abort and held directly, rather than read back off
-       `activeStream` if the reset fails — see settleAbandonedStream for the
-       question that answers. Reading it before the abort also removes any
-       dependence on when the abort's rejection is scheduled. */
-    const doomed = wasStreaming ? activeStream : null;
     if (wasStreaming) {
       Services.cancelChatRequest();
       UI.toggleTypingIndicator(false);
       UI.setSendingState(false);
     }
 
-    try {
-      await Services.resetConversation();
-    } catch (error) {
-      logError(error, 'handleNewChat');
-      /* The transcript is staying, so the bubble the abort above left mid-flight
-         is staying with it. streamChat declined to close it — it could not know
-         this call would fail — which leaves that to here. */
-      settleAbandonedStream(doomed);
-      ErrorHandler.showToast(I18n.t('chat.resetFailed'), true);
-      resetInFlight = false;
-      return;
-    }
-
-    // An older set-aside conversation is unreachable now that this one replaced it.
-    this.discardUndo();
+    /* The navigation itself. `go`, not `replace`: this IS the reader's
+       deliberate choice §4.1 reserves `go` for, and it is what makes Back
+       reach the conversation just ended. */
+    Route.go(null);
 
     /* The sidebar follows. A New chat mints a conversation that does not exist
        in the database yet — session rows are written lazily, by the first
@@ -405,14 +367,15 @@ export const Handlers = {
     selectionEpoch += 1;
     UI.History.setActive(null);
 
-    const fragment = await UI.playTranscriptExit();
-    if (wasStreaming) dropInFlightExchange(fragment);
+    // The exit animation plays and the detached turns are discarded — Back
+    // is the undo now, and a Back navigation re-hydrates from the server
+    // rather than restoring this DOM.
+    await UI.playTranscriptExit();
 
     /* reset, not close. close() only hides, which would leave the previous
-       answer's passages sitting in the panel's DOM behind a "new" chat. Undo
-       does not need them back: the panel rebuilds from stateByMessage, which
-       survives the window, and the shelf never opens itself in any case. */
+       answer's passages sitting in the panel's DOM behind a "new" chat. */
     SourcePanel.reset();
+    resetCitationState();
 
     // The FAQ list itself stays — it is what the sidebar is for.
     DOMCache.getAll(`.${CONFIG.CLASSES.FAQ_BUTTON}.${CONFIG.CLASSES.ACTIVE}`)
@@ -422,55 +385,10 @@ export const Handlers = {
     DOMCache.get(CONFIG.SELECTORS.MESSAGES)?.scrollTo({ top: 0 });
     DOMCache.get(CONFIG.SELECTORS.QUERY_INPUT)?.focus();
 
-    pendingUndo = fragment;
     resetInFlight = false;
-
-    /* The toast is the only route to the undo, so the undo lives exactly as
-       long as a route to it exists — no separate expiry timer, which would
-       otherwise be free to kill the fragment while a held-open toast still
-       showed the button. It ends on the next question, the next reset, or
-       logout. */
-    ErrorHandler.showToast(I18n.t('chat.cleared'), false, CONFIG.UNDO_DURATION, {
-      actionLabel: I18n.t('chat.undo'),
-      onAction: () => this.undoReset(),
-    });
+    ErrorHandler.showToast(I18n.t('chat.cleared'));
   },
 
-  async undoReset() {
-    if (!pendingUndo) return;
-
-    try {
-      await Services.resetConversation({ undo: true });
-    } catch (error) {
-      /* The reset itself stands, so the cleared view and the server still
-         agree. Only the restoration failed — which is why this is not
-         `chat.resetFailed`: that message says the conversation is unchanged,
-         and here it is precisely the thing that did change. */
-      logError(error, 'undoReset');
-      pendingUndo = null;
-      ErrorHandler.showToast(I18n.t('chat.restoreFailed'), true);
-      return;
-    }
-
-    const fragment = pendingUndo;
-    pendingUndo = null;
-    /* An undo puts back a specific transcript. A history fetch that resolves
-       afterwards would append a second copy of the same conversation underneath
-       it, so the epoch moves here too — the screen changed, whichever direction
-       it changed in. */
-    transcriptEpoch += 1;
-    UI.restoreTranscript(fragment);
-    UI.scrollMessagesToBottom();
-    ErrorHandler.showToast(I18n.t('chat.restored'));
-  },
-
-  /**
-   * Let go of the conversation a reset set aside.
-   *
-   * The server call is best-effort: the ConversationStore's TTL is the
-   * backstop, and logout purges both ids outright, so a dropped request costs
-   * an unreachable entry an hour of memory rather than correctness.
-   */
   /** The current transcript epoch; see the declaration for what bumps it. */
   transcriptEpoch() {
     return transcriptEpoch;
@@ -550,7 +468,16 @@ export const Handlers = {
       UI.History.setSessions({
         sessions: page.sessions || [],
         cursor: page.next_cursor || null,
-        active: page.active || null,
+        /* §5.3: NOT `page.active`. That field is filled from the session
+           cookie, which a client-supplied conversation id never touches —
+           "the client cannot know which conversation the server considers
+           current" inverted the moment the client's own URL is that
+           answer. Still served today (its removal is a §5 deletion, not a
+           §4 one) but no longer trusted here: `page.active` would show a
+           previous tab's cookie-repointed conversation as active in THIS
+           tab, which per-tab conversations make routinely wrong rather
+           than rare. */
+        active: Route.current(),
       });
 
       /* THE DEFAULT TAB IS DECIDED HERE, once, from what came back. A reader
@@ -594,70 +521,183 @@ export const Handlers = {
   /**
    * Open one stored conversation.
    *
-   * THE WHOLE TRANSITION LIVES HERE, in one place, and that is the point. Six
+   * THE WHOLE TRANSITION LIVES HERE, in one place, and that is the point. Five
    * things are scoped to "the conversation on screen" and every one of them has
    * to move together: the transcript, the source panel, the citation map, the
-   * resumed notice, the pending undo, and the sidebar's active row. A version of
-   * this that cleared only the transcript would leave the previous
-   * conversation's passages open in the panel beside the new one's answers, and
-   * the reader would have no way to tell whose evidence they were reading.
+   * URL, and the sidebar's active row. A version of this that cleared only the
+   * transcript would leave the previous conversation's passages open in the
+   * panel beside the new one's answers, and the reader would have no way to
+   * tell whose evidence they were reading.
    *
-   * The order is: refuse if busy → bump both epochs → repoint the server → clear
-   * → hydrate. The server call comes BEFORE the clear, deliberately: a failed
-   * select must leave the reader where they were rather than on a blank screen
-   * over a conversation the server still thinks is current — the same trade
-   * `resetConversation` already makes for exactly the same reason.
+   * §4.3's navigation state machine, the sidebar-click half of it. This is a
+   * reader's DELIBERATE navigation — the other half is `handlePopState`,
+   * which cannot be refused because the URL has already changed by the time
+   * it runs. This one can, and must be: refuse first, navigate second, or
+   * the URL moves before the busy check has had its say.
+   *
+   * THE EPOCH IS BUMPED AT INTENT, not after a server call succeeds — there
+   * is no server call to succeed on any more. A second click before this
+   * one's history fetch lands must not let the first one win, which is what
+   * makes "the last click wins" true instead of "the first click that
+   * resolves wins": every click bumps the epoch and every read checks it
+   * before painting.
    */
   async openSession(sessionId) {
-    if (!sessionId || switchInFlight) return;
-    if (UI.History.state.active === sessionId) return this.closeSidebarDrawer();
+    if (!sessionId) return;
+    if (Route.current() === sessionId) return this.closeSidebarDrawer();
     if (this.sidebarIsBusy()) return this._refuseWhileStreaming();
 
-    switchInFlight = true;
+    const previousId = Route.current();
+    selectionEpoch += 1;
+    this.beginTranscriptEpoch();
+    const epoch = transcriptEpoch;
+
+    Route.go(sessionId);
+    ErrorHandler.hideActionToast();
+
+    UI.clearTranscript();
+    SourcePanel.reset();
+    resetCitationState();
+    UI.History.setActive(sessionId);
+    this.closeSidebarDrawer();
+
     try {
-      const result = await Services.selectSession(sessionId);
-      if (!result) return;
-
-      /* Bumped AFTER the server agreed, so a refused switch does not invalidate
-         the history fetch that is legitimately drawing the conversation the
-         reader is still in. */
-      selectionEpoch += 1;
-      this.beginTranscriptEpoch();
-      const epoch = transcriptEpoch;
-
-      /* The undo belongs to the conversation a New chat ended, and the reader
-         has just navigated somewhere else. Restoring it over their selection
-         would put a conversation they did not ask for on top of one they did.
-         The server drops its own half of the pointer in the select route. */
-      pendingUndo = null;
-      ErrorHandler.hideActionToast();
-
-      UI.clearTranscript();
-      SourcePanel.reset();
-      resetCitationState();
-      UI.hideResumedNotice();
-      UI.History.setActive(sessionId);
-      this.closeSidebarDrawer();
-
-      const history = await Services.getChatHistory();
-      /* Checked again after the second await. The reader can press New chat, or
-         pick a different conversation, while this is in flight — and drawing the
-         one they abandoned is the resurrection the epoch exists to stop. */
+      const history = await Services.getChatHistory(sessionId);
+      /* Checked after the await. The reader can press New chat, or pick a
+         different conversation, while this is in flight — and drawing the
+         one they abandoned is the resurrection the epoch exists to stop. A
+         NEWER navigation has already painted its own transcript by the time
+         a stale one resolves, so this is a silent no-op rather than a race
+         the reader can see. */
       if (epoch !== transcriptEpoch) return;
 
       UI.hydrateTranscript(history.messages || []);
+      Route.commit();
       UI.scrollMessagesToBottom();
       DOMCache.get(CONFIG.SELECTORS.QUERY_INPUT)?.focus();
     } catch (error) {
+      if (epoch !== transcriptEpoch) return;
       logError(error, 'openSession');
-      ErrorHandler.showToast(
-        error?.code === 'generation_in_flight'
-          ? I18n.t('sessions.busy')
-          : I18n.t('sessions.switchFailed'),
-        true
-      );
-    } finally {
-      switchInFlight = false;
+
+      if (error?.code === 'generation_in_flight') {
+        /* Not a missing conversation — a live one, refused for a different
+           reason. The URL already moved; leaving it there is correct, since
+           the conversation still exists and the reader can retry once the
+           other tab's answer finishes. Only 404 rolls the URL back. */
+        ErrorHandler.showToast(I18n.t('sessions.busy'), true);
+        return;
+      }
+
+      /* A FAILED sidebar navigation rolls the URL back — the correction
+         over the round-1 draft's account, which pushed first and never
+         un-pushed. `openSession`'s own rule has always been "a failed
+         select must leave the reader where they were", but `pushState` has
+         already fired by the time this runs; without the rollback the
+         reader sits on a URL naming a conversation they are not viewing,
+         and their next question inherits the dead id — LibreChat #7700's
+         shape, rebuilt locally. `Route.replace`, not `history.back()`: back
+         would re-enter `handlePopState` and drive a second navigation. */
+      this._conversationUnreachable(previousId);
+    }
+  },
+
+  /**
+   * The shared "this conversation could not be opened" path (§4.5). Used by
+   * a failed sidebar navigation (`previousId` is where to roll back to) and
+   * by a deep link or a Back/Forward traversal that 404s (`previousId` is
+   * null — there is no "before" to return to). Both are the same fact from
+   * the reader's side: the conversation this control pointed at is not
+   * reachable, and the screen must say so rather than sit on a stale URL.
+   */
+  _conversationUnreachable(previousId) {
+    Route.replace(previousId || null);
+    UI.clearTranscript();
+    SourcePanel.reset();
+    resetCitationState();
+    UI.History.setActive(previousId || null);
+    ErrorHandler.showToast(I18n.t('sessions.switchFailed'), true);
+  },
+
+  /**
+   * §4.3's navigation state machine, the Back/Forward half. Wired once, at
+   * startup, to `Route.init` (route.js).
+   *
+   * CANNOT BE REFUSED — the other half of the split `openSession` is. The
+   * URL has already changed by the time this runs, so there is nothing left
+   * to refuse; a live stream is aborted and traversal proceeds regardless.
+   * `pushState`/`replaceState` never fire `popstate` themselves, so this
+   * only ever runs for genuine traversal — which is what makes
+   * `openSession`'s own rollback (`Route.replace`) safe: it cannot
+   * recursively re-enter this handler.
+   */
+  async handlePopState({ persisted } = {}) {
+    const id = Route.current();
+
+    /* Forward into the SAME conversation a live stream is still writing
+       into — the sharpest case here. The reader went Back then Forward (or
+       a bfcache restore landed, `persisted: true`) while turn one was still
+       resolving; the stream never stopped, only the URL moved away and
+       back. Re-attaching means doing nothing at all: the transcript already
+       shows this exchange, mid-flight, and clearing it would discard an
+       answer that is still arriving over nothing having gone wrong. Forward
+       into an id nothing is streaming falls through to the ordinary path
+       below, where the uncommitted-marker check is what stops IT being
+       reported missing. */
+    if (id && id === activeStreamConversationId && AppState.isRequestInProgress()) {
+      UI.History.setActive(id);
+      return;
+    }
+
+    this.beginTranscriptEpoch();
+    const epoch = transcriptEpoch;
+    selectionEpoch += 1;
+
+    if (!id) {
+      // "/" — always a new chat (Decision 1a). Nothing to hydrate.
+      UI.clearTranscript();
+      SourcePanel.reset();
+      resetCitationState();
+      UI.History.setActive(null);
+      return;
+    }
+
+    if (!Route.isCommitted()) {
+      /* This tab minted `id` and the turn never landed — a reload mid-first-
+         stream, or a Forward into that same abandoned attempt. Fetching
+         would 404 a conversation that never existed; treated instead as
+         what it is, an unfinished composer. `persisted` (bfcache) does not
+         change this — a restored DOM showing a stale "not found" state is
+         exactly what re-deriving from `Route` here corrects (§9's bfcache
+         note), and an uncommitted entry restored from bfcache is equally
+         stale regardless of which way it was reached. */
+      Route.replace(null);
+      UI.clearTranscript();
+      SourcePanel.reset();
+      resetCitationState();
+      UI.History.setActive(null);
+      return;
+    }
+
+    UI.clearTranscript();
+    SourcePanel.reset();
+    resetCitationState();
+    UI.History.setActive(id);
+
+    try {
+      const history = await Services.getChatHistory(id);
+      if (epoch !== transcriptEpoch) return;
+      UI.hydrateTranscript(history.messages || []);
+      UI.scrollMessagesToBottom();
+    } catch (error) {
+      if (epoch !== transcriptEpoch) return;
+      logError(error, 'handlePopState');
+      if (error?.code === 'not_found') {
+        // The conversation is gone — deleted in another tab, most likely,
+        // which per-tab conversations make more reachable than before.
+        this._conversationUnreachable(null);
+      } else {
+        ErrorHandler.showToast(I18n.t('sessions.switchFailed'), true);
+      }
     }
   },
 
@@ -697,7 +737,11 @@ export const Handlers = {
       return this._refuseWhileStreaming();
     }
 
-    const wasActive = UI.History.state.active === sessionId;
+    /* §4.4: the ROUTE is what names the conversation on screen, not the
+       sidebar's own active marker — the two can only disagree if something
+       else already went wrong, and the route is the one the next question
+       would actually be sent against. */
+    const wasCurrent = Route.current() === sessionId;
 
     try {
       const result = await Services.deleteSession(sessionId);
@@ -706,20 +750,25 @@ export const Handlers = {
       UI.History.removeSession(sessionId);
       ErrorHandler.showToast(I18n.t('sessions.deleted'));
 
-      /* The reader deleted the conversation they were IN. The server has already
-         minted a replacement id and rotated the cookie onto it; the screen has
-         to follow, or the next question would join a fresh conversation while
-         the transcript still showed the deleted one's turns. */
-      if (wasActive) {
+      /* The reader deleted the conversation the route on screen names. With
+         no cookie, there is no server-minted replacement to adopt — under
+         Decision 1(a) there is no such thing as "the replacement
+         conversation" any more, only `/`, exactly as a deliberate New chat
+         already lands on. `result.conversation_id` (the legacy rotated-
+         cookie value an old-client server path may still echo) is
+         deliberately NOT read here. Any pending hydration for the deleted
+         id is invalidated by the epoch bump before the route moves, so a
+         history fetch already in flight for it cannot land afterward and
+         resurrect it on screen. */
+      if (wasCurrent) {
         selectionEpoch += 1;
         this.beginTranscriptEpoch();
-        pendingUndo = null;
+        Route.replace(null);
         ErrorHandler.hideActionToast();
         UI.clearTranscript();
         SourcePanel.reset();
         resetCitationState();
-        UI.hideResumedNotice();
-        UI.History.setActive(result.conversation_id || null);
+        UI.History.setActive(null);
       }
     } catch (error) {
       logError(error, 'deleteSession');
@@ -903,37 +952,43 @@ export const Handlers = {
     resetCitationState();
   },
 
-  discardUndo() {
-    if (!pendingUndo) return;
-    pendingUndo = null;
-    /* The toast is the only route to the undo, so it goes when the undo does.
-       Leaving it up left an Undo button on screen that silently did nothing —
-       and this runs on the reader's next question, which is the moment they
-       are least able to tell a dead control from a slow one. */
-    ErrorHandler.hideActionToast();
-    resetCitationState();
-    Services.resetConversation({ forget: true })
-      .catch(error => logError(error, 'discardUndo'));
-  },
-
   /** SSE path. The stage line reports the retrieval count mid-stream, but the
    *  passages themselves arrive on the terminal `final` frame — there is no
    *  honest way to present them as an answer's sources before the answer
    *  exists, and doing so is what put eight cards under a refusal. */
-  async streamChat(queryText, category, token, requestId = null) {
+  async streamChat(queryText, category, token, requestId = null, conversation = null) {
     const handle = UI.beginStreamingMessage();
     /* Stamped at the start so every exit below can ask whether the
        conversation this answer belongs to still exists. */
     const generation = resetGeneration;
-    /* Published for the one caller that can end up owning this bubble instead
-       of the code below — see settleAbandonedStream. */
+    /* Published for handleNewChat, which can end up owning this bubble — it
+       aborts the stream and walks away, leaving the teardown to whichever
+       catch below actually runs. Also published alongside `activeStream`:
+       `handlePopState`'s re-attach check (§4.3) needs to know WHICH
+       conversation is still streaming, not merely that one is. */
     activeStream = handle;
+    activeStreamConversationId = conversation?.id ?? null;
     let sawToken = false;
     let failed = null;
 
     let result = null;
     try {
       result = await Services.streamChatRequest(queryText, category, token, I18N_LANG, {
+        /* §3.2's reconciliation rule: the server's resolved id wins over
+           whatever this tab sent. A no-op on the happy path (client-minted
+           v4, echoed back unchanged) — it matters only where the server
+           minted instead: a malformed id, or an old client's cookie
+           fallback still inside the §8 rollout window, which are exactly
+           the cases where a silent divergence would be hardest to
+           diagnose. `Route.replace`, not `enter`: the reconciled id may
+           already be a real, committed conversation (a resumed one), and
+           `replace` is the safer default either way — see its own comment
+           for why a premature "uncommitted" here still degrades gracefully. */
+        meta: (d) => {
+          if (d.conversation_id && d.conversation_id !== Route.current()) {
+            Route.replace(d.conversation_id);
+          }
+        },
         stage: (d) => {
           RobotStateManager.onStage?.(d.stage, d);
           UI.setStage(handle, STAGE_LABELS[d.stage]
@@ -959,13 +1014,12 @@ export const Handlers = {
            wrong and more alarming than the truth. */
         error: (d) => { failed = failed || d; },
         done: () => { /* terminal; the reader loop ends on its own */ },
-      }, requestId);
+      }, requestId, conversation);
     } catch (error) {
       /* A New chat ended this conversation, rather than the reader pressing
-         Stop. The bubble is already leaving the transcript, and finishing it
-         here would render a complete answer into nodes the undo fragment is
-         about to hold — so an undo would resurrect an answer that was
-         deliberately cleared, and one the server never recorded. handleNewChat
+         Stop. The bubble is already leaving the transcript — handleNewChat
+         has detached it and discarded the fragment — so finishing it here
+         would paint into a node nothing will ever show again. handleNewChat
          owns the mascot and the send button on this path. */
       if (generation !== resetGeneration) return;
 
@@ -995,22 +1049,26 @@ export const Handlers = {
     }
 
     if (generation !== resetGeneration) {
-      /* A New chat ended this conversation while the stream was resolving —
-         but unlike the catch above, this one got all the way here, so the
-         question of whether the server recorded the turn has an answer.
-         `result.complete` means both `final` and `done` arrived, and the
-         generator writes the turn to the store between them. It is therefore
-         part of the conversation the reset set aside, and an undo will bring
-         that conversation back.
+      /* A New chat ended this conversation while the stream was resolving.
+         `handleNewChat` already detached this bubble along with the rest of
+         the transcript and discarded it — Back is undo now (Decision 2), and
+         a Back navigation re-hydrates from the server rather than restoring
+         any DOM this tab held onto, so there is nothing left here to finish
+         or paint. The bubble's own mascot/send-button state is already
+         handleNewChat's, not this call's, on this path.
 
-         So it has to be finished. dropInFlightExchange drops whatever still
-         carries aria-busy, and dropping this turn would restore a transcript
-         that disagrees with what the model remembers — the one invariant undo
-         exists to keep. The bubble is on its way off screen either way;
-         handleNewChat owns the mascot and the send button on this path. */
-      if (result?.complete && !failed) {
-        UI.finishStreamingMessage(handle, handle.suggested || [], handle.final || null);
-      }
+         `result.complete` still matters as a FACT, even though there is
+         nothing left to render: it means both `final` and `done` arrived, so
+         the turn is a real, durable conversation the reader can reach again
+         directly at `/c/<id>` — just not, in this one interleaving, via
+         Back. `Route.current()` no longer names this conversation — New chat
+         already moved the URL to `/` — and the History API has no way to
+         reach back into an entry that is no longer current to flip its
+         `committed` marker, so that entry stays `committed: false`
+         indefinitely even though the row it names is now real. A known,
+         narrow gap: Back into that specific entry shows a fresh composer
+         rather than the conversation, in exactly this one interleaving. Not
+         a data-loss or security gap — the row exists regardless. */
       return;
     }
 
@@ -1090,12 +1148,20 @@ export const Handlers = {
       return;
     }
 
+    /* §4.2: committed only here — `result.complete` (both `final` and `done`
+       arrived) with no `persistence_unavailable` in between is the client's
+       confirmation the turn was durably filed, not merely streamed. Marking
+       it earlier, at `final`, would reopen the same false-404-on-reload
+       window this exists to close, just narrower: the durable write itself
+       runs AFTER `final` is yielded (verified against `app.py:2610` →
+       `:2642` → `:2661`), not at it. */
+    Route.commit();
     UI.finishStreamingMessage(handle, handle.suggested || [], handle.final || null);
     RobotStateManager.returnToIdle(4000);
   },
 
   /** Fallback for browsers without streaming bodies, or CONFIG.STREAMING off. */
-  async blockingChat(queryText, category, token, requestId = null) {
+  async blockingChat(queryText, category, token, requestId = null, conversation = null) {
     const generation = resetGeneration;
     const thinkingTimer = setTimeout(() => {
       RobotStateManager.startThinking();
@@ -1103,7 +1169,9 @@ export const Handlers = {
     }, 800);
 
     try {
-      const data = await Services.sendChatRequest(queryText, category, token, I18N_LANG, requestId);
+      const data = await Services.sendChatRequest(
+        queryText, category, token, I18N_LANG, requestId, conversation
+      );
 
       /* `sendChatRequest` sets `Services.chatAbortController` exactly as the
          streaming path does, so `cancelChatRequest` aborts this request too and
@@ -1117,6 +1185,14 @@ export const Handlers = {
       RobotStateManager.startTalking();
 
       if (!data?.response) throw new Error(I18n.t('chat.invalidResponse'));
+
+      /* §3.2's reconciliation rule — see streamChat's `meta` handler for the
+         full argument. The blocking route has no earlier frame to carry
+         this, so it lands with the rest of the response. */
+      if (data.conversation_id && data.conversation_id !== Route.current()) {
+        Route.replace(data.conversation_id);
+      }
+
       UI.addMessage(data.response, 'bot', data.suggested_questions || [], data.sources || [], {
         cited: data.cited ?? null,
         retrieved: data.retrieved ?? (data.sources || []).length,
@@ -1135,6 +1211,12 @@ export const Handlers = {
          it does on the streaming path — there is a complete answer on screen. */
       if (data.persisted === false) {
         ErrorHandler.showToast(I18n.t('chat.notSaved'), true);
+      } else {
+        // §4.2: committed once the server confirms the turn was durably
+        // filed. `!== false` rather than `=== true`, matching the toast
+        // check above: an older server that omits the field entirely must
+        // not be read as "not persisted".
+        Route.commit();
       }
       RobotStateManager.returnToIdle(4000);
     } finally {
@@ -1358,7 +1440,21 @@ export const Handlers = {
        failure — a reader told "that did not work" would go and request another
        link for a password that is already theirs. */
     try {
-      window.history.replaceState({}, '', '/');
+      /* §4.6: this used to hard-code '/' and pass `{}`, silently discarding
+         a deep link's path and its `history.state.convId` along with it — a
+         signed-out reader who opened `/c/<id>`, clicked "forgot password",
+         and completed recovery lost the path they arrived on. Only the
+         `?recovery=1` marker is stripped; the pathname a reader arrived on
+         (a deep link included) is preserved so sign-in hydrates it, exactly
+         as an ordinary sign-in on that path already would. The hash is
+         dropped outright rather than selectively — `isRecoveryCallback`
+         (services.js) is the only thing that ever puts anything there, so
+         nothing legitimate survives it. */
+      const url = new URL(window.location.href);
+      url.searchParams.delete('recovery');
+      window.history.replaceState(
+        { ...window.history.state }, '', url.pathname + url.search
+      );
     } catch (error) {
       logError(error, 'handleRecoverySubmit.replaceState');
     }
@@ -1516,10 +1612,6 @@ export const Handlers = {
    * so nothing of this reader's conversation survives on either side.
    */
   clearSessionState() {
-    /* Dropped rather than discarded through discardUndo(): that would fire a
-       forget request the logout route is about to make redundant, and the
-       fragment holds the previous reader's answers. */
-    pendingUndo = null;
     resetGeneration += 1;
     // Also invalidates any transcript fetch still in flight, which would
     // otherwise draw the departing reader's conversation into an empty page.

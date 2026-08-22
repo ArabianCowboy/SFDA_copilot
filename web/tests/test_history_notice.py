@@ -68,8 +68,12 @@ def test_dismissing_it_survives_a_reload(browser_page: Page):
     page.locator(".history-notice-dismiss").click()
     expect(page.locator(NOTICE)).to_have_count(0)
 
+    # The Supabase double now persists its session the way the real client
+    # does (`services.js:131-149`), so a reload comes back already signed in —
+    # no `_sign_in` call here. That is what makes this a reload rather than a
+    # second sign-in, and the dismissal key is `localStorage`-backed
+    # (`ui.js:101-102`) so it never depended on re-authenticating anyway.
     page.reload()
-    _sign_in(page)
     page.locator("#authenticated-view").wait_for(state="visible")
 
     expect(page.locator(NOTICE)).to_have_count(0)

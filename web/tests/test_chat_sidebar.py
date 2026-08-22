@@ -9,11 +9,11 @@ lives entirely in the DOM:
   and an offcanvas, so every id it generates is suffixed and every listener is
   delegated. Built any other way, clicking the visible mobile row targets the
   hidden desktop one and one action fires twice.
-* **A switch has to move SIX things together** — transcript, source panel,
-  citation map, resumed notice, pending undo, active row. A version that cleared
-  only the transcript leaves the previous conversation's passages open in the
-  panel beside the new one's answers, which on this product means evidence
-  attributed to the wrong question.
+* **A switch has to move several things together** — transcript, source panel,
+  citation map, URL, active row. A version that cleared only the transcript
+  leaves the previous conversation's passages open in the panel beside the
+  new one's answers, which on this product means evidence attributed to the
+  wrong question.
 * **Sidebar controls are refused while an answer is streaming.** The server
   refuses them too (409), but a reader who is only told by a failed request has
   already lost the conversation they clicked.
@@ -71,16 +71,6 @@ def _with_sessions(page: Page, sessions, **kwargs) -> Page:
     page.goto("/")
     _sign_in(page)
     return page
-
-
-def _route_select(page: Page, session_id: str) -> None:
-    page.route(
-        f"**/api/chat/sessions/{session_id}/select",
-        lambda route: route.fulfill(
-            status=200, content_type="application/json",
-            body=json.dumps({"ok": True, "conversation_id": session_id}),
-        ),
-    )
 
 
 # ── The list ─────────────────────────────────────────────────────────────────
@@ -220,7 +210,6 @@ def test_opening_a_conversation_draws_its_transcript(browser_page: Page):
     route_chat_sessions(page, chat_sessions([
         stored_session(session_id, "Stored conversation"),
     ]))
-    _route_select(page, session_id)
     route_chat_history(page, chat_history(
         stored_answer("A stored question", "A stored answer")
     ))
@@ -235,17 +224,26 @@ def test_opening_a_conversation_draws_its_transcript(browser_page: Page):
 
 def test_the_open_conversation_is_marked_active(browser_page: Page):
     """The highlight is a claim about which conversation the reader's NEXT
-    question joins, so it comes from the server's own answer rather than being
-    inferred client-side — the client cannot read a signed cookie."""
+    question joins. It comes from the URL now (§5.3 of
+    docs/per-tab-conversation-deep-linking-plan.md) rather than the server's
+    signed-cookie `active` field: that field is per-BROWSER, and per-tab
+    conversations mean it is routinely wrong for every tab but one — "worse
+    than one that highlights none", by its own former rationale. The client
+    knows which conversation this tab is in from its own route, which a
+    shared cookie field cannot represent per-tab at all."""
     session_id = "11111111-1111-4111-8111-111111111111"
-    page = _with_sessions(
-        browser_page,
-        [stored_session(session_id, "The current one"),
-         stored_session("22222222-2222-4222-8222-222222222222", "Another")],
-        active=session_id,
-    )
+    route_chat_sessions(browser_page, chat_sessions([
+        stored_session(session_id, "The current one"),
+        stored_session("22222222-2222-4222-8222-222222222222", "Another"),
+    ]))
+    route_chat_history(browser_page, chat_history(
+        stored_answer("A stored question", "A stored answer")
+    ))
 
-    expect(page.locator(f'{ROW}[data-session-id="{session_id}"]')).to_have_class(
+    browser_page.goto(f"/c/{session_id}")
+    _sign_in(browser_page)
+
+    expect(browser_page.locator(f'{ROW}[data-session-id="{session_id}"]')).to_have_class(
         re.compile(r"is-active")
     )
 
@@ -266,7 +264,6 @@ def test_switching_clears_the_previous_conversations_evidence(browser_page: Page
     session_id = "11111111-1111-4111-8111-111111111111"
 
     route_chat_sessions(page, chat_sessions([stored_session(session_id, "Elsewhere")]))
-    _route_select(page, session_id)
     page.route(
         "**/api/chat/stream",
         lambda route: route.fulfill(
@@ -399,7 +396,7 @@ def test_confirming_removes_the_row(browser_page: Page):
         f"**/api/chat/sessions/{session_id}",
         lambda route: route.fulfill(
             status=200, content_type="application/json",
-            body=json.dumps({"ok": True, "id": session_id, "conversation_id": None}),
+            body=json.dumps({"ok": True, "id": session_id}),
         ),
     )
     page.goto("/")

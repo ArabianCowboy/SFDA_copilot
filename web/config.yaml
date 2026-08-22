@@ -46,21 +46,16 @@ server:
   chat_history_char_budget: 60000
 
   # Durable per-user chat history (TODO.md: "Save chat sessions per user").
-  # Both halves are on. Turns are recorded to Postgres, and GET /api/chat/history
-  # draws the visible transcript back out of the same rows the prompt window is
-  # built from — so a reload, a language toggle and a new device all show the
+  # Turns are recorded to Postgres, and GET /api/chat/history?c=<id> draws the
+  # visible transcript back out of the same rows the prompt window is built
+  # from — so a reload, a language toggle and a different device all show the
   # conversation the model remembers, with its citations openable rather than
-  # neutralised. The resume flag waited for that hydration deliberately: on its
-  # own it made the model answer from a history the screen never showed.
-  #
-  # One gap is open knowingly: ending a conversation and then logging out BEFORE
-  # asking anything else purges the cookie, so the next visit looks like a new
-  # device and resumes the conversation that was ended. The reader is told the
-  # conversation was picked up from their history rather than left to discover
-  # it. Closing it properly needs a durable owner-level reset marker; step 8's
-  # session sidebar retires the question. See TODO.md.
+  # neutralised. There is no "resume my last conversation" fallback any more:
+  # the URL is the pointer (docs/per-tab-conversation-deep-linking-plan.md
+  # §1), and the gap that fallback's cookie could not close on its own — a
+  # reset followed immediately by a sign-out — closes as a side effect of
+  # having no cookie left to look up (§2 Decision 1).
   chat_persistence: true
-  chat_resume_latest_session: true
 
   # How many stored messages one hydration may draw. Clamped to [1, 200] by
   # clamp_load_limit. 200 messages is 100 answers, which is exactly the

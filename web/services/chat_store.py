@@ -300,6 +300,7 @@ class ChatBackend(Protocol):
         session_key: Optional[str],
         archive_opted_out: bool,
         title: Optional[str] = None,
+        allow_create: bool = True,
     ) -> AppendResult:
         """Record one exchange, creating the session if it does not exist.
 
@@ -312,6 +313,23 @@ class ChatBackend(Protocol):
         yet. Callers pass the current question on every turn and let the
         database decide; asking "is this the first turn?" first would be a round
         trip that the answer immediately races.
+
+        ``allow_create=False`` refuses to create ``session_id`` if it does not
+        already exist for ``owner_id`` — raising :class:`PersistenceUnavailable`
+        instead, the same shape a foreign id already raises. This is defence in
+        depth against resurrecting a deleted conversation, not an authorization
+        control: the real refusal is Flask's preflight against
+        ``session_exists`` before any generation happens
+        (docs/per-tab-conversation-deep-linking-plan.md §3.4).
+        """
+        ...
+
+    def session_exists(self, owner_id: str, session_id: str) -> bool:
+        """Does this owner have a session by this id?
+
+        An unowned or unknown id answers False, identically — the same refusal
+        shape ``load_session`` already takes, so this cannot become an oracle
+        for whether a guessed uuid belongs to someone else.
         """
         ...
 
@@ -325,10 +343,6 @@ class ChatBackend(Protocol):
         empty session gives, deliberately, so probing for a stranger's session
         id cannot distinguish "not yours" from "not there".
         """
-        ...
-
-    def latest_session(self, owner_id: str) -> Optional[str]:
-        """The owner's most recently appended-to session, or None."""
         ...
 
     def list_sessions(
@@ -364,6 +378,7 @@ class SupabaseChatBackend:
         self, *, owner_id, session_id, client_request_id, question, answer,
         sources, lang, category, model, corpus_revision,
         owner_key, session_key, archive_opted_out, title=None,
+        allow_create=True,
     ) -> AppendResult:
         try:
             response = self._client.rpc(
@@ -387,6 +402,7 @@ class SupabaseChatBackend:
                     "p_archive_opted_out": bool(archive_opted_out)
                     or owner_key is None
                     or session_key is None,
+                    "p_allow_create": bool(allow_create),
                 },
             ).execute()
         except Exception as exception:
@@ -400,6 +416,16 @@ class SupabaseChatBackend:
             assistant_message_id=row.get("assistant_message_id"),
             replayed=bool(row.get("replayed")),
         )
+
+    def session_exists(self, owner_id, session_id) -> bool:
+        try:
+            response = self._client.rpc(
+                "chat_session_exists",
+                {"p_owner_id": owner_id, "p_session_id": session_id},
+            ).execute()
+        except Exception as exception:
+            raise PersistenceUnavailable(str(exception)) from exception
+        return bool(_scalar(response, "chat_session_exists"))
 
     def load_session(
         self, owner_id, session_id, *, limit=DEFAULT_LOAD_LIMIT, before_seq=None
@@ -418,21 +444,6 @@ class SupabaseChatBackend:
             raise PersistenceUnavailable(str(exception)) from exception
 
         return [_row_to_message(row) for row in (getattr(response, "data", None) or [])]
-
-    def latest_session(self, owner_id) -> Optional[str]:
-        try:
-            response = self._client.rpc(
-                "chat_latest_session", {"p_owner_id": owner_id}
-            ).execute()
-        except Exception as exception:
-            raise PersistenceUnavailable(str(exception)) from exception
-
-        data = getattr(response, "data", None)
-        if isinstance(data, list):
-            data = data[0] if data else None
-        if isinstance(data, dict):
-            data = data.get("chat_latest_session")
-        return str(data) if data else None
 
     def list_sessions(
         self, owner_id, *, limit=DEFAULT_LIST_LIMIT, cursor=None
@@ -489,7 +500,7 @@ def _scalar(response: Any, key: str) -> Any:
 
     A `returns boolean` function comes back as a bare value, and the same call
     through a different client version comes back as ``[{"name": value}]``.
-    ``latest_session`` already hedges both ways; this is that hedge, named, so
+    ``session_exists`` already hedges both ways; this is that hedge, named, so
     the next scalar RPC does not reinvent it a third time.
     """
     data = getattr(response, "data", None)
@@ -640,6 +651,7 @@ class InMemoryChatBackend:
         self, *, owner_id, session_id, client_request_id, question, answer,
         sources, lang, category, model, corpus_revision,
         owner_key, session_key, archive_opted_out, title=None,
+        allow_create=True,
     ) -> AppendResult:
         owner_id, session_id = str(owner_id), str(session_id)
         with self._lock:
@@ -655,6 +667,15 @@ class InMemoryChatBackend:
             # difference because the double is what the tests run against.
             existing = self._sessions.get(session_id)
             if existing is not None and existing["owner_id"] != owner_id:
+                raise PersistenceUnavailable(
+                    f"chat session {session_id} is not owned by {owner_id}"
+                )
+            # Mirrors the RPC's `p_allow_create = false` guard: a session that
+            # was never created (or already deleted) is not lazily resurrected
+            # for a caller that explicitly said not to. Same exception shape as
+            # the foreign-owner case above, since from the outside they must be
+            # indistinguishable.
+            if existing is None and not allow_create:
                 raise PersistenceUnavailable(
                     f"chat session {session_id} is not owned by {owner_id}"
                 )
@@ -680,7 +701,6 @@ class InMemoryChatBackend:
                 session = {
                     "owner_id": owner_id,
                     "next_seq": 1,
-                    "order": len(self._sessions),
                     "title": None,
                     "created_at": datetime.now(timezone.utc).isoformat(),
                 }
@@ -697,12 +717,6 @@ class InMemoryChatBackend:
 
             seq = session["next_seq"]
             session["next_seq"] = seq + 2
-            # Ordering handle for latest_session. Monotonic and explicit rather
-            # than a wall clock: two turns in the same test land in the same
-            # millisecond and the tiebreaker would be undefined.
-            session["order"] = max(
-                (s["order"] for s in self._sessions.values()), default=0
-            ) + 1
 
             user_id = str(uuid.uuid4())
             assistant_id = str(uuid.uuid4())
@@ -714,15 +728,11 @@ class InMemoryChatBackend:
             # schema lets a test claim a guarantee Postgres makes and the double
             # does not.
             occurred_at = datetime.now(timezone.utc).isoformat()
-            # Mirrors `updated_at = now()` on the seq-claiming UPDATE, and it is
-            # a WALL CLOCK on purpose even though `order` above deliberately is
-            # not. The two answer different questions: `order` only has to rank
-            # this process's own sessions for latest_session, while updated_at
-            # is read by the client, grouped into Today / Yesterday / Older, and
-            # used as half the keyset cursor. A monotonic counter cannot be
-            # grouped by date, and a double that fabricated one would let a test
-            # pass over a sidebar that renders every conversation under the
-            # wrong heading.
+            # Mirrors `updated_at = now()` on the seq-claiming UPDATE. Read by
+            # the client, grouped into Today / Yesterday / Older, and used as
+            # half the keyset cursor — a double that fabricated this would let
+            # a test pass over a sidebar that renders every conversation under
+            # the wrong heading.
             session["updated_at"] = occurred_at
             self._messages[session_id].extend(
                 [
@@ -767,6 +777,11 @@ class InMemoryChatBackend:
             self._turns[(session_id, str(client_request_id))] = result
             return result
 
+    def session_exists(self, owner_id, session_id) -> bool:
+        with self._lock:
+            session = self._sessions.get(str(session_id))
+            return session is not None and session["owner_id"] == str(owner_id)
+
     def load_session(
         self, owner_id, session_id, *, limit=DEFAULT_LOAD_LIMIT, before_seq=None
     ) -> List[StoredMessage]:
@@ -792,15 +807,6 @@ class InMemoryChatBackend:
                 if m.sources else m
                 for m in window
             ]
-
-    def latest_session(self, owner_id) -> Optional[str]:
-        with self._lock:
-            owned = [
-                (session["order"], session_id)
-                for session_id, session in self._sessions.items()
-                if session["owner_id"] == str(owner_id)
-            ]
-            return max(owned)[1] if owned else None
 
     def list_sessions(
         self, owner_id, *, limit=DEFAULT_LIST_LIMIT, cursor=None

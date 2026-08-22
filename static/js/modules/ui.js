@@ -86,7 +86,6 @@ function decorateMarkdown(scope) {
   scope.querySelectorAll(':not(pre) > code').forEach(el => el.classList.add(CONFIG.CLASSES.MESSAGE_INLINE_CODE));
 }
 
-const RESUMED_NOTICE_ID = 'resumed-notice';
 const HISTORY_NOTICE_ID = 'history-notice';
 
 /* Bump to re-show the disclosure after its wording materially changes. Part of
@@ -126,14 +125,14 @@ function rememberHistoryNotice(identity) {
 /**
  * Whether an element inside `#messages` is one of the conversation's turns.
  *
- * `#messages` holds three things that are NOT turns and must never be counted,
+ * `#messages` holds two things that are NOT turns and must never be counted,
  * detached, cleared or restored as if they were: the server-rendered
- * `[data-chat-intro]` empty state, the resumed notice, and the durable-history
- * notice. Each would otherwise be swept into the fragment an undo puts back,
- * and each would make `updateNewChatAvailability` believe a conversation
- * exists. The history notice is the sharpest case: it is meant to outlive a
- * `New chat`, so a miss here deletes the disclosure at exactly the moment the
- * reader is exercising the control it is telling them about.
+ * `[data-chat-intro]` empty state, and the durable-history notice. Each would
+ * otherwise be swept into the fragment an undo puts back, and each would make
+ * `updateNewChatAvailability` believe a conversation exists. The history
+ * notice is the sharpest case: it is meant to outlive a `New chat`, so a miss
+ * here deletes the disclosure at exactly the moment the reader is exercising
+ * the control it is telling them about.
  *
  * This started as a repeated `!el.hasAttribute('data-chat-intro')` at four call
  * sites. Adding a second non-turn element to `#messages` is exactly the change
@@ -143,7 +142,6 @@ function rememberHistoryNotice(identity) {
 function isTranscriptTurn(el) {
   return (
     !el.hasAttribute('data-chat-intro')
-    && el.id !== RESUMED_NOTICE_ID
     && el.id !== HISTORY_NOTICE_ID
   );
 }
@@ -494,10 +492,6 @@ export const UI = {
    */
   clearTranscript() {
     this.detachTranscript();
-    /* The notice describes turns that are no longer on screen. Leaving it up
-       after a clear or a sign-out would explain a conversation the reader is
-       looking at the absence of. */
-    this.hideResumedNotice();
   },
 
   /**
@@ -538,7 +532,6 @@ export const UI = {
    * the failure mode this codebase already legislates against.
    */
   async playTranscriptExit() {
-    this.hideResumedNotice();
     const container = DOMCache.get(CONFIG.SELECTORS.MESSAGES);
     const turns = container
       ? [...container.children].filter(isTranscriptTurn)
@@ -698,61 +691,6 @@ export const UI = {
     // Bypasses the entrance animation's reason for existing: a conversation
     // being restored did not just arrive, and animating it in would say it did.
     this.updateNewChatAvailability({ animate: false });
-  },
-
-  /**
-   * Say that this conversation was picked up rather than started here.
-   *
-   * Shown only when the server resumed the reader's most recent conversation
-   * because this browser named none — a new device, a cleared browser, or the
-   * first visit after a logout. In every other case the conversation on screen
-   * is the one this browser was already having, and a notice would be noise.
-   *
-   * IT EXISTS FOR ONE KNOWN GAP. Ending a conversation and then logging out
-   * before asking anything else purges the cookie, so the next visit looks like
-   * a new device and resumes the conversation that was ended. Closing that
-   * properly needs a durable owner-level reset marker. Until then this is the
-   * difference between a conversation reappearing unexplained — which would
-   * read as the app doing something behind the reader's back, on the one
-   * product where that is unaffordable — and one that says where it came from
-   * and points at the way to start fresh.
-   *
-   * Dismissible and non-blocking: it is a disclosure, not a decision.
-   */
-  showResumedNotice() {
-    const container = DOMCache.get(CONFIG.SELECTORS.MESSAGES);
-    if (!container || document.getElementById(RESUMED_NOTICE_ID)) return;
-
-    const notice = DOMCache.createElement('div', 'resumed-notice');
-    notice.id = RESUMED_NOTICE_ID;
-    notice.setAttribute('role', 'note');
-
-    const text = DOMCache.createElement('span', 'resumed-notice-text');
-    text.textContent = I18n.t('chat.resumed');
-
-    const dismiss = DOMCache.createElement('button', 'resumed-notice-dismiss');
-    dismiss.type = 'button';
-    dismiss.setAttribute('aria-label', I18n.t('chat.resumedDismiss'));
-    dismiss.innerHTML = iconMarkup('close', 14);
-    dismiss.addEventListener('click', () => notice.remove());
-
-    notice.append(text, dismiss);
-
-    /* Above the conversation but below the intro, so it reads as a preface to
-       what follows rather than a banner about the page — and below the history
-       notice when that is present. The order is the reading order: what is
-       always true about this account first, then what happened to this
-       particular conversation. */
-    const intro = container.querySelector('[data-chat-intro]');
-    const history = document.getElementById(HISTORY_NOTICE_ID);
-    const anchor = history || intro;
-    if (anchor) anchor.after(notice);
-    else container.prepend(notice);
-  },
-
-  /** Remove the resumed notice, e.g. on a reset or a sign-out. */
-  hideResumedNotice() {
-    document.getElementById(RESUMED_NOTICE_ID)?.remove();
   },
 
   /**

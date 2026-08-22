@@ -283,8 +283,9 @@ def test_model_failure_after_streaming_starts_is_reported_in_band(app, client):
 def test_history_survives_the_streaming_response(app, client):
     """The Flask-session trap: a session write inside the generator would be
     silently discarded, so history lives in ConversationStore instead."""
-    post(client, query="first question")
-    post(client, query="second question")
+    conversation_id = "aaaaaaaa-2222-3333-4444-555555555555"
+    post(client, query="first question", conversation_id=conversation_id)
+    post(client, query="second question", conversation_id=conversation_id, allow_create=False)
 
     history = app.config["openai_handler"].stream_response.call_args.args[3]
     assert [m["content"] for m in history] == [

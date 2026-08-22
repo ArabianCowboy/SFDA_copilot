@@ -4,7 +4,7 @@
  * AI-powered regulatory guidance for pharmaceutical regulations.
  * This file wires the ES modules together; logic lives under ./modules/.
  *
- * @version 0.4.1 (Beta) — kept in step with APP_VERSION in web/api/app.py, which is
+ * @version 0.5.0 (Beta) — kept in step with APP_VERSION in web/api/app.py, which is
  * the single source the landing footer renders from.
  */
 
@@ -21,6 +21,7 @@ import { CustomDropdown } from './modules/dropdown.js';
 import { mountRobots, initLandingRobot, RobotCompanion } from './modules/robot.js';
 import { initCitationInteractions } from './modules/citations.js';
 import { I18n, Transcript, initLanguageToggle } from './modules/i18n.js';
+import { Route } from './modules/route.js';
 
 const App = {
   /* Which reader the transcript on screen belongs to, and whether the
@@ -108,17 +109,20 @@ const App = {
   settleTranscript(user) {
     const identity = user?.id || user?.email || null;
 
-    /* KEYED TO THE READER, NOT TO THE PAGE, and this is not a refinement — a
-       plain once-per-page guard reintroduces the exact failure the resume flag
-       spent two steps waiting to avoid.
+    /* KEYED TO THE READER, NOT TO THE PAGE, and this is not a refinement.
 
-       The sequence: reader A signs out and reader B signs in on the same tab.
-       The app lives at "/" and AuthView only toggles `d-none`, so nothing
-       reloads and the guard is already spent. B's transcript is therefore never
-       drawn — while the server, finding no cookie, resumes B's most recent
-       conversation and feeds it into the prompt window. B gets a blank screen
-       backed by a model that remembers, which is precisely the state
-       `chat_resume_latest_session` was held off for.
+       The sequence: reader A signs out and reader B signs in on the same tab,
+       still sitting on A's `/c/<id>`. The app lives at "/" and AuthView only
+       toggles `d-none`, so nothing reloads and a plain once-per-page guard
+       would already be spent — B's transcript would never be (re)drawn, and
+       the stale route would still name A's conversation. `hydrateTranscript`
+       below reads that route and asks the server for it under B's own
+       identity; the server's ownership check (§3.1 of
+       docs/per-tab-conversation-deep-linking-plan.md) answers 404 for a
+       conversation B does not own, which `Handlers._conversationUnreachable`
+       then bounces to `/` — but only if `hydrateTranscript` actually runs for
+       B, which is what this guard being per-identity rather than per-page
+       ensures.
 
        Settling more than once is safe because settling is now idempotent per
        identity: the same reader short-circuits, a different one re-hydrates. */
@@ -181,16 +185,36 @@ const App = {
   },
 
   /**
-   * Fetch and draw the signed-in reader's conversation.
+   * Fetch and draw the conversation the URL names, for a signed-in reader.
    *
-   * Not awaited by its caller: a slow history read must not hold up the rest of
-   * sign-in, exactly as the identity check is not held up by the profile load.
+   * §4.5: THIS IS THE DEEP-LINK-ACROSS-AUTH-BOUNDARY HANDLING, not a
+   * separate mechanism. A signed-out reader who opened `/c/<id>` keeps that
+   * path — `/c/<id>` is not `@auth_required` server-side, so nothing
+   * redirected them off it — and `settleTranscript` already waits for "who
+   * is here?" before drawing anything. Once identity resolves, hydrating
+   * from `Route.current()` at that moment is what makes the deep link work
+   * for a reader who signs in after following one.
    *
-   * A failure is TOLD, not swallowed. An empty transcript is a claim — that the
-   * reader has nothing stored — and making it while the store is unreachable is
-   * the kind of quiet untruth this product refuses everywhere else. The server
-   * answers 503 `history_unavailable` for that case specifically, so the two
-   * are distinguishable here rather than collapsed into "no messages".
+   * §4.2's page-load table, read off `Route`: absent → `/` is always a new
+   * chat (Decision 1a) — nothing is fetched, full stop. Present but not
+   * `Route.isCommitted()` → this tab minted the id and the turn never
+   * landed before whatever brought this reader back (a reload, most often)
+   * — not a real conversation yet, so not fetched either; bounced to `/`.
+   * Present and committed → fetched, exactly as every reload always has.
+   *
+   * Not awaited by its caller: a slow history read must not hold up the rest
+   * of sign-in, exactly as the identity check is not held up by the profile
+   * load.
+   *
+   * A failure is TOLD, not swallowed. An empty transcript is a claim — that
+   * the reader has nothing stored — and making it while the store is
+   * unreachable is the kind of quiet untruth this product refuses
+   * everywhere else. The server answers 503 `history_unavailable` for that
+   * case specifically, so the two are distinguishable here rather than
+   * collapsed into "no messages". A 404 is a THIRD thing, distinct from
+   * both: not an outage and not "nothing yet" but "not yours, or not
+   * there" — the other half of §4.5, reached via the same shared path
+   * `Handlers.openSession`'s failure does.
    */
   async hydrateTranscript(identity) {
     /* Stamped before the fetch, checked after it. The request is not awaited by
@@ -202,11 +226,19 @@ const App = {
        Identity alone does not catch it: the same reader is the one pressing the
        button. `Handlers.beginTranscriptEpoch()` is bumped by every act that
        means "what is on screen is no longer the conversation I asked about" —
-       reset, undo, and sign-out. */
+       New chat, a sidebar switch, a delete, or a sign-out. */
     const epoch = Handlers.transcriptEpoch();
+    const id = Route.current();
+
+    if (!id) return;  // "/" — always a new chat. Nothing to hydrate.
+
+    if (!Route.isCommitted()) {
+      Route.replace(null);
+      return;
+    }
 
     try {
-      const history = await Services.getChatHistory();
+      const history = await Services.getChatHistory(id);
 
       /* Discarded if this is no longer the reader who asked. A sign-out and a
          second sign-in can both land while the fetch is in flight, and drawing
@@ -217,12 +249,18 @@ const App = {
       if (epoch !== Handlers.transcriptEpoch()) return;
 
       UI.hydrateTranscript(history.messages || []);
-      if (history.resumed) UI.showResumedNotice();
+      Route.commit();
     } catch (error) {
       if (identity !== this._settledFor) return;
       if (epoch !== Handlers.transcriptEpoch()) return;
       logError(error, 'hydrateTranscript');
-      ErrorHandler.showToast(I18n.t('chat.historyUnavailable'), true);
+      if (error?.code === 'not_found') {
+        // Someone else's deep link, or one that no longer resolves —
+        // §4.5's second half. The shared path, not a bespoke one here.
+        Handlers._conversationUnreachable(null);
+      } else {
+        ErrorHandler.showToast(I18n.t('chat.historyUnavailable'), true);
+      }
     }
   },
 
@@ -245,6 +283,11 @@ const App = {
     console.log('[App] Initializing SFDA Copilot...');
 
     Handlers.bindEvents();
+    // §4.1/§4.3: Back/Forward and bfcache restores. Wired unconditionally,
+    // like everything else in this block — a signed-out reader on `/c/<id>`
+    // can still navigate, and the popstate handler itself is what decides
+    // whether there is anything to hydrate.
+    Route.init((navigation) => Handlers.handlePopState(navigation));
     ThemeManager.init();
     UI.hydrateTimestamps();
     initCitationInteractions(DOMCache.get(CONFIG.SELECTORS.MESSAGES));
