@@ -45,9 +45,11 @@ find out whether it is the one you want.
 | [2026-08-23_profile-refactor.md](2026-08-23_profile-refactor.md) | `/account`, identity, data rights | A server-rendered page, not a modal; `full_name` becomes a generated column over `first_name`/`family_name`/`age`; preferences merge rather than replace; no avatar upload, ever | **Its own header**, which said "not started, nothing here is built" while ~90% shipped. Also a name-splitting backfill, withdrawn twice, and the entire active-sessions list, cut because the API has no such endpoint. | 4,867 |
 | [TODO-resolved.md](TODO-resolved.md) | 33 closed entries | — | Several carry a `(original entry)` heading: the first diagnosis, kept where a later one superseded it and the difference was worth recording. | 1,998 |
 
-Three items from the profile refactor are still open and live in
-[`TODO.md`](../../TODO.md), not here: bilingual security email templates, the consent
-section, and account deletion. Open work is never left inside an archived plan.
+Two items from the profile refactor are still open and live in
+[`TODO.md`](../../TODO.md), not here: bilingual security email templates and account
+deletion. Open work is never left inside an archived plan. (A third, the consent section,
+shipped on 2026-08-23 after this archive was written — what remains is a legal review of the
+draft privacy policy, tracked as its own entry.)
 
 ---
 

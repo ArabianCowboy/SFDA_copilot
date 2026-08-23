@@ -42,7 +42,7 @@ bottom of this file: [How this file works](#how-this-file-works).
 - [Know what people actually ask](#know-what-people-actually-ask--without-reading-anyones-conversation) — an identity-free question log; not started, gated on scale.
 - [Every authenticated request pays a network round trip to verify its token](#every-authenticated-request-pays-a-network-round-trip-to-verify-its-token) — deliberately not done quietly; needs a stated revocation-window trade-off.
 - [Admin broadcast & Reader Notification Center](#admin-broadcast--reader-notification-center-popups-banners-and-inbox-history) — full feature, not started.
-- [The privacy policy (/privacy) is a draft, not reviewed legal text](#the-privacy-policy-privacy-is-a-draft-not-reviewed-legal-text) — blocks the consent section (Step 6).
+- [The privacy policy (/privacy) is a draft, not reviewed legal text](#the-privacy-policy-privacy-is-a-draft-not-reviewed-legal-text) — consent shipped against this draft; the legal review of the text is what is still owed.
 - [Account deletion (Spec 4)](#account-deletion-spec-4--blocked-on-a-product-decision-not-on-engineering) — blocked on an unclosed product decision; both migrations written.
 - [The CSP still allows an image from any HTTPS origin](#the-csp-still-allows-an-image-from-any-https-origin) — hardening the deep-linking plan asked for and never got.
 - [A conversation id now reaches the access log](#a-conversation-id-now-reaches-the-access-log) — a verification task, possibly already fine; unverified either way.
@@ -437,12 +437,15 @@ something that is not code.** Superseded by the full design in
   `<blueprint-prefix>/api/<thing>` convention rather than the plan's §4
   shorthand of `/api/account/*`.
 
-**Still open — three items, each blocked on a decision or a document, not on
+**Still open — two items, each blocked on a decision or a document, not on
 engineering.** Each has its own entry below rather than living only here:
 
 - Bilingual GoTrue email templates — see *Security email is English-only*.
-- The consent section (Step 6) — see *The privacy policy (/privacy) is a draft*.
 - Account deletion (Step 7) — see *Account deletion (Spec 4)*.
+
+**Consent (Step 6) shipped 2026-08-23**, unblocked by publishing `/privacy` as an
+openly-labelled draft rather than by waiting for reviewed text. The review that is
+still owed is tracked separately — see *The privacy policy (/privacy) is a draft*.
 
 Also deferred, and not blocked on anything but appetite: full account-menu
 consolidation (the sidebar footer collapsing to one control, per Decision 1),

@@ -32,11 +32,14 @@ them.
 **What is still open** (see `TODO.md` for each):
 
 - Bilingual GoTrue email templates (§14·D·26, §17 Step 5) — blocked in the Supabase dashboard.
-- The consent section (§12.3, §16·3, §17 Step 6) — blocked on a bilingual privacy policy that
-  does not exist yet.
 - Account deletion (§16·4, Appendix E Spec 4, §17 Step 7) — blocked on an unclosed product
   question: is reader self-deletion permitted at all, given the audit log? Both migrations are
   written and unapplied.
+
+**Step 6 (consent) shipped on 2026-08-23**, after this banner was first written. It was
+unblocked by publishing `/privacy` as an openly-labelled draft rather than by waiting for a
+reviewed policy — a deliberate product-owner call, recorded in `TODO.md`. What remains owed is
+the legal review of that text, which has its own entry there.
 
 **One known divergence from the code:** §4 specifies routes at `/api/account/*`. They shipped at
 `/account/api/*`, following the convention `web/api/admin.py` already set. §17 records this; §4
