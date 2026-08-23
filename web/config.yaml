@@ -106,7 +106,21 @@ server:
     # every accepted call sends mail, and GoTrue's own project-wide ceiling is
     # 30/hour — a caller must not be able to exhaust that in one minute.
     recover_api: "5 per minute"
-  
+    # Full account export (GET /account/api/export). Low, per the security
+    # pass's adopted limits (docs/profile-refactor-plan.md §4): it streams
+    # every stored message a reader has, an exhaustive per-session read far
+    # heavier than any other route on this surface. Keyed per reader, not per
+    # IP (web/api/app.py's _account_rate_key) — an office behind one NAT must
+    # not share this budget.
+    export_api: "2 per 10 minutes"
+    # Bulk conversation deletion (DELETE /account/api/conversations). Not
+    # itemized in the plan's own rate-limit table (that one covers email,
+    # password and export/deletion-of-the-ACCOUNT specifically) — set here by
+    # the same reasoning: destructive and irreversible, so tighter than the
+    # ordinary single-conversation sessions_api limit, but cheap enough (one
+    # RPC round trip, no streamed read) not to need export's ceiling.
+    account_bulk_delete_api: "10 per hour"
+
   # CORS origins (only used when debug=false)
   allowed_origins:
     - https://sfda-copilot.aifoudahub.com

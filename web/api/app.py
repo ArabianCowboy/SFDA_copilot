@@ -13,6 +13,7 @@ os.environ.setdefault("OMP_NUM_THREADS", "1")
 os.environ.setdefault("MKL_NUM_THREADS", "1")
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 
+import hashlib
 import logging
 import sys
 import threading
@@ -228,7 +229,7 @@ SUPPORTED_FAQ_LANGS = ("en", "ar")
 # that mixes a fresh template with a stale module is worse than a stale page —
 # post-icon-migration it would render an <i class="bi"> with no icon font behind
 # it, or print a glyph NAME as text. MODULE_IMPORT_MAP below closes that.
-ASSET_VERSION = "warm39"
+ASSET_VERSION = "warm44"
 
 # Product release, rendered in the landing footer. Kept as one constant so
 # the number cannot drift between the page and the module headers.
@@ -259,6 +260,13 @@ MODULE_FILENAMES: Tuple[str, ...] = tuple(
 # can actually load.
 ADMIN_MODULE_FILENAMES: Tuple[str, ...] = tuple(
     sorted(p.name for p in (PROJECT_ROOT / "static" / "js" / "admin").glob("*.js"))
+)
+
+# The account page's own modules, for the same reason ADMIN_MODULE_FILENAMES
+# is separate from MODULE_FILENAMES: a module dropped in beside the others
+# would publish its filename in the anonymous landing page's import map.
+ACCOUNT_MODULE_FILENAMES: Tuple[str, ...] = tuple(
+    sorted(p.name for p in (PROJECT_ROOT / "static" / "js" / "account").glob("*.js"))
 )
 
 # ──────────────────────────────────────────────────────────
@@ -619,6 +627,30 @@ def _chat_persistence() -> Optional[Any]:
     return factory() if factory else None
 
 
+def _account_rate_key() -> str:
+    """Per-reader, not per-IP (docs/profile-refactor-plan.md's R4 finding: an
+    office behind one NAT must not share one budget for a Data-rights action).
+
+    Flask-Limiter's own `before_request` hook runs BEFORE this app's
+    blueprint-level ones — `account_bp`'s `_gate` included — so `g.identity`
+    is not set yet when this key function runs; re-authenticating here to get
+    it would be a second `supabase.auth.get_user` round trip on every rate
+    key evaluation, on top of the one `_gate` already makes. Hashing the
+    bearer token itself gets the same per-reader isolation without that cost:
+    it is unique per session and stable for the reader across requests, which
+    is all a rate-limit key needs to be. No header at all falls back to IP —
+    `_gate` refuses the request anyway once this function returns, so the key
+    only needs to be reasonable, not exact.
+    """
+    header = request.headers.get("Authorization", "")
+    if not header.startswith("Bearer "):
+        return get_remote_address()
+    token = header[len("Bearer "):].strip()
+    if not token:
+        return get_remote_address()
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
 def _load_history(
     store: ConversationStore,
     backend: Optional[Any],
@@ -890,6 +922,24 @@ class _InFlightGenerations:
             return False
         with self._lock:
             return (str(owner_id), str(conversation_id)) in self._counts
+
+    def is_live_for_owner(self, owner_id: Optional[str]) -> bool:
+        """Is ANY of this owner's conversations mid-generation?
+
+        Bulk conversation deletion (docs/profile-refactor-plan.md Step 7)
+        cannot name the one conversation to refuse the way the single-delete
+        route does — it deletes every session in one RPC round trip, so there
+        is no per-id check to run first. Refusing the whole bulk delete while
+        any one of the owner's conversations is live is the same guarantee
+        `is_live` gives one conversation, applied to the set: a live stream's
+        `chat_append_turn` must never be able to resurrect a row this request
+        just deleted.
+        """
+        if not owner_id:
+            return False
+        owner = str(owner_id)
+        with self._lock:
+            return any(key[0] == owner for key in self._counts)
 
 
 def _generations() -> _InFlightGenerations:
@@ -1726,6 +1776,37 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
     limiter.limit("10 per minute")(app.view_functions["admin.revoke_sessions"])
     limiter.limit("10 per minute")(app.view_functions["admin.change_email"])
 
+    # Imported here for the same reason admin_bp is: account.py imports back
+    # into this module for _authenticate_request, and a top-level import
+    # would be a cycle.
+    from web.api.account import account_bp
+    app.register_blueprint(account_bp)
+    # Chrome and a profile read today; Step 5/7 add mutating routes here
+    # later, each rate-limited on its own terms per docs/profile-refactor-
+    # plan.md §4 ("email change 3/hr, password change 5/hr, export 2/10min,
+    # deletion 3/hr"). This blanket limit is the same reasoning as the
+    # console's: the global 200/day default would lock a reader out of their
+    # own record after an afternoon of visits.
+    limiter.limit("60 per minute")(account_bp)
+    # Data rights (Step 7). Both stack on top of the blanket 60/minute above,
+    # the same composition admin.py's revoke_sessions/change_email already
+    # use — the specific limit is the one that actually binds. Keyed per
+    # reader rather than per IP (_account_rate_key's own docstring: R4).
+    limiter.limit(
+        lambda: config.get("server", "rate_limit", {}).get("export_api", "2 per 10 minutes"),
+        key_func=_account_rate_key,
+    )(app.view_functions["account.export"])
+    # A destructive, irreversible action on the reader's own history — tighter
+    # than the ordinary sidebar single-delete (sessions_api, 60/minute), but
+    # not as tight as export: it costs one RPC round trip, not a full scan
+    # and stream of every stored message.
+    limiter.limit(
+        lambda: config.get("server", "rate_limit", {}).get(
+            "account_bulk_delete_api", "10 per hour"
+        ),
+        key_func=_account_rate_key,
+    )(app.view_functions["account.delete_all_conversations"])
+
     workers = os.getenv("WEB_CONCURRENCY", "1")
     if workers != "1":
         logger.warning(
@@ -1922,15 +2003,41 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
         there is no hint yet because no authenticated request has been made.
 
         Deliberately says nothing a reader may not know about themselves: no
-        other accounts, no counts, no settings.
+        other accounts, no counts of *other* accounts, no settings.
+
+        `created_at`/`conversation_count` back the /account standing line and
+        are fetched here rather than folded into the cached identity flags —
+        see `AdminBackend.get_standing_line_facts`'s own docstring for why a
+        conversation-count subquery does not belong on the hot chat-request
+        path. A lookup failure degrades to `null` for both rather than
+        failing the whole response: the role/tier/is_admin answer above is
+        the one thing this endpoint must not fail to give.
         """
+        from web.services.admin_store import get_admin_backend
+
         flags: IdentityFlags = g.identity
+        created_at = None
+        conversation_count = None
+        backend = get_admin_backend()
+        if backend is not None:
+            try:
+                facts = backend.get_standing_line_facts(flags.user_id)
+            except Exception:
+                logger.exception("Could not load standing-line facts for %s", flags.user_id)
+                facts = None
+            if facts is not None:
+                created_at = facts.get("created_at")
+                conversation_count = facts.get("conversation_count")
+
         return jsonify({
             "user_id": flags.user_id,
             "email": flags.email,
             "role": flags.role,
             "tier": flags.tier,
             "is_admin": flags.is_admin,
+            "is_disabled": flags.is_disabled,
+            "created_at": created_at,
+            "conversation_count": conversation_count,
         })
 
     # Shared across both chat routes so a client cannot double its allowance by

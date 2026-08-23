@@ -1384,6 +1384,20 @@
 }
 .history-notice-dismiss:hover { color: var(--fg-primary); }
 
+/* Same shape as .history-notice — a disclosure and an invitation share a box,
+   distinguished only by rail colour: confidence (signal) rather than warning,
+   because there is nothing wrong here, only something offered. */
+.profile-notice::before {
+  background: var(--signal);
+}
+.profile-notice-open {
+  align-self: flex-start;
+  color: var(--signal);
+  font-weight: var(--fw-medium);
+  text-decoration: none;
+}
+.profile-notice-open:hover { text-decoration: underline; }
+
 .source-panel-close {
   flex: none;
   display: inline-flex;

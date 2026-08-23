@@ -114,10 +114,16 @@
   <span id="user-status{{ suffix }}" class="auth-status-text">{{ t('runtime.auth.checkingStatus') }}</span>
   <div class="auth-status-actions">
     <button id="auth-button{{ suffix }}" class="btn btn-sm btn-primary" type="button">{{ t('page.auth.loginSignup') }}</button>
-    <button id="profile-button{{ suffix }}" class="btn btn-sm btn-ghost d-none" type="button"
-            data-bs-toggle="modal" data-bs-target="#profileModal">
+    {# No view-transition-name here yet: this macro renders twice per page
+       (desktop aside + mobile offcanvas), and a name must be unique among
+       rendered elements — a closed offcanvas is visibility:hidden, which
+       still counts. Assigning it safely needs a media-query-scoped rule,
+       not an inline style on a shared partial. Deferred; see
+       docs/profile-refactor-plan.md §13's own trap note. #}
+    <a id="profile-button{{ suffix }}" class="btn btn-sm btn-ghost d-none"
+       href="{{ url_for('account.page') }}">
       {{ icon('user-circle', 14) }} {{ t('page.profile.button') }}
-    </button>
+    </a>
     {# Hidden until /api/identity says otherwise — deliberately NOT revealed by
        the signed-in toggle below, which knows only logged-in from logged-out.
        Hiding it is courtesy, not security: /admin/api/* is gated server-side,

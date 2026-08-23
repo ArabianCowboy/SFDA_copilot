@@ -5,6 +5,7 @@ from pathlib import Path
 
 MODULES = Path("static/js/modules")
 ADMIN = Path("static/js/admin")
+ACCOUNT = Path("static/js/account")
 
 
 def test_services_module_has_no_view_or_state_dependencies():
@@ -21,7 +22,9 @@ def test_handlers_own_user_facing_service_failures():
     source = (MODULES / "handlers.js").read_text(encoding="utf-8")
 
     assert "ErrorHandler.showAuthError" in source
-    assert "ErrorHandler.showProfileError" in source
+    # showProfileError moved with the #profileModal it existed for — see
+    # test_account_flow_uses_the_i18n_catalogue_not_literals for its
+    # replacement's own contract.
     # The message itself now comes from the i18n catalogue; the contract being
     # asserted is that handlers.js — not services.js — surfaces the failure.
     assert "ErrorHandler.showToast(I18n.t('chat.sendFailed')" in source
@@ -47,29 +50,48 @@ def test_handlers_own_user_facing_service_failures():
     assert "RobotStateManager.returnToIdle(4000)" in source
 
 
-def test_profile_flow_uses_the_i18n_catalogue_not_literals():
-    """Five call sites in the profile flow used to pass raw English literals
-    to showProfileError/showToast instead of a translation key, so an Arabic
-    reader saw English on this one surface. `runtime.profile.*` existed in
-    both catalogues the whole time and was read by nothing — this pins that
-    each site now actually draws from it, which the catalogue-parity test
-    alone cannot catch (both languages can carry a key that nothing uses).
+def test_account_flow_uses_the_i18n_catalogue_not_literals():
+    """The profile-editing surface this guarded moved from the #profileModal
+    (handlers.js/ui.js) to static/js/account/ when the modal was retired
+    (docs/profile-refactor-plan.md §5) — the file changed, the discipline it
+    pins did not: every reader-facing string on the account page draws from
+    `runtime.profile.account.*`, none of it hardcoded English, which the
+    catalogue-parity test alone cannot catch (both languages can carry a key
+    that nothing uses).
+    """
+    source = (ACCOUNT / "ui.js").read_text(encoding="utf-8")
+
+    assert "I18n.t('profile.account.identitySaved')" in source
+    assert "I18n.t('profile.account.identitySaveFailed')" in source
+    assert "I18n.t('profile.account.preferencesSaved')" in source
+    assert "I18n.t('profile.account.preferencesSaveFailed')" in source
+    assert "I18n.t('profile.account.loadFailed')" in source
+
+
+def test_auth_flow_uses_the_i18n_catalogue_not_literals():
+    """Three call sites on the login/signup submit path used to pass raw
+    English literals to showAuthError/showToast — one of them an untranslated
+    duplicate of `#user-status`'s own `runtime.auth.loggedInAs` text
+    (auth-view.js writes that on every sign-in, from the auth-state listener,
+    independently of this handler). This pins that each remaining site draws
+    from the catalogue and that the duplicate toast is gone rather than
+    translated, which the catalogue-parity test alone cannot catch (both
+    languages can carry a key that nothing uses).
     """
     source = (MODULES / "handlers.js").read_text(encoding="utf-8")
 
-    assert "I18n.t('runtime.profile.sessionExpired')" in source
-    assert "I18n.t('runtime.profile.saved')" in source
-    assert "I18n.t('runtime.profile.saveFailed')" in source
-    assert "I18n.t('runtime.profile.loginRequired')" in source
-    assert "I18n.t('runtime.profile.loadFailed')" in source
+    assert "I18n.t('auth.missingFields')" in source
+    assert "I18n.t('auth.signupSent.heading')" in source
+    assert "I18n.t('auth.signupSent.lead'" in source
+    assert "I18n.t('auth.signupSent.spam')" in source
 
     # The literals this replaces, so a revert reintroduces hardcoded English
     # rather than silently passing.
-    assert "Your session seems to have expired" not in source
-    assert "Profile saved successfully!" not in source
-    assert "Failed to save: ${error.message}" not in source
-    assert "Please log in to manage your profile." not in source
-    assert "Could not load your profile." not in source
+    assert "Please fill in both email and password." not in source
+    assert "Signup initiated! Please check your email to confirm." not in source
+    # Deleted, not translated: stating the same fact twice, once untranslated.
+    assert "Logged in as ${data.user.email}" not in source
+    assert "Login successful!" not in source
 
 
 def test_ui_does_not_own_authentication_transitions():
@@ -152,12 +174,20 @@ def test_english_catalogue_preserves_test_asserted_strings():
 
 
 def test_arabic_catalogue_covers_every_runtime_key():
-    """A missing runtime key would render as the raw key in the Arabic UI."""
+    """A missing `runtime.*` key would render as the raw key in the Arabic UI.
+
+    Also covers `page.*`: a missing key there does not render a raw key —
+    `make_translator` (web/utils/i18n.py) deep-merges English as the base and
+    falls back to it silently on a miss, so a lagging Arabic translation is
+    invisible in the running app rather than loud. Both roots are checked
+    here for the same reason: nothing else catches a language that quietly
+    fell behind.
+    """
     import yaml
 
     i18n_dir = MODULES.parents[2] / "web" / "i18n"
-    en = yaml.safe_load((i18n_dir / "en.yaml").read_text(encoding="utf-8"))["runtime"]
-    ar = yaml.safe_load((i18n_dir / "ar.yaml").read_text(encoding="utf-8"))["runtime"]
+    en = yaml.safe_load((i18n_dir / "en.yaml").read_text(encoding="utf-8"))
+    ar = yaml.safe_load((i18n_dir / "ar.yaml").read_text(encoding="utf-8"))
 
     def flatten(node, prefix=""):
         keys = set()
@@ -166,5 +196,6 @@ def test_arabic_catalogue_covers_every_runtime_key():
             keys |= flatten(value, f"{path}.") if isinstance(value, dict) else {path}
         return keys
 
-    missing = flatten(en) - flatten(ar)
-    assert not missing, f"Arabic catalogue is missing: {sorted(missing)}"
+    for root in ("runtime", "page"):
+        missing = flatten(en[root]) - flatten(ar[root])
+        assert not missing, f"Arabic catalogue['{root}'] is missing: {sorted(missing)}"

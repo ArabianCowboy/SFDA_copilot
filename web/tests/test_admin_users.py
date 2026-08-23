@@ -438,8 +438,8 @@ def test_a_profile_edit_is_recorded_with_before_and_after(client):
     whole reason this is audited rather than just permitted."""
     response = client.patch(
         "/admin/api/users/test-user-id/profile", headers=ADMIN,
-        json={"full_name": "New Name", "organization": "New Org",
-              "specialization": "Regulatory"},
+        json={"first_name": "New", "family_name": "Name", "age": 30,
+              "organization": "New Org", "specialization": "Regulatory"},
     )
     assert response.status_code == 200
 
@@ -447,15 +447,17 @@ def test_a_profile_edit_is_recorded_with_before_and_after(client):
         "/admin/api/audit?target_type=user&target_id=test-user-id", headers=ADMIN
     ).get_json()["entries"][0]
     assert entry["action"] == "user.profile_change"
-    assert entry["after"]["full_name"] == "New Name"
-    assert "full_name" in entry["before"]
+    assert entry["after"]["first_name"] == "New"
+    assert entry["after"]["family_name"] == "Name"
+    assert "first_name" in entry["before"]
 
 
 def test_a_no_op_profile_edit_records_nothing(client):
     """TODO.md files the opposite behaviour as a bug against the sibling RPC: a
     patch that sets a field to the value it already holds recording a change
     that did not occur. There is no reason to reproduce it here."""
-    payload = {"full_name": "Same", "organization": "Same", "specialization": "Same"}
+    payload = {"first_name": "Same", "family_name": "Same", "age": None,
+               "organization": "Same", "specialization": "Same"}
     client.patch("/admin/api/users/test-user-id/profile", headers=ADMIN, json=payload)
     before = len(client.get("/admin/api/audit", headers=ADMIN).get_json()["entries"])
 
@@ -470,7 +472,8 @@ def test_a_stale_edit_is_refused_rather_than_clobbering(client):
     typing. Two people editing the same account otherwise last-write-wins."""
     response = client.patch(
         "/admin/api/users/test-user-id/profile", headers=ADMIN,
-        json={"full_name": "A", "organization": "B", "specialization": "C",
+        json={"first_name": "A", "family_name": "B", "organization": "C",
+              "specialization": "D",
               "expected_updated_at": "1999-01-01T00:00:00+00:00"},
     )
     assert response.status_code == 409
@@ -480,27 +483,33 @@ def test_a_stale_edit_is_refused_rather_than_clobbering(client):
 def test_an_account_with_no_profile_cannot_have_one_edited(client):
     response = client.patch(
         "/admin/api/users/test-orphan-id/profile", headers=ADMIN,
-        json={"full_name": "X", "organization": "Y", "specialization": "Z"},
+        json={"first_name": "X", "organization": "Y", "specialization": "Z"},
     )
     assert response.status_code == 409
     assert response.get_json() == {"error": "no_such_account"}
 
 
 @pytest.mark.parametrize("payload, status", [
-    ({"full_name": 12}, 400),
-    ({"full_name": "x" * 201}, 422),
+    ({"first_name": 12}, 400),
+    ({"first_name": "x" * 101}, 422),
+    ({"organization": "x" * 201}, 422),
+    ({"age": "30"}, 400),
+    ({"age": True}, 400),
+    ({"age": 12}, 422),
+    ({"age": 121}, 422),
+    ({"full_name": "New Name"}, 422),
     ({"role": "admin"}, 422),
     ({"is_disabled": True}, 422),
     ({"password": "hunter2"}, 422),
 ])
-def test_the_profile_route_accepts_only_the_three_fields_it_owns(client, payload, status):
+def test_the_profile_route_accepts_only_the_fields_it_owns(client, payload, status):
     assert client.patch(
         "/admin/api/users/test-user-id/profile", headers=ADMIN, json=payload
     ).status_code == status
 
 
 def test_the_profile_route_is_gated_like_every_other_mutation(client):
-    body = {"full_name": "X", "organization": "Y", "specialization": "Z"}
+    body = {"first_name": "X", "organization": "Y", "specialization": "Z"}
     assert client.patch("/admin/api/users/test-user-id/profile", json=body).status_code == 401
     assert client.patch(
         "/admin/api/users/test-user-id/profile", headers=AUTH, json=body

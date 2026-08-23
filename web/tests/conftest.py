@@ -47,6 +47,12 @@ export function createClient() {
     user: readStoredUser(),
     profile: {
       id: 'test-user-id',
+      first_name: 'Test',
+      family_name: 'User',
+      age: null,
+      // Mirrors the real generated column post-cutover
+      // (20260822225415_profile_identity_atomic_cutover.sql): first_name
+      // and family_name are the source of truth, full_name is derived.
       full_name: 'Test User',
       organization: 'Test Organization',
       specialization: 'Regulatory Affairs',
@@ -54,13 +60,21 @@ export function createClient() {
     },
     authCallback: null,
     lastProfileUpdate: null,
+    lastPreferencesPatch: null,
+    lastSignUpMetadata: null,
     sessionError: null,
     profileError: null,
     profileUpdateError: null,
+    preferencesUpdateError: null,
     lastUserUpdate: null,
     updateUserError: null,
     lastSignOutScope: null,
     signUpError: null,
+    // Password-change reauthentication (account/handlers.js). Off by
+    // default — most tests exercise the plain updateUser({password}) path.
+    requireReauthentication: false,
+    reauthenticateSent: false,
+    validNonce: '123456',
   };
 
   const session = () => state.user ? {
@@ -93,17 +107,31 @@ export function createClient() {
         queueMicrotask(() => state.authCallback?.('SIGNED_IN', currentSession));
         return { data: { user: state.user, session: currentSession }, error: null };
       },
-      async signUp({ email }) {
+      async signUp({ email, options }) {
+        state.lastSignUpMetadata = options?.data ?? null;
         if (state.signUpError) {
           return { data: { user: null, session: null }, error: new Error(state.signUpError) };
         }
         return { data: { user: { id: 'test-user-id', email } }, error: null };
       },
-      async signOut() {
+      async signOut(options) {
+        const scope = options?.scope ?? 'global';
+        state.lastSignOutScope = scope;
+        // 'others' ends every session but this one — the real GoTrue
+        // behaviour account/handlers.js relies on ("Sign out everywhere
+        // else" must not sign the reader out of the tab they clicked it
+        // from). Only 'global'/'local' end THIS session in the mock.
+        if (scope === 'others') return { error: null };
         state.user = null;
         writeStoredUser(null);
-        state.lastSignOutScope = arguments[0]?.scope ?? 'default';
         queueMicrotask(() => state.authCallback?.('SIGNED_OUT', null));
+        return { error: null };
+      },
+      /* Password-change reauthentication (account/handlers.js). Sets a flag
+         the mocked updateUser() below checks, mirroring the server-side
+         GOTRUE_SECURITY_UPDATE_PASSWORD_REQUIRE_REAUTHENTICATION setting. */
+      async reauthenticate() {
+        state.reauthenticateSent = true;
         return { error: null };
       },
       /* Recovery. The real client never sees `resetPasswordForEmail` any more —
@@ -112,6 +140,18 @@ export function createClient() {
       async updateUser(attributes) {
         if (state.updateUserError) {
           return { data: { user: null }, error: new Error(state.updateUserError) };
+        }
+        if (attributes?.password && state.requireReauthentication && !attributes?.nonce) {
+          return {
+            data: { user: null },
+            error: new Error('Reauthentication is required to update your password.'),
+          };
+        }
+        if (attributes?.password && attributes?.nonce && attributes.nonce !== state.validNonce) {
+          return {
+            data: { user: null },
+            error: new Error('Reauthentication code is not valid.'),
+          };
         }
         state.lastUserUpdate = attributes;
         return { data: { user: state.user ?? { id: 'test-user-id', email: 'test@example.com' } }, error: null };
@@ -137,6 +177,24 @@ export function createClient() {
         },
       };
       return query;
+    },
+    /* Only the one RPC the account page actually calls. Merges into
+       state.profile.preferences, mirroring update_own_preferences'
+       real semantics (profile_preferences_merge_rpc.sql) rather than the
+       upsert's replace-the-whole-object behaviour. */
+    async rpc(name, params) {
+      if (name !== 'update_own_preferences') {
+        return { data: null, error: new Error(`unmocked rpc: ${name}`) };
+      }
+      if (state.preferencesUpdateError) {
+        return { data: null, error: new Error(state.preferencesUpdateError) };
+      }
+      state.lastPreferencesPatch = params?.p_patch ?? null;
+      state.profile = {
+        ...state.profile,
+        preferences: { ...(state.profile.preferences || {}), ...(params?.p_patch || {}) },
+      };
+      return { data: state.profile.preferences, error: null };
     },
   };
 }
@@ -632,6 +690,12 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
                 "test_source_panel.py",
                 "test_composer.py",
                 "test_new_chat.py",
+                # Missed when this file shipped (Step 3 of docs/profile-refactor-
+                # plan.md): every test in it takes `authenticated_page` or
+                # `browser_page`, but with no marker of its own — and outside
+                # this allowlist — it ran in the FAST, non-browser pass instead
+                # of the dedicated one, and never under `-m browser` at all.
+                "test_account_browser.py",
             )
         ):
             item.add_marker(pytest.mark.browser)

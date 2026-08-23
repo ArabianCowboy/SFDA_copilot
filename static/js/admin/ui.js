@@ -1111,13 +1111,17 @@ function openDetailPanel() {
   return detail;
 }
 
-/** The three fields an operator may rewrite. Mirrors `_PROFILE_FIELDS` in
-    web/api/admin.py, which rejects anything outside the set rather than
-    quietly dropping it. */
+/** The text fields an operator may rewrite. Mirrors `_PROFILE_STRING_FIELDS`
+    in web/api/admin.py, which rejects anything outside the set rather than
+    quietly dropping it. `full_name` is not here: it became a generated
+    column in the identity cutover and can never be written — first_name and
+    family_name are. `age` is handled separately below; it is a number, not
+    a string, and has its own bound (13-120, not a character length). */
 const PROFILE_FIELDS = [
-  { name: 'full_name', id: 'account-full-name', key: 'admin.account.fullName' },
-  { name: 'organization', id: 'account-organization', key: 'admin.account.organization' },
-  { name: 'specialization', id: 'account-specialization', key: 'admin.account.specialization' },
+  { name: 'first_name', id: 'account-first-name', key: 'admin.account.firstName', maxLength: 100 },
+  { name: 'family_name', id: 'account-family-name', key: 'admin.account.familyName', maxLength: 100 },
+  { name: 'organization', id: 'account-organization', key: 'admin.account.organization', maxLength: 200 },
+  { name: 'specialization', id: 'account-specialization', key: 'admin.account.specialization', maxLength: 200 },
 ];
 
 let currentSelfId = null;
@@ -1353,7 +1357,7 @@ function profileForm(account) {
 
   const fields = document.createElement('div');
   fields.className = 'admin-profile-fields';
-  PROFILE_FIELDS.forEach(({ name, id, key }) => {
+  PROFILE_FIELDS.forEach(({ name, id, key, maxLength }) => {
     const field = document.createElement('div');
     field.className = 'admin-profile-field';
 
@@ -1367,17 +1371,40 @@ function profileForm(account) {
     input.className = 'admin-input';
     input.id = id;
     input.name = name;
-    // Matches _PROFILE_MAX_LENGTH in web/api/admin.py, which bounds it because
-    // every value is copied into `before` AND `after` of a row nothing can ever
-    // delete. Bounded here too, so an operator is stopped before the round trip
-    // rather than after it.
-    input.maxLength = 200;
+    // Matches _PROFILE_STRING_MAX_LENGTH in web/api/admin.py, which bounds it
+    // because every value is copied into `before` AND `after` of a row
+    // nothing can ever delete. Bounded here too, so an operator is stopped
+    // before the round trip rather than after it.
+    input.maxLength = maxLength;
     input.autocomplete = 'off';
     input.value = account[name] || '';
+    if (name === 'first_name' || name === 'family_name') input.dir = 'auto';
 
     field.append(label, input);
     fields.appendChild(field);
   });
+
+  // Separate from the loop above: a number, not a string, with its own bound
+  // (profiles_age_chk: 13-120) rather than a character length.
+  const ageField = document.createElement('div');
+  ageField.className = 'admin-profile-field';
+  const ageLabel = document.createElement('label');
+  ageLabel.className = 'admin-label';
+  ageLabel.htmlFor = 'account-age';
+  ageLabel.textContent = I18n.t('admin.account.age');
+  const ageInput = document.createElement('input');
+  ageInput.type = 'number';
+  ageInput.inputMode = 'numeric';
+  ageInput.className = 'admin-input';
+  ageInput.id = 'account-age';
+  ageInput.name = 'age';
+  ageInput.min = 13;
+  ageInput.max = 120;
+  ageInput.autocomplete = 'off';
+  if (account.age !== null && account.age !== undefined) ageInput.value = account.age;
+  ageField.append(ageLabel, ageInput);
+  fields.appendChild(ageField);
+
   form.appendChild(fields);
 
   const actions = document.createElement('div');
@@ -1412,6 +1439,13 @@ export function readProfileForm() {
     // which the reader's own profile form can produce and the other cannot.
     patch[name] = value === '' ? null : value;
   });
+
+  // age is a number field, handled separately from the text loop above —
+  // an empty box means null, and a non-empty one is parsed rather than sent
+  // as a string, matching the int the route expects.
+  const ageRaw = el('account-age')?.value.trim() ?? '';
+  patch.age = ageRaw === '' ? null : Number(ageRaw);
+
   if (form.dataset.updatedAt) patch.expected_updated_at = form.dataset.updatedAt;
 
   return { userId: form.dataset.userId, patch };

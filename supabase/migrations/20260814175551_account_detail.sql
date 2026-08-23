@@ -6,7 +6,7 @@
 --
 -- The join is LEFT and the profile columns are NOT coalesced, deliberately.
 -- admin_list_users coalesces role/tier/is_disabled to healthy defaults
--- (20260814100500:37-40), so an account with no profile row renders in the
+-- (20260814101408:37-40), so an account with no profile row renders in the
 -- People list as a perfectly ordinary reader — which is worse than it being
 -- absent, because nothing looks wrong. `has_profile` lets the detail view say
 -- what is actually true.

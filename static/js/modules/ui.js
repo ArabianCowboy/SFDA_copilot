@@ -1,7 +1,6 @@
 /**
  * SFDA Copilot — UI module
- * Message rendering, typing indicator, FAQ list, profile form population and
- * send-button state.
+ * Message rendering, typing indicator, FAQ list and send-button state.
  */
 
 import { marked } from 'https://cdn.jsdelivr.net/npm/marked@12.0.2/+esm';
@@ -11,7 +10,6 @@ import { CONFIG, prefersReducedMotion } from './config.js';
 import { DOMCache, logError } from './dom.js';
 import { AppState } from './state.js';
 import { Utils } from './utils.js';
-import { ThemeManager } from './theme.js';
 import { RobotStateManager } from './robot.js';
 import { bindCitations, renderSourceTrigger, nextMessageId } from './citations.js';
 import { SourcePanel } from './source-panel.js';
@@ -122,12 +120,68 @@ function rememberHistoryNotice(identity) {
   }
 }
 
+/* The first-run completion strip (docs/profile-refactor-plan.md §12.6). */
+const PROFILE_NOTICE_ID = 'profile-notice';
+const PROFILE_NOTICE_VERSION = 1;
+
+function profileNoticeKey(identity) {
+  return `sfda-profile-notice:${identity}:v${PROFILE_NOTICE_VERSION}`;
+}
+
+function profileNoticeSeen(identity) {
+  try {
+    return localStorage.getItem(profileNoticeKey(identity)) !== null;
+  } catch (error) {
+    logError(error, 'profileNoticeSeen');
+    return false;
+  }
+}
+
+function rememberProfileNotice(identity) {
+  try {
+    localStorage.setItem(profileNoticeKey(identity), String(Date.now()));
+  } catch (error) {
+    logError(error, 'rememberProfileNotice');
+  }
+}
+
+/**
+ * One notice slot per identity, shared by the history disclosure and the
+ * profile-completion strip. A disclosure the product OWES outranks a request
+ * it MAKES, so the strip never competes with the history notice for
+ * attention — but the first design (return early if the history notice is
+ * on screen) hid the strip from exactly the new readers it targets: the
+ * history notice renders synchronously, before the profile arrives, and
+ * dismissing it removes a node without re-running anything that would show
+ * the strip afterward. Queuing instead of suppressing means the strip still
+ * draws, right after the notice it deferred to is acknowledged.
+ */
+const NoticeCoordinator = {
+  _queued: null,
+
+  claim(identity, draw) {
+    if (document.getElementById(HISTORY_NOTICE_ID)) {
+      this._queued = { identity, draw };
+      return;
+    }
+    draw();
+  },
+
+  /** Called from the history notice's own dismiss handler. */
+  release(identity) {
+    const queued = this._queued;
+    this._queued = null;
+    if (queued && queued.identity === identity) queued.draw();
+  },
+};
+
 /**
  * Whether an element inside `#messages` is one of the conversation's turns.
  *
- * `#messages` holds two things that are NOT turns and must never be counted,
+ * `#messages` holds elements that are NOT turns and must never be counted,
  * detached, cleared or restored as if they were: the server-rendered
- * `[data-chat-intro]` empty state, and the durable-history notice. Each would
+ * `[data-chat-intro]` empty state, and any notice carrying `data-non-turn`
+ * (the durable-history disclosure, the profile-completion strip). Each would
  * otherwise be swept into the fragment an undo puts back, and each would make
  * `updateNewChatAvailability` believe a conversation exists. The history
  * notice is the sharpest case: it is meant to outlive a `New chat`, so a miss
@@ -135,14 +189,15 @@ function rememberHistoryNotice(identity) {
  * the control it is telling them about.
  *
  * This started as a repeated `!el.hasAttribute('data-chat-intro')` at four call
- * sites. Adding a second non-turn element to `#messages` is exactly the change
- * that turns a repeated literal into a bug at whichever site the author forgot,
- * so the question is asked in one place.
+ * sites, then grew a second literal (`el.id !== HISTORY_NOTICE_ID`) the moment
+ * a second notice existed — exactly the change its own comment predicted.
+ * `data-non-turn` generalises it: any notice that sets the attribute is
+ * covered, with no third id to add here when a fourth notice ships.
  */
 function isTranscriptTurn(el) {
   return (
     !el.hasAttribute('data-chat-intro')
-    && el.id !== HISTORY_NOTICE_ID
+    && !el.hasAttribute('data-non-turn')
   );
 }
 
@@ -724,6 +779,7 @@ export const UI = {
     const notice = DOMCache.createElement('div', 'history-notice');
     notice.id = HISTORY_NOTICE_ID;
     notice.setAttribute('role', 'note');
+    notice.setAttribute('data-non-turn', '');
 
     const body = DOMCache.createElement('div', 'history-notice-body');
 
@@ -745,6 +801,9 @@ export const UI = {
     dismiss.addEventListener('click', () => {
       rememberHistoryNotice(identity);
       notice.remove();
+      // Releases the strip this notice's own presence deferred, if any —
+      // see NoticeCoordinator's own comment.
+      NoticeCoordinator.release(identity);
     });
 
     notice.append(body, dismiss);
@@ -757,6 +816,70 @@ export const UI = {
   /** Remove the history notice without recording it as acknowledged. */
   hideHistoryNotice() {
     document.getElementById(HISTORY_NOTICE_ID)?.remove();
+  },
+
+  /**
+   * Ask, once, for the one thing missing that this codebase actually reads
+   * back: `first_name` (the admin subtitle line, and /account's own
+   * monogram/heading — see docs/profile-refactor-plan.md §1). Not `age`
+   * (blank is a first-class answer, gated behind a consent that may have
+   * been declined), not `marketing_consent` (re-asking for declined consent
+   * is nagware), not `family_name` (optional by design), not `organization`
+   * (never asked at all).
+   *
+   * Queued through `NoticeCoordinator`, never drawn by inspecting
+   * `#history-notice`'s own DOM directly — see that object's docstring for
+   * the bug the first design had.
+   */
+  queueProfileCompletionNotice(identity) {
+    if (!identity || profileNoticeSeen(identity)) return;
+    NoticeCoordinator.claim(identity, () => this.showProfileCompletionNotice(identity));
+  },
+
+  showProfileCompletionNotice(identity) {
+    const container = DOMCache.get(CONFIG.SELECTORS.MESSAGES);
+    if (!container || !identity) return;
+    this.hideProfileCompletionNotice();
+    if (profileNoticeSeen(identity)) return;
+
+    const notice = DOMCache.createElement('div', 'history-notice', 'profile-notice');
+    notice.id = PROFILE_NOTICE_ID;
+    notice.setAttribute('role', 'note');
+    notice.setAttribute('data-non-turn', '');
+
+    const body = DOMCache.createElement('div', 'history-notice-body');
+    const text = DOMCache.createElement('p', 'history-notice-text');
+    text.textContent = I18n.t('profile.finishPrompt');
+
+    const openLink = DOMCache.createElement('a', 'profile-notice-open');
+    openLink.href = '/account';
+    openLink.textContent = I18n.t('profile.finishOpen');
+
+    body.append(text, openLink);
+
+    const dismiss = DOMCache.createElement('button', 'history-notice-dismiss');
+    dismiss.type = 'button';
+    dismiss.setAttribute('aria-label', I18n.t('profile.finishDismissAria'));
+    dismiss.innerHTML = iconMarkup('close', 14);
+    dismiss.addEventListener('click', () => {
+      rememberProfileNotice(identity);
+      notice.remove();
+    });
+
+    notice.append(body, dismiss);
+
+    // After the history notice's own slot — whether that notice is still on
+    // screen (queued case releases here) or was never shown at all (already
+    // acknowledged in an earlier session).
+    const existingHistoryNotice = document.getElementById(HISTORY_NOTICE_ID);
+    const intro = container.querySelector('[data-chat-intro]');
+    if (existingHistoryNotice) existingHistoryNotice.after(notice);
+    else if (intro) intro.after(notice);
+    else container.prepend(notice);
+  },
+
+  hideProfileCompletionNotice() {
+    document.getElementById(PROFILE_NOTICE_ID)?.remove();
   },
 
   /** One-shot screen-reader announcement. */
@@ -813,40 +936,6 @@ export const UI = {
       existingIndicator.style.transform = 'translateY(10px)';
       setTimeout(() => existingIndicator.remove(), 200);
     }
-  },
-
-  populateProfileForm(profile) {
-    const form = DOMCache.get(CONFIG.SELECTORS.PROFILE_FORM);
-    if (!profile || !form) return;
-
-    const { full_name = '', organization = '', specialization = '' } = profile;
-
-    const fullNameInput = form.querySelector('#profile-full-name');
-    const orgInput = form.querySelector('#profile-organization');
-    const specInput = form.querySelector('#profile-specialization');
-
-    if (fullNameInput) fullNameInput.value = full_name;
-    if (orgInput) orgInput.value = organization;
-    if (specInput) specInput.value = specialization;
-
-    this.selectThemeRadio(form, profile);
-  },
-
-  /**
-   * Check the theme radio matching the reader's *saved* preference
-   * (`profile.preferences.theme`), not whichever theme happens to be
-   * rendered on screen right now. Those two can diverge the moment a
-   * reader toggles the theme button without saving the profile form, and
-   * `ThemeManager.getCurrent()` reads the live `data-bs-theme` attribute,
-   * not the stored preference. Falls back to the live theme only when the
-   * profile carries no saved value at all (e.g. a brand-new, profile-less
-   * account), where there is nothing else to honor.
-   */
-  selectThemeRadio(form, profile) {
-    if (!form) return;
-    const theme = profile?.preferences?.theme || ThemeManager.getCurrent();
-    const themeRadio = form.querySelector(`input[name="theme-preference"][value="${theme}"]`);
-    if (themeRadio) themeRadio.checked = true;
   },
 
   /**

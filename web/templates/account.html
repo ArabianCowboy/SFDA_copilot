@@ -1,0 +1,347 @@
+{# The reader's own account page.
+
+   Nothing account-specific is rendered here — see web/api/account.py. Every
+   value on this page arrives later, over the reader's own authenticated
+   Supabase session, or not at all. Mirrors admin.html's shell for the same
+   reason that file gives: a document navigation cannot carry a bearer
+   header, so the page is not the gate.
+
+   Only Identity and Preferences ship in this pass (Step 3 of the build
+   order in docs/profile-refactor-plan.md §17). Security, Your data and
+   Delete account are Steps 5-7 and are not rendered as placeholders here —
+   an empty stub inviting a click that does nothing is worse than the
+   section not existing yet. #}<!DOCTYPE html>
+<html lang="{{ lang }}" dir="{{ text_dir }}">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="theme-color" content="#0F5E63">
+    <title>{{ t('page.account.title') }}</title>
+
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
+    <link rel="alternate icon" href="{{ url_for('static', filename='favicon.ico') }}">
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Azeret+Mono:wght@400;500&family=Readex+Pro:wght@200..700&family=Zain:wght@300;400;700;800;900&display=swap"
+        rel="stylesheet">
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"
+        integrity="sha384-9ndCyUaIbzAi2FUVXJi0CjmCapSmO7SnpJef0486qhLnuZ2cdeRhO02iuK6FUUVM" crossorigin="anonymous">
+
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}?v={{ asset_version }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}?v={{ asset_version }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components.css') }}?v={{ asset_version }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/account.css') }}?v={{ asset_version }}">
+
+    <!-- Prevent FOUC. Identical to admin.html and index.html: the server picks
+         the language from a cookie that can be stale while localStorage holds
+         the real preference. -->
+    <script>
+        (function() {
+            try {
+                var t = localStorage.getItem('theme');
+                if (!t) t = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+                document.documentElement.setAttribute('data-bs-theme', t);
+
+                var l = localStorage.getItem('lang');
+                if (l === 'ar' || l === 'en') {
+                    if (document.documentElement.lang !== l) {
+                        if (!sessionStorage.getItem('__langfix')) {
+                            sessionStorage.setItem('__langfix', '1');
+                            document.cookie = 'lang=' + l + ';path=/;max-age=31536000;samesite=lax';
+                            location.reload();
+                            return;
+                        }
+                        localStorage.setItem('lang', document.documentElement.lang);
+                    }
+                }
+                sessionStorage.removeItem('__langfix');
+            } catch(e) {}
+        })();
+    </script>
+
+    <script>
+        /* The anon key, exactly as the reader page and console ship it. */
+        window.SUPABASE_URL = {{ SUPABASE_URL | tojson }};
+        window.SUPABASE_ANON_KEY = {{ SUPABASE_ANON_KEY | tojson }};
+        window.__I18N = {{ i18n_runtime | tojson }};
+        window.__LANG = {{ lang | tojson }};
+        window.__ICONS = {{ icons_runtime | tojson }};
+    </script>
+
+    <script type="importmap">{{ module_import_map | tojson }}</script>
+
+    <!-- Cross-document view transitions (docs/profile-refactor-plan.md §13).
+         Unsupported browsers get exactly today's behaviour — a normal
+         navigation is the fallback, not a degraded experience. -->
+    <style>
+        @view-transition { navigation: auto; }
+        @media (prefers-reduced-motion: reduce) {
+            ::view-transition-group(*),
+            ::view-transition-old(*),
+            ::view-transition-new(*) { animation: none !important; }
+        }
+    </style>
+</head>
+
+<body class="account-body">
+    <a class="skip-link" href="#account-main">{{ t('page.account.skipToContent') }}</a>
+
+    <header class="account-bar">
+        <a class="account-brand" href="{{ url_for('index') }}">
+            {{ icon('shield', 18) }}
+            <span class="account-brand-name">{{ t('page.brand.name') }}</span>
+            <span class="account-brand-sep" aria-hidden="true">·</span>
+            <span class="account-brand-role">{{ t('page.account.pageTitle') }}</span>
+        </a>
+
+        <div class="account-bar-actions">
+            <a class="btn btn-sm btn-ghost" href="{{ url_for('index') }}">
+                {{ t('page.account.backToChat') }}
+            </a>
+
+            <button class="lang-toggle-btn btn btn-sm" type="button"
+                data-lang="{{ 'en' if lang == 'ar' else 'ar' }}"
+                aria-label="{{ t('runtime.lang.switchAria') }}">
+                <span class="lang-code">{{ 'EN' if lang == 'ar' else 'ع' }}</span>
+            </button>
+
+            {# Exactly one on this page — test_theme_toggle.py-style contracts
+               count this per document, not per app. #}
+            <button class="theme-toggle-btn btn btn-sm" type="button"
+                aria-label="{{ t('page.nav.toggleTheme') }}" aria-pressed="false"></button>
+        </div>
+    </header>
+
+    <main id="account-main" class="account-main">
+        <div id="account-gate" class="account-gate" role="status" aria-live="polite">
+            <p class="account-gate-text">{{ t('page.account.checking') }}</p>
+            <button type="button" class="btn btn-sm btn-ghost d-none" id="account-gate-retry">{{ t('page.account.retry') }}</button>
+        </div>
+
+        <div id="account-signed-out" class="account-gate" hidden>
+            <p class="account-gate-text">{{ t('page.account.signedOut') }}</p>
+            <a class="btn btn-primary btn-sm" href="{{ url_for('index') }}">{{ t('page.account.backToChat') }}</a>
+        </div>
+
+        <div id="account-record" class="account-record" hidden>
+            <!-- ═══ Record header ═══ -->
+            <section class="account-head" aria-labelledby="account-heading">
+                <div class="account-monogram" id="account-monogram" aria-hidden="true"
+                    style="view-transition-name: account-monogram;"></div>
+                <div class="account-identity-cluster">
+                    <h2 class="account-name" id="account-heading"></h2>
+                    <p class="account-email" id="account-email" dir="ltr"></p>
+                </div>
+            </section>
+
+            <dl class="account-standing" id="account-standing" aria-label="{{ t('page.account.standingAria') }}">
+                <div class="account-standing-item">
+                    <dt>{{ t('page.account.role') }}</dt>
+                    <dd id="standing-role">—</dd>
+                </div>
+                <div class="account-standing-item">
+                    <dt>{{ t('page.account.tier') }}</dt>
+                    <dd id="standing-tier">—</dd>
+                </div>
+                <div class="account-standing-item">
+                    <dt>{{ t('page.account.since') }}</dt>
+                    <dd id="standing-since">—</dd>
+                </div>
+                <div class="account-standing-item">
+                    <dt>{{ t('page.account.conversations') }}</dt>
+                    <dd id="standing-conversations">—</dd>
+                </div>
+                <div class="account-standing-item">
+                    <dt>{{ t('page.account.standing') }}</dt>
+                    <dd id="standing-status">—</dd>
+                </div>
+            </dl>
+
+            <!-- ═══ Identity ═══ -->
+            <section class="account-section" aria-labelledby="identity-heading">
+                <h2 class="account-section-heading" id="identity-heading">{{ t('page.account.identityHeading') }}</h2>
+
+                <form id="identity-form" class="account-card" novalidate>
+                    <div class="account-field-row">
+                        <div class="account-field">
+                            <label class="account-label" for="identity-first-name">{{ t('page.account.firstName') }}</label>
+                            <input type="text" class="account-input" id="identity-first-name" name="first_name"
+                                dir="auto" maxlength="100" autocomplete="given-name">
+                        </div>
+                        <div class="account-field">
+                            <label class="account-label" for="identity-family-name">{{ t('page.account.familyName') }}</label>
+                            <input type="text" class="account-input" id="identity-family-name" name="family_name"
+                                dir="auto" maxlength="100" autocomplete="family-name">
+                        </div>
+                    </div>
+
+                    <div class="account-field">
+                        <label class="account-label" for="identity-age">{{ t('page.account.age') }}</label>
+                        <input type="number" class="account-input account-input-age" id="identity-age" name="age"
+                            inputmode="numeric" min="13" max="120" autocomplete="off">
+                        <p class="account-field-hint">{{ t('page.account.ageHint') }}</p>
+                    </div>
+
+                    <div class="account-field">
+                        <label class="account-label" for="identity-organization">{{ t('page.account.organization') }}</label>
+                        <input type="text" class="account-input" id="identity-organization" name="organization"
+                            maxlength="200" autocomplete="organization">
+                    </div>
+
+                    <div class="account-field">
+                        <label class="account-label" for="identity-specialization">{{ t('page.account.specialization') }}</label>
+                        <input type="text" class="account-input" id="identity-specialization" name="specialization"
+                            maxlength="200" autocomplete="off">
+                    </div>
+
+                    <div class="account-form-actions">
+                        <button type="submit" class="btn btn-primary btn-sm" id="identity-save" disabled>
+                            <span class="spinner-border spinner-border-sm d-none me-2" role="status" aria-hidden="true"></span>
+                            {{ t('page.account.save') }}
+                        </button>
+                        <p class="account-saved-note" id="identity-saved-note" role="status" aria-live="polite" hidden></p>
+                    </div>
+                    <div class="account-form-error" id="identity-error" role="alert" hidden></div>
+                </form>
+            </section>
+
+            <!-- ═══ Preferences ═══ -->
+            <section class="account-section" aria-labelledby="preferences-heading">
+                <h2 class="account-section-heading" id="preferences-heading">{{ t('page.account.preferencesHeading') }}</h2>
+
+                <div class="account-card">
+                    <fieldset class="account-fieldset">
+                        <legend class="account-label">{{ t('page.account.theme') }}</legend>
+                        <div class="account-choice-row" id="theme-choice-row">
+                            <label class="account-choice">
+                                <input type="radio" name="account-theme" value="light" id="theme-choice-light">
+                                <span>{{ t('page.account.themeLight') }}</span>
+                            </label>
+                            <label class="account-choice">
+                                <input type="radio" name="account-theme" value="dark" id="theme-choice-dark">
+                                <span>{{ t('page.account.themeDark') }}</span>
+                            </label>
+                            <label class="account-choice">
+                                <input type="radio" name="account-theme" value="system" id="theme-choice-system">
+                                <span>{{ t('page.account.themeSystem') }}</span>
+                            </label>
+                        </div>
+                    </fieldset>
+
+                    <fieldset class="account-fieldset">
+                        <legend class="account-label">{{ t('page.account.language') }}</legend>
+                        <div class="account-choice-row" id="language-choice-row">
+                            <label class="account-choice">
+                                <input type="radio" name="account-language" value="en" id="language-choice-en">
+                                <span>{{ t('page.account.languageEnglish') }}</span>
+                            </label>
+                            <label class="account-choice">
+                                <input type="radio" name="account-language" value="ar" id="language-choice-ar">
+                                <span>{{ t('page.account.languageArabic') }}</span>
+                            </label>
+                        </div>
+                    </fieldset>
+
+                    <p class="account-saved-note" id="preferences-saved-note" role="status" aria-live="polite" hidden></p>
+                    <div class="account-form-error" id="preferences-error" role="alert" hidden></div>
+                </div>
+            </section>
+
+            <!-- ═══ Security ═══
+                 No current-password field: GoTrue has no such check. A
+                 reauthentication code is asked for only when the server
+                 actually requires one (session older than the project's
+                 24h "recently logged in" window) — #password-reauth-step
+                 stays hidden until that happens. -->
+            <section class="account-section" aria-labelledby="security-heading">
+                <h2 class="account-section-heading" id="security-heading">{{ t('page.account.securityHeading') }}</h2>
+
+                <form id="password-form" class="account-card" novalidate>
+                    <div class="account-field">
+                        <label class="account-label" for="password-new">{{ t('page.account.newPassword') }}</label>
+                        <input type="password" class="account-input" id="password-new" name="password"
+                            required pattern="(?=.*\d)(?=.*[a-z])(?=.*[A-Z]).{8,}" autocomplete="new-password"
+                            aria-describedby="password-hint">
+                        <p class="account-field-hint" id="password-hint">{{ t('page.auth.passwordHint') }}</p>
+                    </div>
+
+                    <div class="account-field" id="password-reauth-step" hidden>
+                        <label class="account-label" for="password-nonce">{{ t('page.account.reauthCode') }}</label>
+                        <input type="text" class="account-input" id="password-nonce" name="nonce"
+                            inputmode="numeric" autocomplete="one-time-code">
+                        <p class="account-field-hint">{{ t('page.account.reauthCodeHint') }}</p>
+                    </div>
+
+                    <div class="account-form-actions">
+                        <button type="submit" class="btn btn-primary btn-sm" id="password-save">
+                            <span class="spinner-border spinner-border-sm d-none me-2" role="status" aria-hidden="true"></span>
+                            {{ t('page.account.changePassword') }}
+                        </button>
+                        <p class="account-saved-note" id="password-saved-note" role="status" aria-live="polite" hidden></p>
+                    </div>
+                    <div class="account-form-error" id="password-error" role="alert" hidden></div>
+                </form>
+
+                <div class="account-card">
+                    <p class="account-field-hint">{{ t('page.account.signOutOthersHint') }}</p>
+                    <div class="account-form-actions">
+                        <button type="button" class="btn btn-outline-secondary btn-sm" id="sign-out-others">
+                            {{ t('page.account.signOutOthers') }}
+                        </button>
+                        <p class="account-saved-note" id="sign-out-others-note" role="status" aria-live="polite" hidden></p>
+                    </div>
+                    <div class="account-form-error" id="sign-out-others-error" role="alert" hidden></div>
+                </div>
+            </section>
+
+            <!-- ═══ Your data ═══
+                 Export and bulk deletion of CONVERSATIONS only. Full account
+                 deletion is a separate, not-yet-built feature (Spec 4 of
+                 docs/profile-refactor-plan.md) — this section is careful not
+                 to promise it. -->
+            <section class="account-section" aria-labelledby="data-heading">
+                <h2 class="account-section-heading" id="data-heading">{{ t('page.account.dataHeading') }}</h2>
+
+                <div class="account-card">
+                    <p class="account-field-hint">{{ t('page.account.exportHint') }}</p>
+                    <div class="account-form-actions">
+                        <button type="button" class="btn btn-outline-secondary btn-sm" id="export-conversations">
+                            <span class="spinner-border spinner-border-sm d-none me-2" role="status" aria-hidden="true"></span>
+                            {{ t('page.account.exportConversations') }}
+                        </button>
+                        <p class="account-saved-note" id="export-note" role="status" aria-live="polite" hidden></p>
+                    </div>
+                    <div class="account-form-error" id="export-error" role="alert" hidden></div>
+                </div>
+
+                <div class="account-card">
+                    <p class="account-field-hint">{{ t('page.account.deleteAllHint') }}</p>
+                    <div class="account-form-actions">
+                        <button type="button" class="btn btn-outline-danger btn-sm" id="delete-all-conversations">
+                            <span class="spinner-border spinner-border-sm d-none me-2" role="status" aria-hidden="true"></span>
+                            {{ t('page.account.deleteAllConversations') }}
+                        </button>
+                        <p class="account-saved-note" id="delete-all-note" role="status" aria-live="polite" hidden></p>
+                    </div>
+                    <div class="account-form-error" id="delete-all-error" role="alert" hidden></div>
+                </div>
+            </section>
+
+            <p class="account-logout-scope">{{ t('page.account.logoutScope') }}</p>
+        </div>
+    </main>
+
+    <footer class="account-footer">
+        <p class="account-independence">{{ t('page.landing.notice') | safe }}</p>
+    </footer>
+
+    <div id="toast" class="toast-notification hidden" role="alert" aria-live="assertive"></div>
+
+    <script src="{{ url_for('static', filename='js/account.js') }}?v={{ asset_version }}" type="module"></script>
+</body>
+
+</html>

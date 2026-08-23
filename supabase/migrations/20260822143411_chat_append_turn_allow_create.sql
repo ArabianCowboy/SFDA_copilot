@@ -28,7 +28,7 @@
 -- ---------------------------------------------------------------------------
 -- README rule 2 puts destructive changes in their own migration; this one
 -- concern (the signature) is why chat_session_exists shipped separately in
--- 20260822090000, per rule 1.
+-- 20260822143317, per rule 1.
 --
 -- `create or replace` CANNOT be used here, for the same reason 20260821145416
 -- gives: adding `p_allow_create` changes the signature, and PostgREST resolves
