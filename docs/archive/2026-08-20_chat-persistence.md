@@ -1,8 +1,51 @@
-# Save Chat Sessions Per User — Implementation Plan
+---
+authority: historical
+status: superseded
+do_not_implement: true
+archived: 2026-08-20
+supersedes_note: >
+  This document is a finished plan. Parts of it were reversed before shipping.
+  It is a record of what was decided and what it cost, not a specification.
+live_authority:
+  - docs/ARCHITECTURE.md
+  - supabase/README.md
+  - DESIGN.md
+---
+
+> [!CAUTION]
+> **You are reading history, not a specification.** Do not implement anything found
+> in this file without first confirming it against `docs/ARCHITECTURE.md` or the code.
+> Every heading below is prefixed `[HISTORICAL]` so a search result cannot be mistaken
+> for current design.
+
+STATUS: HISTORICAL RECORD — all eight steps complete 2026-08-21. Archived 2026-08-23.
+Nothing here is an instruction. Live rules: `docs/ARCHITECTURE.md`, `supabase/README.md`.
+
+**Four positions in this document were reversed after it was written. Do not implement
+any of them:**
+
+1. **The cookie-held `conv_id`, the "current-session rule" (§5) and
+   `CHAT_RESUME_LATEST_SESSION`.** All deleted. The URL is the pointer — see
+   `docs/ARCHITECTURE.md`. `web/tests/test_session_isolation.py` carries a note so the
+   resume machinery cannot quietly return.
+2. **"Only a `verified` citation renders as openable evidence" (§3).** Reversed in step 5:
+   a stale citation still opens. Classification drives *disclosure*, not *access*.
+3. **"Step 8 is the first feature to call `chat_sessions_delete_own` from a browser"
+   (§8/§9).** Reversed. The browser never touches the chat tables; `chat_delete_session`
+   was re-added as an RPC behind a Flask route.
+4. **§7 in its entirety** — consent columns, routes, purge/export/frequency RPCs, the CLI
+   and the JSONL export — was **cut, not deferred**. Some of it returned in a different
+   shape via the profile refactor; read that plan, not this section.
+
+This document also says of itself that revision 2 contradicted itself badly enough to need
+a clean rewrite. Read it as a record of how the thinking moved, and take
+`docs/ARCHITECTURE.md` as what the system does.
+
+# [HISTORICAL] Save Chat Sessions Per User — Implementation Plan
 
 Planning record for the `TODO.md` *Planned work* entry **"Save chat sessions per
 user"**. Written the same way as
-[pagination-implementation-roadmap.md](pagination-implementation-roadmap.md): the
+[2026-08-17_pagination.md](2026-08-17_pagination.md): the
 useful half is the cost.
 
 **Revision 4 — steps 1-4 are done: applied 2026-08-20 as
@@ -54,7 +97,7 @@ The rest, in order of how much they were worth:
   state under a complete answer left it animating forever, because that branch returns
   before the happy path's `returnToIdle`.
 
-## Provenance
+## [HISTORICAL] Provenance
 
 | Pass | Who | Contributed |
 |---|---|---|
@@ -71,7 +114,7 @@ are not re-inherited.
 
 ---
 
-## 0. Verified against the current source
+## [HISTORICAL] 0. Verified against the current source
 
 Re-read here before being built on. **Bold rows changed the design.**
 
@@ -110,7 +153,7 @@ and *"Do not 'fix' this by adding a policy."*). The chat tables use both — §2
 
 ---
 
-## 1. Owner decisions
+## [HISTORICAL] 1. Owner decisions
 
 1. **Reader-owned rows with real RLS** — `auth.uid() = owner_id`, chats restore on any
    device.
@@ -129,9 +172,9 @@ and *"Do not 'fix' this by adding a policy."*). The chat tables use both — §2
 
 ---
 
-## 2. Design calls
+## [HISTORICAL] 2. Design calls
 
-### 2.1 Message rows, written as a pair in one statement
+### [HISTORICAL] 2.1 Message rows, written as a pair in one statement
 
 `chat_messages`, one row per message. The pair-shaped alternative was argued for
 (everything downstream is pair-shaped: `append_turn(conv, user, assistant, …)`,
@@ -150,7 +193,7 @@ ever breaks.
 
 If branching or message editing is ever wanted, this is the decision to reopen first.
 
-### 2.2 Citation sources as rows — **all** retrieved, not only cited
+### [HISTORICAL] 2.2 Citation sources as rows — **all** retrieved, not only cited
 
 Rows, because the invariant at the top of `citations.py` — *"`sources[i]["index"]` must
 equal the `[i]` label the model saw"* — is load-bearing, and as rows the database
@@ -166,7 +209,7 @@ This makes the schema stricter: `source_index` equals the `[i]` the model saw fo
 **every** `i`. It also deletes `cited integer[]` and `retrieved integer` from
 `chat_messages` — both derivable, and duplicating them is what creates drift.
 
-### 2.3 Ordering — a per-session `seq`
+### [HISTORICAL] 2.3 Ordering — a per-session `seq`
 
 `next_seq` on the session, allocated with `update … returning` (not
 `select … for update` then `update` — the second is what most people write and it is
@@ -176,7 +219,7 @@ non-deterministic page boundaries in the People list.
 
 One insert writes both rows, taking `next_seq` and `next_seq + 1`.
 
-### 2.4 RLS — readers read, the server writes
+### [HISTORICAL] 2.4 RLS — readers read, the server writes
 
 | Operation | Who | Mechanism |
 |---|---|---|
@@ -194,7 +237,7 @@ No `grant update (title, …)` until Phase 2 ships rename: a column grant for a 
 that does not exist is untested surface, the same objection this section raises against
 policies no code takes.
 
-### 2.5 Conversation ids must be canonicalised — a bug revision 1 would have shipped
+### [HISTORICAL] 2.5 Conversation ids must be canonicalised — a bug revision 1 would have shipped
 
 `conv_id` is `uuid.uuid4().hex` — 32 chars, no dashes. A `uuid` column accepts it and
 returns the dashed form, so the cache key `(owner_id, conversation_id)` gets two entries
@@ -205,7 +248,7 @@ for one session and any client-side comparison never matches.
 
 ---
 
-## 3. Schema
+## [HISTORICAL] 3. Schema
 
 Reader history and the training archive are **separate tables with separate lifetimes**.
 Folding them together is what made reader deletion, account deletion and admin cleanup
@@ -289,7 +332,7 @@ titling. When it does, the title is **clamped in Flask before the RPC**, never a
 hit `char_length(title) between 1 and 120` — a length constraint enforced inside an RPC
 surfaces a client error as a 500.
 
-### Policies and grants
+### [HISTORICAL] Policies and grants
 
 ```sql
 alter table public.chat_sessions        enable row level security;
@@ -321,7 +364,7 @@ grant select on public.chat_messages, public.chat_message_sources to authenticat
 always `session_id` — hydration is per session — which `chat_messages_session_seq_idx`
 leads.
 
-### The archive
+### [HISTORICAL] The archive
 
 ```sql
 create table public.chat_archive (
@@ -361,7 +404,7 @@ JSONB here and rows there is not an inconsistency: the reader table needs per-so
 constraints because a citation must resolve; the archive needs a faithful snapshot and is
 never queried per source.
 
-### Stale sources — fail closed, cheaply
+### [HISTORICAL] Stale sources — fail closed, cheaply
 
 Revision 1 required a `chunk_sha256` over the full chunk text. That is **unimplementable**:
 persistence consumes `build_source_payload`, which carries `snippet` and never `text`. And
@@ -409,7 +452,7 @@ inferred; and computing it there would mark every fresh answer `unverifiable` on
 deployment where `read_active_build_id` finds no pointer — badging the one case beyond
 doubt.
 
-### RPC signatures
+### [HISTORICAL] RPC signatures
 
 All `security definer`, `set search_path = ''`, execute revoked from `anon`,
 `authenticated`, `public`, granted to the service role. Every one takes `p_owner_id` first
@@ -470,9 +513,9 @@ admin_delete_chat_sessions(p_before timestamptz, p_owner_id uuid) returns bigint
 
 ---
 
-## 4. The write path
+## [HISTORICAL] 4. The write path
 
-### 4.1 Write at `final` — **decided 2026-08-18**
+### [HISTORICAL] 4.1 Write at `final` — **decided 2026-08-18**
 
 Revision 1 built a reserve-then-finalise state machine. It is deleted, for four reasons:
 
@@ -500,7 +543,7 @@ thing the reserve design bought — a question whose answer was aborted mid-stre
 matter, the reserve design is recoverable from this document's git history; it is not a
 decision this plan leaves open.
 
-### 4.2 The shape
+### [HISTORICAL] 4.2 The shape
 
 Ordering is preserved exactly as `app.py:1384-1398` requires — `final` → durable →
 `suggestions` → `done` — because that ordering was itself a fix.
@@ -564,7 +607,7 @@ with empty sessions.
 
 ---
 
-## 5. The current-session rule — and the resurrection bug it must not cause
+## [HISTORICAL] 5. The current-session rule — and the resurrection bug it must not cause
 
 After sign-in on a new device there is no cookie and no sidebar, and the language toggle
 reloads the page, so a rule is required in Phase 1, not Phase 2:
@@ -622,7 +665,7 @@ fresh-eyes pass found cost one predicate, not a new cookie state.
 
 ---
 
-## 6. The isolation contract
+## [HISTORICAL] 6. The isolation contract
 
 `purge_conversation_state()` splits: **cache and cookie purge stay unconditional** (on
 logout and on every identity change via `_bind_session_to_identity`); **durable rows
@@ -673,7 +716,7 @@ before, in `test_chat_persistence.py` and `test_session_isolation.py`:
 
 ---
 
-## 7. Consent, retention, export — notice at first use
+## [HISTORICAL] 7. Consent, retention, export — notice at first use
 
 > **REVISION, 2026-08-21 — this section describes a design that was reduced
 > before it was built.** What shipped is the notice and nothing else. The
@@ -812,7 +855,7 @@ stored rows and the export agree:
 
 ---
 
-## 8. Execution order
+## [HISTORICAL] 8. Execution order
 
 **Minimum coherent increment is steps 1-4** — through the first durable write. Revision 2
 described an increment its own table did not schedule; this is the correction.
@@ -966,7 +1009,7 @@ garnish, regenerated on demand); `chunk_sha256` resolution; a transcript console
 
 ---
 
-## 9. Costs priced rather than assumed
+## [HISTORICAL] 9. Costs priced rather than assumed
 
 - ~~**One Postgres round trip per turn**~~ — **overpriced; it is one per conversation per
   process.** Implementation reads durable rows only when the RAM window is *cold*
@@ -1033,7 +1076,7 @@ garnish, regenerated on demand); `chunk_sha256` resolution; a transcript console
 
 ---
 
-## 10. Decisions still open
+## [HISTORICAL] 10. Decisions still open
 
 **No architectural decisions remain open.** The last one — write at `final` versus the
 reserve design — was ruled on 2026-08-18 (§4.1). Steps 2-4 are built; §8 records what shipped.
@@ -1076,7 +1119,7 @@ What is left is scope and copy, none of it blocking:
 
 ---
 
-## 11. Where the reviews earned their cost
+## [HISTORICAL] 11. Where the reviews earned their cost
 
 - **Research** — the failure taxonomy and the composite-FK ownership hole.
 - **Design** — the schema, read closely enough to get the 321-char snippet bound and the
@@ -1094,7 +1137,7 @@ What is left is scope and copy, none of it blocking:
   paths, the title-atomicity contradiction and the missing current-session rule — and several
   non-issues, §12.
 
-## 12. Review claims that did not survive
+## [HISTORICAL] 12. Review claims that did not survive
 
 | Claim | Verdict |
 |---|---|

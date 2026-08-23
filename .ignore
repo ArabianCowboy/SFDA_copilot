@@ -1,0 +1,4 @@
+# Hide finished history from code search by default.
+# It is 78% of all documentation and describes designs that were later reversed.
+# To search it deliberately: rg --no-ignore "term" docs/archive/
+docs/archive/

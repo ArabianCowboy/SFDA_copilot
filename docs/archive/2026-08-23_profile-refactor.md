@@ -1,6 +1,55 @@
-# Profile refactor — Design & Implementation Plan
+---
+authority: historical
+status: superseded
+do_not_implement: true
+archived: 2026-08-23
+supersedes_note: >
+  This document is a finished plan. Parts of it were reversed before shipping.
+  It is a record of what was decided and what it cost, not a specification.
+live_authority:
+  - docs/ARCHITECTURE.md
+  - supabase/README.md
+  - DESIGN.md
+---
 
-**Status:** approved plan, not started. Nothing here is built. The two blocking decisions were
+> [!CAUTION]
+> **You are reading history, not a specification.** Do not implement anything found
+> in this file without first confirming it against `docs/ARCHITECTURE.md` or the code.
+> Every heading below is prefixed `[HISTORICAL]` so a search result cannot be mistaken
+> for current design.
+
+STATUS: HISTORICAL RECORD — archived 2026-08-23. Nothing here is an instruction.
+Live rules: `docs/ARCHITECTURE.md`, `supabase/README.md`, `DESIGN.md`.
+
+**The internal precedence chain is resolved. You do not need to know it to read this safely.**
+As written, this document required you to know that §15 overrides §14, which overrides §0-§13;
+that §17 supersedes §9; that §16 beats Appendix E and §14 beats Appendix D. Read top-down without
+that key and you would have written a broken migration. The resolution is simply: **§14, §15, §16
+and §17 are what happened. §0-§13 and the appendices are the drafts that got there**, and where
+they disagree with the later sections, the later sections won — and then the code won over all of
+them.
+
+**What is still open** (see `TODO.md` for each):
+
+- Bilingual GoTrue email templates (§14·D·26, §17 Step 5) — blocked in the Supabase dashboard.
+- The consent section (§12.3, §16·3, §17 Step 6) — blocked on a bilingual privacy policy that
+  does not exist yet.
+- Account deletion (§16·4, Appendix E Spec 4, §17 Step 7) — blocked on an unclosed product
+  question: is reader self-deletion permitted at all, given the audit log? Both migrations are
+  written and unapplied.
+
+**One known divergence from the code:** §4 specifies routes at `/api/account/*`. They shipped at
+`/account/api/*`, following the convention `web/api/admin.py` already set. §17 records this; §4
+was not updated.
+
+# [HISTORICAL] Profile refactor — Design & Implementation Plan
+
+**Status (corrected on archive, 2026-08-23):** built. Steps 0-5 and most of Step 7 shipped;
+three items remain, each blocked on a decision or a document rather than on engineering, and
+each now has its own entry in `TODO.md`. The sentence that stood here — *"approved plan, not
+started, nothing here is built"* — was already false when the work landed and was never
+updated. It is recorded rather than quietly deleted, because it is the clearest example in
+this repository of the failure this archive exists to stop. The two blocking decisions were
 settled by the owner on 2026-08-22 — see Decisions 1 and 5.
 
 **Read §14 and §15 first, in that order.** Four later passes — an adversarial debate of this
@@ -42,9 +91,9 @@ Where a delegate was wrong, §0.4 says so.
 
 ---
 
-## 0. Verified against the current source
+## [HISTORICAL] 0. Verified against the current source
 
-### 0.1 What the surface is today
+### [HISTORICAL] 0.1 What the surface is today
 
 One Bootstrap modal, `#profileModal`, at `web/templates/index.html:268-320`. Its whole content:
 
@@ -64,7 +113,7 @@ button, admin link, logout button, plus a language toggle. The macro's own comme
 is "chrome, not content… touched once a session" — and then gives it more controls than any other
 region of the column.
 
-### 0.2 What the data path is
+### [HISTORICAL] 0.2 What the data path is
 
 Reads and writes go **straight from the browser to Supabase**, under the anon key and RLS. Flask
 is not in the path.
@@ -82,7 +131,7 @@ The routing model is **server-side Flask paths**. Flask serves `/` (`web/api/app
 `/c/<uuid>` (`:1837`) and nothing else reader-facing. `static/js/modules/route.js` is a
 *conversation pointer*, not a router — read its own docstring at `route.js:1-13`.
 
-### 0.3 The findings, re-verified
+### [HISTORICAL] 0.3 The findings, re-verified
 
 These are the ones I re-read the source to confirm, not the ones a delegate merely asserted.
 
@@ -138,7 +187,7 @@ already records this.
 heading (`index.html:274-280`). This codebase already treats the shared machine as a real threat
 elsewhere; here it does not.
 
-### 0.4 Where a delegate was wrong
+### [HISTORICAL] 0.4 Where a delegate was wrong
 
 - **The UX pass called `route.js` "this app's hash router" and recommended `#/settings`.** It is
   not a hash router and it routes nothing but conversations (`route.js:15-32`). Corrected in
@@ -154,9 +203,9 @@ elsewhere; here it does not.
 
 ---
 
-## 1. The design direction
+## [HISTORICAL] 1. The design direction
 
-### 1.1 Mode and thesis
+### [HISTORICAL] 1.1 Mode and thesis
 
 **Operate.** The reader arrives with a task — change a thing, check a thing, leave. Scanability
 and native expectation outrank expression. The brand lives in precise detail, not in a gesture.
@@ -171,7 +220,7 @@ framing does real work — it is why role and tier appear (they are on the file 
 change them), why the data section states what deletion does *not* remove, and why the page is a
 scroll of ruled sections rather than a set of tabbed panels.
 
-### 1.2 The signature — the standing line
+### [HISTORICAL] 1.2 The signature — the standing line
 
 One memorable element, and everything else stays quiet.
 
@@ -194,7 +243,7 @@ standing reaches this page without a separate banner.
 Everything else on the page is hairlines, labels, and controls. That is the Chanel edit: the
 standing line is the accessory, so nothing else gets one.
 
-### 1.3 What this page is deliberately not
+### [HISTORICAL] 1.3 What this page is deliberately not
 
 - **Not tabs.** Five sections, roughly fifteen controls. Tab chrome costs more height than the
   content it hides, and it makes "read my whole record" — the actual reason to open the page —
@@ -206,7 +255,7 @@ standing line is the accessory, so nothing else gets one.
   (conversation count) is there because it is the handle on the data section.
 - **Not an avatar uploader.** See Decision 4.
 
-### 1.4 Layout
+### [HISTORICAL] 1.4 Layout
 
 Single content column, capped near `--measure` for the prose and widening only for control rows.
 On `≥lg`, a sticky section index on the inline-start edge; below that, the index collapses to a
@@ -218,9 +267,9 @@ Section anchors are real: `/account#security` is a URL you can put in an email.
 
 ---
 
-## 2. Decisions
+## [HISTORICAL] 2. Decisions
 
-### Decision 1 — A server-rendered page, and it is `/account` — **DECIDED 2026-08-22**
+### [HISTORICAL] Decision 1 — A server-rendered page, and it is `/account` — **DECIDED 2026-08-22**
 
 Build `GET /account` as a Flask route with its own Jinja template. Retire `#profileModal`.
 Confirmed by the owner; the path is settled before anything links to it.
@@ -254,7 +303,7 @@ Language, Theme, Log out. The menu is the quick action; the page is the record. 
 footer the macro's own comment already flagged as over-loud, and it is the pattern every product in
 the benchmark set converged on.
 
-### Decision 2 — Save model split by reversibility, not by section
+### [HISTORICAL] Decision 2 — Save model split by reversibility, not by section
 
 | Kind | Model | Why |
 |---|---|---|
@@ -267,7 +316,7 @@ The dirty guard is the highest-value single fix in this document (§0.3-F). Matc
 an inline confirm in place, as the conversation-row delete already does (`DESIGN.md:327`), not a
 second modal.
 
-### Decision 3 — Theme gets exactly one source of truth
+### [HISTORICAL] Decision 3 — Theme gets exactly one source of truth
 
 Today there are two controls that both "work" and can disagree — the instant `.theme-toggle-btn`
 and the modal's radios — and `ui.js:835-844`'s own comment documents the divergence.
@@ -285,7 +334,7 @@ Resolution: **`profiles.preferences.theme` is the truth; `localStorage` is its m
 
 The radio pair, and `UI.selectThemeRadio` with it, is deleted.
 
-### Decision 4 — Generated initials. No avatar upload. **Not now, and probably not ever.**
+### [HISTORICAL] Decision 4 — Generated initials. No avatar upload. **Not now, and probably not ever.**
 
 The monogram takes one initial from `first_name` and one from `family_name` — Decision 5 makes both
 available, which is the one place that split pays a direct dividend on this page. It falls back to
@@ -305,7 +354,7 @@ RLS, all of it for a decorative circle.
 Declining it deletes an entire threat surface. That is the "remove one accessory" call in this
 design, and it is the cheapest one available.
 
-### Decision 5 — Split `full_name` into `first_name` + `family_name`, and collect `age` — **DECIDED 2026-08-22**
+### [HISTORICAL] Decision 5 — Split `full_name` into `first_name` + `family_name`, and collect `age` — **DECIDED 2026-08-22**
 
 **Owner decision, and it overrules this plan's first recommendation.** The draft argued against
 both. The owner settled it the other way and supplied the missing piece of the case for `age`: it
@@ -396,7 +445,7 @@ follow, and all three are cheap if done at build time:
 `admin_update_profile`, the admin account-detail view, `conftest.py`'s mock column set, the signup
 form and `Services.signup`, and every i18n key that says "Full Name". All of it is listed in §8.
 
-### Decision 6 — `preferences` stops being clobbered
+### [HISTORICAL] Decision 6 — `preferences` stops being clobbered
 
 Two changes, both P0:
 
@@ -407,7 +456,7 @@ Two changes, both P0:
 
 Without this, every preference added later is a bug waiting for a second form to save.
 
-### Decision 7 — Say that log out is global
+### [HISTORICAL] Decision 7 — Say that log out is global
 
 Minimum, P0: the log-out control states its scope in one line — signing out ends the session on
 every device. Once the session list ships (P1), it becomes a real choice: end this session, or end
@@ -415,7 +464,7 @@ all of them.
 
 The behaviour is right (`services.js:419-425` explains why); only the silence is wrong.
 
-### Decision 8 — Reads stay on Supabase. Security actions go through Flask.
+### [HISTORICAL] Decision 8 — Reads stay on Supabase. Security actions go through Flask.
 
 Profile reads and preference writes stay on the existing browser→PostgREST path — it works, it is
 under RLS, and moving it would be a rewrite with no security gain once the column bounds of
@@ -451,7 +500,7 @@ Which surfaces the sharpest fact in this document: **today an administrator can 
 password, revoke your sessions, and change your email — and you cannot do any of those to your own
 account.**
 
-### Decision 9 — Deletion is named honestly, or not offered
+### [HISTORICAL] Decision 9 — Deletion is named honestly, or not offered
 
 Three different things get three different names and three different confirmations:
 
@@ -471,7 +520,7 @@ The copy states what is *not* removed. A deletion flow that overpromises is wors
 
 ---
 
-## 3. The information architecture
+## [HISTORICAL] 3. The information architecture
 
 ```
 /account
@@ -508,7 +557,7 @@ could not check."
 
 ---
 
-## 4. Server changes
+## [HISTORICAL] 4. Server changes
 
 1. **`GET /account`** in `web/api/app.py`, beside `/` and `/c/<uuid>`. Renders a shell with no
    privileged data, exactly as `admin.console` does. Add `X-Robots-Tag: noindex, nofollow`.
@@ -538,7 +587,7 @@ deletion 3/hr.
 
 ---
 
-## 5. Client changes
+## [HISTORICAL] 5. Client changes
 
 - **New:** `static/js/account/` — its own directory beside `static/js/admin/`, its own
   `account.css`. Add the filenames to the module tuple in `web/api/app.py:249-262`.
@@ -576,7 +625,7 @@ deletion 3/hr.
 
 ---
 
-## 6. Database & security changes
+## [HISTORICAL] 6. Database & security changes
 
 Ordered by when they must land. Each is its own migration — the repo's rule 1 and rule 2
 (`supabase/README.md`).
@@ -660,7 +709,7 @@ standing findings is a regression from the migration just applied.
 
 ---
 
-## 7. RTL and bilingual
+## [HISTORICAL] 7. RTL and bilingual
 
 Arabic is half the audience, so the page is laid out and reviewed in Arabic **first**.
 
@@ -691,7 +740,7 @@ Arabic and Latin in one field.
 
 ---
 
-## 8. What this disturbs
+## [HISTORICAL] 8. What this disturbs
 
 **Tests that will fail, by name.** Each is a real contract, not incidental:
 
@@ -721,9 +770,9 @@ Arabic and Latin in one field.
 
 ---
 
-## 9. Phases
+## [HISTORICAL] 9. Phases
 
-### P0 — The record exists, and it tells the truth
+### [HISTORICAL] P0 — The record exists, and it tells the truth
 
 Ship the page and make what already exists trustworthy. No new capability the reader can misuse.
 
@@ -752,7 +801,7 @@ them, and item 3 would otherwise be authored twice. Item 3 is the only irreversi
 whole plan; it lands early, on its own, while the surface around it is still small enough to
 verify by hand.
 
-### P1 — The reader can secure their own account
+### [HISTORICAL] P1 — The reader can secure their own account
 
 The phase that closes the "an admin can, you cannot" gap.
 
@@ -789,7 +838,7 @@ phase were not buildable as written.**
   This is also the second argument for `is_active_account()` in RLS (§0.3-C): revocation alone does
   not close the window, so the row policy has to.
 
-### P2 — Data rights
+### [HISTORICAL] P2 — Data rights
 
 - Export conversations: streamed NDJSON, `owner_id` scoped server-side. If CSV is ever offered,
   neutralise leading `=`, `+`, `-`, `@`, tab and CR — spreadsheet formula injection.
@@ -804,7 +853,7 @@ actually sends more than one kind of notification.
 
 ---
 
-## 10. Decisions settled, and what is still open
+## [HISTORICAL] 10. Decisions settled, and what is still open
 
 **Settled 2026-08-22 by the owner:**
 
@@ -832,7 +881,7 @@ actually sends more than one kind of notification.
 
 ---
 
-## 11. Sources
+## [HISTORICAL] 11. Sources
 
 Design method: the `frontend-design` and `impeccable` skills (Operate mode, `reference/operate.md`
 and `reference/shape.md`).
@@ -860,11 +909,11 @@ before implementing anything above.
 
 ---
 
-## 12. Signup capture, consent, and first-run
+## [HISTORICAL] 12. Signup capture, consent, and first-run
 
 Settled with the owner on 2026-08-22, then revised on 2026-08-23 by the debate in §14.
 
-### 12.1 Two facts that shape everything here
+### [HISTORICAL] 12.1 Two facts that shape everything here
 
 **Signup does not sign you in.** Email confirmation was turned back on deliberately on 2026-08-14
 (`TODO.md:436-450`); GoTrue refuses a session for an unconfirmed address. `Services.signup`
@@ -879,7 +928,7 @@ point above that column has been `null` on **every account ever created by this 
 fields costs one argument, not a pipeline. *(Caveat per §14·D5: that is what the code path implies,
 not a claim about the live table — nobody has queried it.)*
 
-### 12.2 What goes where
+### [HISTORICAL] 12.2 What goes where
 
 | Field | Where it is asked | Required |
 |---|---|---|
@@ -895,7 +944,7 @@ Two fields is the ceiling on the signup form. The auth modal is `modal-dialog-ce
 `modal-fullscreen-sm-down` (`index.html:130-131`); on a phone with the keyboard raised, a
 five-input pane inside a centred modal is the cramped-modal failure.
 
-### 12.3 The consent checkbox is unchecked, and it gates the age field
+### [HISTORICAL] 12.3 The consent checkbox is unchecked, and it gates the age field
 
 **Not pre-checked.** A pre-ticked consent box fails twice over: it is a recognised dark pattern,
 and under Saudi PDPL — and GDPR for any EU reader — consent must be an *affirmative act*, with
@@ -918,7 +967,7 @@ write its own consent timestamp can backdate a consent record. **Withdrawal is n
 to clear the `age` collected under it. Do **not** add `check (marketing_consent or age is null)`:
 that turns the offer into a mandate and fails every withdrawal where the reader declines the clear.
 
-### 12.4 The terms checkbox, and what blocks it
+### [HISTORICAL] 12.4 The terms checkbox, and what blocks it
 
 A **separate** required tick — never bundled with consent, because bundling is what invalidates it —
 linking to a combined سياسة الاستخدام والخصوصية / Usage and Privacy Policy page in both languages.
@@ -940,7 +989,7 @@ patient identifiers, clinical-trial subject data, personal information, or confi
 proprietary material."* This feature then asks for their name and age. Reconcilable — one governs
 the chat box, the other the account record — but only if the copy says so.
 
-### 12.5 Search scope, and the idea that did not survive review
+### [HISTORICAL] 12.5 Search scope, and the idea that did not survive review
 
 The original proposal: `specialization` stops being free text, becomes a choice among the four
 corpus categories, and sets the reader's default category in the composer.
@@ -973,7 +1022,7 @@ after typing, sending, or focusing with content, stay on `all` until the reader 
 scope does change automatically, announce it properly — mutating `aria-label`
 (`dropdown.js:67-70`) is not an announcement.
 
-### 12.6 First-run: one strip, queued rather than suppressed
+### [HISTORICAL] 12.6 First-run: one strip, queued rather than suppressed
 
 Because of §12.1, "later" means first confirmed sign-in. Copy `.history-notice` exactly
 (`ui.js:714-755`): reader-scoped `localStorage` key with a version constant, recorded **on
@@ -995,7 +1044,7 @@ inspecting each other's DOM is not a design.
 answer, gated behind a consent that may have been declined), not `marketing_consent` (re-asking
 for declined consent is nagware), not `family_name` (optional), not `organization`.
 
-### 12.7 Post-signup: the defect worth more than any field
+### [HISTORICAL] 12.7 Post-signup: the defect worth more than any field
 
 The most important instruction in the funnel — "check your email" — is a **three-second toast in
 hardcoded English** (`handlers.js:173`), after which the modal stays open showing a freshly-reset,
@@ -1021,13 +1070,13 @@ old literal is gone, so a revert fails loudly.
 
 ---
 
-## 13. Transitions between pages and floating surfaces
+## [HISTORICAL] 13. Transitions between pages and floating surfaces
 
 `/account` replaces a modal that faded in over the chat with a real document navigation. Done
 naively that is a hard cut, and the first place the app would feel like a website rather than a
 tool.
 
-### 13.1 The rule
+### [HISTORICAL] 13.1 The rule
 
 **Local surfaces change elevation; document navigation changes context. A full page must not
 pretend to be a larger popup.**
@@ -1041,7 +1090,7 @@ the way they arrived" (`:149-154`), the mascot's return is "the inverse of the e
 generic fade" (`:233-235`), and the New chat glyph does not rotate because "a turning arrow reads
 as *refresh*" (`:178-180`). Motion names what a thing is, never merely that it moved.
 
-### 13.2 Floating surfaces open from their trigger
+### [HISTORICAL] 13.2 Floating surfaces open from their trigger
 
 The one place the app breaks its own rule today: Bootstrap modals fade in centred, from nowhere.
 Measure the trigger, set two custom properties, animate `transform-origin`:
@@ -1055,13 +1104,13 @@ dialog.style.setProperty('--from-y', `${r.top + r.height / 2}px`);
 It needs no `--flip`: a measured origin mirrors under RTL for free, which is the argument for
 measuring rather than hardcoding an edge.
 
-### 13.3 `/account` is a plain link
+### [HISTORICAL] 13.3 `/account` is a plain link
 
 The account-menu item is an ordinary `<a href="/account">`. No JS interception. It is
 understandable on every browser, preserves Back, and needs nothing. Do not move focus to the `<h1>`
 on ordinary arrival — only after an explicit in-page action.
 
-### 13.4 View transitions: progressive enhancement, scoped deliberately
+### [HISTORICAL] 13.4 View transitions: progressive enhancement, scoped deliberately
 
 ```css
 @view-transition { navigation: auto; }
@@ -1096,7 +1145,7 @@ Four constraints, all real:
 }
 ```
 
-### 13.5 Sunny does not enter `/account`
+### [HISTORICAL] 13.5 Sunny does not enter `/account`
 
 `robotExit` already flies the mascot "upward, toward the chat" and `robotReturn` brings him back
 "the way he left, with a settle" (`effects.css:226-241`). Keeping him out of the record page costs
@@ -1107,7 +1156,7 @@ already exists and is already correct. The restraint is what makes the return la
 Reuse the motion tokens (`tokens.css:143-158`), not `AuthView`'s mascot-coupled delayed fade
 (`auth-view.js:62-79`).
 
-### 13.6 Two height reveals, no JS measurement
+### [HISTORICAL] 13.6 Two height reveals, no JS measurement
 
 The signup → confirmation swap and the consent-gated age field are both height changes to `auto`:
 
@@ -1126,7 +1175,7 @@ height difference, which is what "completed" looks like. The recovery pane
 The age reveal must not move the submit button under a thumb mid-tap: reveal below the checkbox,
 above the button.
 
-### 13.7 Where motion is refused
+### [HISTORICAL] 13.7 Where motion is refused
 
 - **No page-load choreography on `/account`.** The ambient layer was deleted from this product once
   already, for this reason (`effects.css:5-8`).
@@ -1139,7 +1188,7 @@ above the button.
 
 ---
 
-## 14. Review findings, and what they corrected
+## [HISTORICAL] 14. Review findings, and what they corrected
 
 Three passes after the plan above was written: an adversarial debate (OpenCode ·
 `openai/gpt-5.6-terra` @ xhigh, read-only), an external human-directed review, and a documentation
@@ -1148,7 +1197,7 @@ repository or the upstream docs before being recorded.
 
 **This section overrides §0–§13 wherever they disagree.**
 
-### 14·A — Corrections to claims this plan made
+### [HISTORICAL] 14·A — Corrections to claims this plan made
 
 Owning these plainly, because the rest of the document's credibility rests on it.
 
@@ -1180,7 +1229,7 @@ Owning these plainly, because the rest of the document's credibility rests on it
    about the CDN Bootstrap stylesheet or the rendered layout. Use a bespoke logical `.consent-row`
    and test Arabic at mobile widths.
 
-### 14·B — Corrections from the upstream documentation (`ctx7`)
+### [HISTORICAL] 14·B — Corrections from the upstream documentation (`ctx7`)
 
 7. **Password change uses `reauthenticate()`, not a current-password check.** Recorded in §9, P1.
    The plan previously carried the security audit's "verify via `signInWithPassword`" design, which
@@ -1192,7 +1241,7 @@ Owning these plainly, because the rest of the document's credibility rests on it
 10. **Revocation is not immediate.** Access tokens of revoked sessions stay valid until their `exp`.
     The copy must say so, and it is the second argument for `is_active_account()` in RLS.
 
-### 14·C — Design defects found in this plan
+### [HISTORICAL] 14·C — Design defects found in this plan
 
 11. **The two length constraints contradicted each other.** Fixed in §6·1 — drop
     `profiles_full_name_len_chk` when `full_name` becomes generated.
@@ -1240,7 +1289,7 @@ Owning these plainly, because the rest of the document's credibility rests on it
     marketing demographics out of general admin profile audit diffs, expose a read-only consent
     record to the subject, and include it in export.
 
-### 14·D — Smaller, all verified
+### [HISTORICAL] 14·D — Smaller, all verified
 
 21. Write `(select public.is_active_account())` in every policy, so Postgres evaluates it once per
     statement — the initplan idiom the repo already applies to `(select auth.uid())`.
@@ -1276,7 +1325,7 @@ Owning these plainly, because the rest of the document's credibility rests on it
     numbers. Define privacy-safe aggregate metrics **before** adding funnel friction, plus rollback
     criteria for any destructive migration and a support runbook for unconfirmed accounts.
 
-### 14·E — What the reviews did not shake
+### [HISTORICAL] 14·E — What the reviews did not shake
 
 The modal retirement and its reasoning; `/account` as a server-rendered page following
 `admin.console`'s shell pattern; the generated-column strategy for the name split (its *sequencing*
@@ -1285,7 +1334,7 @@ avatar upload. All re-checked against source and standing.
 
 ---
 
-## 15. Verified against the live database — 2026-08-23
+## [HISTORICAL] 15. Verified against the live database — 2026-08-23
 
 Everything in §0–§14 was read from migration *files*. This section is what the **applied database
 actually contains**, queried through the Supabase MCP on 2026-08-23. It closes the last blocker
@@ -1293,7 +1342,7 @@ before implementation, and it changed three decisions.
 
 Project `yjjuudnsnjzhyqllsqrd`, **Postgres 17.6**, `ACTIVE_HEALTHY`.
 
-### 15.1 The population is four rows, and that changes the migration strategy
+### [HISTORICAL] 15.1 The population is four rows, and that changes the migration strategy
 
 ```
 public.profiles          4 rows
@@ -1310,7 +1359,7 @@ longest full_name        22 characters
 `is_active_account()` (§0.3-C) denies nobody today. §14·D·22's inconsistency is a class of bug to
 prevent, not a live one.
 
-### 15.2 The actual rows — and why the automated name backfill is now cancelled
+### [HISTORICAL] 15.2 The actual rows — and why the automated name backfill is now cancelled
 
 | `full_name` | `organization` | `specialization` |
 |---|---|---|
@@ -1342,7 +1391,7 @@ resembles a corpus category.** The normalisation this plan originally proposed �
 values, blank the rest — would have **erased 100% of the real data in that column**. Terra's
 objection (Appendix D, finding 6) is correct on the facts, not just in principle.
 
-### 15.3 Schema facts that correct the text above
+### [HISTORICAL] 15.3 Schema facts that correct the text above
 
 - **`profiles` has no `created_at` column at all.** §14·C·19 said `getProfile` does not *select*
   it; the truth is stronger — it does not exist. The standing line's "SINCE" can only come from
@@ -1363,7 +1412,7 @@ objection (Appendix D, finding 6) is correct on the facts, not just in principle
     and would be orphaned by an auth-user delete. The deletion saga must purge them by `owner_id`
     explicitly.
 
-### 15.4 Advisors are clean
+### [HISTORICAL] 15.4 Advisors are clean
 
 `get_advisors security` returns four `rls_enabled_no_policy` INFO notices — `app_settings`,
 `audit_log`, `chat_archive`, `chatbot_settings` — and one `auth_leaked_password_protection` WARN.
@@ -1371,7 +1420,7 @@ objection (Appendix D, finding 6) is correct on the facts, not just in principle
 `TODO.md:481`). No regressions, so any new finding after a migration in this plan is caused by that
 migration.
 
-### 15.5 Six migration filenames drift from what was applied
+### [HISTORICAL] 15.5 Six migration filenames drift from what was applied
 
 `supabase/README.md` states the rule: *"A migration's filename is exactly `<version>_<name>.sql`,
 where both halves are what `list_migrations` reports."* Six do not:
@@ -1397,7 +1446,7 @@ from what `list_migrations` reports.
 *(The 7 pre-directory migrations recorded in `0000_baseline.md` account exactly for the difference
 between the 27 applied versions and the 20 files.)*
 
-### 15.6 What this section changes
+### [HISTORICAL] 15.6 What this section changes
 
 1. **§6·5's backfill SQL is withdrawn.** Preserve names verbatim; see §15.2 and §16·1.
 2. **§12.5 is confirmed** — `specialization` keeps its free text and is not normalised.
@@ -1405,7 +1454,7 @@ between the 27 applied versions and the 20 files.)*
 4. **Rename six migration files** before adding any.
 5. **§14·D·22 is downgraded** from a live inconsistency to a class of bug worth preventing.
 
-### 15.7 One unknown, resolved
+### [HISTORICAL] 15.7 One unknown, resolved
 
 `handle_profile_update()` predates this directory, so its body is not in the repository and §16·1
 flagged it as must-inspect-before-migrating. Queried:
@@ -1421,7 +1470,7 @@ columns this plan adds and poses no hazard to the cutover.
 
 ---
 
-## 16. The four migration specs
+## [HISTORICAL] 16. The four migration specs
 
 Written against §15's verified live state. Full SQL in **Appendix E**; this section is the
 decisions and the reasoning, which is what survives if the SQL is rewritten.
@@ -1431,7 +1480,7 @@ Each is authored in the house style of
 statement explaining *why*, a destructive-check record per the repo's rule 7, and **no explicit
 `begin;`/`commit;`** — the runner owns the transaction, exactly as that file's lines 35-43 warn.
 
-### 16·1 — The atomic identity cutover (one migration, not three)
+### [HISTORICAL] 16·1 — The atomic identity cutover (one migration, not three)
 
 **It cannot be split.** Three writers send `full_name` today: `handle_new_user`
 (`…5509.sql:58-67`), `admin_update_profile` (`20260814200342…sql:76-80`), and **the shipped
@@ -1456,7 +1505,7 @@ accounts that is a non-event; the migration should say so rather than leave it d
 **Before approving, run and record:** `pg_get_functiondef` for the trigger functions, any index
 mentioning `full_name`, and the row/length counts. §15.7 already did the first.
 
-### 16·2 — `handle_new_user` hardening (P0 blocker)
+### [HISTORICAL] 16·2 — `handle_new_user` hardening (P0 blocker)
 
 The trigger is `AFTER INSERT` on `auth.users` and its own comment warns that **a raise inside it
 rolls back account creation** (`…5509.sql:48-50`). It is about to read `first_name`, `family_name`,
@@ -1468,7 +1517,7 @@ fails. A denial-of-service on account creation, caused by our own constraints.
 casts to an integer in range, else null. Accept `marketing_consent` only as a real boolean, else
 false. A null name is recoverable on the account page; a failed signup is not.
 
-### 16·3 — The consent record: columns on `profiles`, not an event table
+### [HISTORICAL] 16·3 — The consent record: columns on `profiles`, not an event table
 
 **Argued against this codebase's actual `audit_log`, not in the abstract.** That table records
 *administrative actions*, is service-role-only, and **deliberately survives account deletion**
@@ -1492,7 +1541,7 @@ transitions. It is **not immutable history.** If the legal requirement ever beco
 grant/withdrawal cycle," these columns are insufficient and an event table replaces them. Do not
 describe the current design as an audit trail.
 
-### 16·4 — Account deletion: two migrations and a saga, never one RPC
+### [HISTORICAL] 16·4 — Account deletion: two migrations and a saga, never one RPC
 
 `web/api/admin.py:329-339` already records the governing fact: a database transaction cannot
 contain an outbound provider call. So deletion is a **durable, idempotent saga**, not an RPC.
@@ -1515,13 +1564,13 @@ transcript; it does not remove dormant archive rows or provider backups.
 
 ---
 
-## 17. Build order — the authoritative sequence
+## [HISTORICAL] 17. Build order — the authoritative sequence
 
 **This supersedes §9's phases.** §9 was written before the reviews; where the two disagree, this
 section wins. Each step names what it depends on, so nothing is started that a later correction
 would force to be rewritten.
 
-### Step 0 — Housekeeping, no product change
+### [HISTORICAL] Step 0 — Housekeeping, no product change
 
 - [x] **Rename six migration files** to their applied versions (§15.5). Its own commit. Nothing
       else in this plan may add a migration until `ls migrations/` and `list_migrations` agree
@@ -1529,7 +1578,7 @@ would force to be rewritten.
 - [x] Open a `TODO.md` entry for **`app.js:407`'s missing identity guard** (§14·D·25) — a live bug,
       unrelated to this work, found while planning it.
 
-### Step 1 — The signup funnel fix *(no schema, no dependencies, ship it first)*
+### [HISTORICAL] Step 1 — The signup funnel fix *(no schema, no dependencies, ship it first)*
 
 - [x] Persistent `#signup-sent` panel replacing the toast at `handlers.js:173`, modelled on
       `#reset-sent` (`index.html:215-218`). Names the address back to the reader.
@@ -1544,7 +1593,7 @@ would force to be rewritten.
 
 **This is the whole of what is safe to build today.** Everything below depends on a schema change.
 
-### Step 2 — Schema, in this order and no other
+### [HISTORICAL] Step 2 — Schema, in this order and no other
 
 - [x] **2a. Column bounds** on `organization`, `specialization`, `preferences` (§6·1) — but **not**
       `full_name`, which never gets a length check (§16·1). Applied `20260822224844`.
@@ -1581,7 +1630,7 @@ Verify after **each**: `list_tables`, `list_migrations`, `get_advisors security`
 `get_advisors performance`. §15.4 is the clean baseline — any new finding is caused by the
 migration just applied. **Name each file after applying**, from what `list_migrations` reports.
 
-### Step 3 — `/account` exists and tells the truth
+### [HISTORICAL] Step 3 — `/account` exists and tells the truth
 
 **Shipped 2026-08-23.** Identity and Preferences only — Security, Your data and Delete account are
 Steps 5-7 and were deliberately not stubbed as placeholders (a section that cannot yet do anything
@@ -1630,7 +1679,7 @@ is worse than a section that does not exist yet).
       it to whichever copy is actually displayed, which this pass did not build. See the comment
       left in `_sidebar.html` at the profile-button link.
 
-### Step 4 — Signup capture and first-run
+### [HISTORICAL] Step 4 — Signup capture and first-run
 
 **Shipped 2026-08-23.**
 
@@ -1654,7 +1703,7 @@ is worse than a section that does not exist yet).
       `CustomDropdown.setValue()`/`.reset()` exist as the T7-safe hook for that default if it is
       ever added, but nothing calls them yet.
 
-### Step 5 — Security, per what the API actually supports
+### [HISTORICAL] Step 5 — Security, per what the API actually supports
 
 **Shipped 2026-08-23, in `/account`'s new Security section — Step 3 deliberately did not build one,
 since nothing in it existed yet.**
@@ -1688,7 +1737,7 @@ since nothing in it existed yet.**
       available in this session reads or writes them. Needs either dashboard access or a Management
       API credential this session does not have.
 
-### Step 6 — Consent
+### [HISTORICAL] Step 6 — Consent
 
 **Shipped 2026-08-23, by explicit direction from the product owner: write a generic bilingual
 policy now, to unblock the engineering, and review/polish its actual content later.** §12.4's own
@@ -1740,7 +1789,7 @@ each grant records the exact version it was made under.
       the consent record" as "visible to the subject" rather than "bundled into the NDJSON
       download" was a deliberate scope call, not an oversight.
 
-### Step 7 — Data rights
+### [HISTORICAL] Step 7 — Data rights
 
 **Export and bulk conversation deletion shipped 2026-08-23.** Account deletion (the saga) is
 unbuilt — see below.
@@ -1792,7 +1841,7 @@ not the decoded identity — Flask-Limiter's own `before_request` hook runs BEFO
 `_gate`, so `g.identity` is not set yet when a rate key is computed, and re-authenticating there
 would be a second `supabase.auth.get_user` round trip on top of the one `_gate` already makes.
 
-### Still open
+### [HISTORICAL] Still open
 
 Steps 6 and 7 both shipped without these being formally closed — none turned out to gate what was
 actually built, but none should be read as decided either:
@@ -1812,7 +1861,7 @@ actually built, but none should be read as decided either:
 
 ---
 
-## Appendix A — Benchmark & gap analysis
+## [HISTORICAL] Appendix A — Benchmark & gap analysis
 
 **Implementer:** OpenCode CLI · `openai/gpt-5.6-luna`, reasoning effort **xhigh**, `plan` agent (read-only)
 **Dispatched:** 2026-08-22 · **Working tree:** untouched
@@ -1821,13 +1870,13 @@ actually built, but none should be read as decided either:
 
 <!-- BEGIN VERBATIM — Appendix A -->
 
-### SFDA Copilot Account Experience Benchmark
+### [HISTORICAL] SFDA Copilot Account Experience Benchmark
 
 This benchmark focuses on shipped product surfaces, not marketing pages. Exact labels and availability vary by plan, platform, authentication provider, and enterprise policy, especially for export, sessions, and account deletion.
 
-#### 1. The 10 Benchmarks
+#### [HISTORICAL] 1. The 10 Benchmarks
 
-##### 1. ChatGPT
+##### [HISTORICAL] 1. ChatGPT
 
 **Surface:** Settings opened from the account menu, with nested sections for General, Personalization, Notifications, Data Controls, Security, and subscription/account management.
 
@@ -1855,7 +1904,7 @@ This benchmark focuses on shipped product surfaces, not marketing pages. Exact l
 
 ---
 
-##### 2. Claude.ai
+##### [HISTORICAL] 2. Claude.ai
 
 **Surface:** Account/settings panel with profile, appearance, general preferences, privacy controls, and Styles or response-customization features.
 
@@ -1883,7 +1932,7 @@ This benchmark focuses on shipped product surfaces, not marketing pages. Exact l
 
 ---
 
-##### 3. Google Gemini
+##### [HISTORICAL] 3. Google Gemini
 
 **Surface:** Gemini settings inside the product, combined with the broader Google Account and Google activity/privacy surfaces.
 
@@ -1911,7 +1960,7 @@ This benchmark focuses on shipped product surfaces, not marketing pages. Exact l
 
 ---
 
-##### 4. Perplexity
+##### [HISTORICAL] 4. Perplexity
 
 **Surface:** Account/settings page or panel containing profile, subscription, appearance, language, search/answer preferences, and data controls.
 
@@ -1939,7 +1988,7 @@ This benchmark focuses on shipped product surfaces, not marketing pages. Exact l
 
 ---
 
-##### 5. Microsoft Copilot
+##### [HISTORICAL] 5. Microsoft Copilot
 
 **Surface:** Copilot settings and personalization controls, backed by Microsoft Account and Microsoft privacy/security surfaces.
 
@@ -1966,7 +2015,7 @@ This benchmark focuses on shipped product surfaces, not marketing pages. Exact l
 
 ---
 
-##### 6. Notion
+##### [HISTORICAL] 6. Notion
 
 **Surface:** Full settings area with a left navigation, personal settings, workspace settings, members, security, connections, notifications, billing, and imports/exports.
 
@@ -1995,7 +2044,7 @@ This benchmark focuses on shipped product surfaces, not marketing pages. Exact l
 
 ---
 
-##### 7. Linear
+##### [HISTORICAL] 7. Linear
 
 **Surface:** Full settings route with sections for account/profile, preferences, notifications, security and access, API keys, teams, workspaces, and billing.
 
@@ -2023,7 +2072,7 @@ This benchmark focuses on shipped product surfaces, not marketing pages. Exact l
 
 ---
 
-##### 8. Slack
+##### [HISTORICAL] 8. Slack
 
 **Surface:** Profile menu, profile editor, Preferences dialog, account settings, workspace settings, and session/device management.
 
@@ -2052,7 +2101,7 @@ This benchmark focuses on shipped product surfaces, not marketing pages. Exact l
 
 ---
 
-##### 9. GitHub
+##### [HISTORICAL] 9. GitHub
 
 **Surface:** Full `/settings` route with a stable left navigation and dedicated pages for Profile, Emails, Password and authentication, Sessions, SSH/GPG keys, Appearance, Accessibility, Notifications, Billing, and account deletion.
 
@@ -2081,7 +2130,7 @@ This benchmark focuses on shipped product surfaces, not marketing pages. Exact l
 
 ---
 
-##### 10. Vercel
+##### [HISTORICAL] 10. Vercel
 
 **Surface:** Dashboard settings with account, team, authentication, tokens, billing, usage, domains, integrations, and project-level settings.
 
@@ -2110,9 +2159,9 @@ This benchmark focuses on shipped product surfaces, not marketing pages. Exact l
 
 ---
 
-#### 2. Cross-Cutting Patterns
+#### [HISTORICAL] 2. Cross-Cutting Patterns
 
-##### 1. Separate account identity from product preferences
+##### [HISTORICAL] 1. Separate account identity from product preferences
 
 This is the most important pattern.
 
@@ -2126,7 +2175,7 @@ Best-in-class products distinguish:
 
 The current SFDA Copilot form combines identity fields and theme preference in one small form. That is acceptable for a prototype, but it will not scale to email, password, sessions, privacy, export, or deletion.
 
-##### 2. Use a full settings information architecture once security appears
+##### [HISTORICAL] 2. Use a full settings information architecture once security appears
 
 A modal works for three profile fields. It becomes the wrong container when the surface includes:
 
@@ -2141,7 +2190,7 @@ A modal works for three profile fields. It becomes the wrong container when the 
 
 The best surfaces use a full page or settings route with persistent navigation. The modal remains useful for a small quick-edit profile card, not as the entire account system.
 
-##### 3. Make scope explicit
+##### [HISTORICAL] 3. Make scope explicit
 
 Users need to know whether an action affects:
 
@@ -2156,7 +2205,7 @@ Users need to know whether an action affects:
 
 Notion, Slack, Linear, GitHub, and Vercel are particularly strong here.
 
-##### 4. Separate reversible preferences from irreversible actions
+##### [HISTORICAL] 4. Separate reversible preferences from irreversible actions
 
 Theme, language, font size, and notification toggles can be immediate.
 
@@ -2169,7 +2218,7 @@ Password changes, email changes, session revocation, data export, and deletion n
 - Failure handling.
 - Reauthentication where appropriate.
 
-##### 5. Autosave only low-risk controls
+##### [HISTORICAL] 5. Autosave only low-risk controls
 
 Autosave is good for:
 
@@ -2189,7 +2238,7 @@ Explicit save is better for:
 
 A single page may use both, but the behavior must be visible.
 
-##### 6. Give the user a dirty-state model
+##### [HISTORICAL] 6. Give the user a dirty-state model
 
 For explicit-save forms, best-in-class surfaces generally do one of three things:
 
@@ -2199,7 +2248,7 @@ For explicit-save forms, best-in-class surfaces generally do one of three things
 
 A form that silently loses edits when a modal closes is unacceptable for account data.
 
-##### 7. Provide specific security operations
+##### [HISTORICAL] 7. Provide specific security operations
 
 A generic “profile” page should not hide:
 
@@ -2213,7 +2262,7 @@ A generic “profile” page should not hide:
 
 GitHub is the clearest model here.
 
-##### 8. Treat data rights as first-class
+##### [HISTORICAL] 8. Treat data rights as first-class
 
 Users increasingly expect:
 
@@ -2226,7 +2275,7 @@ Users increasingly expect:
 
 These are not interchangeable. A product must state what each action deletes and what it does not delete.
 
-##### 9. Make loading, empty, saved, and failure states explicit
+##### [HISTORICAL] 9. Make loading, empty, saved, and failure states explicit
 
 A settings surface should distinguish:
 
@@ -2243,11 +2292,11 @@ A settings surface should distinguish:
 
 SFDA Copilot already demonstrates this discipline in conversation history, where loading, empty, and unavailable states are deliberately distinct. The same standard should apply to profile settings.
 
-##### 10. Keep high-frequency preferences close to the user
+##### [HISTORICAL] 10. Keep high-frequency preferences close to the user
 
 Language, theme, notifications, accessibility, and assistant behavior should be easy to reach. They should not require navigating through security or billing.
 
-##### Common but wrong patterns
+##### [HISTORICAL] Common but wrong patterns
 
 **One giant “Profile” form:** Common, but wrong once account security and data controls are added.
 
@@ -2267,7 +2316,7 @@ Language, theme, notifications, accessibility, and assistant behavior should be 
 
 ---
 
-#### 3. Gap Analysis Against SFDA Copilot
+#### [HISTORICAL] 3. Gap Analysis Against SFDA Copilot
 
 | Capability | Best-in-class does | We currently do | Gap severity | Effort |
 |---|---|---|---|---|
@@ -2298,9 +2347,9 @@ Language, theme, notifications, accessibility, and assistant behavior should be 
 | Privilege boundaries | Clearly labels role/tier/access as read-only and keeps privileged fields server-controlled. | This is strong at the schema level. Browser grants cover only profile-owned columns and a trigger rejects browser changes to `role`, `tier`, and `is_disabled` (`20260814005509...sql:130-192`). The missing piece is a user-facing read-only presentation. | Low | S |
 | Account data ownership | Explains which data belongs to the user, which is retained for operations, and what deletion does not remove. | The history notice says chats are saved and individually deletable. The database documentation states that deleting reader sessions does not delete dormant archive rows or backups (`supabase/migrations/20260821145319_chat_navigation_rpcs.sql:187-191`). This distinction is not exposed as an account data-management UI. | High | M |
 
-#### 4. Recommendation
+#### [HISTORICAL] 4. Recommendation
 
-##### Recommended shape
+##### [HISTORICAL] Recommended shape
 
 Build a dedicated server-rendered `/settings` route with a tabbed settings surface.
 
@@ -2308,7 +2357,7 @@ Do not keep the entire account experience as a modal.
 
 A small profile quick-edit modal could remain later as a convenience, but it should become a shortcut into `/settings`, not the canonical account surface.
 
-##### Why not a larger modal?
+##### [HISTORICAL] Why not a larger modal?
 
 The current modal is appropriate for its current contents:
 
@@ -2323,7 +2372,7 @@ It is not appropriate for the planned account scope. Adding email, password, ses
 
 It would also make deep linking, browser Back, refresh, and mobile navigation worse.
 
-##### Why a full route fits the actual stack
+##### [HISTORICAL] Why a full route fits the actual stack
 
 The application does not have a client-side application router.
 
@@ -2345,7 +2394,7 @@ The application’s actual navigation model is server-side Flask paths plus brow
 
 A `/settings` route would therefore be simpler and more honest than pretending `route.js` is a general SPA router.
 
-##### Suggested settings IA
+##### [HISTORICAL] Suggested settings IA
 
 Use a persistent settings shell:
 
@@ -2395,7 +2444,7 @@ Use tabs or a vertical settings navigation visually, but keep each section indep
 
 If the product later needs shareable deep links, Flask can add distinct server paths without introducing a JavaScript framework.
 
-##### Saving model
+##### [HISTORICAL] Saving model
 
 Use a hybrid model deliberately:
 
@@ -2412,9 +2461,9 @@ For identity fields, use a sticky save bar that appears only when the form is di
 
 On mobile, the save bar should remain visible at the bottom of the settings content rather than requiring the user to scroll back to the top.
 
-##### Phased plan
+##### [HISTORICAL] Phased plan
 
-###### P0: Trustworthy account foundation
+###### [HISTORICAL] P0: Trustworthy account foundation
 
 **Goal:** Replace the fragile modal-only account model with a durable, accessible settings foundation.
 
@@ -2435,7 +2484,7 @@ On mobile, the save bar should remain visible at the bottom of the settings cont
 
 **Why first:** The current surface has a small amount of functionality but weak state handling. P0 should make existing account data reliable before adding more settings.
 
-###### P1: Security and data rights
+###### [HISTORICAL] P1: Security and data rights
 
 **Goal:** Address the highest-risk gaps.
 
@@ -2457,7 +2506,7 @@ On mobile, the save bar should remain visible at the bottom of the settings cont
 
 **Why second:** Security and data ownership are more important than profile polish. Users can tolerate not having an avatar; they should not be unable to secure or delete their account.
 
-###### P2: Personalization and professional polish
+###### [HISTORICAL] P2: Personalization and professional polish
 
 **Goal:** Match the best assistant experiences without overloading the core flow.
 
@@ -2473,9 +2522,9 @@ On mobile, the save bar should remain visible at the bottom of the settings cont
 
 **Why third:** These are valuable but should not delay secure identity, data, and deletion controls.
 
-#### 5. RTL and Bilingual Specifics
+#### [HISTORICAL] 5. RTL and Bilingual Specifics
 
-##### What SFDA Copilot already does well
+##### [HISTORICAL] What SFDA Copilot already does well
 
 Arabic is structurally represented in the product:
 
@@ -2490,7 +2539,7 @@ Arabic is structurally represented in the product:
 
 These are strong foundations for a settings route.
 
-##### Arabic-first account design requirements
+##### [HISTORICAL] Arabic-first account design requirements
 
 **Do not make Arabic a translated copy of an English settings layout.**
 
@@ -2616,7 +2665,7 @@ The central recommendation is therefore a **bilingual, RTL-native `/settings` su
 
 ---
 
-## Appendix B — Security audit
+## [HISTORICAL] Appendix B — Security audit
 
 **Implementer:** Google Antigravity CLI · `gemini-3.7-flash-high` (read-only)
 **Dispatched:** 2026-08-22 · **Working tree:** untouched
@@ -2625,7 +2674,7 @@ The central recommendation is therefore a **bilingual, RTL-native `/settings` su
 
 <!-- BEGIN VERBATIM — Appendix B -->
 
-### Security Audit: User-Profile Surface (Client → API → Supabase)
+### [HISTORICAL] Security Audit: User-Profile Surface (Client → API → Supabase)
 
 **Target:** SFDA Copilot (Regulatory Bilingual Chatbot)  
 **Scope:** Client profile handling (`static/js/modules/*`, `static/js/admin/*`), API layer (`web/api/app.py`, `web/api/auth.py`, `web/api/admin.py`), and Database schema / RLS policies / triggers / RPCs (`supabase/migrations/*.sql`).  
@@ -2633,7 +2682,7 @@ The central recommendation is therefore a **bilingual, RTL-native `/settings` su
 
 ---
 
-#### Executive Summary
+#### [HISTORICAL] Executive Summary
 
 The SFDA Copilot user-profile and identity architecture demonstrates strong adherence to security principles in several critical areas:
 1. **Administrative RPC isolation & concurrency:** Sensitive operations (`admin_set_user_flags`, `admin_update_profile`, `admin_write_settings`) run via `SECURITY DEFINER` functions with fixed `search_path = ''`, transactional re-validation of actor privileges (`AD004`), advisory locking against write-skew race conditions (`sfda.admin_membership`), and atomic audit logging.
@@ -2647,7 +2696,7 @@ However, the audit identified security weaknesses and architectural gaps that mu
 
 ---
 
-#### Severity-Ranked Summary Table
+#### [HISTORICAL] Severity-Ranked Summary Table
 
 | # | Severity | Title | File:Line | Exploitable Today? |
 |---|---|---|---|---|
@@ -2660,11 +2709,11 @@ However, the audit identified security weaknesses and architectural gaps that mu
 
 ---
 
-#### Detailed Findings
+#### [HISTORICAL] Detailed Findings
 
 ---
 
-##### Finding 1: Unbounded Profile Field Lengths & Arbitrary JSON Payloads on Browser-Direct Writes
+##### [HISTORICAL] Finding 1: Unbounded Profile Field Lengths & Arbitrary JSON Payloads on Browser-Direct Writes
 
 - **Severity:** Medium
 - **Location:**
@@ -2673,11 +2722,11 @@ However, the audit identified security weaknesses and architectural gaps that mu
   - Client Handler: [`static/js/modules/handlers.js#L1514-L1521`](file:///E:/Documents/AI_Project/SFDA_copilot/static/js/modules/handlers.js#L1514-L1521)
   - Supabase Service: [`static/js/modules/services.js#L677-L684`](file:///E:/Documents/AI_Project/SFDA_copilot/static/js/modules/services.js#L677-L684)
 
-###### What is wrong
+###### [HISTORICAL] What is wrong
 The reader-facing profile update flow communicates **directly from the browser to Supabase PostgREST** using the client-side Supabase JS SDK (`Services.updateProfile`), completely bypassing the Flask backend. 
 While Flask's admin API strictly enforces `_PROFILE_MAX_LENGTH = 200` ([`web/api/admin.py:315`](file:///E:/Documents/AI_Project/SFDA_copilot/web/api/admin.py#L315)), there are **zero database-level `CHECK` constraints** on `public.profiles.full_name`, `organization`, or `specialization`. Furthermore, `preferences` is an unconstrained `JSONB` column, and the HTML input elements in [`web/templates/index.html`](file:///E:/Documents/AI_Project/SFDA_copilot/web/templates/index.html#L284-L297) lack `maxlength` attributes.
 
-###### Attack scenario
+###### [HISTORICAL] Attack scenario
 1. An authenticated reader crafts a PostgREST request using their anon key and session JWT:
    ```javascript
    const hugePayload = 'A'.repeat(5 * 1024 * 1024); // 5 MB string
@@ -2692,10 +2741,10 @@ While Flask's admin API strictly enforces `_PROFILE_MAX_LENGTH = 200` ([`web/api
 3. When an administrator views the **People** list ([`static/js/admin/ui.js:589`](file:///E:/Documents/AI_Project/SFDA_copilot/static/js/admin/ui.js#L589)) or opens the account detail modal ([`static/js/admin/ui.js:1125`](file:///E:/Documents/AI_Project/SFDA_copilot/static/js/admin/ui.js#L1125)), `admin_get_user` transfers multiple megabytes of data, causing high memory usage, network latency, and potential browser rendering freezes (Client-side DoS).
 4. If an administrator subsequently edits any field on the target account, `admin_update_profile` ([`supabase/migrations/20260814200342_admin_update_profile.sql:97-106`](file:///E:/Documents/AI_Project/SFDA_copilot/supabase/migrations/20260814200342_admin_update_profile.sql#L97-L106)) copies the entire multi-megabyte `before` and `after` records into `public.audit_log`, permanently bloating the append-only audit table.
 
-###### Why it works / why it fails
+###### [HISTORICAL] Why it works / why it fails
 - **Exploitable today:** The direct PostgREST client endpoint is fully reachable by any authenticated user. The column-level grant allows `full_name`, `organization`, `specialization`, and `preferences` writes. Neither PostgREST nor PostgreSQL enforces string length or JSON size limits on this table.
 
-###### Fix
+###### [HISTORICAL] Fix
 Add database-level `CHECK` constraints on `public.profiles` in a new migration, and add HTML `maxlength` bounds in `index.html`:
 
 ```sql
@@ -2713,7 +2762,7 @@ alter table public.profiles
 
 ---
 
-##### Finding 2: Disabled Accounts Retain Direct Supabase PostgREST Read and Delete Access Under RLS
+##### [HISTORICAL] Finding 2: Disabled Accounts Retain Direct Supabase PostgREST Read and Delete Access Under RLS
 
 - **Severity:** Medium
 - **Location:**
@@ -2721,13 +2770,13 @@ alter table public.profiles
   - Admin Disable Handler: [`web/api/admin.py#L676-L747`](file:///E:/Documents/AI_Project/SFDA_copilot/web/api/admin.py#L676-L747)
   - Baseline Profile Policies: [`supabase/migrations/0000_baseline.md#L12-L13`](file:///E:/Documents/AI_Project/SFDA_copilot/supabase/migrations/0000_baseline.md#L12-L13)
 
-###### What is wrong
+###### [HISTORICAL] What is wrong
 When an administrator disables an account via `PATCH /admin/api/users/<user_id>` (`is_disabled = true`), the Flask backend immediately rejects subsequent chat requests with HTTP 403 `account_disabled` ([`web/api/app.py:384-398`](file:///E:/Documents/AI_Project/SFDA_copilot/web/api/app.py#L384-L398)).
 However:
 1. Setting `is_disabled = true` **does not invalidate existing Supabase JWT access tokens or refresh tokens in GoTrue** (as acknowledged in [`web/api/admin.py:680-683`](file:///E:/Documents/AI_Project/SFDA_copilot/web/api/admin.py#L680-L683)).
 2. The RLS policies on `public.profiles`, `public.chat_sessions`, `public.chat_messages`, and `public.chat_message_sources` only check `owner_id = (select auth.uid())` or `id = auth.uid()`. **None of the RLS policies check `public.profiles.is_disabled`**.
 
-###### Attack scenario
+###### [HISTORICAL] Attack scenario
 1. An administrator disables a compromised or departing employee's account (`is_disabled = true`).
 2. The user's browser client still holds a valid Supabase JWT session (valid for up to 1 hour, or indefinitely refreshed if the admin did not separately click "Revoke Sessions").
 3. The user directly invokes the Supabase client:
@@ -2735,10 +2784,10 @@ However:
    - `supabase.from('chat_sessions').delete().eq('id', sessionId)` — **Succeeds:** permanently erases conversation transcripts under `chat_sessions_delete_own` RLS.
    - `supabase.from('profiles').update({ ... })` — **Succeeds:** continues modifying profile data.
 
-###### Why it works / why it fails
+###### [HISTORICAL] Why it works / why it fails
 - **Exploitable today:** Setting `is_disabled = true` only gates Flask endpoints (`@auth_required` / `_authenticate_request`). Because the browser communicates directly with Supabase PostgREST for RLS-governed tables, a disabled user with an active JWT bypasses Flask entirely.
 
-###### Fix
+###### [HISTORICAL] Fix
 Update RLS policies on reader-accessible tables to explicitly require that the requesting user's profile is not disabled:
 
 ```sql
@@ -2774,12 +2823,12 @@ create policy chat_sessions_delete_own on public.chat_sessions
 
 ---
 
-##### Finding 3: Privilege Guard Trigger Omits `INSERT` and Leaves Auxiliary Administrative Columns Unchecked
+##### [HISTORICAL] Finding 3: Privilege Guard Trigger Omits `INSERT` and Leaves Auxiliary Administrative Columns Unchecked
 
 - **Severity:** Low (Defence-in-Depth)
 - **Location:** [`supabase/migrations/20260814005509_lock_profile_privileges_and_repair_signup.sql#L168-L193`](file:///E:/Documents/AI_Project/SFDA_copilot/supabase/migrations/20260814005509_lock_profile_privileges_and_repair_signup.sql#L168-L193)
 
-###### What is wrong
+###### [HISTORICAL] What is wrong
 Migration `20260814005509` established two layers of defence against privilege escalation:
 1. **Primary:** Column-level `REVOKE` and targeted `GRANT` ([lines 139–151](file:///E:/Documents/AI_Project/SFDA_copilot/supabase/migrations/20260814005509_lock_profile_privileges_and_repair_signup.sql#L139-L151)).
 2. **Secondary (Trigger):** `profiles_guard_privilege_columns` trigger ([lines 168–193](file:///E:/Documents/AI_Project/SFDA_copilot/supabase/migrations/20260814005509_lock_profile_privileges_and_repair_signup.sql#L168-L193)), explicitly added because *"Supabase re-grants table privileges on some schema operations"* ([line 17](file:///E:/Documents/AI_Project/SFDA_copilot/supabase/migrations/20260814005509_lock_profile_privileges_and_repair_signup.sql#L17)).
@@ -2788,15 +2837,15 @@ Two gaps exist in the trigger defence-in-depth layer:
 1. **The trigger is `BEFORE UPDATE` only:** It does not trigger on `INSERT`. If table-level privileges are ever restored by Supabase tooling, a user performing a direct `INSERT` (e.g. if their profile was missing or deleted) can insert `role = 'admin'` without tripping the trigger.
 2. **Unmonitored Administrative Columns:** The trigger checks only `role`, `tier`, and `is_disabled`. It does not monitor `disabled_at`, `disabled_by`, `disabled_reason`, or `last_seen_at`.
 
-###### Attack scenario
+###### [HISTORICAL] Attack scenario
 If table-level grants are restored by an administrative schema sync or dashboard action:
 1. An attacker sends an `INSERT` with `role = 'admin'`. Because the trigger only listens for `BEFORE UPDATE`, the trigger does not execute, and the row lands with `role = 'admin'`.
 2. An attacker sends an `UPDATE` with `disabled_by = '<victim_admin_uuid>'` or `disabled_reason = 'tampered'`. The trigger compares `new.role`, `new.tier`, and `new.is_disabled`, finds no change, and allows the write to complete.
 
-###### Why it works / why it fails
+###### [HISTORICAL] Why it works / why it fails
 - **Currently Not Exploitable:** Postgres column-level permissions (`REVOKE INSERT, UPDATE ... GRANT INSERT (id, full_name, organization, specialization, preferences)`) reject PostgREST requests mentioning ungranted columns at the SQL parser stage. The vulnerability becomes active only if table-level write privileges are re-granted.
 
-###### Fix
+###### [HISTORICAL] Fix
 Upgrade the trigger to cover `INSERT OR UPDATE` and guard all non-user-editable columns:
 
 ```sql
@@ -2843,22 +2892,22 @@ create trigger profiles_guard_privilege_columns
 
 ---
 
-##### Finding 4: Missing Explicit `frame-ancestors` in CSP and Conditional Omission of HSTS Headers Behind Proxy
+##### [HISTORICAL] Finding 4: Missing Explicit `frame-ancestors` in CSP and Conditional Omission of HSTS Headers Behind Proxy
 
 - **Severity:** Low
 - **Location:** [`web/api/app.py#L1244-L1280`](file:///E:/Documents/AI_Project/SFDA_copilot/web/api/app.py#L1244-L1280)
 
-###### What is wrong
+###### [HISTORICAL] What is wrong
 1. **CSP `frame-ancestors`:** The CSP dictionary in [`web/api/app.py`](file:///E:/Documents/AI_Project/SFDA_copilot/web/api/app.py#L1244-L1251) omits the `frame-ancestors` directive. While `flask-talisman` injects the legacy `X-Frame-Options: SAMEORIGIN` header by default, modern browsers prioritize CSP `frame-ancestors`.
 2. **HSTS Header:** Line 1265 sets `should_force_https = not (is_debug_mode or testing or is_behind_proxy)`. When `is_behind_proxy` is `True`, `force_https` is disabled in `Talisman`. While `ProxyFix` correctly handles forwarded protocols, disabling `force_https` in Talisman causes it to skip injecting `Strict-Transport-Security` (HSTS) headers into the response, leaving HSTS enforcement entirely dependent on upstream proxy configuration.
 
-###### Attack scenario
+###### [HISTORICAL] Attack scenario
 If the application is embedded in a malicious iframe on a third-party domain that ignores legacy `X-Frame-Options` or exploits frame hierarchy edge cases, an attacker could attempt clickjacking on the profile modal form.
 
-###### Why it works / why it fails
+###### [HISTORICAL] Why it works / why it fails
 - **Currently Mitigated:** Standard browsers still respect `X-Frame-Options: SAMEORIGIN`. However, modern defence standards require explicit CSP `frame-ancestors 'self'`.
 
-###### Fix
+###### [HISTORICAL] Fix
 Add `frame-ancestors: "'self'"` to the CSP configuration in [`web/api/app.py`](file:///E:/Documents/AI_Project/SFDA_copilot/web/api/app.py#L1244-L1251):
 
 ```python
@@ -2875,7 +2924,7 @@ csp = {
 
 ---
 
-##### Finding 5: Profile Field DOM Rendering Verification (Stored XSS Analysis)
+##### [HISTORICAL] Finding 5: Profile Field DOM Rendering Verification (Stored XSS Analysis)
 
 - **Severity:** Informational (Verified Secure)
 - **Location:**
@@ -2885,7 +2934,7 @@ csp = {
   - Admin People Table: [`static/js/admin/ui.js#L646-L680`](file:///E:/Documents/AI_Project/SFDA_copilot/static/js/admin/ui.js#L646-L680)
   - Admin Audit Table: [`static/js/admin/ui.js#L788-L799`](file:///E:/Documents/AI_Project/SFDA_copilot/static/js/admin/ui.js#L788-L799), [`static/js/admin/ui.js#L859-L870`](file:///E:/Documents/AI_Project/SFDA_copilot/static/js/admin/ui.js#L859-L870)
 
-###### What was analyzed
+###### [HISTORICAL] What was analyzed
 Stored XSS targeting administrators through user-controlled profile fields (`full_name`, `organization`, `specialization`, `preferences`) represents the highest-severity vector in profile architectures. Every sink rendering profile attributes was traced:
 1. `populateProfileForm` ([`static/js/modules/ui.js:818`](file:///E:/Documents/AI_Project/SFDA_copilot/static/js/modules/ui.js#L818)) sets `fullNameInput.value = full_name` (safe, does not parse HTML).
 2. `renderAccountDetail` ([`static/js/admin/ui.js:1154`](file:///E:/Documents/AI_Project/SFDA_copilot/static/js/admin/ui.js#L1154)) constructs `person = [account.full_name, account.organization].filter(Boolean).join(' · ')` and assigns it via `line.textContent = person` (safe, plain text node).
@@ -2893,17 +2942,17 @@ Stored XSS targeting administrators through user-controlled profile fields (`ful
 4. `describeChange` / `renderAudit` in Admin UI ([`static/js/admin/ui.js:796, 865`](file:///E:/Documents/AI_Project/SFDA_copilot/static/js/admin/ui.js#L796)) builds diff strings and assigns via `change.textContent = ...` (safe).
 5. `user.disabled_reason` in People list ([`static/js/admin/ui.js:677`](file:///E:/Documents/AI_Project/SFDA_copilot/static/js/admin/ui.js#L677)) assigns via `why.textContent = user.disabled_reason` (safe).
 
-###### Verdict
+###### [HISTORICAL] Verdict
 **Not Exploitable.** The frontend and admin console consistently use standard DOM text-node creation and value assignment. No unsafe `innerHTML`, `eval()`, or unescaped template string interpolations exist in the profile rendering pipeline.
 
 ---
 
-##### Finding 6: `SECURITY DEFINER` Function Search Path and Privilege Isolation Verification
+##### [HISTORICAL] Finding 6: `SECURITY DEFINER` Function Search Path and Privilege Isolation Verification
 
 - **Severity:** Informational (Verified Secure)
 - **Location:** [`supabase/migrations/*.sql`](file:///E:/Documents/AI_Project/SFDA_copilot/supabase/migrations)
 
-###### What was analyzed
+###### [HISTORICAL] What was analyzed
 All 13 `SECURITY DEFINER` functions in the database were evaluated against privilege escalation and SQL injection vectors:
 1. `handle_new_user` ([`20260814005509:51`](file:///E:/Documents/AI_Project/SFDA_copilot/supabase/migrations/20260814005509_lock_profile_privileges_and_repair_signup.sql#L51))
 2. `admin_write_settings` ([`20260814032447:87`](file:///E:/Documents/AI_Project/SFDA_copilot/supabase/migrations/20260814032447_audit_log.sql#L87))
@@ -2919,7 +2968,7 @@ All 13 `SECURITY DEFINER` functions in the database were evaluated against privi
 12. `chat_delete_session` ([`20260821145319:192`](file:///E:/Documents/AI_Project/SFDA_copilot/supabase/migrations/20260821145319_chat_navigation_rpcs.sql#L192))
 13. `chat_session_exists` ([`20260822090000:25`](file:///E:/Documents/AI_Project/SFDA_copilot/supabase/migrations/20260822090000_chat_session_exists.sql#L25))
 
-###### Verification results
+###### [HISTORICAL] Verification results
 - **Search Path:** Every function sets `set search_path = ''` and uses fully qualified table references (`public.*`, `auth.*`), satisfying project Rule 3.
 - **Grants:** `EXECUTE` is explicitly revoked from `anon`, `authenticated`, and `public` across all functions, granting access solely to `service_role`.
 - **Dynamic SQL:** Zero functions construct dynamic SQL via `format()` or `EXECUTE ... USING`.
@@ -2927,7 +2976,7 @@ All 13 `SECURITY DEFINER` functions in the database were evaluated against privi
 
 ---
 
-#### Threat Model & Vulnerability Analysis for Planned Profile Surface Expansion
+#### [HISTORICAL] Threat Model & Vulnerability Analysis for Planned Profile Surface Expansion
 
 The planned refactor aims to introduce **avatar uploads, email changes, password changes, active session management, chat history export, and account deletion**. The specific vulnerability classes and required controls for each are detailed below:
 
@@ -2958,7 +3007,7 @@ The planned refactor aims to introduce **avatar uploads, email changes, password
 └──────────────────────────┴─────────────────────────────┴─────────────────────────────────┘
 ```
 
-##### 1. Avatar Upload (Supabase Storage)
+##### [HISTORICAL] 1. Avatar Upload (Supabase Storage)
 - **Vulnerabilities:**
   - **Stored SVG XSS:** Uploading an `.svg` file containing embedded JavaScript (`<svg onload="alert(1)">`). When rendered directly in another reader's browser or the admin console, the script executes under the application's origin or storage domain.
   - **Storage Path Traversal & Overwrite (IDOR):** Inadequate bucket RLS allowing User A to overwrite `avatars/user-b/avatar.png`.
@@ -2982,7 +3031,7 @@ The planned refactor aims to introduce **avatar uploads, email changes, password
 
 ---
 
-##### 2. Self-Service Email Change
+##### [HISTORICAL] 2. Self-Service Email Change
 - **Vulnerabilities:**
   - **Single-Sided Email Takeover:** If Supabase GoTrue only confirms the *new* address, an attacker with temporary session access (e.g. an unlocked laptop) can initiate an email change to an attacker-controlled inbox and immediately take over the account without the victim receiving a notice or veto link.
   - **Stale Verification Desynchronization:** As identified in [`supabase/migrations/20260816215103_admin_get_user_email_verified.sql`](file:///E:/Documents/AI_Project/SFDA_copilot/supabase/migrations/20260816215103_admin_get_user_email_verified.sql), changing email in GoTrue leaves `auth.users.email_confirmed_at` intact while creating an unverified identity row in `auth.identities`.
@@ -2993,7 +3042,7 @@ The planned refactor aims to introduce **avatar uploads, email changes, password
 
 ---
 
-##### 3. Self-Service Password Change
+##### [HISTORICAL] 3. Self-Service Password Change
 - **Vulnerabilities:**
   - **Unauthenticated Session Takeover:** Changing a password without verifying the existing password allows any active session (e.g., from XSS or physical access) to lock out the legitimate account owner.
   - **Session Persistence:** Password changes that fail to revoke existing refresh tokens allow compromised sessions on other devices to remain active.
@@ -3004,7 +3053,7 @@ The planned refactor aims to introduce **avatar uploads, email changes, password
 
 ---
 
-##### 4. Active Sessions List & Session Revocation
+##### [HISTORICAL] 4. Active Sessions List & Session Revocation
 - **Vulnerabilities:**
   - **Session IDOR:** An endpoint listing active sessions must strictly filter by `auth.uid() = session.user_id`.
   - **Token Leakage:** Exposing raw JWTs or refresh token hashes in the API response.
@@ -3014,7 +3063,7 @@ The planned refactor aims to introduce **avatar uploads, email changes, password
 
 ---
 
-##### 5. Chat History Export
+##### [HISTORICAL] 5. Chat History Export
 - **Vulnerabilities:**
   - **IDOR / Unauthorized Data Exfiltration:** Allowing User A to request session exports for User B's conversation IDs.
   - **Memory Exhaustion (DoS):** Aggregating hundreds of long transcripts with full citation text into a single in-memory JSON object on a single web worker.
@@ -3027,7 +3076,7 @@ The planned refactor aims to introduce **avatar uploads, email changes, password
 
 ---
 
-##### 6. Account Deletion
+##### [HISTORICAL] 6. Account Deletion
 - **Vulnerabilities:**
   - **Orphaned Transcripts:** As documented in [`supabase/migrations/20260820131914_chat_session_persistence.sql:38-42`](file:///E:/Documents/AI_Project/SFDA_copilot/supabase/migrations/20260820131914_chat_session_persistence.sql#L38-L42), `public.chat_sessions` deliberately carries **no Foreign Key to `auth.users`** (to prevent accidental mass cascade). If an account is deleted from `auth.users`, its `chat_sessions`, `chat_messages`, and `chat_message_sources` remain orphaned in the database.
   - **Foreign Key Deletion Blocks:** 
@@ -3045,26 +3094,26 @@ The planned refactor aims to introduce **avatar uploads, email changes, password
 
 ---
 
-#### Controls That Must Ship Alongside the Profile Refactor
+#### [HISTORICAL] Controls That Must Ship Alongside the Profile Refactor
 
 The following checklist specifies the mandatory security controls for the implementation team:
 
-##### Database & RLS
+##### [HISTORICAL] Database & RLS
 - [ ] **DB Column Constraints:** Add `CHECK` constraints on `public.profiles` limiting `full_name`, `organization`, and `specialization` to $\le 200$ characters, and `preferences` to $\le 4096$ bytes.
 - [ ] **Trigger Hardening:** Update `profiles_guard_privilege_columns` to fire `BEFORE INSERT OR UPDATE` and validate `disabled_at`, `disabled_by`, `disabled_reason`, and `last_seen_at`.
 - [ ] **Active Standing in RLS:** Update RLS policies on `chat_sessions` to require `public.is_active_account()` so disabled users cannot read/delete data via PostgREST.
 - [ ] **FK Nullification on User Delete:** Add `ON DELETE SET NULL` clauses to `profiles.disabled_by` and `app_settings.updated_by`.
 
-##### Storage & Uploads
+##### [HISTORICAL] Storage & Uploads
 - [ ] **Storage Bucket RLS:** Create `avatars` bucket with strict folder ownership RLS (`(storage.foldername(name))[1] = auth.uid()::text`).
 - [ ] **MIME Allow-List:** Disallow SVG, HTML, and executables; allow only JPEG, PNG, WebP with magic-byte validation and a 2 MB size cap.
 
-##### Authentication & Sessions
+##### [HISTORICAL] Authentication & Sessions
 - [ ] **Double-Confirmation on Email Change:** Enable dual-email confirmation in Supabase GoTrue configuration.
 - [ ] **Sudo Re-Authentication:** Require current password before modifying password or email.
 - [ ] **Session Invalidation on Password Reset:** Invalidate all active refresh tokens on password change.
 
-##### API & Headers
+##### [HISTORICAL] API & Headers
 - [ ] **CSP Hardening:** Add explicit `frame-ancestors 'self'` to Content Security Policy.
 - [ ] **Export Streaming & Sanitization:** Implement streaming responses for chat export and neutralize CSV formula injection characters (`=`, `+`, `-`, `@`).
 - [ ] **Rate Limiting:** Apply dedicated Flask-Limiter limits to email-change (3/hr), password-change (5/hr), and export (2/10min) routes.
@@ -3073,7 +3122,7 @@ The following checklist specifies the mandatory security controls for the implem
 
 ---
 
-## Appendix C — UX critique — the community's worst and best profile-page practices
+## [HISTORICAL] Appendix C — UX critique — the community's worst and best profile-page practices
 
 **Implementer:** Claude Code CLI · Sonnet (read-only, `plan` mode)
 **Dispatched:** 2026-08-22 · **Working tree:** untouched
@@ -3084,7 +3133,7 @@ The following checklist specifies the mandatory security controls for the implem
 
 *(Note: the Write tool is disabled in this session, so I can't produce the plan file the harness expects — but this task is pure read-only research with the final message as the deliverable, so here it is directly.)*
 
-### Profile-page UI/UX: what the design community agrees on, and where our modal stands
+### [HISTORICAL] Profile-page UI/UX: what the design community agrees on, and where our modal stands
 
 Sources drawn on throughout: Nielsen Norman Group usability findings, WCAG 2.2, GOV.UK Design System, Material Design and Apple HIG, *Refactoring UI* (Wathan/Schoger), *Inclusive Components* (Heydon Pickering), and recurring patterns from design-critique communities. Where I'm recalling a principle rather than citing a specific named source, I say so — no invented citations or statistics.
 
@@ -3092,9 +3141,9 @@ Code read: `web/templates/index.html:268-321`, `web/templates/partials/_sidebar.
 
 ---
 
-#### Part 1 — The worst mistakes
+#### [HISTORICAL] Part 1 — The worst mistakes
 
-##### Information architecture
+##### [HISTORICAL] Information architecture
 
 **1. Flat field dump with no grouping or hierarchy.**
 - *Mistake:* Identity fields (name, organization, specialization) and a system preference (theme) sit in one undifferentiated list with no section headers or visual grouping.
@@ -3119,7 +3168,7 @@ Code read: `web/templates/index.html:268-321`, `web/templates/partials/_sidebar.
 - *Severity:* Medium.
 - **Ours:** Committed. `index.html:298-310`.
 
-##### Forms & input
+##### [HISTORICAL] Forms & input
 
 **4. No signal for which fields are required versus optional.**
 - *Mistake:* None of the three text fields nor the theme radios carry a required marker, an "optional" hint, or `aria-required`.
@@ -3142,7 +3191,7 @@ Code read: `web/templates/index.html:268-321`, `web/templates/partials/_sidebar.
 - *Severity:* Low.
 - **Ours:** Committed. `index.html:284-296`.
 
-##### Save & state
+##### [HISTORICAL] Save & state
 
 **7. No dirty-state tracking; the modal discards silently.**
 - *Mistake:* Nothing tracks unsaved edits, and nothing intercepts a close. Bootstrap's default gives dismiss-on-backdrop-click and dismiss-on-Escape for free, and it's easy to never revisit.
@@ -3165,7 +3214,7 @@ Code read: `web/templates/index.html:268-321`, `web/templates/partials/_sidebar.
 - *Severity:* Medium — dead code masquerading as a feature, with a realistic double-submit side effect.
 - **Ours:** Committed.
 
-##### Feedback & errors
+##### [HISTORICAL] Feedback & errors
 
 **10. One generic error banner for a three-field form — no field-level attribution.**
 - *Mistake:* Every save failure surfaces as the same string, `runtime.profile.saveFailed`, in one shared `#profile-error` div (`index.html:317`).
@@ -3189,7 +3238,7 @@ Code read: `web/templates/index.html:268-321`, `web/templates/partials/_sidebar.
 - *Severity:* Medium.
 - **Ours:** Committed.
 
-##### Destructive actions
+##### [HISTORICAL] Destructive actions
 
 No destructive action exists in this modal today (no delete-account, no session revocation, no export) — so most of this category doesn't apply directly, but its *absence* is worth naming, and the two general mistakes below matter for whatever lands here next.
 
@@ -3205,7 +3254,7 @@ No destructive action exists in this modal today (no delete-account, no session 
 - *Severity:* Critical, for whichever action lands here first.
 - **Ours:** Not applicable today, flagged for the day one is added.
 
-##### Accessibility
+##### [HISTORICAL] Accessibility
 
 **15. Redundant, hand-authored ARIA duplicating Bootstrap's own.**
 - *Mistake:* `role="dialog" aria-modal="true"` manually written on `.modal#profileModal` (`index.html:271`) duplicates what Bootstrap 5.3's modal already manages at runtime.
@@ -3228,7 +3277,7 @@ No destructive action exists in this modal today (no delete-account, no session 
 - *Severity:* Medium — a real, citable WCAG 2.2 gap.
 - **Ours:** Committed (unverified in a live browser, but no CSS exists that would prevent it).
 
-##### Identity & personalization
+##### [HISTORICAL] Identity & personalization
 
 **18. No avatar, no initials fallback, no visual identity at all.**
 - *Mistake:* `_sidebar.html:113-141`'s account block is text-only.
@@ -3239,7 +3288,7 @@ No destructive action exists in this modal today (no delete-account, no session 
 
 **19. Single free-text name field — correctly avoids the Western-name-shape trap.** *(Positive, stated because getting this right is rarer than getting it wrong.)* `profile-full-name` (`index.html:284-286`) is one field, not split first/last — correct for a bilingual product where name shapes genuinely differ. No pronoun field, no gendered copy anywhere in `page.profile.*` (`en.yaml:536-545`, `ar.yaml:436-445`). Protect this property explicitly in any redesign — don't split the name field.
 
-##### Privacy & trust
+##### [HISTORICAL] Privacy & trust
 
 **20. No visible data-control surface at all.**
 - *Mistake:* No way to see or export stored data, no account deletion, no link to a privacy policy.
@@ -3250,7 +3299,7 @@ No destructive action exists in this modal today (no delete-account, no session 
 
 **21. No dark pattern present — stated plainly for completeness.** No pre-ticked opt-ins, no confirm-shaming, no forced continuity. Theme radios reflect the reader's actual last saved choice (`ui.js:845-849`); the save button reads a plain "Save Changes" (`en.yaml:545`). This surface earns no entry in the mistakes list here.
 
-##### Visual & layout
+##### [HISTORICAL] Visual & layout
 
 **22. Every field the same visual weight.**
 - *Mistake:* Three identical `form-floating` inputs followed by a same-weight radio group — nothing signals which field matters most.
@@ -3259,17 +3308,17 @@ No destructive action exists in this modal today (no delete-account, no session 
 - *Severity:* Low, but cheap to fix alongside #1.
 - **Ours:** Committed.
 
-##### Mobile & responsive
+##### [HISTORICAL] Mobile & responsive
 
 **23. Untested claim, flagged rather than asserted.** `#profileModal` uses `.modal-dialog-centered` with no `.modal-fullscreen-sm-down`. For a three-field form this is unlikely to be a real trap, unlike a long settings page — I did not verify this in a mobile viewport, so I'm naming a risk to check, not a confirmed defect.
 
-##### i18n & RTL
+##### [HISTORICAL] i18n & RTL
 
 See Part 4 for the full treatment. Summary: **this modal does not currently trigger either of the two known codebase-wide RTL traps.**
 
 ---
 
-#### Part 2 — Best practices
+#### [HISTORICAL] Part 2 — Best practices
 
 **The save model that actually works.** Explicit save is right for this form — three unrelated fields plus a preference, edited in a burst and left alone. Autosave-on-blur is right for a *single* field edited in isolation with instant feedback (a display-name row on its own settings line) — it fails exactly where this form lives, because autosaving field 1 while the reader is still typing field 3 either fires redundant requests or leaves them unsure what "saved" covers. This form's real problem isn't the choice of explicit save — it's explicit save with no dirty-tracking and a dismissible-by-default modal (Mistake #7), which gets the worst of both worlds.
 
@@ -3283,7 +3332,7 @@ See Part 4 for the full treatment. Summary: **this modal does not currently trig
 
 ---
 
-#### Part 3 — Contested ground
+#### [HISTORICAL] Part 3 — Contested ground
 
 **Modal vs. dedicated page vs. tabbed settings.**
 - *A (modal):* preserves the reader's context; right for a short form.
@@ -3307,7 +3356,7 @@ See Part 4 for the full treatment. Summary: **this modal does not currently trig
 
 ---
 
-#### Part 4 — RTL & bilingual failure modes
+#### [HISTORICAL] Part 4 — RTL & bilingual failure modes
 
 Checked one by one against this surface:
 
@@ -3327,7 +3376,7 @@ Checked one by one against this surface:
 
 ---
 
-#### Part 5 — Verdict on our current profile modal
+#### [HISTORICAL] Part 5 — Verdict on our current profile modal
 
 Ranked worst first:
 
@@ -3354,7 +3403,7 @@ Ranked worst first:
 
 ---
 
-## Appendix D — Adversarial debate of this plan
+## [HISTORICAL] Appendix D — Adversarial debate of this plan
 
 **Implementer:** OpenCode CLI · `openai/gpt-5.6-terra`, reasoning effort **xhigh**, `plan` agent (read-only)
 **Dispatched:** 2026-08-23 · **Working tree:** untouched
@@ -3463,7 +3512,7 @@ The existing system supports this direction: motion tokens are already defined i
 
 ---
 
-## Appendix E — Migration SQL specs
+## [HISTORICAL] Appendix E — Migration SQL specs
 
 **Implementer:** OpenCode CLI · `openai/gpt-5.6-sol`, reasoning effort **xhigh**, `plan` agent (read-only)
 **Dispatched:** 2026-08-23 · **Working tree:** untouched

@@ -1,4 +1,30 @@
-# Admin People Pager — Implementation Plan
+---
+authority: historical
+status: superseded
+do_not_implement: true
+archived: 2026-08-17
+supersedes_note: >
+  This document is a finished plan. Parts of it were reversed before shipping.
+  It is a record of what was decided and what it cost, not a specification.
+live_authority:
+  - docs/ARCHITECTURE.md
+  - supabase/README.md
+  - DESIGN.md
+---
+
+> [!CAUTION]
+> **You are reading history, not a specification.** Do not implement anything found
+> in this file without first confirming it against `docs/ARCHITECTURE.md` or the code.
+> Every heading below is prefixed `[HISTORICAL]` so a search result cannot be mistaken
+> for current design.
+
+STATUS: HISTORICAL RECORD — implemented and landed 2026-08-17. Archived 2026-08-23.
+Nothing here is an instruction. This plan is self-consistent and contradicts nothing in the
+current code; it is archived because it is finished, not because it went wrong. The one
+deviation it records — the deferred `pg_trgm` index — is still deferred.
+Live rules: `docs/ARCHITECTURE.md`, `supabase/README.md`.
+
+# [HISTORICAL] Admin People Pager — Implementation Plan
 
 **Status:** Implemented and landed 2026-08-17 — migration, backend, and frontend all committed and
 independently reviewed post-implementation (§14). See §14 for the one real deviation from plan (the
@@ -41,7 +67,7 @@ truncation**, the actual severity, since a partial page looks identical to a com
 
 ---
 
-## 0. Verified against the current source (not taken on either report's word)
+## [HISTORICAL] 0. Verified against the current source (not taken on either report's word)
 
 | Claim | File:Line | Status |
 |---|---|---|
@@ -57,7 +83,7 @@ truncation**, the actual severity, since a partial page looks identical to a com
 
 ---
 
-## 1. Architecture: offset/limit pagination, not keyset — locked
+## [HISTORICAL] 1. Architecture: offset/limit pagination, not keyset — locked
 
 Both independent passes converged on this without seeing each other's output.
 
@@ -100,7 +126,7 @@ migration as the trigram index (§7).
 
 ---
 
-## 2. UI shape — locked, including full visual/interaction design
+## [HISTORICAL] 2. UI shape — locked, including full visual/interaction design
 
 **How this section was built — a third independent pass, this time on the visual design itself.**
 After the functional plan (§0–§1, §3–§12) was locked, a further two-stage pipeline refined its
@@ -151,7 +177,7 @@ functional plan's own cross-check note in §13):
    the CSS actually enforces (this repo's `test_css_contract.py` checks logical-property patterns,
    not full accessibility conformance — confirmed by reading the test file directly).
 
-### DOM shape and ARIA
+### [HISTORICAL] DOM shape and ARIA
 
 ```text
 nav#people-pager.admin-pager
@@ -186,7 +212,7 @@ Changing it resets `offset` to 0 and refetches, sharing the same invalidation pa
 change (§4–§5). **Stays enabled while a request is loading** — see correction #6 above. Not
 persisted across reloads (cheap `localStorage` follow-up if ever wanted; not built now).
 
-### Loading treatment — a quiet, threshold-delayed signal, not a skeleton or spinner
+### [HISTORICAL] Loading treatment — a quiet, threshold-delayed signal, not a skeleton or spinner
 
 Evaluated and rejected: skeleton rows (row-jump layout jitter, high DOM churn, flashes on fast
 queries), a centered spinner (obscures the data an operator needs to keep reading), a bare
@@ -211,7 +237,7 @@ and locked: tonal table dimming plus a top hairline pulse, both delayed 100ms:**
    `prefers-reduced-motion` rule in `base.css` already collapses these to near-instant for
    motion-sensitive operators — confirmed directly, no new reduced-motion rule needed).
 
-### Rebuild vs. in-place update — kept as rebuild, with explicit focus restoration
+### [HISTORICAL] Rebuild vs. in-place update — kept as rebuild, with explicit focus restoration
 
 `renderUsers()` already clears and rebuilds `#people-list` on every render; changing that render
 boundary to an in-place update is a larger change than this feature justifies, so the pager is
@@ -223,13 +249,13 @@ makes **focus retention a required, explicit step**, not a side effect:
   disabled; if it was `#people-prev`/`#people-next` and that button is now disabled at a boundary,
   focus `#people-range-status` instead (works only because of the `tabIndex = -1` fix above).
 
-### Structural prerequisite
+### [HISTORICAL] Structural prerequisite
 
 The corrected CSS's loading indicator depends on a `div.admin-table-wrapper` around the table,
 which **does not exist yet** in the current `ui.js` — adding it is part of this feature's frontend
 work (§12 step 4), not a pre-existing element being reused.
 
-### Corrected CSS (`static/css/admin.css`)
+### [HISTORICAL] Corrected CSS (`static/css/admin.css`)
 
 ```css
 /* ── Admin People Pager ─────────────────────────────────────────────────── */
@@ -466,7 +492,7 @@ class (`.admin-input`, `.admin-cell-machine`, `.form-select`) was verified direc
 `tokens.css`/`admin.css`/`components.css` — none invented. Zero new dependencies, zero new icon
 assets (`chevron-right` already exists in the runtime icon registry), zero webfonts.
 
-### Corrected DOM builder (`static/js/admin/ui.js`)
+### [HISTORICAL] Corrected DOM builder (`static/js/admin/ui.js`)
 
 Requires importing `iconElement` alongside the existing `iconMarkup`:
 `import { iconElement, iconMarkup } from '../modules/icons.js';` — `iconElement()` parses only
@@ -586,7 +612,7 @@ hardcoded physical direction.
 
 ---
 
-## 3. Client state management — locked
+## [HISTORICAL] 3. Client state management — locked
 
 Keep pager state in the closure of `initPeopleTab()`, beside the existing `searchTimer`,
 `opening`, and view-generation variables — not in a module global, not in `ui.js` (which renders
@@ -640,7 +666,7 @@ reset `offset` to `0` and refetch once unconditionally in that case, rather than
 
 ---
 
-## 4. Concurrency / race protection — locked, converged independently
+## [HISTORICAL] 4. Concurrency / race protection — locked, converged independently
 
 Two concrete failure classes, both real:
 
@@ -685,7 +711,7 @@ query/offset.
 
 ---
 
-## 5. Search debounce and reset — locked
+## [HISTORICAL] 5. Search debounce and reset — locked
 
 Keep the existing 300ms debounce, but **invalidate synchronously on keystroke, not only when the
 timer fires**: normalize the value, clear the existing timer, reset `offset` to 0 immediately, and
@@ -701,7 +727,7 @@ table and range atomically.
 
 ---
 
-## 6. i18n / RTL markup — locked
+## [HISTORICAL] 6. i18n / RTL markup — locked
 
 Six new keys under `runtime.admin.people.*` in both `web/i18n/en.yaml` and `web/i18n/ar.yaml`:
 
@@ -736,7 +762,7 @@ under `dir="rtl"`. Enforced by the existing `test_css_contract.py`.
 
 ---
 
-## 7. Database changes — migration applied 2026-08-17, one item deferred by a real platform wall
+## [HISTORICAL] 7. Database changes — migration applied 2026-08-17, one item deferred by a real platform wall
 
 The current predicate is a leading-wildcard substring search:
 `u.email::text ILIKE '%' || p_search || '%'`. A B-tree index cannot support that shape — Postgres
@@ -794,7 +820,7 @@ the new overflow cap there once, not twice.
 
 ---
 
-## 8. Security posture — audited, no gaps requiring a fix beyond §7
+## [HISTORICAL] 8. Security posture — audited, no gaps requiring a fix beyond §7
 
 Full pass against `web/api/admin.py` and the RPC's grants, confirming what's already solid before
 adding anything:
@@ -818,7 +844,7 @@ No new security work is required beyond what §7 already covers.
 
 ---
 
-## 9. Test coverage — locked
+## [HISTORICAL] 9. Test coverage — locked
 
 Follow the existing split exactly.
 
@@ -876,7 +902,7 @@ check — that's a database-level validation, not something the in-memory backen
 
 ---
 
-## 10. `ASSET_VERSION` — locked
+## [HISTORICAL] 10. `ASSET_VERSION` — locked
 
 This repo requires bumping `ASSET_VERSION` in `web/api/app.py` on any commit touching CSS or JS.
 This implementation will touch:
@@ -899,7 +925,7 @@ template-only changes do not by themselves trigger this rule, but the JS/CSS abo
 
 ---
 
-## 11. Decisions — all resolved 2026-08-17, step 1 (migration) applied and verified live
+## [HISTORICAL] 11. Decisions — all resolved 2026-08-17, step 1 (migration) applied and verified live
 
 Each decision is discussed in full in its thematic section (§1–§7); this table is a summary index,
 not a second copy of record. §2 (CSS/DOM) and §7 (SQL) hold the authoritative, copy-from-here
@@ -919,7 +945,7 @@ No open decisions remain.
 
 ---
 
-## 12. Execution order (each step independently shippable/testable)
+## [HISTORICAL] 12. Execution order (each step independently shippable/testable)
 
 1. **Migration** — ✅ **applied 2026-08-17** as
    `20260817161427_people_pager_sort_tiebreaker_and_search_escape`: tie-breaker sort + `p_search`
@@ -946,7 +972,7 @@ whichever of 1–5 it's testing.
 
 ---
 
-## 13. Where the multi-pass cross-checks earned their cost
+## [HISTORICAL] 13. Where the multi-pass cross-checks earned their cost
 
 Two separate cross-check rounds went into this document; both paid for themselves.
 
@@ -983,7 +1009,7 @@ phase" means for this feature, not a summary of what one model produced.
 
 ---
 
-## 14. Implementation, landed 2026-08-17
+## [HISTORICAL] 14. Implementation, landed 2026-08-17
 
 Three commits, each independently re-verified against source and re-tested before being committed
 — the same discipline as the planning phase, now applied to code:

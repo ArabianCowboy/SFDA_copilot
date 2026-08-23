@@ -1,3 +1,6 @@
+STATUS: CURRENT AUTHORITY — migration process and current schema shape.
+Last verified against the live project 2026-08-23.
+
 # Supabase schema
 
 The database is part of this application, so its schema lives here in version control.
@@ -26,8 +29,14 @@ rule:
 
 `apply_migration` assigns the version (a UTC timestamp) when it runs, so the sequence is
 the order things were *actually applied* — which is not necessarily the order they were
-written. Name the file after applying, or rename it to match. That way `list_migrations`
-and `ls migrations/` can be read side by side and any disagreement is a real one.
+written. That way `list_migrations` and `ls migrations/` can be read side by side and any
+disagreement is a real one.
+
+**This makes renaming a mandatory step of every migration, not a tidy-up.** The applied
+name does not exist until after you apply, so the sequence is always: write it, apply it,
+read the version back from `list_migrations`, rename the file. Skipping the fourth step is
+not a small omission — six files had drifted before this was spelled out, and unpicking
+them needed a commit of its own.
 
 Migrations that predate this directory (everything up to `20260813101816`) were applied
 directly and are recorded only in `supabase_migrations.schema_migrations`. They are listed
@@ -37,6 +46,13 @@ re-deriving them would produce files that were never actually run.
 ## Rules
 
 1. **One concern per migration**, and the name says which.
+   *The one exception this project has actually met:* a change no writer can be sequenced
+   around. `20260822225415_profile_identity_atomic_cutover.sql` converts a column and
+   rewrites `handle_new_user`, `admin_update_profile` and the grants in one file, because a
+   generated column rejects all three existing writes — sequencing the conversion first
+   breaks signup and both save paths for the length of the deployment. If you believe you
+   are in that case, trace **every** writer of the column first, and say in the file header
+   why it could not be split. Rule 2 still applies: a destructive step never joins it.
 2. **Destructive changes go in their own migration.** A `drop` should never ride along with
    a fix that needs to be applied promptly and without hesitation — the two have different
    approval costs, and coupling them raises the cost of the urgent one to that of the
@@ -58,6 +74,44 @@ re-deriving them would produce files that were never actually run.
 7. **Destructive changes state what they checked.** Dropping a table means recording the
    row count, the foreign keys in both directions, the triggers, and the grep that proved
    nothing reads it — in the migration, where the next reader will find it.
+
+## The RPC contract
+
+Every `security definer` function in this schema ships with all five of these. They are
+one rule, not five, because any one of them missing re-opens the hole the others close:
+
+1. `security definer`
+2. `set search_path = ''`, with every name fully qualified (rule 3)
+3. `revoke execute` from `anon`, `authenticated` and `public`
+4. `grant execute` to `service_role` only
+5. `p_owner_id` as the first argument, **filtered on inside the function**
+
+Two functions are deliberately exempt from 3 and 4, and both are listed in the advisor
+table above with the reasoning: `is_active_account()` (the RLS policies call it, and
+Postgres evaluates a `USING` clause as the querying role) and
+`update_own_preferences(jsonb)` (being reachable from the browser is the whole point).
+
+More:
+
+- **Prefer `revoke all` over named-verb revokes.** A named revoke on `chat_archive` left
+  `REFERENCES` and `TRIGGER` standing, which `20260820213833` had to clean up. Revoke
+  everything, then grant back exactly what is needed.
+- **No column grant for a feature that does not exist.** Do not `grant update (title)`
+  before a rename control ships; an untested writable column is surface for nothing.
+- **Changing a function's argument list is a `drop` plus a `create`, in one file and one
+  transaction** — never `create or replace`. Overloads resolve by argument count, so the
+  old signature stays callable beside the new one and PostgREST calls become ambiguous.
+  Follow the shape of `20260821145416`.
+- **Schema before code.** The migration lands first. A route calling a function that does
+  not exist yet fails loudly; a function nothing calls yet is harmless.
+- **PostgREST serves from a cached schema.** Confirm the reload happened after applying —
+  from Flask's side a stale cache and a missing migration look identical.
+- **No explicit `begin;`/`commit;` in a migration file.** `apply_migration` runs each file
+  as a single transaction and owns it; one failing statement rolls back the whole file.
+- **No `CASCADE` on a `drop column`.** An unrecorded dependent object should abort the
+  migration, not be silently dropped with it.
+- **Round-trip a risky migration in a deliberately aborted transaction first**, and re-run
+  the advisors before it lands.
 
 ## Verifying the database matches this directory
 
@@ -101,3 +155,14 @@ applied.
 `public.users` was dropped on 2026-08-14. It had never held a row: the signup trigger's
 insert into it was added on 2025-12-07, three weeks after the most recent signup, so it
 never once ran. `profiles` is the only identity table.
+
+---
+
+## Before your next migration
+
+Two of the eight known rule collisions in this repository live in this file — the
+one-concern rule versus the atomic cutover, and the filename rule versus the fact that
+the name only exists after applying. Both are written above. The other six, and the
+register they are kept in, are in
+[`docs/ARCHITECTURE.md` → *Rules that collide*](../docs/ARCHITECTURE.md#rules-that-collide).
+Read it before you write the migration, not after it surprises you.
