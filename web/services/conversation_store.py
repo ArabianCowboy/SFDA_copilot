@@ -27,7 +27,6 @@ import json
 import logging
 import threading
 from collections import OrderedDict
-from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -51,9 +50,9 @@ class ConversationStore:
     """
 
     def __init__(self, max_conversations: int = 500, ttl_seconds: int = 3600) -> None:
-        self._data: OrderedDict[
-            tuple[str | None, str], tuple[float, list[dict[str, str]]]
-        ] = OrderedDict()
+        self._data: OrderedDict[tuple[str | None, str], tuple[float, list[dict[str, str]]]] = (
+            OrderedDict()
+        )
         self._max = max_conversations
         self._ttl = ttl_seconds
         self._lock = threading.Lock()
@@ -62,6 +61,7 @@ class ConversationStore:
     @staticmethod
     def _now() -> float:
         import time
+
         return time.monotonic()
 
     def _evict(self) -> None:
@@ -140,7 +140,9 @@ class ConversationStore:
             if key in self._data:
                 return
             self._data[key] = (self._now(), list(cookie_history))
-            logger.info("Adopted %d cookie message(s) into the conversation store.", len(cookie_history))
+            logger.info(
+                "Adopted %d cookie message(s) into the conversation store.", len(cookie_history)
+            )
 
     def replace(
         self,
@@ -237,7 +239,9 @@ def _clamp(message: dict[str, str], limit: int) -> dict[str, str]:
     return {**message, "content": content[:head] + ELISION_NOTICE}
 
 
-def _truncate(history: list[dict[str, str]], max_pairs: int, max_chars: int) -> list[dict[str, str]]:
+def _truncate(
+    history: list[dict[str, str]], max_pairs: int, max_chars: int
+) -> list[dict[str, str]]:
     """Trim to max_pairs exchanges, then to max_chars of serialized JSON.
 
     THE NEWEST EXCHANGE ALWAYS SURVIVES. That invariant is the whole point of
@@ -258,7 +262,7 @@ def _truncate(history: list[dict[str, str]], max_pairs: int, max_chars: int) -> 
     # Half the budget, so a clamped pair lands near max_chars rather than at
     # twice it. This is what keeps the floor below from being unbounded.
     per_message = max_chars // 2
-    trimmed = [_clamp(m, per_message) for m in history[-(max_pairs * 2):]]
+    trimmed = [_clamp(m, per_message) for m in history[-(max_pairs * 2) :]]
     # ensure_ascii=False: the default True escapes every non-ASCII character
     # (e.g. Arabic) to a 6-char \uXXXX sequence, so a ~950-char Arabic
     # exchange would measure ~4,700 chars against a 3,500 budget and the loop

@@ -19,7 +19,6 @@ import pytest
 from web.api.app import create_app
 from web.services.identity_cache import IdentityFlags, IdentityFlagsCache
 
-
 AUTH = {"Authorization": "Bearer fake_token"}
 ADMIN = {"Authorization": "Bearer fake_admin_token"}
 DISABLED = {"Authorization": "Bearer fake_disabled_token"}
@@ -99,6 +98,7 @@ def test_a_disabled_reader_stays_signed_in(client):
     with client:
         client.post("/api/chat", json={"query": "hello"}, headers=DISABLED)
         from flask import session
+
         assert session.get("user_email") == "disabled@example.com"
 
 
@@ -278,9 +278,9 @@ def test_invalidating_beats_a_lookup_already_in_flight(monkeypatch):
     monkeypatch.setattr(IdentityFlagsCache, "_now", staticmethod(lambda: clock["t"]))
     cache = IdentityFlagsCache()
 
-    started = cache.begin_fetch()   # a lookup begins
+    started = cache.begin_fetch()  # a lookup begins
     clock["t"] += 1
-    cache.invalidate("u1")          # an operator demotes them meanwhile
+    cache.invalidate("u1")  # an operator demotes them meanwhile
     clock["t"] += 1
 
     assert cache.put(_flags("u1", "admin"), fetched_at=started) is False
@@ -349,11 +349,17 @@ def test_a_missing_profile_row_is_cached_because_it_is_a_stable_fact(monkeypatch
 def test_identity_says_nothing_about_anyone_else(client):
     body = client.get("/api/identity", headers=ADMIN).get_json()
     assert set(body) == {
-        "user_id", "email", "role", "tier", "is_admin", "is_disabled",
+        "user_id",
+        "email",
+        "role",
+        "tier",
+        "is_admin",
+        "is_disabled",
         # Both back the /account standing line. Null under TESTING — no
         # service-role key means get_admin_backend() returns None — which is
         # the honest answer, not an omission of the key.
-        "created_at", "conversation_count",
+        "created_at",
+        "conversation_count",
     }
     assert body["created_at"] is None
     assert body["conversation_count"] is None

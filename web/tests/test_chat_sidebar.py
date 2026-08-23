@@ -38,6 +38,9 @@ from web.tests.conftest import (
     stored_session,
 )
 
+# datetime.UTC is Python 3.11+; the VPS production floor is 3.10.
+UTC = timezone.utc
+
 pytestmark = pytest.mark.browser
 
 
@@ -49,7 +52,7 @@ ROW = f"{HISTORY} .history-item"
 
 
 def days_ago(count: int) -> str:
-    return (datetime.now(timezone.utc) - timedelta(days=count)).isoformat()
+    return (datetime.now(UTC) - timedelta(days=count)).isoformat()
 
 
 def _sign_in(page: Page) -> None:
@@ -75,11 +78,15 @@ def _with_sessions(page: Page, sessions, **kwargs) -> Page:
 
 # ── The list ─────────────────────────────────────────────────────────────────
 
+
 def test_conversations_are_listed_with_their_titles(browser_page: Page):
-    page = _with_sessions(browser_page, [
-        stored_session("11111111-1111-4111-8111-111111111111", "Bioequivalence waivers"),
-        stored_session("22222222-2222-4222-8222-222222222222", "eCTD module 3"),
-    ])
+    page = _with_sessions(
+        browser_page,
+        [
+            stored_session("11111111-1111-4111-8111-111111111111", "Bioequivalence waivers"),
+            stored_session("22222222-2222-4222-8222-222222222222", "eCTD module 3"),
+        ],
+    )
 
     expect(page.locator(ROW)).to_have_count(2)
     expect(page.locator(ROW).first).to_contain_text("Bioequivalence waivers")
@@ -93,15 +100,21 @@ def test_conversations_are_grouped_by_day(browser_page: Page):
     toggle reloads the page — so a cached relative string is stale by
     construction. Five headings have none of those problems.
     """
-    page = _with_sessions(browser_page, [
-        stored_session("11111111-1111-4111-8111-111111111111", "Asked today"),
-        stored_session("22222222-2222-4222-8222-222222222222", "Asked yesterday",
-                       updated_at=days_ago(1)),
-        stored_session("33333333-3333-4333-8333-333333333333", "Asked last week",
-                       updated_at=days_ago(4)),
-        stored_session("44444444-4444-4444-8444-444444444444", "Asked last year",
-                       updated_at=days_ago(400)),
-    ])
+    page = _with_sessions(
+        browser_page,
+        [
+            stored_session("11111111-1111-4111-8111-111111111111", "Asked today"),
+            stored_session(
+                "22222222-2222-4222-8222-222222222222", "Asked yesterday", updated_at=days_ago(1)
+            ),
+            stored_session(
+                "33333333-3333-4333-8333-333333333333", "Asked last week", updated_at=days_ago(4)
+            ),
+            stored_session(
+                "44444444-4444-4444-8444-444444444444", "Asked last year", updated_at=days_ago(400)
+            ),
+        ],
+    )
 
     headings = page.locator(f"{HISTORY} .history-group")
     expect(headings).to_have_count(4)
@@ -115,9 +128,12 @@ def test_an_untitled_conversation_gets_a_localised_fallback(browser_page: Page):
     """`title` is null for sessions written before first-turn titling shipped.
     The fallback is rendered client-side rather than substituted on the server,
     which would put English in an Arabic sidebar."""
-    page = _with_sessions(browser_page, [
-        stored_session("11111111-1111-4111-8111-111111111111", None),
-    ])
+    page = _with_sessions(
+        browser_page,
+        [
+            stored_session("11111111-1111-4111-8111-111111111111", None),
+        ],
+    )
 
     expect(page.locator(ROW).first).to_contain_text("Untitled conversation")
 
@@ -138,9 +154,12 @@ def test_a_reader_with_no_conversations_sees_the_questions_instead(browser_page:
 
 
 def test_a_reader_with_conversations_lands_on_them(browser_page: Page):
-    page = _with_sessions(browser_page, [
-        stored_session("11111111-1111-4111-8111-111111111111", "Previous work"),
-    ])
+    page = _with_sessions(
+        browser_page,
+        [
+            stored_session("11111111-1111-4111-8111-111111111111", "Previous work"),
+        ],
+    )
 
     expect(page.locator(HISTORY)).to_be_visible()
     expect(page.locator(FAQ)).to_be_hidden()
@@ -150,9 +169,12 @@ def test_the_tabs_switch_the_column_without_losing_either_list(browser_page: Pag
     """Both panels stay in the DOM. Rendering only the active one would throw
     away the other's scroll position on every switch, and would make the FAQ rail
     — filled once, on sign-in — need refetching each time."""
-    page = _with_sessions(browser_page, [
-        stored_session("11111111-1111-4111-8111-111111111111", "Previous work"),
-    ])
+    page = _with_sessions(
+        browser_page,
+        [
+            stored_session("11111111-1111-4111-8111-111111111111", "Previous work"),
+        ],
+    )
 
     page.locator(EXPLORE_TAB).first.click()
     expect(page.locator(FAQ)).to_be_visible()
@@ -164,14 +186,15 @@ def test_the_tabs_switch_the_column_without_losing_either_list(browser_page: Pag
 
 
 def test_an_unreachable_store_says_so_rather_than_showing_an_empty_list(browser_page: Page):
-    """"You have no saved conversations" is a claim about the READER. Making it
+    """ "You have no saved conversations" is a claim about the READER. Making it
     because the store was unreachable is the quiet untruth `/api/chat/history`
     answers 503 rather than [] to avoid, and the sidebar inherits the rule."""
     page = browser_page
     page.route(
         "**/api/chat/sessions",
         lambda route: route.fulfill(
-            status=503, content_type="application/json",
+            status=503,
+            content_type="application/json",
             body='{"error":"nope","code":"history_unavailable"}',
         ),
     )
@@ -196,23 +219,30 @@ def test_load_more_appears_only_when_the_server_offers_a_cursor(browser_page: Pa
 
 
 def test_no_load_more_without_a_cursor(browser_page: Page):
-    page = _with_sessions(browser_page, [
-        stored_session("11111111-1111-4111-8111-111111111111", "One"),
-    ])
+    page = _with_sessions(
+        browser_page,
+        [
+            stored_session("11111111-1111-4111-8111-111111111111", "One"),
+        ],
+    )
     expect(page.locator(f"{HISTORY} .history-more")).to_have_count(0)
 
 
 # ── Switching ────────────────────────────────────────────────────────────────
 
+
 def test_opening_a_conversation_draws_its_transcript(browser_page: Page):
     page = browser_page
     session_id = "11111111-1111-4111-8111-111111111111"
-    route_chat_sessions(page, chat_sessions([
-        stored_session(session_id, "Stored conversation"),
-    ]))
-    route_chat_history(page, chat_history(
-        stored_answer("A stored question", "A stored answer")
-    ))
+    route_chat_sessions(
+        page,
+        chat_sessions(
+            [
+                stored_session(session_id, "Stored conversation"),
+            ]
+        ),
+    )
+    route_chat_history(page, chat_history(stored_answer("A stored question", "A stored answer")))
 
     page.goto("/")
     _sign_in(page)
@@ -232,13 +262,18 @@ def test_the_open_conversation_is_marked_active(browser_page: Page):
     knows which conversation this tab is in from its own route, which a
     shared cookie field cannot represent per-tab at all."""
     session_id = "11111111-1111-4111-8111-111111111111"
-    route_chat_sessions(browser_page, chat_sessions([
-        stored_session(session_id, "The current one"),
-        stored_session("22222222-2222-4222-8222-222222222222", "Another"),
-    ]))
-    route_chat_history(browser_page, chat_history(
-        stored_answer("A stored question", "A stored answer")
-    ))
+    route_chat_sessions(
+        browser_page,
+        chat_sessions(
+            [
+                stored_session(session_id, "The current one"),
+                stored_session("22222222-2222-4222-8222-222222222222", "Another"),
+            ]
+        ),
+    )
+    route_chat_history(
+        browser_page, chat_history(stored_answer("A stored question", "A stored answer"))
+    )
 
     browser_page.goto(f"/c/{session_id}")
     _sign_in(browser_page)
@@ -267,13 +302,14 @@ def test_switching_clears_the_previous_conversations_evidence(browser_page: Page
     page.route(
         "**/api/chat/stream",
         lambda route: route.fulfill(
-            status=200, content_type="text/event-stream",
+            status=200,
+            content_type="text/event-stream",
             body=SSE_CHAT_MOCK_WITH_SOURCES,
         ),
     )
-    route_chat_history(page, chat_history(
-        stored_answer("A different question", "A different answer")
-    ))
+    route_chat_history(
+        page, chat_history(stored_answer("A different question", "A different answer"))
+    )
 
     page.goto("/")
     _sign_in(page)
@@ -295,6 +331,7 @@ def test_switching_clears_the_previous_conversations_evidence(browser_page: Page
 
 
 # ── Renaming ─────────────────────────────────────────────────────────────────
+
 
 def test_renaming_happens_in_the_row_rather_than_in_a_dialog(browser_page: Page):
     """A modal for this would take the reader out of the column to answer a
@@ -323,10 +360,9 @@ def test_a_rename_shows_what_the_server_stored(browser_page: Page):
     page.route(
         f"**/api/chat/sessions/{session_id}",
         lambda route: route.fulfill(
-            status=200, content_type="application/json",
-            body=json.dumps(
-                {"ok": True, "id": session_id, "title": "Trimmed by the server"}
-            ),
+            status=200,
+            content_type="application/json",
+            body=json.dumps({"ok": True, "id": session_id, "title": "Trimmed by the server"}),
         ),
     )
     page.goto("/")
@@ -342,8 +378,9 @@ def test_a_rename_shows_what_the_server_stored(browser_page: Page):
     # expect poll and a round trip — the shape that passes alone and fails under
     # a loaded suite, which is exactly how this one first went red.
     with page.expect_response(
-        lambda response: "/api/chat/sessions/" in response.url
-        and response.request.method == "PATCH"
+        lambda response: (
+            "/api/chat/sessions/" in response.url and response.request.method == "PATCH"
+        )
     ):
         page.locator(f'{HISTORY} [data-history-action="rename-save"]').first.click()
 
@@ -371,14 +408,13 @@ def test_escape_abandons_a_rename_without_closing_the_sidebar(browser_page: Page
 
 # ── Deleting ─────────────────────────────────────────────────────────────────
 
+
 def test_deleting_asks_first_and_can_be_declined(browser_page: Page):
     session_id = "11111111-1111-4111-8111-111111111111"
     page = _with_sessions(browser_page, [stored_session(session_id, "Keep me")])
 
     page.locator(f'{ROW} [data-history-action="delete"]').first.click()
-    expect(page.locator(f"{HISTORY} .history-confirm")).to_contain_text(
-        "Delete this conversation?"
-    )
+    expect(page.locator(f"{HISTORY} .history-confirm")).to_contain_text("Delete this conversation?")
 
     page.locator(f'{HISTORY} [data-history-action="delete-cancel"]').first.click()
     expect(page.locator(f"{HISTORY} .history-confirm")).to_have_count(0)
@@ -388,14 +424,20 @@ def test_deleting_asks_first_and_can_be_declined(browser_page: Page):
 def test_confirming_removes_the_row(browser_page: Page):
     session_id = "11111111-1111-4111-8111-111111111111"
     page = browser_page
-    route_chat_sessions(page, chat_sessions([
-        stored_session(session_id, "Doomed"),
-        stored_session("22222222-2222-4222-8222-222222222222", "Survivor"),
-    ]))
+    route_chat_sessions(
+        page,
+        chat_sessions(
+            [
+                stored_session(session_id, "Doomed"),
+                stored_session("22222222-2222-4222-8222-222222222222", "Survivor"),
+            ]
+        ),
+    )
     page.route(
         f"**/api/chat/sessions/{session_id}",
         lambda route: route.fulfill(
-            status=200, content_type="application/json",
+            status=200,
+            content_type="application/json",
             body=json.dumps({"ok": True, "id": session_id}),
         ),
     )
@@ -410,6 +452,7 @@ def test_confirming_removes_the_row(browser_page: Page):
 
 
 # ── The in-flight refusal ────────────────────────────────────────────────────
+
 
 def test_sidebar_actions_are_refused_while_an_answer_is_streaming(browser_page: Page):
     """THE AFFORDANCE HALF of the race the server also refuses with 409.
@@ -442,6 +485,7 @@ def test_sidebar_actions_are_refused_while_an_answer_is_streaming(browser_page: 
 
 # ── Two rendered copies, one state ───────────────────────────────────────────
 
+
 def test_the_sidebar_renders_twice_without_duplicating_an_id(browser_page: Page):
     """`_sidebar.html` renders as the desktop aside AND inside the offcanvas.
 
@@ -450,9 +494,12 @@ def test_the_sidebar_renders_twice_without_duplicating_an_id(browser_page: Page)
     document, so an unsuffixed pair would make the offcanvas tab drive the
     desktop panel — silently, and only for readers using a screen reader.
     """
-    page = _with_sessions(browser_page, [
-        stored_session("11111111-1111-4111-8111-111111111111", "A conversation"),
-    ])
+    page = _with_sessions(
+        browser_page,
+        [
+            stored_session("11111111-1111-4111-8111-111111111111", "A conversation"),
+        ],
+    )
 
     duplicates = page.evaluate("""() => {
       const seen = new Map();
@@ -465,9 +512,12 @@ def test_the_sidebar_renders_twice_without_duplicating_an_id(browser_page: Page)
 
 
 def test_every_aria_reference_in_the_sidebar_resolves(browser_page: Page):
-    page = _with_sessions(browser_page, [
-        stored_session("11111111-1111-4111-8111-111111111111", "A conversation"),
-    ])
+    page = _with_sessions(
+        browser_page,
+        [
+            stored_session("11111111-1111-4111-8111-111111111111", "A conversation"),
+        ],
+    )
 
     unresolved = page.evaluate("""() => {
       const bad = [];
@@ -488,16 +538,22 @@ def test_every_aria_reference_in_the_sidebar_resolves(browser_page: Page):
 def test_both_sidebars_switch_tabs_together(browser_page: Page):
     """Tracked separately, the desktop aside and the offcanvas end up on
     different tabs — which a reader only discovers by resizing."""
-    page = _with_sessions(browser_page, [
-        stored_session("11111111-1111-4111-8111-111111111111", "A conversation"),
-    ])
+    page = _with_sessions(
+        browser_page,
+        [
+            stored_session("11111111-1111-4111-8111-111111111111", "A conversation"),
+        ],
+    )
 
     page.locator(EXPLORE_TAB).first.click()
 
     selected = page.evaluate("""() => [...document.querySelectorAll('.sidebar-tab')]
       .map(t => `${t.dataset.sidebarTab}:${t.getAttribute('aria-selected')}`)""")
     assert selected == [
-        "chats:false", "explore:true", "chats:false", "explore:true",
+        "chats:false",
+        "explore:true",
+        "chats:false",
+        "explore:true",
     ], selected
 
 
@@ -505,9 +561,12 @@ def test_the_tablist_is_one_tab_stop(browser_page: Page):
     """The ARIA authoring practice: only the selected tab is reachable with Tab,
     and the arrow keys move between them. Leaving both at 0 costs a keyboard
     reader an extra stop on every visit to this column."""
-    page = _with_sessions(browser_page, [
-        stored_session("11111111-1111-4111-8111-111111111111", "A conversation"),
-    ])
+    page = _with_sessions(
+        browser_page,
+        [
+            stored_session("11111111-1111-4111-8111-111111111111", "A conversation"),
+        ],
+    )
 
     indexes = page.evaluate("""() => [...document.querySelectorAll('#sidebar-tabs .sidebar-tab')]
       .map(t => t.tabIndex)""")
@@ -515,6 +574,7 @@ def test_the_tablist_is_one_tab_stop(browser_page: Page):
 
 
 # ── Bidirectional text ───────────────────────────────────────────────────────
+
 
 def test_a_title_carries_dir_auto_so_bidi_cannot_reorder_it(browser_page: Page):
     """Titles are reader input and routinely mix scripts — an Arabic question
@@ -525,10 +585,14 @@ def test_a_title_carries_dir_auto_so_bidi_cannot_reorder_it(browser_page: Page):
     codebase has already paid for once with an en-US time rendering as
     "AM 3:17:18" inside an Arabic transcript.
     """
-    page = _with_sessions(browser_page, [
-        stored_session("11111111-1111-4111-8111-111111111111",
-                       "متطلبات التسجيل وفق دليل SFDA-MDS-REQ"),
-    ])
+    page = _with_sessions(
+        browser_page,
+        [
+            stored_session(
+                "11111111-1111-4111-8111-111111111111", "متطلبات التسجيل وفق دليل SFDA-MDS-REQ"
+            ),
+        ],
+    )
 
     title = page.locator(f"{HISTORY} .history-item-title").first
     expect(title).to_have_attribute("dir", "auto")
@@ -536,9 +600,14 @@ def test_a_title_carries_dir_auto_so_bidi_cannot_reorder_it(browser_page: Page):
 
 def test_the_sidebar_mirrors_in_arabic(browser_page: Page):
     page = browser_page
-    route_chat_sessions(page, chat_sessions([
-        stored_session("11111111-1111-4111-8111-111111111111", "محادثة سابقة"),
-    ]))
+    route_chat_sessions(
+        page,
+        chat_sessions(
+            [
+                stored_session("11111111-1111-4111-8111-111111111111", "محادثة سابقة"),
+            ]
+        ),
+    )
     page.goto("/?lang=ar")
     _sign_in(page)
 

@@ -100,8 +100,9 @@ function bindToastHold(toast) {
   const hold = (channel) => () => {
     if (toast.classList.contains(CONFIG.CLASSES.HIDDEN)) return;
     const wasHeld = held();
-    if (channel === 'pointer') pointerHeld = true; else focusHeld = true;
-    if (wasHeld) return;                       // already stopped; do not subtract twice
+    if (channel === 'pointer') pointerHeld = true;
+    else focusHeld = true;
+    if (wasHeld) return; // already stopped; do not subtract twice
 
     clearTimeout(toastTimer);
     toastRemaining = Math.max(0, toastRemaining - (performance.now() - toastResumeAt));
@@ -110,8 +111,9 @@ function bindToastHold(toast) {
 
   const release = (channel) => () => {
     if (!held()) return;
-    if (channel === 'pointer') pointerHeld = false; else focusHeld = false;
-    if (held()) return;                        // the other channel still holds it
+    if (channel === 'pointer') pointerHeld = false;
+    else focusHeld = false;
+    if (held()) return; // the other channel still holds it
 
     toast.classList.remove(CONFIG.CLASSES.IS_HELD);
     if (!toast.classList.contains(CONFIG.CLASSES.HIDDEN)) armToastHide(toast, toastId);
@@ -144,7 +146,7 @@ export const ErrorHandler = {
       'for security purposes': I18n.t('auth.tooSoon'),
       'only request this after': I18n.t('auth.tooSoon'),
       'email rate limit exceeded': I18n.t('auth.emailUnavailable'),
-      'over_email_send_rate_limit': I18n.t('auth.emailUnavailable'),
+      over_email_send_rate_limit: I18n.t('auth.emailUnavailable'),
     };
     for (const key in errorMap) {
       if (message.includes(key)) return errorMap[key];
@@ -161,7 +163,12 @@ export const ErrorHandler = {
    * It stops being harmless the moment a toast carries an Undo — a status
    * toast fired seconds earlier would take the control away with it.
    */
-  showToast(message, isError = false, duration = CONFIG.TOAST_DURATION, { actionLabel, onAction } = {}) {
+  showToast(
+    message,
+    isError = false,
+    duration = CONFIG.TOAST_DURATION,
+    { actionLabel, onAction } = {},
+  ) {
     const toast = DOMCache.get(CONFIG.SELECTORS.TOAST);
     if (!toast) return;
 
@@ -258,12 +265,16 @@ export const ErrorHandler = {
       recoveryError.textContent = '';
     }
 
-    [CONFIG.SELECTORS.LOGIN_FORM, CONFIG.SELECTORS.SIGNUP_FORM,
-     CONFIG.SELECTORS.RESET_REQUEST_FORM, CONFIG.SELECTORS.RECOVERY_FORM]
-      .map(sel => DOMCache.get(sel))
+    [
+      CONFIG.SELECTORS.LOGIN_FORM,
+      CONFIG.SELECTORS.SIGNUP_FORM,
+      CONFIG.SELECTORS.RESET_REQUEST_FORM,
+      CONFIG.SELECTORS.RECOVERY_FORM,
+    ]
+      .map((sel) => DOMCache.get(sel))
       .filter(Boolean)
-      .forEach(form => {
-        form.querySelectorAll(`.${CONFIG.CLASSES.INVALID}`).forEach(input => {
+      .forEach((form) => {
+        form.querySelectorAll(`.${CONFIG.CLASSES.INVALID}`).forEach((input) => {
           input.classList.remove(CONFIG.CLASSES.INVALID);
         });
         form.classList.remove('was-validated');

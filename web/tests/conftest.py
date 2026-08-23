@@ -10,6 +10,8 @@ from threading import Thread
 import pytest
 from werkzeug.serving import make_server
 
+# datetime.UTC is Python 3.11+; the VPS production floor is 3.10.
+UTC = timezone.utc
 
 SUPABASE_BROWSER_MOCK = """
 // The mock previously kept its session in a page-scoped object alone, so a
@@ -279,12 +281,9 @@ _SSE_ANSWER = "".join(_delta_sentence(i) for i in range(1, 26)).strip()
 # answer the model simply did not cite. The previous "uncited" fixture reused
 # the cited text, so it carried [1] and [3] and never actually exercised the
 # marker-free path.
-_SSE_UNCITED_ANSWER = (
-    "I cannot answer based on the given information. " * 3
-).strip()
+_SSE_UNCITED_ANSWER = ("I cannot answer based on the given information. " * 3).strip()
 _SSE_DELTAS = "".join(
-    "event: delta\ndata: %s\n\n" % json.dumps({"t": _delta_sentence(i)})
-    for i in range(1, 26)
+    "event: delta\ndata: {}\n\n".format(json.dumps({"t": _delta_sentence(i)})) for i in range(1, 26)
 )
 
 
@@ -295,13 +294,15 @@ def _sse_final(response: str, sources: list, cited: list, retrieved: int) -> str
     exists there is no way to know which passages it used, and shipping all of
     them anyway is what put a full deck of cards under refusals.
     """
-    return "event: final\ndata: %s\n\n" % json.dumps(
-        {
-            "response": response,
-            "sources": sources,
-            "cited": cited,
-            "retrieved": retrieved,
-        }
+    return "event: final\ndata: {}\n\n".format(
+        json.dumps(
+            {
+                "response": response,
+                "sources": sources,
+                "cited": cited,
+                "retrieved": retrieved,
+            }
+        )
     )
 
 
@@ -322,9 +323,7 @@ def _sse_exchange(response: str, sources: list, cited: list, retrieved: int) -> 
 
 
 # An answer citing two of the eight retrieved passages.
-SSE_CHAT_MOCK_WITH_SOURCES = _sse_exchange(
-    _SSE_ANSWER, _SSE_CITED_SOURCES, _SSE_CITED, 8
-)
+SSE_CHAT_MOCK_WITH_SOURCES = _sse_exchange(_SSE_ANSWER, _SSE_CITED_SOURCES, _SSE_CITED, 8)
 
 # An answer that cites none of the eight passages retrieved for it. `sources`
 # is empty because sources means evidence, and an answer that cited nothing has
@@ -339,17 +338,19 @@ SSE_CHAT_MOCK_NO_SOURCES = _sse_exchange(_SSE_ANSWER, [], [], 0)
 # The sparse case: one passage, one document. The state most likely to read as
 # a bug rather than a deliberate answer, so it gets its own fixture. The page
 # is null on purpose too — a chunk whose metadata carried no page.
-_SSE_SPARSE = [{
-    "index": 1,
-    "document": "2022-10-19_Guidance_for_Submission_of_Registration_Dossiers.pdf",
-    "page": None,
-    "category": "Regulatory",
-    "score": 0.71, "semantic_score": 0.63, "lexical_score": 0.8,
-    "snippet": "A single retrieved passage, cited once, with no page recorded.",
-}]
-SSE_CHAT_MOCK_SPARSE = _sse_exchange(
-    "One claim, one source [1].", _SSE_SPARSE, [1], 1
-)
+_SSE_SPARSE = [
+    {
+        "index": 1,
+        "document": "2022-10-19_Guidance_for_Submission_of_Registration_Dossiers.pdf",
+        "page": None,
+        "category": "Regulatory",
+        "score": 0.71,
+        "semantic_score": 0.63,
+        "lexical_score": 0.8,
+        "snippet": "A single retrieved passage, cited once, with no page recorded.",
+    }
+]
+SSE_CHAT_MOCK_SPARSE = _sse_exchange("One claim, one source [1].", _SSE_SPARSE, [1], 1)
 
 
 # Individual frames, for tests that release them one at a time.
@@ -447,10 +448,12 @@ def chat_history(messages=(), *, conversation_id="c0ffee00-0000-4000-8000-000000
     tests are about one fresh answer), and it is stated here rather than left to
     coincidence.
     """
-    return json.dumps({
-        "conversation_id": conversation_id,
-        "messages": list(messages),
-    })
+    return json.dumps(
+        {
+            "conversation_id": conversation_id,
+            "messages": list(messages),
+        }
+    )
 
 
 def stored_answer(question, answer, *, sources=(), cited=None, evidence_state="verified"):
@@ -464,7 +467,10 @@ def stored_answer(question, answer, *, sources=(), cited=None, evidence_state="v
     return [
         {"message_id": "m1", "seq": 1, "role": "user", "content": question},
         {
-            "message_id": "m2", "seq": 2, "role": "assistant", "content": answer,
+            "message_id": "m2",
+            "seq": 2,
+            "role": "assistant",
+            "content": answer,
             "evidence_state": evidence_state,
             "sources": list(sources),
             "cited": list(cited if cited is not None else [s["index"] for s in sources]),
@@ -491,9 +497,7 @@ def route_chat_history(page, body):
     """
     page.context.route(
         "**/api/chat/history*",
-        lambda route: route.fulfill(
-            status=200, content_type="application/json", body=body
-        ),
+        lambda route: route.fulfill(status=200, content_type="application/json", body=body),
     )
 
 
@@ -506,7 +510,7 @@ def stored_session(session_id, title, *, updated_at=None, message_count=2):
     heading would pass or fail depending on when it was run. A test that wants a
     specific bucket passes an explicit offset.
     """
-    when = updated_at or datetime.now(timezone.utc).isoformat()
+    when = updated_at or datetime.now(UTC).isoformat()
     return {
         "id": session_id,
         "title": title,
@@ -529,19 +533,19 @@ def chat_sessions(sessions=(), *, next_cursor=None):
     empty list from its in-memory backend, so an unrouted test agrees with a
     routed one.
     """
-    return json.dumps({
-        "sessions": list(sessions),
-        "next_cursor": next_cursor,
-    })
+    return json.dumps(
+        {
+            "sessions": list(sessions),
+            "next_cursor": next_cursor,
+        }
+    )
 
 
 def route_chat_sessions(page, body):
     """Point the conversation list at a canned body. Same override rule as above."""
     page.context.route(
         "**/api/chat/sessions",
-        lambda route: route.fulfill(
-            status=200, content_type="application/json", body=body
-        ),
+        lambda route: route.fulfill(status=200, content_type="application/json", body=body),
     )
 
 
@@ -640,7 +644,9 @@ def _stream_route(page, body: str):
     page.context.route(
         "**/api/chat/stream",
         lambda route: route.fulfill(
-            status=200, content_type="text/event-stream", body=body,
+            status=200,
+            content_type="text/event-stream",
+            body=body,
         ),
     )
     return page

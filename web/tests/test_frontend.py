@@ -155,9 +155,7 @@ def test_login_failure_is_presented_by_handler(browser_page: Page):
     browser_page.locator("#login-form").evaluate("(form) => form.requestSubmit()")
 
     expect(browser_page.locator("#auth-error")).to_be_visible()
-    expect(browser_page.locator("#auth-error")).to_contain_text(
-        "Incorrect email or password."
-    )
+    expect(browser_page.locator("#auth-error")).to_contain_text("Incorrect email or password.")
 
 
 def test_faq_and_chat_success(authenticated_page: Page):
@@ -193,9 +191,7 @@ def test_chat_failure_is_handled(authenticated_page: Page):
             "Sorry, I encountered an error while processing your request."
         )
     ).to_be_visible()
-    expect(authenticated_page.locator("#toast")).to_contain_text(
-        "Failed to send message."
-    )
+    expect(authenticated_page.locator("#toast")).to_contain_text("Failed to send message.")
 
 
 def test_chat_cancellation_does_not_surface_as_failure(authenticated_page: Page):
@@ -224,17 +220,13 @@ def test_chat_cancellation_does_not_surface_as_failure(authenticated_page: Page)
     )
     authenticated_page.locator("#send-button").click()
 
-    expect(authenticated_page.locator("#toast")).to_have_text(
-        "Chat request cancelled."
-    )
+    expect(authenticated_page.locator("#toast")).to_have_text("Chat request cancelled.")
     expect(
         authenticated_page.get_by_text(
             "Sorry, I encountered an error while processing your request."
         )
     ).to_have_count(0)
-    expect(authenticated_page.locator("#robot-status-text")).to_have_text(
-        "Ready to help"
-    )
+    expect(authenticated_page.locator("#robot-status-text")).to_have_text("Ready to help")
     expect(authenticated_page.locator("#send-button")).to_have_attribute(
         "aria-label", "Send message"
     )
@@ -246,9 +238,7 @@ def test_missing_session_token_prompts_for_login(authenticated_page: Page):
     authenticated_page.locator("#send-button").click()
 
     expect(authenticated_page.locator("#authModal")).to_be_visible()
-    expect(authenticated_page.locator("#toast")).to_have_text(
-        "Please log in to chat with the AI."
-    )
+    expect(authenticated_page.locator("#toast")).to_have_text("Please log in to chat with the AI.")
     expect(
         authenticated_page.get_by_text(
             "Sorry, I encountered an error while processing your request."
@@ -274,18 +264,14 @@ def test_session_lookup_error_is_not_presented_as_chat_failure(
             "Sorry, I encountered an error while processing your request."
         )
     ).to_have_count(0)
-    expect(authenticated_page.locator("#robot-status-text")).to_have_text(
-        "Ready to help"
-    )
+    expect(authenticated_page.locator("#robot-status-text")).to_have_text("Ready to help")
 
 
 def test_testing_mode_bypasses_auth(browser_page: Page):
     browser_page.goto("/?testing=true")
 
     expect(browser_page.locator("#authenticated-view")).to_be_visible()
-    expect(browser_page.locator("#user-status")).to_have_text(
-        "Logged in as: test@example.com"
-    )
+    expect(browser_page.locator("#user-status")).to_have_text("Logged in as: test@example.com")
 
 
 def test_responsive_landing_layout(browser_page: Page):

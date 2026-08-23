@@ -34,12 +34,19 @@ def page(client, url="/"):
 
 # ── Language negotiation ────────────────────────────────────────────────────
 
+
 @pytest.mark.parametrize(
     "value,expected",
     [
-        ("ar", "ar"), ("AR", "ar"), ("ar-SA", "ar"), ("ar_SA", "ar"),
-        ("en", "en"), ("en-GB", "en"),
-        ("klingon", "en"), ("", "en"), (None, "en"),
+        ("ar", "ar"),
+        ("AR", "ar"),
+        ("ar-SA", "ar"),
+        ("ar_SA", "ar"),
+        ("en", "en"),
+        ("en-GB", "en"),
+        ("klingon", "en"),
+        ("", "en"),
+        (None, "en"),
     ],
 )
 def test_language_codes_are_normalised(value, expected):
@@ -85,11 +92,12 @@ def test_unsupported_accept_language_falls_back_to_english(client):
 
 # ── Rendered page ───────────────────────────────────────────────────────────
 
+
 def test_arabic_page_renders_arabic_copy(client):
     html = page(client, "/?lang=ar")
-    assert "مساعدك التنظيمي" in html            # sidebar tagline
-    assert "ابدأ الآن" in html                   # hero CTA
-    assert "Ask a question instead of searching" not in html   # English lead
+    assert "مساعدك التنظيمي" in html  # sidebar tagline
+    assert "ابدأ الآن" in html  # hero CTA
+    assert "Ask a question instead of searching" not in html  # English lead
 
 
 def test_english_page_keeps_the_strings_the_browser_suite_asserts(client):
@@ -133,7 +141,7 @@ def test_the_history_notice_ships_in_arabic(client):
     """
     chat = _runtime_catalogue(page(client, "/?lang=ar"))["chat"]
 
-    assert "تُحفظ" in chat["historyNotice"]          # "are saved"
+    assert "تُحفظ" in chat["historyNotice"]  # "are saved"
     assert "المرضى" in chat["historyNoticeWarning"]  # "patients"
     # A fallback would put the English sentence here instead.
     assert "Your chats are saved" not in chat["historyNotice"]
@@ -198,6 +206,7 @@ def test_language_switcher_offers_the_other_language(client):
 
 # ── Catalogue behaviour ─────────────────────────────────────────────────────
 
+
 def test_missing_arabic_keys_fall_back_to_english():
     catalog = load_catalog("ar")
     t = make_translator(catalog)
@@ -225,6 +234,7 @@ def test_runtime_subset_excludes_server_only_strings():
 
 # ── FAQ ─────────────────────────────────────────────────────────────────────
 
+
 def test_faq_endpoint_returns_the_requested_language(client):
     arabic = client.get("/api/frequent-questions?lang=ar").get_json()
     english = client.get("/api/frequent-questions?lang=en").get_json()
@@ -247,6 +257,7 @@ def test_faq_falls_back_to_english_for_an_unknown_language(client):
 
 
 # ── Jump-to-latest pill ─────────────────────────────────────────────────────
+
 
 def test_jump_to_latest_is_present_and_hidden_by_default(client):
     html = page(client)

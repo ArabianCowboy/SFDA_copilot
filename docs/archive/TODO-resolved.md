@@ -24,7 +24,7 @@ Nothing here is an instruction. For work that is actually open, see `TODO.md`.
 # [HISTORICAL] TODO — resolved
 
 Every entry below is closed. They are kept because this project writes an entry as
-*what is wrong, how it was found, and what fixing it would disturb* — and the second
+_what is wrong, how it was found, and what fixing it would disturb_ — and the second
 and third halves stay useful long after the first stops being true. A fix whose
 reasoning is thrown away gets rediscovered, or undone.
 
@@ -140,7 +140,7 @@ on w.id = src.message_id`. Live `EXPLAIN (ANALYZE, BUFFERS)` on a seeded 200-mes
 — required because `chat_load_session` is `security definer` and therefore never inlines, so wrapping
 `EXPLAIN` around a call to the function itself would have shown nothing but an opaque `Function Scan`
 — showed the planner did **not** hash/merge-join that CTE: it ran a Nested Loop Left Join
-(`Inner Unique: true`) that re-executed the `GroupAggregate` over the *entire* window once per outer row
+(`Inner Unique: true`) that re-executed the `GroupAggregate` over the _entire_ window once per outer row
 (`loops=200`). `Rows Removed by Join Filter: 14950` — not the naive `200*100-100 = 19900` a uniform
 full-rescan-every-time model predicts, because `Inner Unique: true` lets the 100 matching (assistant-role)
 outer rows stop early once they hit their own group, while the 100 non-matching (user-role) rows still
@@ -155,8 +155,8 @@ against the whole id array, one `GroupAggregate` pass, and a merge join — 4.7m
 original 712 (and the intermediate regression's 712 too, at 75x the runtime).
 
 A companion gap surfaced by review: `InMemoryChatBackend.load_session` (`web/services/chat_store.py`)
-preserved sources in *write* order, while the real RPC has always guaranteed `source_index`-ascending
-order on *read*. Every existing test inserted sources already sorted, so the double gave the right
+preserved sources in _write_ order, while the real RPC has always guaranteed `source_index`-ascending
+order on _read_. Every existing test inserted sources already sorted, so the double gave the right
 answer for the wrong reason. Fixed to sort on read (`load_session` now returns each message with
 `sources` sorted by `source_index`), with a new regression test,
 `test_sources_come_back_ordered_by_source_index_regardless_of_insert_order`, that inserts out of order
@@ -202,7 +202,7 @@ sets `httpx`/`httpcore`/`huggingface_hub` to `WARNING`.
 local_files_only=True)` first and only falls back to a normal network load on
 `LocalEntryNotFoundError` (a corrupted cache or other failure still raises,
 unchanged). One accepted, narrow behavior change: a transient network failure
-specifically on the now-removed *redundant* second construction can no longer
+specifically on the now-removed _redundant_ second construction can no longer
 crash startup the way `ManifestValidationError` used to guarantee — a genuine
 manifest/model mismatch still does, since that check still runs against the
 injected client's real values. 12 new tests
@@ -224,7 +224,7 @@ ERROR:root:Authentication error at endpoint admin.audit: The read operation time
 **What was wrong.** One bare `except Exception` answered every failure with
 `_handle_unauthorized`. That is not merely the wrong status — it calls
 `clear_auth_session()`, so a read timeout to GoTrue told a signed-in
-administrator they were signed out *and* destroyed their server-side session:
+administrator they were signed out _and_ destroyed their server-side session:
 the stored access token, the email, and the admin render hint. The credential in
 their hands was valid throughout. The same branch also caught a missing
 environment variable, a provider response in an unexpected shape, a GoTrue
@@ -232,7 +232,7 @@ rate limit, and any bug in identity resolution, and blamed the reader's
 credential for all of them.
 
 **Why it survived.** The rule was already written down one layer lower —
-`web/api/admin.py` answers 503 when the *profile* store cannot be read, because
+`web/api/admin.py` answers 503 when the _profile_ store cannot be read, because
 "an outage is not a refusal" — and
 `test_an_identity_outage_is_a_503_not_a_refusal` appears to guard it. It does
 not: it monkeypatches `_authenticate_request` itself, so the `except` block that
@@ -260,7 +260,7 @@ against the old code rather than merely to pass against the new.
 
 ### [HISTORICAL] ~~There is no password reset~~ — FIXED 2026-08-14
 
-**Resolved.** Reader-facing recovery ships: a *forgot password* affordance in the
+**Resolved.** Reader-facing recovery ships: a _forgot password_ affordance in the
 login pane, `POST /auth/recover`, and a third view in the shell that receives the
 callback and calls `auth.updateUser({ password })`. Proven end to end against the
 live project — `midoxp@yahoo.com` went from never-signed-in and unconfirmed to
@@ -271,7 +271,7 @@ learn and are invisible in the finished code:
 
 - **Recovery mail is sent server-side, not from the browser.** A browser-issued
   `resetPasswordForEmail` under `flowType: 'pkce'` stores its code verifier in
-  *that* browser's `localStorage`, so opening the mail on a phone can never
+  _that_ browser's `localStorage`, so opening the mail on a phone can never
   complete the exchange. A server-generated link returns tokens in the fragment
   instead, which any device can consume.
 - **`flowType: 'pkce'` silently drops that fragment.** Measured against
@@ -280,7 +280,7 @@ learn and are invisible in the finished code:
   built with `'implicit'` when the recovery marker is present and `'pkce'`
   otherwise.
 - **The `?recovery=1` marker is load-bearing twice.** Supabase emits `SIGNED_IN`
-  *before* `PASSWORD_RECOVERY` (supabase/auth-js#349), so the event cannot be
+  _before_ `PASSWORD_RECOVERY` (supabase/auth-js#349), so the event cannot be
   trusted to open the view; and the marker has to be readable before the client is
   constructed, because it selects the flow type.
 
@@ -291,15 +291,14 @@ the same recovery link from the account detail view via `#account-send-reset`
 `services.sendPasswordReset(userId)` in
 `static/js/admin/handlers.js:287-312` and `static/js/admin/services.js:132-133`).
 Tested in `web/tests/test_admin_users.py:461-530` and
-`web/tests/test_admin_browser.py:658-705`. See *Account detail view* under
+`web/tests/test_admin_browser.py:658-705`. See _Account detail view_ under
 Planned work for what else that page does and does not do yet.
 
 ---
 
 ### [HISTORICAL] (original entry, kept for the cost it records) There is no password reset, so a forgotten password is an unrecoverable account
 
-**Where:** `static/js/modules/services.js` exposes `signInWithPassword` (line
-222) and `signUp` (line 229) and nothing else — no `resetPasswordForEmail`, no
+**Where:** `static/js/modules/services.js` exposes `signInWithPassword` (line 222) and `signUp` (line 229) and nothing else — no `resetPasswordForEmail`, no
 `updateUser`, no handling of Supabase's `PASSWORD_RECOVERY` event. The auth modal
 (`web/templates/index.html:128-224`) has a Login tab and a Signup tab and no
 third affordance. `web/api/auth.py` has `/signup` and `/login` and no recovery
@@ -358,7 +357,7 @@ unnecessary by it.
 at signup. With confirmation off, a typo'd address is currently permanent and
 invisible — the account works, and the mail it should receive goes to a stranger.
 
-**Why setting a password is *not* wanted, and this is a design position rather
+**Why setting a password is _not_ wanted, and this is a design position rather
 than an omission.** An operator who can set a reader's password can sign in as
 that reader, and nothing downstream can tell the two apart — the audit log would
 attribute to the reader actions the operator took. The console's whole thesis is
@@ -384,7 +383,7 @@ email change is still genuinely unbuilt.
 this entry's own recommendation, made deliberately and disclosed rather than
 silently substituted.** `POST /admin/api/users/<user_id>/change-email`
 (`web/api/admin.py`) ships. This entry originally called for confirmation
-*to the new address* rather than `email_confirm: true` — but building that
+_to the new address_ rather than `email_confirm: true` — but building that
 would mean a new pending-email column, a confirmation route, and its own
 email template, real scope beyond one action, and out of reach for what the
 Admin API itself supports in a single call anyway (its email-change path has
@@ -404,7 +403,7 @@ now-stale confirmation timestamp as if it certified the current address.
 
 **The account-takeover risk this entry named up front turned out to be the
 central design question**, surfaced sharply by an adversarial review before
-shipping: chained with the *existing* reset-password button, an unconfirmed
+shipping: chained with the _existing_ reset-password button, an unconfirmed
 email change is a complete impersonation primitive — change the victim's
 email, click reset, they never see it coming (this is exactly how Twitter's
 2020 breach worked). The mitigation built: `change-email`, uniquely among
@@ -413,7 +412,7 @@ own account. `revoke-sessions` and the existing `reset-password` still do
 not, on the same reasoning `set_user_flags`'s self-change guard already
 established — the two also worth turning on but not yet done: enabling
 Supabase's `GOTRUE_MAILER_NOTIFICATIONS_EMAIL_CHANGED_ENABLED` project
-setting (notifies the *old* address as tamper-evidence — external config,
+setting (notifies the _old_ address as tamper-evidence — external config,
 not app code, same category as leaked-password-protection below) and
 tightening the shared `60/minute` admin rate limit specifically for these
 two destructive routes, both done (limiter applied per-route in
@@ -431,7 +430,7 @@ would have gone nowhere any operator could see it; it now does (mirroring
 what the global Activity tab already had).
 
 **Where it lives:** the account detail view, exactly as predicted — see
-*Account detail view* below.
+_Account detail view_ below.
 
 ---
 
@@ -443,7 +442,7 @@ both catalogues and are mapped in `ErrorHandler.formatAuthError`
 reaches the same two strings by status code from our own endpoint rather than by
 substring, because it does not go through Supabase directly.
 
-Worth recording: this was *claimed* fixed when the keys were added, and was not —
+Worth recording: this was _claimed_ fixed when the keys were added, and was not —
 the keys sat in both languages with no mapping, exactly the dead-string failure
 this file already records for `runtime.profile.*`. It was caught by an audit
 asking whether every added key was actually reached. There is now a test that
@@ -458,7 +457,7 @@ verbatim; `runtime.auth.*` has no key for it in either catalogue.
 
 **What is wrong.** When Supabase refuses a signup for exceeding its email
 allowance, the reader sees "email rate limit exceeded" — English on a bilingual
-surface, and phrased as though *they* exceeded a limit rather than the service
+surface, and phrased as though _they_ exceeded a limit rather than the service
 being busy. GoTrue rolls the account back when a send fails, so they get no
 account and no email, and the address stays free to retry — none of which the
 message says.
@@ -484,8 +483,8 @@ Small, and blocked on nothing.
 
 **Turned back on at 12:05:17Z**, confirmed from `auth.users`: `mohifouda@gmail.com`
 has `confirmation_sent_at` set, unlike the auto-confirmed `midoxp@live.com` whose
-value is null. The open question the old entry left — *is a confirmed address
-required to chat?* — is answered and needs no code: GoTrue refuses to issue a
+value is null. The open question the old entry left — _is a confirmed address
+required to chat?_ — is answered and needs no code: GoTrue refuses to issue a
 session for an unconfirmed address, so `auth_required` never sees a token to
 accept. Enforcement sits at the session boundary, which is the strongest place
 available.
@@ -518,7 +517,7 @@ longer necessary now that custom SMTP is configured.
 
 **What it would disturb.** Turning confirmation back on changes the signup flow
 the browser tests exercise, and re-opens the question the previous state answered
-implicitly: *is a confirmed address required to chat?* Supabase can enforce it,
+implicitly: _is a confirmed address required to chat?_ Supabase can enforce it,
 or `auth_required` can, or nobody can — but it should be decided rather than
 inherited. Note that re-enabling it is also the honest way to prove the new SMTP
 path actually delivers, which has not yet been demonstrated.
@@ -613,7 +612,7 @@ new occurrences unlikely, which is exactly why this one is easy to forget.
 **What fixing it costs.** Two candidate fixes with different meanings. Backfill
 the missing profile — cheap, and makes this account administrable — or have the
 console list from `auth.users` left-joined to `profiles` so profile-less accounts
-are *visible* as a broken state rather than invisible. The second is the more
+are _visible_ as a broken state rather than invisible. The second is the more
 honest surface and the larger change. Backfilling first is not wrong, but doing
 only that leaves the class of bug intact: the console would still silently omit
 any future account in this state.
@@ -680,7 +679,7 @@ Worth doing before the log has enough entries for anyone to trust it.
 the start: it derives the action from the diff, and returns early without
 writing an audit row at all when `before` and `after` match apart from
 `updated_at`. Verified live — one real change wrote one row, a no-op wrote none.
-So this entry is now a *port*, not a design problem: `admin_set_user_flags` is
+So this entry is now a _port_, not a design problem: `admin_set_user_flags` is
 the one still deriving its name from whichever field the request happened to
 carry. Copy the shape, do not reinvent it.
 
@@ -741,7 +740,7 @@ queues a `SIGNED_IN` notification during `initialize()` while `onAuthStateChange
 separately emits `INITIAL_SESSION` straight to each subscriber once
 `initializePromise` settles. Both firings independently dispatched
 `Services.getIdentity().then(identity => AuthView.renderAdminAffordance(...))`
-with no ordering guard, so whichever of the two *resolved* last decided the
+with no ordering guard, so whichever of the two _resolved_ last decided the
 final visible state, regardless of which was dispatched first. `getIdentity`
 also had zero retry, so a single transient hiccup — the same class of GoTrue
 outage the entry above this one already proved happens on this project —
@@ -764,7 +763,7 @@ a 401/403 (a real answer) or another 4xx (repeating it would only repeat the
 answer).
 
 **A second, more serious bug found in review, on the same code.** The dedup
-above is not scoped to *who* asked — on a shared machine, if reader A signs
+above is not scoped to _who_ asked — on a shared machine, if reader A signs
 out while their check is still in flight and reader B signs in before it
 resolves, B's call would join A's promise and could be shown A's admin
 standing. `/admin/api/*` stays gated server-side regardless — this is an
@@ -794,12 +793,11 @@ reproducing it identically on the pre-fix code).
 
 **What this was not.** A local `.env` missing `SUPABASE_SECRET_KEY` /
 `SUPABASE_SERVICE_ROLE_KEY` separately made a local dev instance unable to
-resolve *any* reader as an administrator — a deploy-config gap, unrelated to
+resolve _any_ reader as an administrator — a deploy-config gap, unrelated to
 this bug, and not fixed here. See "The `.env` file carries keys nothing
 reads" below.
 
 ---
-
 
 ---
 
@@ -809,8 +807,8 @@ reads" below.
 
 > Closed by `2026-08-22_per-tab-deep-linking.md`, landed the same
 > day as roadmap §10.3's `/c/<id>` deep-linking — this entry already argued the
-> two were one change: *"a conversation id that travels with the request
-> rather than with the browser."* The mechanism disagrees with what this entry
+> two were one change: _"a conversation id that travels with the request
+> rather than with the browser."_ The mechanism disagrees with what this entry
 > proposed, though: not a `sessionStorage`-held tab-scoped pointer, but no
 > pointer at all. The URL is the conversation id. `session["conv_id"]`, the
 > cookie it named, `_resolve_conversation_id` and
@@ -847,7 +845,7 @@ sidebar lists nothing and every rename and delete 503s.
 **Order matters and the second one is destructive.** Apply
 `..._chat_navigation_rpcs` first. `..._chat_first_turn_title` then DROPS the live
 13-argument `chat_append_turn` and recreates it with fourteen. `create or
-replace` is not an option — a changed argument list makes a *second* function,
+replace` is not an option — a changed argument list makes a _second_ function,
 and PostgREST would find a 13-argument call ambiguous and stop persisting every
 turn on a deployment where the migration reported success. The drop and the
 create are one transaction. What was checked before dropping (callers, grants,
@@ -863,8 +861,8 @@ transaction and confirm the title lands on the first turn and survives a second.
 **Decided 2026-08-14:** this is where per-account management lives. Email
 changes, password recovery, role, chat access and session revocation all land
 here rather than being scattered across the People table. The entries above that
-describe those actions individually describe *what* to build; this describes
-*where*, and they should not grow separate surfaces.
+describe those actions individually describe _what_ to build; this describes
+_where_, and they should not grow separate surfaces.
 
 **Where:** `/admin` People renders one row per account — email, role, standing.
 `public.profiles` already holds `full_name`, `organization`, `specialization`
@@ -906,13 +904,13 @@ transcript browsing was declined in favour of an identity-free question log, and
 a detail view is exactly where it would erode — "while we're here, show their
 conversations" is the natural next request and the answer is still no.
 
-**The dependency worth knowing before sequencing.** The admin's *send password
-reset* button and the reader's *forgot password* link need the same thing: a
+**The dependency worth knowing before sequencing.** The admin's _send password
+reset_ button and the reader's _forgot password_ link need the same thing: a
 landing view that receives Supabase's recovery redirect, handles the
 `PASSWORD_RECOVERY` event, and calls `auth.updateUser({ password })`. Whether the
 link comes from `resetPasswordForEmail` or from `auth.admin.generateLink({ type:
 'recovery' })`, it returns to the same place. So the reader-facing reset is not a
-detour on the way to this page — it *is* the hard half of one of its buttons, and
+detour on the way to this page — it _is_ the hard half of one of its buttons, and
 building it first means the console's version is a single API call on top of
 finished work.
 
@@ -941,7 +939,7 @@ than sequentially.
 - **Zone 2, profile: built, and made editable.** The entry's own open
   question — visible or editable — was answered as editable:
   `static/js/admin/ui.js:938-943`, backed by `PATCH
-  /admin/api/users/<id>/profile` and `admin_update_profile`.
+/admin/api/users/<id>/profile` and `admin_update_profile`.
 - **Zone 3, actions: built in full, 2026-08-17.** Send-password-reset
   (`static/js/admin/ui.js:956-959`), promote/demote and enable/disable
   **moved here from the People table** as planned
@@ -1008,7 +1006,7 @@ logging in with what looked like the right password intermittently failed
 with GoTrue's `invalid_credentials` — recoverable only by requesting a
 fresh password reset. Investigated properly rather than assumed: two
 independent adversarial passes (a live disposable-account test reproducing
-the *exact* reported round-trip sequence, and an independent code trace by
+the _exact_ reported round-trip sequence, and an independent code trace by
 a second model) both confirmed the email-change call never touches
 `encrypted_password` — proven by logging into the same disposable account
 with the same known password before and after the exact change sequence,
@@ -1082,7 +1080,7 @@ alone.
 >   cache and three tables.
 > - **The notice now names the delete, and the test that forbade it was
 >   inverted.** `test_the_notice_does_not_promise_a_delete_control_that_does_not_
->   exist` existed because a draft offered a control nothing implemented. There
+exist` existed because a draft offered a control nothing implemented. There
 >   is now a control, so the assertion flips: a disclosure that omits the one
 >   thing a reader would go looking for is misleading by omission in exactly the
 >   way the draft was misleading by invention. Both the server-side and browser
@@ -1101,7 +1099,7 @@ alone.
 > stonewalled. Correct because this app is single-worker by documented contract
 > (`conversation_store.py:15-21`); if that changes the replacement is a tombstone
 > table, not a bigger dict. `test_a_conversation_being_written_to_cannot_be_
-> deleted` drives it through the real generator and was **verified to fail
+deleted` drives it through the real generator and was **verified to fail
 > without the guard** — it returns 404, because the session does not exist yet.
 >
 > **Three things deliberately not built**, recorded so they are not
@@ -1140,7 +1138,7 @@ alone.
 > been on since 2026-08-20 with nobody having chatted since — so there was no
 > backfill, no legacy `title is null` population, and no reader to disrupt. On a
 > populated table this would have shipped a wart: an existing conversation would
-> be named after whatever its reader asked *next*, since `coalesce` fires on the
+> be named after whatever its reader asked _next_, since `coalesce` fires on the
 > next append rather than on the opening question. That case does not exist here.
 >
 > **The `SECURITY DEFINER` ownership warning in the base migration was checked
@@ -1178,7 +1176,7 @@ alone.
 > collapses interior whitespace (`"a   b"` → `"a b"`); `chat_rename_session`
 > only `btrim`s and truncates, so it would store `"a   b"`. They never disagree
 > in practice because every caller clamps in Python before the RPC — the SQL
-> bound is the documented backstop for *length*, not a second normaliser. Left
+> bound is the documented backstop for _length_, not a second normaliser. Left
 > as is rather than "fixed" with a third migration, but written down so the next
 > person does not discover it as a surprise.
 >
@@ -1193,7 +1191,6 @@ alone.
 > re-dispatched off DeepSeek**, whose free tier now 401s
 > ("Free promotion has ended for DeepSeek V4 Flash Free").
 >
-
 > **What changed 2026-08-20 (steps 5 and 6).**
 >
 > - **`GET /api/chat/history`** (`web/api/app.py`) serves the current
@@ -1202,7 +1199,7 @@ alone.
 >   behind the model are chosen by one piece of code, and a browser cannot ask
 >   for a conversation it does not own. An empty or unowned session is 200 with
 >   no messages; a store failure is **503 `history_unavailable`**, deliberately
->   not an empty list — an empty transcript is a *claim* that the reader has no
+>   not an empty list — an empty transcript is a _claim_ that the reader has no
 >   history, and making it while the store is unreachable is the quiet untruth
 >   this product refuses everywhere else.
 > - **`sessionStorage` is gone as a transcript store.** `Transcript.save`,
@@ -1225,7 +1222,7 @@ alone.
 > **A written design position was reversed, deliberately: a stale citation still
 > opens.** The plan said only `verified` renders as openable evidence, with no
 > document/page fallback (roadmap §"Stale sources"). That rule was aimed at
-> *re-resolving* a `chunk_id` against a rebuilt index, which can surface a
+> _re-resolving_ a `chunk_id` against a rebuilt index, which can surface a
 > plausible but wrong passage. It does not describe what hydration actually does:
 > `chat_message_sources` already stores the document, page, category and snippet
 > **frozen at write time**, so opening a stored citation shows what the model
@@ -1236,7 +1233,7 @@ alone.
 > control-that-does-nothing failure the neutralising was invented to avoid.
 > Two independent research passes reached this conclusion before the code did.
 >
-> So the three states survive as *classification* and drive what the reader is
+> So the three states survive as _classification_ and drive what the reader is
 > **told**, not what they may open: `verified` says nothing; `stale` and
 > `unverifiable` share one badge (`cite.datedBadge`) plus an explanatory line in
 > the panel (`cite.datedNote`), because to a reader they mean the same thing and
@@ -1245,19 +1242,19 @@ alone.
 > **`evidence_state` on a live answer is asserted, not computed.** A fresh answer
 > came from the active index, so its evidence is current by construction. The
 > comparison is inference and only hydration needs it — and computing it on the
-> live path would mark every *fresh* answer `unverifiable` on any deployment
+> live path would mark every _fresh_ answer `unverifiable` on any deployment
 > where `read_active_build_id` finds no pointer (the legacy flat layout), badging
 > the one case that is beyond doubt.
 >
 > **One gap stays open knowingly, and is now disclosed rather than silent.**
-> Ending a conversation and then logging out *before asking anything else*
+> Ending a conversation and then logging out _before asking anything else_
 > purges the cookie, so the next visit looks like a new device and resumes the
 > conversation that was ended. With hydration on, that comes back as a full
 > visible transcript rather than model-only memory — which an external review
 > argued makes it worse, not better. The mitigation shipped instead of the fix:
 > the route reports `resumed`, and the transcript carries a dismissible notice
 > (`chat.resumed`) saying the conversation was picked up from history, with
-> *New chat* named as the way to start fresh. Closing it properly needs a
+> _New chat_ named as the way to start fresh. Closing it properly needs a
 > durable owner-level reset marker; step 8's sidebar retires the question.
 > Note `resumed` is only reported when there are messages — a notice about a
 > thing the reader cannot see is worse than no notice.
@@ -1269,9 +1266,8 @@ alone.
 > `cited`. That is what `_hydration_payload` reduces, so the shape it consumes is
 > now confirmed against the schema rather than inferred from `InMemoryChatBackend`.
 >
->
 > **Adversarial review of steps 5-6 (Codex `gpt-5.6-terra`, max effort, read-only),
-> plus one bug found by hand before it ran.** Verdict was *do not ship*; everything
+> plus one bug found by hand before it ran.** Verdict was _do not ship_; everything
 > below is fixed. 488 server tests, 213 browser tests.
 >
 > - **The transcript guard was keyed to the PAGE, not the reader** — found by hand.
@@ -1285,7 +1281,7 @@ alone.
 >   transcript. Pinned by `test_a_second_reader_in_the_same_tab_gets_their_own_transcript`,
 >   verified to fail against the old guard.
 > - **A late history fetch could resurrect a conversation the reader ended.** The
->   fetch is dispatched at sign-in and not awaited; pressing *New chat* while it
+>   fetch is dispatched at sign-in and not awaited; pressing _New chat_ while it
 >   was in flight put the ended conversation back on screen when it landed.
 >   Identity cannot catch this — it is the same reader pressing the button. A
 >   `transcriptEpoch`, bumped by reset, undo and sign-out, now invalidates a
@@ -1297,7 +1293,7 @@ alone.
 >   `test_history_arriving_late_is_filed_above_the_live_exchange`, using a
 >   controllable fetch so the race is entered deliberately rather than hoped for.
 > - **`CORPUS_REVISION` was read from the pointer file, not from the engine.** The
->   search engine initialises *before* that read, so an activation in between
+>   search engine initialises _before_ that read, so an activation in between
 >   recorded a revision the passages did not come from; and a dangling pointer is
 >   returned verbatim while the engine silently falls back to the legacy flat
 >   corpus. Either way a superseded answer would later compare equal and render as
@@ -1310,7 +1306,7 @@ alone.
 >   One transient failure cost the reader their conversation for good. The rule now
 >   reports a failed resume distinctly; the transcript route answers 503 and rolls
 >   the cookie write back, while the chat routes still answer. This is the same
->   shape as *"a transient Supabase outage signed readers out"* at the top of this
+>   shape as _"a transient Supabase outage signed readers out"_ at the top of this
 >   file, which is why it is written out rather than quietly patched.
 > - **Persistence enabled with no backend answered 200 with an empty transcript**,
 >   while `_persist_turn` already treats that configuration as a failure. Now 503,
@@ -1336,15 +1332,14 @@ alone.
 > the cases it named), and for removing the public `limit` parameter outright
 > (kept, now that a half exchange is impossible, because Phase 2's paging needs it).
 > **Gates:** 488 server tests, 213 browser tests. The two browser tests that went
-> red were the two that pinned the *old* behaviour and were rewritten, not
+> red were the two that pinned the _old_ behaviour and were rewritten, not
 > patched — see below.
->
 >
 > ---
 >
 > **Step 7 shipped as a notice, not a consent system (2026-08-21).** What landed
 > is a bilingual dismissible banner, one hardening migration, and a startup
-> guard. What was *planned* — consent columns, an opt-out toggle, a withdrawal
+> guard. What was _planned_ — consent columns, an opt-out toggle, a withdrawal
 > RPC, `admin_purge_chat_archive`, a retention CLI, JSONL export, three new
 > routes and two more migrations — was **cut**. The reasoning, because "we
 > decided not to" ages badly without it:
@@ -1358,17 +1353,17 @@ alone.
 > - **Consent was dropped as the wrong instrument, not deferred.** The lawful
 >   basis is legitimate interest on pseudonymized data, so `terms_accepted_at` /
 >   `terms_version` were never needed — and recording consent you did not need
->   *manufactures* an obligation, since claiming consent as the basis means
+>   _manufactures_ an obligation, since claiming consent as the basis means
 >   proving it was freely given and making withdrawal as easy as granting.
 > - **Three cuts were for correctness, not size**, and are the ones not to
 >   casually re-add:
 >   - **The opt-out toggle had a race.** The archive decision would have been
 >     read from the 30-second identity cache at request start and applied to a
 >     write landing later. Correct needs the decision checked and serialized
->     *inside* the write transaction.
+>     _inside_ the write transaction.
 >   - **It would also have failed open.** A transient identity-lookup failure
 >     yields the unresolved fallback (`admin_store.py:706`); an `is not None`
->     check reads that as *opted in*. Privilege fails closed here; a privacy flag
+>     check reads that as _opted in_. Privilege fails closed here; a privacy flag
 >     must too.
 >   - **The export's cursor was wrong.** Keyset on `(session_id, seq)` orders by
 >     a random UUID, not by time, so "oldest first" would have been arbitrary.
@@ -1402,7 +1397,7 @@ alone.
 > migration's own sibling-table comment says `revoke all` exists to prevent. It
 > now revokes all and grants back `SELECT`. **The `DELETE` grant that migration
 > promised was retired rather than kept**: a purge function would be `security
-> definer` and would not need it, so a standing grant could only ever be a second
+definer` and would not need it, so a standing grant could only ever be a second
 > unguarded delete path. Round-tripped after applying in a deliberately aborted
 > transaction — there is no delete path left to clean up a test row —
 > `archive_rows=1, message_rows=2`, confirming `security definer` bypasses the
@@ -1411,16 +1406,17 @@ alone.
 > **An adversarial review (Codex `gpt-5.6-terra`, max effort, read-only) is what
 > produced the cut list**, asked to default all 17 planned components to CUT.
 > It cut 13. **Two of its own claims were checked and are wrong**, recorded so
-> the reasoning is not inherited: `get_supabase_admin()` does *not* raise outside
+> the reasoning is not inherited: `get_supabase_admin()` does _not_ raise outside
 > an app context — `bool(current_app)` is `False` when unbound so the guard
 > short-circuits, verified by running it — and "salts can never be rotated" was
-> *my* overstatement, since a versioned-key scheme retaining old keys could. Its
+> _my_ overstatement, since a versioned-key scheme retaining old keys could. Its
 > adjacent point is right and kept: a bare `python -m` does not load `.env`
 > unless it imports `web/utils/config_loader.py`.
 >
 > **Gates:** 497 server tests, 219 browser tests.
 >
 > **What is left, in order:**
+>
 > 1. ~~Apply the migration~~ — done 2026-08-20.
 > 2. ~~Set `server.chat_persistence: true`~~ — done 2026-08-20.
 > 3. ~~Build step 6 (transcript hydration), then set
@@ -1458,8 +1454,7 @@ alone.
 >   built.** See the step 7 record above.
 > - ~~**`20260820140000_revoke_chat_archive_service_role_insert.sql` is still
 >   unapplied.**~~ Applied 2026-08-21 as `20260820213833_revoke_chat_archive_
->   direct_writes`, **amended first** — see the step 7 record above.
-
+direct_writes`, **amended first** — see the step 7 record above.
 
 **Where:** Today a conversation is keyed to a cookie, not to an account.
 Server-side: `ConversationStore` (`web/services/conversation_store.py`), created
@@ -1475,7 +1470,7 @@ cookie might still be carrying). All of it is torn down by
 `purge_conversation_state` and the `CONVERSATION_SESSION_KEYS` /
 `CONVERSATION_ID_KEYS` tuples (`web/api/auth.py:20-54`) on logout or on an
 identity change. Client-side: `Transcript` in `static/js/modules/i18n.js`
-(lines 62-147) persists only *rendered markup* into per-tab `sessionStorage`
+(lines 62-147) persists only _rendered markup_ into per-tab `sessionStorage`
 under `sfda-transcript`, tagged with `_owner` (the user's id, via
 `settleTranscript` in `static/js/app.js` lines 64-93) and restored only to the
 same owner; `clearSessionState` removes it on sign-out
@@ -1507,7 +1502,7 @@ exists: `test_session_isolation.py` (logout purge, server-side store purge,
 `test_the_same_reader_keeps_their_conversation`) and the rotation in
 `_bind_session_to_identity` exist to prove one reader's conversation never
 reaches another. Saving per user re-keys conversations from a random cookie to
-an account, which is only safe if the *account*, not the browser, becomes the
+an account, which is only safe if the _account_, not the browser, becomes the
 boundary — and it must still respect the purge that fires when a different
 reader picks up the same cookie. Real persistence requires dedicated schema
 and RLS policies (`supabase/migrations/`) and authenticated backend routes
@@ -1537,7 +1532,7 @@ to be already handled here and are recorded as such rather than carried forward.
 Four things it establishes that this entry did not know:
 
 - **Phase 1 cannot be as invisible as proposed above.** Hydrating the transcript
-  from persisted messages *is* the payoff, because it is what lets
+  from persisted messages _is_ the payoff, because it is what lets
   `neutraliseRestoredCitations` be replaced by real citation rehydration. A
   restored answer currently keeps its prose and loses its evidence.
 - **A stored `chunk_id` is not a citation.** Builds are versioned and swappable
@@ -1547,8 +1542,8 @@ Four things it establishes that this entry did not know:
 - **The logout guarantee changes.** Durable per-account history must survive a
   sign-out that today destroys it. Decided 2026-08-18: logout clears the cookie
   and the in-RAM cache only, retention ≥ 1 year, with administrator cleanup.
-- **The admin analysis RPC reverses a written position.** *"Know what people
-  actually ask — without reading anyone's conversation"* (above) argues for an
+- **The admin analysis RPC reverses a written position.** _"Know what people
+  actually ask — without reading anyone's conversation"_ (above) argues for an
   identity-free aggregate table instead, and its reasons survive the decision to
   build cross-user transcript access anyway. Recorded as a reversal, with the
   disclosure it now owes left open as a decision.
@@ -1579,13 +1574,13 @@ already argues that case.
 
 **Consent is a notice, not a gate** (plan §7). A hard gate was drafted and dropped:
 it would have forced a blocking bilingual screen into the first increment and made
-the ephemeral path *permanent*, since a reader who declined would need today's
+the ephemeral path _permanent_, since a reader who declined would need today's
 cache-and-cookie behaviour maintained indefinitely — a second conversation path
 forever. It was also defending less than it appeared to: the archive row is written
 in the same transaction as the turn, carrying the same question and answer text,
 while `chat_messages` holds that text under a real `owner_id` with a `created_at` in
 the same microsecond, so joining the archive back to a person is a text equality, not
-a hash inversion. The hashing stays — it protects an archive that leaks *alone*, and
+a hash inversion. The hashing stays — it protects an archive that leaks _alone_, and
 it is what makes erasure-by-owner possible — but it does not carry the weight a gate
 was being built on top of.
 
@@ -1593,7 +1588,7 @@ So: the notice ships once at first use; `terms_accepted_at` / `terms_version` re
 it; a separate `archive_withdrawn_at` is what actually stops collection, because "no
 gate" and "withdrawal stops new archive rows" would otherwise contradict. All three
 columns join the `profiles_guard_privilege_columns` deny-list — the column grants are
-an allow-list so they are denied by default, but that trigger is a *deliberate*
+an allow-list so they are denied by default, but that trigger is a _deliberate_
 deny-list, so a later change bundling them into a grant would make consent writable
 from a browser console with nothing firing. One stable HMAC salt, no rotation
 (rotation is defeated by a stable `session_key` and makes erasure impossible).
@@ -1606,7 +1601,7 @@ revised in place until it contradicted itself — the central write-placement ru
 simultaneously open and closed, §7's prose scheduled work its own table put elsewhere,
 and a pair-assembly builder was defending a state the design could no longer reach. It
 also found the sharpest bug yet, which only appears once Phase 1 meets the language
-toggle: after *New chat* the cookie holds a freshly minted id with **no durable row**,
+toggle: after _New chat_ the cookie holds a freshly minted id with **no durable row**,
 so a naive "owned cookie → else latest `updated_at`" rule falls through and restores
 the conversation the reader just ended. The cookie needs a third state — deliberately
 empty — that the rule honours rather than overrides.
@@ -1634,7 +1629,7 @@ both catalogues; `MAX_CHAT_QUERY_CHARS = 8_000`; `ASSET_VERSION` → `warm34`. N
 **Four plan claims implementation corrected** — the plan carries each as a struck
 paragraph rather than a quiet deletion:
 
-- **§5's "third cookie state" was unnecessary.** Keying the fallback on the *presence* of
+- **§5's "third cookie state" was unnecessary.** Keying the fallback on the _presence_ of
   `conv_id` rather than on whether it resolves makes all three resurrection paths no-ops,
   because the cookie holds an id in every one of them. The bug was real — reverting to the
   naive reading fails
@@ -1657,7 +1652,7 @@ paragraph rather than a quiet deletion:
 
 **One thing surfaced that this entry should carry: "New chat" no longer destroys
 anything.** Reset drops the cookie pointer and the RAM window; the rows survive and will
-appear in Phase 2's sidebar. That is correct and expected behaviour, but it makes *undo*
+appear in Phase 2's sidebar. That is correct and expected behaviour, but it makes _undo_
 close to vestigial and means `forget` no longer forgets anything durable. Either the copy
 changes in step 8 or `forget` grows a real delete. Pinned meanwhile by
 `test_a_reset_does_not_delete_the_conversation_behind_it`.
@@ -1685,7 +1680,7 @@ Real defects found and fixed:
 - **The in-memory test double was laxer than the schema** — it accepted `source_index = 150`,
   a 400-char snippet and a null document. Every test runs against the double, so three CHECK
   constraints were being asserted by nobody. Round 2 then caught that the fix validated
-  *before* the replay check while the RPC returns *after* it, making the double stricter than
+  _before_ the replay check while the RPC returns _after_ it, making the double stricter than
   Postgres on the one path where that is wrong.
 - **A cold-hydration race** could erase a completed turn: two tabs both read an empty window,
   and the slower one installed its stale copy over the newer one.
@@ -1696,7 +1691,7 @@ Real defects found and fixed:
   Supabase docs: `security definer` runs as the function owner, so the RPCs are unaffected.
 - **Two redundant indexes and a missing FK index** — `unique (session_id, seq)` already
   indexed what `chat_messages_session_seq_idx` re-indexed, while the FK `(session_id,
-  owner_id)` had none.
+owner_id)` had none.
 - **A `DELETE` grant on the archive** whose comment credited it to a function that ships in
   step 7. Revoked. ~~The migration that adds the purge RPC grants what it needs.~~
   **Superseded 2026-08-21:** no purge RPC shipped, and when one does it will be
@@ -1714,7 +1709,7 @@ PG17) — top level and all three function bodies. That is syntax only, not sema
 constraints, grants or runtime.
 
 **One gap accepted knowingly**, to fix before the resume flag turns on: with it on, ending a
-conversation and then logging out *before asking anything else* loses the reset, because the
+conversation and then logging out _before asking anything else_ loses the reset, because the
 purged cookie makes the next visit look like a new device.
 
 **Late catch, after the branch was already pushed: `chat_persistence` defaulted ON.** With
@@ -1726,7 +1721,7 @@ non-testing app because TESTING selects the in-memory backend unconditionally an
 hidden the production default.
 
 ~~**And one claim this work cannot yet back.** The RLS policies are unexercised. The service
-role bypasses RLS, so every green test proves the *application's* owner filtering, not the
+role bypasses RLS, so every green test proves the _application's_ owner filtering, not the
 database's. Until a reader JWT hits these tables — a harness that does not exist here, and
 costs more than the migration did — `chat_sessions_select_own` and its three siblings are
 reviewed code, not verified code.~~
@@ -1743,12 +1738,12 @@ deleting another reader's session touched **0 rows**; deleting their own touched
 cascaded to **0 orphans**.
 
 This closes step 1's gate, which had been the only thing outstanding in the feature's critical
-path since 2026-08-20 — and it is worth noting *why* it stayed open: the estimate was wrong,
+path since 2026-08-20 — and it is worth noting _why_ it stayed open: the estimate was wrong,
 not the work. It was priced as needing a Supabase project, two real accounts and a signed
 token, so it was deferred as expensive. It was one query.
 
 **One honest limit.** This exercises the policies, not PostgREST. A browser reading these
-tables through the anon key is still untested *plumbing* on *verified* policy — which is a
+tables through the anon key is still untested _plumbing_ on _verified_ policy — which is a
 live concern for step 8, the first feature to call `chat_sessions_delete_own` from a browser
 with no Flask route in between.
 
@@ -1764,7 +1759,7 @@ verified against the source before acting on them:
   deployment choice ("this install has no database") and a live misconfiguration
   (`chat_persistence: true`, but `get_chat_backend()` came back empty — most likely
   `SUPABASE_SERVICE_ROLE_KEY` missing or wrong). Both returned `True` silently — `persisted:
-  true` on the blocking route, no error frame at all on the streaming one — while nothing
+true` on the blocking route, no error frame at all on the streaming one — while nothing
   reached Postgres. Only the first should be quiet; the second now fails exactly like any
   other storage failure. `web/api/app.py` (`_persist_turn`), three new tests in
   `web/tests/test_chat_persistence.py`.
@@ -1797,7 +1792,7 @@ verified against the source before acting on them:
 
 **How it surfaced.** The Impeccable design hook flagged the two borders as a "side-tab accent" pattern. Worth recording that the detector's reason (a thick coloured side border is a recognisable AI-generated tell) was the weaker argument; the one that actually decided it was the project's own weight vocabulary. Both borders predated step 8 — they shipped in steps 6 and 7 — and were deliberately left untouched when step 8 landed rather than being changed as a side effect of an unrelated feature.
 
-**Verification.** Re-rendered and checked in light, dark and Arabic RTL: the pill mirrors to the inline-start edge under `dir="rtl"`, and the dark-mode warn ramp (`#E0A94D`) reads clearly against the dark ground. `grep` confirms no `border-inline-start: 3px` or `border-inline-end: 3px` survives in any of the five stylesheets. Gates: `test_css_contract.py` at zero physical-property violations, 540 server tests, and 242 browser tests. The full browser run also reported one *error* — a Playwright setup timeout in `test_source_panel.py::test_an_error_after_final_keeps_the_canonical_answer`, not an assertion failure — and that whole file then passed 42/42 in isolation. Recorded rather than rounded to "green": it is the intermittent flake already tracked under *"The browser suite flakes intermittently in test_source_panel.py"*, and this pass touched only two notice rules, neither of which the source panel uses.
+**Verification.** Re-rendered and checked in light, dark and Arabic RTL: the pill mirrors to the inline-start edge under `dir="rtl"`, and the dark-mode warn ramp (`#E0A94D`) reads clearly against the dark ground. `grep` confirms no `border-inline-start: 3px` or `border-inline-end: 3px` survives in any of the five stylesheets. Gates: `test_css_contract.py` at zero physical-property violations, 540 server tests, and 242 browser tests. The full browser run also reported one _error_ — a Playwright setup timeout in `test_source_panel.py::test_an_error_after_final_keeps_the_canonical_answer`, not an assertion failure — and that whole file then passed 42/42 in isolation. Recorded rather than rounded to "green": it is the intermittent flake already tracked under _"The browser suite flakes intermittently in test_source_panel.py"_, and this pass touched only two notice rules, neither of which the source panel uses.
 
 **Docs.** `DESIGN.md`'s Notices subsection now describes the pill and states the weight reasoning, and a new Don't was added — "Don't invent a rule weight outside the vocabulary" — so the pattern cannot return unremarked. `.impeccable/design.json` was regenerated from that DESIGN.md in the same pass.
 
@@ -1926,7 +1921,7 @@ tracked as a follow-up outside this file, not blocking it.
 since 2026-05-30, was carrying exactly the dead set this entry describes
 (`FLASK_APP`, `FLASK_ENV`, `PORT`, …) and neither `FLASK_SECRET_KEY` nor
 `SUPABASE_SECRET_KEY`/`SUPABASE_SERVICE_ROLE_KEY` — so `get_supabase_admin()`
-had no credential to construct a privileged client with, and *every* reader
+had no credential to construct a privileged client with, and _every_ reader
 on that instance resolved as a non-administrator, unconditionally. It read as
 "the admin button is broken" and cost real investigation time before the
 file's own modification timestamp settled it: nothing had changed recently,
@@ -1946,7 +1941,7 @@ reference, not just presence in a directory.
 **Method, since the risk was overreach.** A name match alone isn't proof of
 use — the risk this entry itself named was a file that's actually loaded by
 glob (`MODULE_FILENAMES`/`ADMIN_MODULE_FILENAMES` in `web/api/app.py:222-235`
-publish *every* file under `static/js/modules/` and `static/js/admin/` into
+publish _every_ file under `static/js/modules/` and `static/js/admin/` into
 the browser import map automatically) rather than by a literal import
 statement, which would make "not imported by name" a false positive. So
 every low-hit-count result was read in full before being called clean, not
@@ -2015,4 +2010,3 @@ once: **stop quoting the value at all.** "Bump `ASSET_VERSION` in
 nothing and goes stale on the very next commit that follows the instruction.
 
 ---
-

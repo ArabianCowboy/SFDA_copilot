@@ -35,6 +35,7 @@ def make_results(*scores: float) -> list[SearchResult]:
 
 # ── Disabled path ──────────────────────────────────────────────────────────
 
+
 def test_both_thresholds_zero_returns_the_input_untouched():
     results = make_results(0.9, 0.5, 0.02)
     assert apply_relevance_floor(results, 0.0, 0.0) is results
@@ -51,6 +52,7 @@ def test_empty_input_is_empty_output():
 
 
 # ── Absolute floor ─────────────────────────────────────────────────────────
+
 
 def test_everything_above_the_floor_survives():
     results = make_results(0.9, 0.7, 0.6)
@@ -76,9 +78,10 @@ def test_the_floor_is_inclusive():
 
 # ── Relative floor ─────────────────────────────────────────────────────────
 
+
 def test_ratio_truncates_relative_to_the_top_hit():
     results = make_results(0.8, 0.6, 0.3, 0.1)
-    kept = apply_relevance_floor(results, 0.0, 0.5)   # cutoff = 0.40
+    kept = apply_relevance_floor(results, 0.0, 0.5)  # cutoff = 0.40
     assert [r.score for r in kept] == [0.8, 0.6]
 
 
@@ -115,6 +118,7 @@ def test_a_zero_top_score_neither_divides_nor_over_filters():
 
 # ── The alignment invariant ────────────────────────────────────────────────
 
+
 @pytest.mark.parametrize(
     "min_score,min_ratio",
     [(0.0, 0.0), (0.3, 0.0), (0.0, 0.5), (0.3, 0.5), (0.95, 0.0), (0.01, 0.01)],
@@ -128,7 +132,7 @@ def test_the_result_is_always_a_prefix_of_the_input(min_score, min_ratio):
     """
     results = make_results(0.95, 0.71, 0.68, 0.4, 0.12, 0.03)
     kept = apply_relevance_floor(results, min_score, min_ratio)
-    assert kept == results[:len(kept)]
+    assert kept == results[: len(kept)]
 
 
 def test_the_input_list_is_not_mutated():

@@ -21,7 +21,6 @@ from playwright.sync_api import Page, expect
 
 from web.tests.conftest import chat_history, route_chat_history, stored_answer
 
-
 pytestmark = pytest.mark.browser
 
 CONV_A = "aaaaaaaa-0000-4000-8000-00000000000a"
@@ -56,7 +55,8 @@ def _route_stream(page: Page, conversation_id: str, response: str) -> None:
     page.route(
         "**/api/chat/stream",
         lambda route: route.fulfill(
-            status=200, content_type="text/event-stream",
+            status=200,
+            content_type="text/event-stream",
             body=_stream_mock(conversation_id, response),
         ),
     )

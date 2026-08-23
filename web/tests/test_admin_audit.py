@@ -21,7 +21,6 @@ from web.services.admin_store import AdminBackend, InMemoryAdminBackend
 from web.services.audit import AuditActor, changed_keys
 from web.services.settings_service import SettingsService
 
-
 ADMIN = {"Authorization": "Bearer fake_admin_token"}
 AUTH = {"Authorization": "Bearer fake_token"}
 ACTOR = AuditActor("admin-id", "admin@example.com", "127.0.0.1", "pytest")
@@ -56,7 +55,7 @@ def test_a_settings_change_is_recorded_with_who_and_what(client):
 
 
 def test_the_record_shows_the_overrides_not_the_effective_settings(client):
-    """"Somebody set the model" and "the model differs from the default" are
+    """ "Somebody set the model" and "the model differs from the default" are
     different facts, and only the first is an action anyone took."""
     client.put("/admin/api/settings", json={"temperature": 0.7}, headers=ADMIN)
 
@@ -80,9 +79,7 @@ def test_entries_are_newest_first(client):
 def test_a_rejected_change_is_not_recorded_as_one(client):
     """A log that records attempts as though they were changes is worse than no
     log: it accuses someone of doing something that never happened."""
-    response = client.put(
-        "/admin/api/settings", json={"max_tokens": 999_999}, headers=ADMIN
-    )
+    response = client.put("/admin/api/settings", json={"max_tokens": 999_999}, headers=ADMIN)
     assert response.status_code == 422
 
     assert client.get("/admin/api/audit", headers=ADMIN).get_json()["entries"] == []
@@ -96,7 +93,7 @@ def test_a_write_that_could_not_be_stored_is_not_recorded(client, app):
     never reached the store.
     """
     with app.app_context():
-        service = SettingsService(lambda: None)   # no backend at all
+        service = SettingsService(lambda: None)  # no backend at all
         errors = service.update({"model": "gpt-4o"}, actor=ACTOR)
 
     assert [e.code for e in errors] == ["storage_unavailable"]
@@ -167,9 +164,7 @@ def test_the_backend_offers_no_way_to_change_a_recorded_entry():
     assert {n for n in surface if "audit" in n} == {"list_audit", "append_audit"}
 
     forbidden = ("update", "edit", "delete", "remove", "amend", "rewrite", "purge", "set")
-    assert not {
-        n for n in surface if "audit" in n and any(verb in n for verb in forbidden)
-    }
+    assert not {n for n in surface if "audit" in n and any(verb in n for verb in forbidden)}
 
     backend = InMemoryAdminBackend()
     methods = {name for name in dir(backend) if "audit" in name and not name.startswith("_")}
@@ -185,15 +180,23 @@ def test_an_appended_entry_is_never_revisited():
     backend = InMemoryAdminBackend()
     actor = AuditActor("test-admin-id", "admin@example.com")
 
-    backend.append_audit(action="user.password_reset_requested", target_type="user",
-                         target_id="test-user-id", actor=actor,
-                         after={"status": "requested", "operation_id": "op-1"})
+    backend.append_audit(
+        action="user.password_reset_requested",
+        target_type="user",
+        target_id="test-user-id",
+        actor=actor,
+        after={"status": "requested", "operation_id": "op-1"},
+    )
     intent = backend.list_audit(limit=10, offset=0)[0]
     snapshot = dict(intent)
 
-    backend.append_audit(action="user.password_reset_accepted", target_type="user",
-                         target_id="test-user-id", actor=actor,
-                         after={"status": "accepted", "operation_id": "op-1"})
+    backend.append_audit(
+        action="user.password_reset_accepted",
+        target_type="user",
+        target_id="test-user-id",
+        actor=actor,
+        after={"status": "accepted", "operation_id": "op-1"},
+    )
 
     rows = backend.list_audit(limit=10, offset=0)
     assert len(rows) == 2
@@ -265,7 +268,7 @@ def test_a_rejected_identity_publication_does_not_authorize_its_own_request(monk
 
 
 def test_an_identity_outage_is_a_503_not_a_refusal(monkeypatch, client):
-    """"Forbidden" tells an administrator they lost access they still have.
+    """ "Forbidden" tells an administrator they lost access they still have.
 
     The console re-reads identity on every request, so a profile-store outage
     makes a real admin unresolved. That has to read as an outage — and the

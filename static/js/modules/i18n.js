@@ -33,7 +33,7 @@ export const I18n = {
     }
     if (!params) return value;
     return value.replace(/\{(\w+)\}/g, (_, name) =>
-      params[name] !== undefined ? params[name] : `{${name}}`
+      params[name] !== undefined ? params[name] : `{${name}}`,
     );
   },
 
@@ -44,7 +44,11 @@ export const I18n = {
 
   set(lang) {
     if (lang === this.lang) return;
-    try { localStorage.setItem('lang', lang); } catch { /* private mode */ }
+    try {
+      localStorage.setItem('lang', lang);
+    } catch {
+      /* private mode */
+    }
     document.cookie = `lang=${lang};path=/;max-age=31536000;samesite=lax`;
 
     /* `pick_lang` ranks `?lang=` above the cookie (web/utils/i18n.py), so a URL
@@ -101,7 +105,9 @@ export const Transcript = {
   discard() {
     try {
       sessionStorage.removeItem(TRANSCRIPT_KEY);
-    } catch { /* private mode: nothing was stored, nothing to remove */ }
+    } catch {
+      /* private mode: nothing was stored, nothing to remove */
+    }
   },
 };
 

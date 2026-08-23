@@ -21,7 +21,6 @@ from web.api.app import create_app
 from web.services.chat_store import InMemoryChatBackend
 from web.services.result_combiner import SearchResult
 
-
 AUTH = {"Authorization": "Bearer fake_token"}
 OWNER = "test-user-id"
 AUTH_B = {"Authorization": "Bearer fake_reader_b_token"}
@@ -88,7 +87,9 @@ def conversation_id_of(response) -> str:
     return match.group(1)
 
 
-def ask_stream(client, *, conversation_id=None, allow_create=None, query="A question", headers=AUTH):
+def ask_stream(
+    client, *, conversation_id=None, allow_create=None, query="A question", headers=AUTH
+):
     body = {"query": query}
     if conversation_id is not None:
         body["conversation_id"] = conversation_id
@@ -99,7 +100,9 @@ def ask_stream(client, *, conversation_id=None, allow_create=None, query="A ques
     return response
 
 
-def ask_blocking(client, *, conversation_id=None, allow_create=None, query="A question", headers=AUTH):
+def ask_blocking(
+    client, *, conversation_id=None, allow_create=None, query="A question", headers=AUTH
+):
     body = {"query": query}
     if conversation_id is not None:
         body["conversation_id"] = conversation_id
@@ -109,6 +112,7 @@ def ask_blocking(client, *, conversation_id=None, allow_create=None, query="A qu
 
 
 # ── A client-supplied id is honoured and touches no cookie ──────────────────
+
 
 @pytest.mark.parametrize("ask", [ask_stream, ask_blocking])
 def test_a_client_supplied_conversation_id_is_honoured(client, backend, ask):
@@ -160,6 +164,7 @@ def test_a_malformed_conversation_id_mints_a_fresh_one_and_writes_no_cookie(clie
 
 # ── The preflight: a stale or foreign id is refused before generation ───────
 
+
 @pytest.mark.parametrize("ask", [ask_stream, ask_blocking])
 def test_a_stale_conversation_is_refused_before_the_answer_is_generated(client, app, backend, ask):
     never_existed = new_id()
@@ -204,10 +209,9 @@ def test_an_existing_owned_conversation_with_allow_create_false_succeeds(client,
 
 # ── GET /api/chat/history?c=<id>: the 404 that did not exist before ─────────
 
+
 def test_a_client_supplied_history_id_that_never_existed_is_not_found(client):
-    response = client.get(
-        "/api/chat/history", query_string={"c": new_id()}, headers=AUTH
-    )
+    response = client.get("/api/chat/history", query_string={"c": new_id()}, headers=AUTH)
 
     assert response.status_code == 404
     assert response.get_json()["code"] == "not_found"
@@ -217,12 +221,8 @@ def test_a_conversation_id_the_reader_does_not_own_is_not_found(client, app):
     other = app.test_client()
     stranger = conversation_id_of(ask_stream(other, headers=AUTH_B))
 
-    not_owned = client.get(
-        "/api/chat/history", query_string={"c": stranger}, headers=AUTH
-    )
-    never_existed = client.get(
-        "/api/chat/history", query_string={"c": new_id()}, headers=AUTH
-    )
+    not_owned = client.get("/api/chat/history", query_string={"c": stranger}, headers=AUTH)
+    never_existed = client.get("/api/chat/history", query_string={"c": new_id()}, headers=AUTH)
 
     # Not yours, or not there. Deliberately one answer — the same discipline
     # chat_load_session and chat_session_exists already take at the database.
@@ -250,6 +250,7 @@ def test_an_owned_conversation_is_found_by_its_client_supplied_id(client):
 
 
 # ── GET /c/<uuid>: the deep-link shell ───────────────────────────────────────
+
 
 def test_the_deep_link_route_requires_no_authentication(client):
     response = client.get(f"/c/{new_id()}")
@@ -297,6 +298,7 @@ def test_the_deep_link_route_rejects_a_malformed_id(client):
 
 # ── §3.5: the force=True CSRF hole ───────────────────────────────────────────
 
+
 @pytest.mark.parametrize("path", ["/api/chat/stream", "/api/chat"])
 def test_a_chat_request_without_a_json_content_type_is_refused(client, backend, path):
     """`get_json(force=True)` parsed the body regardless of Content-Type,
@@ -304,7 +306,10 @@ def test_a_chat_request_without_a_json_content_type_is_refused(client, backend, 
     Without `force`, a non-JSON content type must be a 400, not a 500 and not
     a silently-accepted request."""
     response = client.post(
-        path, data='{"query": "forged"}', content_type="text/plain", headers=AUTH,
+        path,
+        data='{"query": "forged"}',
+        content_type="text/plain",
+        headers=AUTH,
     )
 
     # Not force-parsed into a valid query any more: `get_json(silent=True)`

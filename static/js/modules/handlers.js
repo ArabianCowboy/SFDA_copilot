@@ -9,7 +9,6 @@ import { AppState } from './state.js';
 import { AuthView } from './auth-view.js';
 import { UI } from './ui.js';
 import { Services, RECOVERY_STORAGE_KEY, newRequestId } from './services.js';
-import { ThemeManager } from './theme.js';
 import { RobotStateManager } from './robot.js';
 import { I18n } from './i18n.js';
 import { SourcePanel } from './source-panel.js';
@@ -54,20 +53,9 @@ let resetInFlight = false;
    the reader has already opened conversation B. */
 let selectionEpoch = 0;
 
-/* The handle of the answer currently streaming, or null. Cleared in
- * processChatRequestInternal's finally, alongside setSendingState — the two
- * mark the same thing, the end of one request's lifetime.
- *
- * Published because handleNewChat can end up owning that bubble. It aborts
- * the stream, and streamChat then walks away without touching the bubble —
- * correctly, since the bubble is a fraction of a second from leaving the
- * transcript entirely (§4.4's `handleNewChat` is now a pure client-side
- * navigation, so there is no server round trip left that could fail and
- * leave it stranded — the abort itself is the only event to react to). */
-let activeStream = null;
-
 /* The conversation id the currently-streaming request belongs to, or null.
-   Moves with `activeStream` — see its own comment. */
+   Cleared in processChatRequestInternal's finally, alongside setSendingState
+   — the two mark the same thing, the end of one request's lifetime. */
 let activeStreamConversationId = null;
 
 /* Ticks down the advisory cooldown on the reset button. Advisory only: GoTrue
@@ -83,8 +71,12 @@ let recoverySubmitInFlight = false;
 
 export const Handlers = {
   bindEvents() {
-    DOMCache.get(CONFIG.SELECTORS.LOGIN_FORM)?.addEventListener('submit', (e) => this.handleAuthFormSubmit(e, 'login'));
-    DOMCache.get(CONFIG.SELECTORS.SIGNUP_FORM)?.addEventListener('submit', (e) => this.handleAuthFormSubmit(e, 'signup'));
+    DOMCache.get(CONFIG.SELECTORS.LOGIN_FORM)?.addEventListener('submit', (e) =>
+      this.handleAuthFormSubmit(e, 'login'),
+    );
+    DOMCache.get(CONFIG.SELECTORS.SIGNUP_FORM)?.addEventListener('submit', (e) =>
+      this.handleAuthFormSubmit(e, 'signup'),
+    );
 
     // The age field reveals only when marketing consent is ticked
     // (docs/profile-refactor-plan.md §12.3) — a CSS grid-row transition
@@ -102,14 +94,26 @@ export const Handlers = {
 
     document.getElementById('login-btn-submit')?.addEventListener('click', (e) => {
       e.preventDefault();
-      DOMCache.get(CONFIG.SELECTORS.LOGIN_FORM)?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      DOMCache.get(CONFIG.SELECTORS.LOGIN_FORM)?.dispatchEvent(
+        new Event('submit', { bubbles: true, cancelable: true }),
+      );
     });
 
-    DOMCache.get(CONFIG.SELECTORS.FORGOT_LINK)?.addEventListener('click', () => this.showResetRequest(true));
-    DOMCache.get(CONFIG.SELECTORS.RESET_BACK)?.addEventListener('click', () => this.showResetRequest(false));
-    DOMCache.get(CONFIG.SELECTORS.RESET_REQUEST_FORM)?.addEventListener('submit', (e) => this.handleResetRequestSubmit(e));
-    DOMCache.get(CONFIG.SELECTORS.RECOVERY_FORM)?.addEventListener('submit', (e) => this.handleRecoverySubmit(e));
-    DOMCache.get(CONFIG.SELECTORS.RECOVERY_CANCEL)?.addEventListener('click', () => this.handleRecoveryCancel());
+    DOMCache.get(CONFIG.SELECTORS.FORGOT_LINK)?.addEventListener('click', () =>
+      this.showResetRequest(true),
+    );
+    DOMCache.get(CONFIG.SELECTORS.RESET_BACK)?.addEventListener('click', () =>
+      this.showResetRequest(false),
+    );
+    DOMCache.get(CONFIG.SELECTORS.RESET_REQUEST_FORM)?.addEventListener('submit', (e) =>
+      this.handleResetRequestSubmit(e),
+    );
+    DOMCache.get(CONFIG.SELECTORS.RECOVERY_FORM)?.addEventListener('submit', (e) =>
+      this.handleRecoverySubmit(e),
+    );
+    DOMCache.get(CONFIG.SELECTORS.RECOVERY_CANCEL)?.addEventListener('click', () =>
+      this.handleRecoveryCancel(),
+    );
 
     DOMCache.get(CONFIG.SELECTORS.SEND_BTN)?.addEventListener('click', () => this.processQuery());
     DOMCache.get(CONFIG.SELECTORS.QUERY_INPUT)?.addEventListener('keydown', (e) => {
@@ -119,11 +123,15 @@ export const Handlers = {
       }
     });
 
-    DOMCache.getAll(`${CONFIG.SELECTORS.LOGOUT_BTN}, ${CONFIG.SELECTORS.LOGOUT_BTN_OFFCANVAS}`).forEach(btn => {
+    DOMCache.getAll(
+      `${CONFIG.SELECTORS.LOGOUT_BTN}, ${CONFIG.SELECTORS.LOGOUT_BTN_OFFCANVAS}`,
+    ).forEach((btn) => {
       btn?.addEventListener('click', (e) => this.handleLogout(e));
     });
 
-    DOMCache.getAll(`${CONFIG.SELECTORS.AUTH_BTN}, ${CONFIG.SELECTORS.AUTH_BTN_OFFCANVAS}, ${CONFIG.SELECTORS.AUTH_BTN_MAIN}`).forEach(btn => {
+    DOMCache.getAll(
+      `${CONFIG.SELECTORS.AUTH_BTN}, ${CONFIG.SELECTORS.AUTH_BTN_OFFCANVAS}, ${CONFIG.SELECTORS.AUTH_BTN_MAIN}`,
+    ).forEach((btn) => {
       btn?.addEventListener('click', () => AppState.get('authModal')?.show());
     });
 
@@ -132,11 +140,15 @@ export const Handlers = {
     // browser navigates on its own. auth-view.js still shows/hides it by
     // sign-in state, same as every other account-scoped control.
 
-    DOMCache.getAll(`${CONFIG.SELECTORS.FAQ_SIDEBAR}, ${CONFIG.SELECTORS.FAQ_OFFCANVAS}`).forEach(section => {
-      section?.addEventListener('click', (e) => this.handleFaqClick(e));
-    });
+    DOMCache.getAll(`${CONFIG.SELECTORS.FAQ_SIDEBAR}, ${CONFIG.SELECTORS.FAQ_OFFCANVAS}`).forEach(
+      (section) => {
+        section?.addEventListener('click', (e) => this.handleFaqClick(e));
+      },
+    );
 
-    DOMCache.get(CONFIG.SELECTORS.MESSAGES)?.addEventListener('click', (e) => this.handleSuggestedQuestionClick(e));
+    DOMCache.get(CONFIG.SELECTORS.MESSAGES)?.addEventListener('click', (e) =>
+      this.handleSuggestedQuestionClick(e),
+    );
 
     /* Delegated, like the language toggle: the sidebar macro renders twice —
        once as the desktop aside, once inside the offcanvas — so there are two
@@ -200,11 +212,13 @@ export const Handlers = {
           first_name: firstName,
           family_name: familyName,
           marketing_consent: consented,
-          ...(consented ? {
-            marketing_consent_policy_version: window.__POLICY_VERSION,
-            marketing_consent_language: I18n.lang,
-            age: ageValue === '' || ageValue == null ? undefined : Number(ageValue),
-          } : {}),
+          ...(consented
+            ? {
+                marketing_consent_policy_version: window.__POLICY_VERSION,
+                marketing_consent_language: I18n.lang,
+                age: ageValue === '' || ageValue == null ? undefined : Number(ageValue),
+              }
+            : {}),
         });
         form.reset();
         this.showSignupSent(email);
@@ -266,10 +280,7 @@ export const Handlers = {
         token = await Services.getSessionToken();
       } catch (error) {
         logError(error, 'processChatRequestInternal.getSessionToken');
-        ErrorHandler.showToast(
-          I18n.t('chat.sessionUnverified'),
-          true
-        );
+        ErrorHandler.showToast(I18n.t('chat.sessionUnverified'), true);
         RobotStateManager.resetToIdle();
         return;
       }
@@ -354,7 +365,6 @@ export const Handlers = {
       /* All three mark the same moment — this request is over. Here rather
          than inside streamChat because this is the one exit every path shares,
          including the one that rethrows. */
-      activeStream = null;
       activeStreamConversationId = null;
 
       /* Re-read the list rather than patching it optimistically. The client
@@ -368,8 +378,9 @@ export const Handlers = {
          Not awaited: this runs after the answer is on screen, and a slow list
          must not hold the composer. */
       if (landed && AppState.get('sidebarOwner')) {
-        this.loadSessions(AppState.get('sidebarOwner'))
-          .catch(error => logError(error, 'processChatRequestInternal.loadSessions'));
+        this.loadSessions(AppState.get('sidebarOwner')).catch((error) =>
+          logError(error, 'processChatRequestInternal.loadSessions'),
+        );
       }
     }
   },
@@ -437,8 +448,9 @@ export const Handlers = {
     resetCitationState();
 
     // The FAQ list itself stays — it is what the sidebar is for.
-    DOMCache.getAll(`.${CONFIG.CLASSES.FAQ_BUTTON}.${CONFIG.CLASSES.ACTIVE}`)
-      .forEach(btn => btn.classList.remove(CONFIG.CLASSES.ACTIVE));
+    DOMCache.getAll(`.${CONFIG.CLASSES.FAQ_BUTTON}.${CONFIG.CLASSES.ACTIVE}`).forEach((btn) =>
+      btn.classList.remove(CONFIG.CLASSES.ACTIVE),
+    );
 
     RobotStateManager.resetToIdle();
     DOMCache.get(CONFIG.SELECTORS.MESSAGES)?.scrollTo({ top: 0 });
@@ -689,7 +701,7 @@ export const Handlers = {
    * `openSession`'s own rollback (`Route.replace`) safe: it cannot
    * recursively re-enter this handler.
    */
-  async handlePopState({ persisted } = {}) {
+  async handlePopState({ persisted: _persisted } = {}) {
     const id = Route.current();
 
     /* Forward into the SAME conversation a live stream is still writing
@@ -836,7 +848,7 @@ export const Handlers = {
         error?.code === 'generation_in_flight'
           ? I18n.t('sessions.busy')
           : I18n.t('sessions.deleteFailed'),
-        true
+        true,
       );
     }
   },
@@ -855,7 +867,7 @@ export const Handlers = {
    */
   showSidebarTab(which) {
     const isChats = which === 'chats';
-    document.querySelectorAll(`.${CONFIG.CLASSES.SIDEBAR_TAB}`).forEach(tab => {
+    document.querySelectorAll(`.${CONFIG.CLASSES.SIDEBAR_TAB}`).forEach((tab) => {
       const selected = (tab.dataset.sidebarTab === 'chats') === isChats;
       tab.classList.toggle('is-active', selected);
       tab.setAttribute('aria-selected', String(selected));
@@ -865,10 +877,14 @@ export const Handlers = {
       tab.tabIndex = selected ? 0 : -1;
     });
 
-    UI.History.panels().forEach(panel => { panel.hidden = !isChats; });
-    DOMCache.getAll(
-      `${CONFIG.SELECTORS.FAQ_SIDEBAR}, ${CONFIG.SELECTORS.FAQ_OFFCANVAS}`
-    ).forEach(panel => { panel.hidden = isChats; });
+    UI.History.panels().forEach((panel) => {
+      panel.hidden = !isChats;
+    });
+    DOMCache.getAll(`${CONFIG.SELECTORS.FAQ_SIDEBAR}, ${CONFIG.SELECTORS.FAQ_OFFCANVAS}`).forEach(
+      (panel) => {
+        panel.hidden = isChats;
+      },
+    );
   },
 
   /**
@@ -885,15 +901,19 @@ export const Handlers = {
     const forward = rtl ? event.key === 'ArrowLeft' : event.key === 'ArrowRight';
     const current = event.target.dataset.sidebarTab;
     const next = forward
-      ? (current === 'chats' ? 'explore' : 'chats')
-      : (current === 'explore' ? 'chats' : 'explore');
+      ? current === 'chats'
+        ? 'explore'
+        : 'chats'
+      : current === 'explore'
+        ? 'chats'
+        : 'explore';
     event.preventDefault();
     this.showSidebarTab(next);
     /* Focus follows selection, and it has to be the VISIBLE copy: both sidebars
        hold a tab with this attribute and one of them is in a hidden offcanvas.
        `offsetParent` is null for a display:none subtree, which is the test. */
     const tabs = [...document.querySelectorAll(`[data-sidebar-tab="${next}"]`)];
-    (tabs.find(el => el.offsetParent !== null) || tabs[0])?.focus();
+    (tabs.find((el) => el.offsetParent !== null) || tabs[0])?.focus();
   },
 
   /**
@@ -944,7 +964,8 @@ export const Handlers = {
       case 'rename-cancel':
         return UI.History.setPending(null);
       case 'rename-save': {
-        const input = control.closest(`.${CONFIG.CLASSES.HISTORY_ITEM}`)
+        const input = control
+          .closest(`.${CONFIG.CLASSES.HISTORY_ITEM}`)
           ?.querySelector('[data-rename-input]');
         return this.saveSessionRename(sessionId, input ? input.value : '');
       }
@@ -1028,18 +1049,22 @@ export const Handlers = {
     const generation = resetGeneration;
     /* Published for handleNewChat, which can end up owning this bubble — it
        aborts the stream and walks away, leaving the teardown to whichever
-       catch below actually runs. Also published alongside `activeStream`:
-       `handlePopState`'s re-attach check (§4.3) needs to know WHICH
-       conversation is still streaming, not merely that one is. */
-    activeStream = handle;
+       catch below actually runs. `handlePopState`'s re-attach check (§4.3)
+       needs to know WHICH conversation is still streaming, not merely that
+       one is. */
     activeStreamConversationId = conversation?.id ?? null;
     let sawToken = false;
     let failed = null;
 
-    let result = null;
+    let result;
     try {
-      result = await Services.streamChatRequest(queryText, category, token, I18N_LANG, {
-        /* §3.2's reconciliation rule: the server's resolved id wins over
+      result = await Services.streamChatRequest(
+        queryText,
+        category,
+        token,
+        I18N_LANG,
+        {
+          /* §3.2's reconciliation rule: the server's resolved id wins over
            whatever this tab sent. A no-op on the happy path (client-minted
            v4, echoed back unchanged) — it matters only where the server
            minted instead: a malformed id, or an old client's cookie
@@ -1049,37 +1074,46 @@ export const Handlers = {
            already be a real, committed conversation (a resumed one), and
            `replace` is the safer default either way — see its own comment
            for why a premature "uncommitted" here still degrades gracefully. */
-        meta: (d) => {
-          if (d.conversation_id && d.conversation_id !== Route.current()) {
-            Route.replace(d.conversation_id);
-          }
-        },
-        stage: (d) => {
-          RobotStateManager.onStage?.(d.stage, d);
-          UI.setStage(handle, STAGE_LABELS[d.stage]
-            ? STAGE_LABELS[d.stage](d)
-            : null);
-        },
-        final: (d) => { handle.final = d; },
-        delta: (d) => {
-          if (!sawToken) {
-            sawToken = true;
-            UI.setStage(handle, null);
-            RobotStateManager.startTalking();
-          }
-          handle.stream.push(d.t);
-          UI.followStream();
-        },
-        suggestions: (d) => { handle.suggested = d.suggested_questions || []; },
-        /* FIRST failure wins, not last. Two error frames can arrive in one
+          meta: (d) => {
+            if (d.conversation_id && d.conversation_id !== Route.current()) {
+              Route.replace(d.conversation_id);
+            }
+          },
+          stage: (d) => {
+            RobotStateManager.onStage?.(d.stage, d);
+            UI.setStage(handle, STAGE_LABELS[d.stage] ? STAGE_LABELS[d.stage](d) : null);
+          },
+          final: (d) => {
+            handle.final = d;
+          },
+          delta: (d) => {
+            if (!sawToken) {
+              sawToken = true;
+              UI.setStage(handle, null);
+              RobotStateManager.startTalking();
+            }
+            handle.stream.push(d.t);
+            UI.followStream();
+          },
+          suggestions: (d) => {
+            handle.suggested = d.suggested_questions || [];
+          },
+          /* FIRST failure wins, not last. Two error frames can arrive in one
            stream — a persistence write that did not land, then a suggestions
            call that also failed — and the second is always the less
            informative one. Overwriting meant a reader whose answer merely
            went unsaved was told the message failed to send, which is both
            wrong and more alarming than the truth. */
-        error: (d) => { failed = failed || d; },
-        done: () => { /* terminal; the reader loop ends on its own */ },
-      }, requestId, conversation);
+          error: (d) => {
+            failed = failed || d;
+          },
+          done: () => {
+            /* terminal; the reader loop ends on its own */
+          },
+        },
+        requestId,
+        conversation,
+      );
     } catch (error) {
       /* A New chat ended this conversation, rather than the reader pressing
          Stop. The bubble is already leaving the transcript — handleNewChat
@@ -1160,9 +1194,7 @@ export const Handlers = {
          reader has a complete, normalized, correctly cited response — so
          calling it "failed to send" describes the wrong thing entirely. */
       ErrorHandler.showToast(
-        I18n.t(failed?.code === 'persistence_unavailable'
-          ? 'chat.notSaved'
-          : 'chat.sendFailed'),
+        I18n.t(failed?.code === 'persistence_unavailable' ? 'chat.notSaved' : 'chat.sendFailed'),
         true,
       );
 
@@ -1235,7 +1267,12 @@ export const Handlers = {
 
     try {
       const data = await Services.sendChatRequest(
-        queryText, category, token, I18N_LANG, requestId, conversation
+        queryText,
+        category,
+        token,
+        I18N_LANG,
+        requestId,
+        conversation,
       );
 
       /* `sendChatRequest` sets `Services.chatAbortController` exactly as the
@@ -1304,7 +1341,9 @@ export const Handlers = {
       return;
     }
 
-    DOMCache.getAll(`.${CONFIG.CLASSES.FAQ_BUTTON}.active`).forEach(btn => btn.classList.remove(CONFIG.CLASSES.ACTIVE));
+    DOMCache.getAll(`.${CONFIG.CLASSES.FAQ_BUTTON}.active`).forEach((btn) =>
+      btn.classList.remove(CONFIG.CLASSES.ACTIVE),
+    );
     button.classList.add(CONFIG.CLASSES.ACTIVE);
 
     await this.processChatRequestInternal(button.dataset.question, button.dataset.category);
@@ -1343,7 +1382,9 @@ export const Handlers = {
     const questionText = button.dataset.questionText;
     if (!questionText) return;
 
-    DOMCache.getAll(`.${CONFIG.CLASSES.SUGGESTED_BUTTON}`).forEach(btn => { btn.disabled = true; });
+    DOMCache.getAll(`.${CONFIG.CLASSES.SUGGESTED_BUTTON}`).forEach((btn) => {
+      btn.disabled = true;
+    });
 
     const categorySelect = DOMCache.get(CONFIG.SELECTORS.CATEGORY_SELECT);
     const hiddenSelect = document.getElementById('query-category-hidden');
@@ -1355,7 +1396,10 @@ export const Handlers = {
   showResetRequest(show) {
     ErrorHandler.clearErrors();
     DOMCache.get(CONFIG.SELECTORS.LOGIN_FORM)?.classList.toggle(CONFIG.CLASSES.D_NONE, show);
-    DOMCache.get(CONFIG.SELECTORS.RESET_REQUEST_FORM)?.classList.toggle(CONFIG.CLASSES.D_NONE, !show);
+    DOMCache.get(CONFIG.SELECTORS.RESET_REQUEST_FORM)?.classList.toggle(
+      CONFIG.CLASSES.D_NONE,
+      !show,
+    );
     DOMCache.get(CONFIG.SELECTORS.RESET_SENT)?.classList.add(CONFIG.CLASSES.D_NONE);
     if (show) DOMCache.get(CONFIG.SELECTORS.RESET_EMAIL)?.focus();
   },
@@ -1390,11 +1434,12 @@ export const Handlers = {
       this.startResetCooldown(submit);
     } catch (error) {
       logError(error, 'handleResetRequestSubmit');
-      const key = error?.code === 'reset_quota_exhausted'
-        ? 'auth.emailUnavailable'
-        : error?.code === 'reset_rate_limited'
-          ? 'auth.tooSoon'
-          : 'auth.emailUnavailable';
+      const key =
+        error?.code === 'reset_quota_exhausted'
+          ? 'auth.emailUnavailable'
+          : error?.code === 'reset_rate_limited'
+            ? 'auth.tooSoon'
+            : 'auth.emailUnavailable';
       ErrorHandler.showAuthError(I18n.t(key));
       this.startResetCooldown(submit);
     }
@@ -1486,7 +1531,7 @@ export const Handlers = {
       submit.textContent = I18n.t('auth.recovery.saving');
     }
 
-    let email = null;
+    let email;
     try {
       const result = await Services.updatePassword(password);
       email = result?.user?.email ?? null;
@@ -1517,9 +1562,7 @@ export const Handlers = {
          nothing legitimate survives it. */
       const url = new URL(window.location.href);
       url.searchParams.delete('recovery');
-      window.history.replaceState(
-        { ...window.history.state }, '', url.pathname + url.search
-      );
+      window.history.replaceState({ ...window.history.state }, '', url.pathname + url.search);
     } catch (error) {
       logError(error, 'handleRecoverySubmit.replaceState');
     }
@@ -1565,7 +1608,7 @@ export const Handlers = {
       AppState.set('userProfile', null);
       this.clearSessionState();
       ErrorHandler.showToast(
-        result?.testing ? 'Logged out successfully (testing mode)' : 'Logged out successfully'
+        result?.testing ? 'Logged out successfully (testing mode)' : 'Logged out successfully',
       );
       this.redirectToHomeIfNeeded();
     } catch (error) {
@@ -1634,13 +1677,15 @@ export const Handlers = {
   },
 
   clearLocalAuthData() {
-    ['sb-access-token', 'sb-refresh-token', 'sb-user', 'sb-session', 'sfda-supabase-auth'].forEach(key => {
-      try {
-        localStorage.removeItem(key);
-      } catch (error) {
-        logError(error, `clearLocalAuthData: ${key}`);
-      }
-    });
+    ['sb-access-token', 'sb-refresh-token', 'sb-user', 'sb-session', 'sfda-supabase-auth'].forEach(
+      (key) => {
+        try {
+          localStorage.removeItem(key);
+        } catch (error) {
+          logError(error, `clearLocalAuthData: ${key}`);
+        }
+      },
+    );
 
     /* The recovery session lives in this tab's sessionStorage under its own key,
        so the loop above cannot reach it. Missing this would leave a usable token

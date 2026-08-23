@@ -20,7 +20,8 @@ export const ThemeManager = {
     }
 
     const systemPrefersDark = window.matchMedia?.('(prefers-color-scheme: dark)').matches;
-    const defaultTheme = storedTheme || (systemPrefersDark ? CONFIG.CLASSES.DARK : CONFIG.CLASSES.LIGHT);
+    const defaultTheme =
+      storedTheme || (systemPrefersDark ? CONFIG.CLASSES.DARK : CONFIG.CLASSES.LIGHT);
 
     this.apply(defaultTheme);
     this.initToggles();
@@ -41,7 +42,8 @@ export const ThemeManager = {
   },
 
   toggle() {
-    const newTheme = this.getCurrent() === CONFIG.CLASSES.DARK ? CONFIG.CLASSES.LIGHT : CONFIG.CLASSES.DARK;
+    const newTheme =
+      this.getCurrent() === CONFIG.CLASSES.DARK ? CONFIG.CLASSES.LIGHT : CONFIG.CLASSES.DARK;
     this.apply(newTheme);
     this.animateToggleButtons();
     this.announceChange(newTheme);
@@ -52,7 +54,7 @@ export const ThemeManager = {
     const glyph = isDark ? 'sun' : 'moon';
     const newTitle = isDark ? 'Switch to light theme' : 'Switch to dark theme';
 
-    DOMCache.getAll(`.${CONFIG.CLASSES.THEME_TOGGLE}`).forEach(btn => {
+    DOMCache.getAll(`.${CONFIG.CLASSES.THEME_TOGGLE}`).forEach((btn) => {
       btn.innerHTML = iconMarkup(glyph, 16);
       DOMCache.setAttributes(btn, {
         title: newTitle,
@@ -76,7 +78,10 @@ export const ThemeManager = {
     });
 
     document.addEventListener('keydown', (e) => {
-      if (e.target.closest(`.${CONFIG.CLASSES.THEME_TOGGLE}`) && (e.key === 'Enter' || e.key === ' ')) {
+      if (
+        e.target.closest(`.${CONFIG.CLASSES.THEME_TOGGLE}`) &&
+        (e.key === 'Enter' || e.key === ' ')
+      ) {
         e.preventDefault();
         this.toggle();
       }
@@ -84,7 +89,7 @@ export const ThemeManager = {
   },
 
   animateToggleButtons() {
-    DOMCache.getAll(`.${CONFIG.CLASSES.THEME_TOGGLE}`).forEach(btn => {
+    DOMCache.getAll(`.${CONFIG.CLASSES.THEME_TOGGLE}`).forEach((btn) => {
       const icon = btn.querySelector('.icon');
       if (icon) {
         icon.style.animation = 'none';

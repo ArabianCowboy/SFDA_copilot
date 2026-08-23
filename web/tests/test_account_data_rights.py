@@ -29,8 +29,12 @@ ANSWER_TOKENS = ["The answer ", "is here."]
 
 def make_result(index: int) -> SearchResult:
     return SearchResult(
-        text=f"Passage {index}", score=0.7, document=f"Doc_{index}.pdf",
-        category="regulatory", page=index, chunk_id=f"c{index}",
+        text=f"Passage {index}",
+        score=0.7,
+        document=f"Doc_{index}.pdf",
+        category="regulatory",
+        page=index,
+        chunk_id=f"c{index}",
         metadata={"semantic_score": 0.6, "lexical_score": 0.8},
     )
 
@@ -70,6 +74,7 @@ def ndjson_lines(response):
 
 
 # ── Export ─────────────────────────────────────────────────────────────────
+
 
 def test_export_requires_a_bearer_token(client):
     response = client.get("/account/api/export")
@@ -115,6 +120,7 @@ def test_export_with_no_history_is_the_header_line_alone(client, backend):
 
 
 # ── Bulk conversation deletion ───────────────────────────────────────────────
+
 
 def test_delete_all_conversations_requires_a_bearer_token(client):
     response = client.delete("/account/api/conversations")
@@ -163,7 +169,10 @@ def test_delete_all_conversations_is_refused_while_any_answer_is_generating(app)
     def run_stream():
         response = client.post(
             "/api/chat/stream",
-            json={"query": "A slow question", "conversation_id": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"},
+            json={
+                "query": "A slow question",
+                "conversation_id": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+            },
             headers=AUTH,
         )
         streamed.append(response.get_data())

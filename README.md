@@ -197,13 +197,13 @@ pytest assertion, and they are listed with their thresholds in
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md#what-is-mechanically-enforced). The ones most
 likely to catch you:
 
-| Test | What it will not let you do |
-|---|---|
-| `test_css_contract.py` | Author a physical CSS property that cannot mirror under RTL |
+| Test                            | What it will not let you do                                                         |
+| ------------------------------- | ----------------------------------------------------------------------------------- |
+| `test_css_contract.py`          | Author a physical CSS property that cannot mirror under RTL                         |
 | `test_frontend_architecture.py` | Cross a module boundary, hardcode a UI string, or let Arabic lag English by one key |
-| `test_composer.py` | Ship an icon webfont, or a module URL without the current `ASSET_VERSION` |
-| `test_admin_page.py` | Add a new top-level `runtime.*` string namespace |
-| `test_deep_link_contract.py` | Make `/c/<uuid>` reveal whether a conversation exists |
+| `test_composer.py`              | Ship an icon webfont, or a module URL without the current `ASSET_VERSION`           |
+| `test_admin_page.py`            | Add a new top-level `runtime.*` string namespace                                    |
+| `test_deep_link_contract.py`    | Make `/c/<uuid>` reveal whether a conversation exists                               |
 
 **Bump `ASSET_VERSION` in `web/api/app.py` in any commit touching CSS or JS.**
 
@@ -242,13 +242,13 @@ ARCHIVE_SESSION_SALT=                     # leave unset — see below
 
 Also read, all optional:
 
-| Variable | Effect |
-|---|---|
-| `SUPABASE_SECRET_KEY` | Enables the `/admin` console. Without it every reader resolves as a non-administrator, which is a safe and supported way to deploy. Legacy fallback: `SUPABASE_SERVICE_ROLE_KEY`. |
-| `DEBUG`, `LOG_LEVEL` | Defaults `false`, `INFO` |
-| `WEB_CONCURRENCY` | Must be `1`; the app warns otherwise |
-| `FLASK_TESTING` | Enables the mock-service demo path |
-| `SUPABASE_AUTH_TIMEOUT` | Seconds; default 5 |
+| Variable                | Effect                                                                                                                                                                            |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SUPABASE_SECRET_KEY`   | Enables the `/admin` console. Without it every reader resolves as a non-administrator, which is a safe and supported way to deploy. Legacy fallback: `SUPABASE_SERVICE_ROLE_KEY`. |
+| `DEBUG`, `LOG_LEVEL`    | Defaults `false`, `INFO`                                                                                                                                                          |
+| `WEB_CONCURRENCY`       | Must be `1`; the app warns otherwise                                                                                                                                              |
+| `FLASK_TESTING`         | Enables the mock-service demo path                                                                                                                                                |
+| `SUPABASE_AUTH_TIMEOUT` | Seconds; default 5                                                                                                                                                                |
 
 **The archive salts are deliberately unset.** Setting either turns on the training archive,
 and `web/config.yaml`'s `archive_disclosed` guard logs a loud startup error if they are set
@@ -268,10 +268,10 @@ Edit `faq.yaml`:
 ```yaml
 en:
   regulatory:
-    title: "Regulatory Guidelines"
+    title: 'Regulatory Guidelines'
     questions:
-      - short: "Drug Registration"
-        text: "What are the requirements for drug registration in Saudi Arabia?"
+      - short: 'Drug Registration'
+        text: 'What are the requirements for drug registration in Saudi Arabia?'
 ```
 
 There is **no `icon:` field**. Each category's glyph is derived from its key by
@@ -289,20 +289,20 @@ is not finished; a file with an old date is one to check before you trust it.
 `DESIGN.md` and `TODO.md` stay at the root — the design tooling reads `DESIGN.md` from
 there, and `TODO.md` is the most actively edited file in the project.
 
-| Document | What it covers |
-|---|---|
-| [CLAUDE.md](CLAUDE.md) | The working agreement: where the rules live, the ones you will trip over, and how to write a `TODO.md` entry or archive a finished plan |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | The live system contract: the URL-as-pointer model, single worker, no bundler, the two database access patterns, what is mechanically enforced — **and which document wins when two disagree** |
-| [DESIGN.md](DESIGN.md) | The design system. Every rule tagged `[GATE]`, `[CORRECTNESS]` or `[TASTE]` |
-| [docs/PRODUCT.md](docs/PRODUCT.md) | What the product is for, its terminology, and the brand commitments copy is held to |
-| [supabase/README.md](supabase/README.md) | Migration rules, the RPC contract, and the current shape of `public` |
-| [docs/OPERATIONS.md](docs/OPERATIONS.md) | State this repository cannot hold — DNS, SMTP, dashboard configuration |
-| [docs/citation-eval-judge-protocol.md](docs/citation-eval-judge-protocol.md) | The human-judge protocol gating a second model provider |
-| [TODO.md](TODO.md) | Open bugs and planned work, each with the cost of fixing it |
-| [docs/archive/README.md](docs/archive/README.md) | Index of finished plans and resolved TODO entries — what each decided and what it reversed. **History, not instructions** |
+| Document                                                                     | What it covers                                                                                                                                                                                 |
+| ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [CLAUDE.md](CLAUDE.md)                                                       | The working agreement: where the rules live, the ones you will trip over, and how to write a `TODO.md` entry or archive a finished plan                                                        |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)                                 | The live system contract: the URL-as-pointer model, single worker, no bundler, the two database access patterns, what is mechanically enforced — **and which document wins when two disagree** |
+| [DESIGN.md](DESIGN.md)                                                       | The design system. Every rule tagged `[GATE]`, `[CORRECTNESS]` or `[TASTE]`                                                                                                                    |
+| [docs/PRODUCT.md](docs/PRODUCT.md)                                           | What the product is for, its terminology, and the brand commitments copy is held to                                                                                                            |
+| [supabase/README.md](supabase/README.md)                                     | Migration rules, the RPC contract, and the current shape of `public`                                                                                                                           |
+| [docs/OPERATIONS.md](docs/OPERATIONS.md)                                     | State this repository cannot hold — DNS, SMTP, dashboard configuration                                                                                                                         |
+| [docs/citation-eval-judge-protocol.md](docs/citation-eval-judge-protocol.md) | The human-judge protocol gating a second model provider                                                                                                                                        |
+| [TODO.md](TODO.md)                                                           | Open bugs and planned work, each with the cost of fixing it                                                                                                                                    |
+| [docs/archive/README.md](docs/archive/README.md)                             | Index of finished plans and resolved TODO entries — what each decided and what it reversed. **History, not instructions**                                                                      |
 
 **Before your first migration or your first RTL component**, read
-[*Rules that collide*](docs/ARCHITECTURE.md#rules-that-collide) — eight places where two
+[_Rules that collide_](docs/ARCHITECTURE.md#rules-that-collide) — eight places where two
 individually correct rules meet badly, each of which has cost someone a session.
 
 ---
@@ -319,7 +319,7 @@ you found it.
 **Fix the documentation your change makes wrong, in the same commit.** Specifically:
 
 - Closing a `TODO.md` entry means adding a dated closing note, moving the whole entry to
-  `docs/archive/TODO-resolved.md`, and deleting its line from *Open now* — not striking it
+  `docs/archive/TODO-resolved.md`, and deleting its line from _Open now_ — not striking it
   through in place. The template and the full procedure are in
   [TODO.md → How this file works](TODO.md#how-this-file-works).
 - Finishing a plan means archiving it with a `STATUS: HISTORICAL RECORD` banner, and
@@ -330,8 +330,8 @@ you found it.
 
 ## Troubleshooting
 
-**Streaming stalls or arrives all at once** — a proxy is buffering. See *Running in
-production*.
+**Streaming stalls or arrives all at once** — a proxy is buffering. See _Running in
+production_.
 
 **Conversations appear to be shared between browser tabs** — that was the old cookie-based
 pointer and it is gone; the URL is the pointer now. If you see it, the client is not
@@ -345,7 +345,7 @@ anyone out; a 401 means a genuinely rejected credential.
 
 **Arabic layout looks wrong but the test suite is green** — `test_css_contract.py` only
 scans this repository's CSS, and the templates load the LTR Bootstrap build. See the note
-under *The Logical-Properties Rule* in `DESIGN.md`.
+under _The Logical-Properties Rule_ in `DESIGN.md`.
 
 ---
 

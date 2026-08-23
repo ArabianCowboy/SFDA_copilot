@@ -16,8 +16,8 @@ import pytest
 from web.services.citations import (
     CitationDiagnostics,
     build_source_payload,
-    extract_cited_indices,
     extract_citation_diagnostics,
+    extract_cited_indices,
     normalize_legacy_citations,
     strip_citation_markers,
 )
@@ -25,20 +25,21 @@ from web.services.result_combiner import SearchResult
 
 
 def result(**overrides):
-    defaults = dict(
-        text="Applications must be submitted within fifteen days of approval.",
-        score=0.7143,
-        document="Guidance_for_Submission.pdf",
-        category="regulatory",
-        page=14,
-        chunk_id="guidance_p14_2",
-        metadata={"semantic_score": 0.6312, "lexical_score": 0.7975},
-    )
+    defaults = {
+        "text": "Applications must be submitted within fifteen days of approval.",
+        "score": 0.7143,
+        "document": "Guidance_for_Submission.pdf",
+        "category": "regulatory",
+        "page": 14,
+        "chunk_id": "guidance_p14_2",
+        "metadata": {"semantic_score": 0.6312, "lexical_score": 0.7975},
+    }
     defaults.update(overrides)
     return SearchResult(**defaults)
 
 
 # ── Payload shape ───────────────────────────────────────────────────────────
+
 
 def test_index_is_one_based_and_sequential():
     payload = build_source_payload([result(), result(), result()])
@@ -64,14 +65,17 @@ def test_limit_keeps_sources_aligned_with_prompt_blocks():
 
 # ── numpy / NaN coercion ────────────────────────────────────────────────────
 
+
 def test_numpy_scalars_are_coerced_to_json_native_types():
-    payload = build_source_payload([
-        result(
-            page=np.int64(14),
-            score=np.float32(0.5),
-            metadata={"semantic_score": np.float64(0.31), "lexical_score": np.float32(0.62)},
-        )
-    ])
+    payload = build_source_payload(
+        [
+            result(
+                page=np.int64(14),
+                score=np.float32(0.5),
+                metadata={"semantic_score": np.float64(0.31), "lexical_score": np.float32(0.62)},
+            )
+        ]
+    )
     json.dumps(payload)  # would raise TypeError on numpy scalars
 
     (source,) = payload
@@ -109,12 +113,15 @@ def test_snippet_is_truncated_and_whitespace_collapsed():
 
 # ── Legacy citation normalisation ───────────────────────────────────────────
 
+
 @pytest.fixture
 def sources():
-    return build_source_payload([
-        result(document="A.pdf", page=3),
-        result(document="B.pdf", page=14),
-    ])
+    return build_source_payload(
+        [
+            result(document="A.pdf", page=3),
+            result(document="B.pdf", page=14),
+        ]
+    )
 
 
 def test_prose_citation_becomes_a_numbered_marker(sources):
@@ -179,9 +186,10 @@ def test_nested_list_indentation_survives_normalisation(sources):
 
 def test_a_dropped_citation_takes_its_own_spacing(sources):
     """The tidying is local, so it needs no pass over the rest of the text."""
-    assert normalize_legacy_citations(
-        "A claim [Source: Nope.pdf], and more.", sources
-    ) == "A claim, and more."
+    assert (
+        normalize_legacy_citations("A claim [Source: Nope.pdf], and more.", sources)
+        == "A claim, and more."
+    )
 
 
 def test_a_wrong_page_is_dropped_not_remapped(sources):
@@ -198,6 +206,7 @@ def test_a_wrong_page_is_dropped_not_remapped(sources):
 
 # ── Which sources the answer actually cited ─────────────────────────────────
 
+
 def test_markers_are_deduplicated_and_sorted(sources):
     assert extract_cited_indices("A [2]. B [1]. C [2] again.", sources) == [1, 2]
 
@@ -208,9 +217,7 @@ def test_a_refusal_cites_nothing(sources):
     No prose is matched to reach this answer — the absence of markers is the
     whole signal, which is why it works identically in Arabic.
     """
-    assert extract_cited_indices(
-        "I cannot answer based on the given information.", sources
-    ) == []
+    assert extract_cited_indices("I cannot answer based on the given information.", sources) == []
     assert extract_cited_indices("لا يمكنني الإجابة بناءً على المعلومات المتاحة.", sources) == []
 
 
@@ -226,12 +233,14 @@ def test_validation_is_by_membership_not_range():
     With sources numbered 1 and 3, a range check would accept [2] — which is
     a passage the payload does not carry and the reader cannot open.
     """
-    payload = build_source_payload([
-        result(document="A.pdf", page=3),
-        result(document="B.pdf", page=14),
-        result(document="C.pdf", page=20),
-    ])
-    sparse = [payload[0], payload[2]]          # indices 1 and 3
+    payload = build_source_payload(
+        [
+            result(document="A.pdf", page=3),
+            result(document="B.pdf", page=14),
+            result(document="C.pdf", page=20),
+        ]
+    )
+    sparse = [payload[0], payload[2]]  # indices 1 and 3
 
     assert extract_cited_indices("Cites [1] and [3].", sparse) == [1, 3]
     assert extract_cited_indices("Cites [2].", sparse) == []
@@ -260,6 +269,7 @@ def test_empty_inputs_cite_nothing(sources):
 # full breakdown a hallucination-rate metric needs. extract_cited_indices is
 # now a thin wrapper over it — these tests pin the wrapper relationship as
 # well as the new function's own shape.
+
 
 def test_diagnostics_reports_invalid_markers_separately_from_cited(sources):
     diagnostics = extract_citation_diagnostics("Real [1] and invented [7].", sources)
@@ -301,6 +311,7 @@ def test_extract_cited_indices_matches_diagnostics_cited(sources):
 # the server counts a marker the browser will not turn into a button, the
 # answer gets a source panel for a citation the reader cannot click.
 
+
 def test_markers_inside_an_inline_code_span_are_not_citations(sources):
     assert extract_cited_indices("Use the `list[1]` accessor.", sources) == []
 
@@ -335,7 +346,7 @@ def test_non_ascii_digits_are_not_markers(sources):
 
 
 def test_adjacent_markers_are_not_mistaken_for_a_reference_link(sources):
-    """"[1][2]" is the multi-citation form the system prompt asks for.
+    """ "[1][2]" is the multi-citation form the system prompt asks for.
 
     An earlier version of the uncitable filter treated it as markdown
     reference-link syntax and dropped BOTH markers — so a sentence drawing on
@@ -352,16 +363,16 @@ def test_adjacent_markers_are_not_mistaken_for_a_reference_link(sources):
 # its own passages from [1], so a marker replayed into a later turn points at
 # whatever that turn happened to retrieve first.
 
+
 def test_markers_are_stripped_with_their_spacing():
-    assert strip_citation_markers(
-        "Applications must be submitted within 15 days [1]."
-    ) == "Applications must be submitted within 15 days."
+    assert (
+        strip_citation_markers("Applications must be submitted within 15 days [1].")
+        == "Applications must be submitted within 15 days."
+    )
 
 
 def test_every_marker_in_a_turn_is_stripped():
-    assert strip_citation_markers(
-        "First [1]. Second [2][5]. Third [8]."
-    ) == "First. Second. Third."
+    assert strip_citation_markers("First [1]. Second [2][5]. Third [8].") == "First. Second. Third."
 
 
 def test_stripping_leaves_ordinary_brackets_alone():

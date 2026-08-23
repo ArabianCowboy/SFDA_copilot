@@ -20,7 +20,6 @@ from pathlib import Path
 
 import pytest
 
-
 ENFORCED = True
 
 CSS_DIR = Path(__file__).resolve().parents[2] / "static" / "css"
@@ -36,10 +35,26 @@ BANNED = [
     ("margin-right", r"(?<![-\w])margin-right\s*:", "margin-inline-end"),
     ("border-left", r"(?<![-\w])border-left(-color|-width|-style)?\s*:", "border-inline-start"),
     ("border-right", r"(?<![-\w])border-right(-color|-width|-style)?\s*:", "border-inline-end"),
-    ("border-top-left-radius", r"(?<![-\w])border-top-left-radius\s*:", "border-start-start-radius"),
-    ("border-top-right-radius", r"(?<![-\w])border-top-right-radius\s*:", "border-start-end-radius"),
-    ("border-bottom-left-radius", r"(?<![-\w])border-bottom-left-radius\s*:", "border-end-start-radius"),
-    ("border-bottom-right-radius", r"(?<![-\w])border-bottom-right-radius\s*:", "border-end-end-radius"),
+    (
+        "border-top-left-radius",
+        r"(?<![-\w])border-top-left-radius\s*:",
+        "border-start-start-radius",
+    ),
+    (
+        "border-top-right-radius",
+        r"(?<![-\w])border-top-right-radius\s*:",
+        "border-start-end-radius",
+    ),
+    (
+        "border-bottom-left-radius",
+        r"(?<![-\w])border-bottom-left-radius\s*:",
+        "border-end-start-radius",
+    ),
+    (
+        "border-bottom-right-radius",
+        r"(?<![-\w])border-bottom-right-radius\s*:",
+        "border-end-end-radius",
+    ),
     ("left offset", r"(?<![-\w])left\s*:", "inset-inline-start"),
     ("right offset", r"(?<![-\w])right\s*:", "inset-inline-end"),
     ("text-align: left", r"text-align\s*:\s*left", "text-align: start"),

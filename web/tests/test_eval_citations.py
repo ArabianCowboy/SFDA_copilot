@@ -59,8 +59,7 @@ class FakeHandler:
     def stream_response(self, query, search_results, category, chat_history, lang):
         if self._raises:
             raise self._raises
-        for token in self._answer_tokens:
-            yield token
+        yield from self._answer_tokens
 
     def _build_messages(self, query, search_results, category, chat_history=None, lang="en"):
         if self._messages is not None:
@@ -79,12 +78,13 @@ def make_result(text="passage text", document="A.pdf", page=1):
 
 
 def args(**overrides):
-    defaults = dict(limit=None, group=None, no_ar=False, judge=False)
+    defaults = {"limit": None, "group": None, "no_ar": False, "judge": False}
     defaults.update(overrides)
     return argparse.Namespace(**defaults)
 
 
 # ── load_probes ──────────────────────────────────────────────────────────
+
 
 def test_load_probes_loads_every_group_by_default():
     probes = ec.load_probes(args())
@@ -124,6 +124,7 @@ def test_load_probes_limit_caps_the_count():
 
 # ── run() — flat probes ─────────────────────────────────────────────────
 
+
 def test_run_flat_probe_records_normalized_answer_and_diagnostics():
     engine = FakeEngine([make_result()])
     handler = FakeHandler(answer_tokens=("Real ", "[1] ", "and ", "invented ", "[9]."))
@@ -141,13 +142,17 @@ def test_run_flat_probe_records_normalized_answer_and_diagnostics():
 def test_run_flat_probe_uses_synthetic_context_instead_of_real_search():
     engine = FakeEngine([make_result(document="SHOULD_NOT_BE_USED.pdf")])
     handler = FakeHandler(answer_tokens=("Cites [1].",))
-    probes = [{
-        "group": "adversarial",
-        "query": "q",
-        "lang": "en",
-        "category": "regulatory",
-        "synthetic_context": [{"text": "injected passage", "document": "Injected.pdf", "page": 1}],
-    }]
+    probes = [
+        {
+            "group": "adversarial",
+            "query": "q",
+            "lang": "en",
+            "category": "regulatory",
+            "synthetic_context": [
+                {"text": "injected passage", "document": "Injected.pdf", "page": 1}
+            ],
+        }
+    ]
 
     ec.run(handler, engine, probes)
 
@@ -171,6 +176,7 @@ def test_run_records_an_error_without_aborting_the_batch():
 
 
 # ── run() — turn probes / leakage ───────────────────────────────────────
+
 
 def test_turn_probe_detects_a_leaked_marker():
     engine = FakeEngine([make_result()])
@@ -222,6 +228,7 @@ def test_turn_probe_reports_clean_when_stripping_worked():
 
 # ── evaluate() ───────────────────────────────────────────────────────────
 
+
 def test_evaluate_aggregates_across_ok_probes_and_tracks_errors():
     engine = FakeEngine([make_result()])
     ok_handler = FakeHandler(answer_tokens=("Cites [1].",))
@@ -245,10 +252,15 @@ def test_evaluate_aggregates_across_ok_probes_and_tracks_errors():
 def test_evaluate_scores_refusal_only_against_expected_refusal_probes():
     engine = FakeEngine([make_result()])
     handler = FakeHandler(answer_tokens=("I cannot answer based on the given information.",))
-    probes = [{
-        "group": "refusal", "query": "who is claude?", "lang": "en", "category": "all",
-        "expected_refusal": True,
-    }]
+    probes = [
+        {
+            "group": "refusal",
+            "query": "who is claude?",
+            "lang": "en",
+            "category": "all",
+            "expected_refusal": True,
+        }
+    ]
     ec.run(handler, engine, probes)
 
     result = ec.evaluate(probes)
@@ -274,11 +286,22 @@ def test_evaluate_computes_language_parity_gap_when_both_languages_present():
 
 # ── compare() ────────────────────────────────────────────────────────────
 
+
 def test_compare_refuses_to_certify_when_either_side_errored():
-    baseline = {"errored": [{"error": "x"}], "metrics": {}, "n_ok": 0, "n_total": 1,
-                "marker_coverage_parity_gap_en_minus_ar": None}
-    challenger = {"errored": [], "metrics": {}, "n_ok": 1, "n_total": 1,
-                  "marker_coverage_parity_gap_en_minus_ar": None}
+    baseline = {
+        "errored": [{"error": "x"}],
+        "metrics": {},
+        "n_ok": 0,
+        "n_total": 1,
+        "marker_coverage_parity_gap_en_minus_ar": None,
+    }
+    challenger = {
+        "errored": [],
+        "metrics": {},
+        "n_ok": 1,
+        "n_total": 1,
+        "marker_coverage_parity_gap_en_minus_ar": None,
+    }
     report = ec.compare(baseline, challenger, baseline_id="b", challenger_id="c")
     assert report is None
 
@@ -287,7 +310,9 @@ def test_compare_returns_a_gate_report_on_a_clean_run():
     from web.services.citation_eval_metrics import MetricSummary
 
     clean = {
-        "errored": [], "n_ok": 40, "n_total": 40,
+        "errored": [],
+        "n_ok": 40,
+        "n_total": 40,
         "marker_coverage_parity_gap_en_minus_ar": None,
         "metrics": {
             "hallucinated_marker_rate": MetricSummary(value=0.0, n=40),
@@ -300,6 +325,7 @@ def test_compare_returns_a_gate_report_on_a_clean_run():
 
 
 # ── write_artifact() ─────────────────────────────────────────────────────
+
 
 def test_write_artifact_writes_one_json_line_per_probe(tmp_path):
     engine = FakeEngine([make_result()])

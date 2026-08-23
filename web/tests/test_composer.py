@@ -25,9 +25,7 @@ def test_scope_selector_opens_and_selects_with_the_keyboard(authenticated_page: 
 
     expect(menu).to_be_hidden()
     expect(trigger).to_have_attribute("data-value", "regulatory")
-    expect(authenticated_page.locator("#query-category-hidden")).to_have_value(
-        "regulatory"
-    )
+    expect(authenticated_page.locator("#query-category-hidden")).to_have_value("regulatory")
     # The hidden select is what the chat request reads, so the two must agree.
     expect(trigger.locator(".dropdown-text")).to_have_text("Regulatory")
 

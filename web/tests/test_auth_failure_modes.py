@@ -31,7 +31,6 @@ from supabase_auth.errors import AuthApiError, AuthRetryableError, AuthUnknownEr
 
 from web.api.app import _is_auth_refusal, _is_upstream_outage, create_app
 
-
 AUTH = {"Authorization": "Bearer any-token"}
 
 
@@ -70,9 +69,7 @@ def _seed_session(client) -> None:
 
 
 def _use(monkeypatch, exception: BaseException) -> None:
-    monkeypatch.setattr(
-        "web.api.app.get_supabase", lambda: _FailingSupabase(exception)
-    )
+    monkeypatch.setattr("web.api.app.get_supabase", lambda: _FailingSupabase(exception))
 
 
 # ── The reported incident ────────────────────────────────────────────────────
@@ -276,6 +273,7 @@ def test_a_refusal_without_a_status_is_not_established():
     credential was rejected — and answering "your credentials are invalid" from
     that is the same unfounded certainty the timeout bug was made of.
     """
+
     class _Statusless(AuthApiError):
         def __init__(self):
             super().__init__("mystery", 400, None)

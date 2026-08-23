@@ -35,6 +35,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import os
 import sys
@@ -48,10 +49,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # See scripts/smoke_real.py for why: a Windows console defaults to cp1252,
 # which cannot encode Arabic, and this harness's probe set is bilingual.
 for _stream in (sys.stdout, sys.stderr):
-    try:
+    with contextlib.suppress(AttributeError, ValueError):  # pragma: no cover - non-standard stream
         _stream.reconfigure(encoding="utf-8", errors="replace")
-    except (AttributeError, ValueError):  # pragma: no cover - non-standard stream
-        pass
 
 import yaml
 from dotenv import load_dotenv
@@ -61,20 +60,25 @@ load_dotenv()
 from web.services.citation_eval_metrics import (
     MetricSummary,
     compare_to_baseline,
-    hallucinated_marker_rate,
     language_parity_gap,
     leakage_check,
     legacy_intervention_occurred,
     marker_coverage,
     refusal_is_clean,
 )
-from web.services.citations import build_source_payload, extract_citation_diagnostics, normalize_legacy_citations
+from web.services.citations import (
+    build_source_payload,
+    extract_citation_diagnostics,
+    normalize_legacy_citations,
+)
 from web.services.openai_app import OpenAIHandler
 from web.services.result_combiner import SearchResult
 from web.services.search_engine import ImprovedSearchEngine
 from web.services.settings_service import deployed_defaults
 
-DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "web", "tests", "data")
+DATA_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "web", "tests", "data"
+)
 PROBES = os.path.join(DATA_DIR, "citation_eval.yaml")
 CANDIDATES = os.path.join(DATA_DIR, "citation_eval_candidates.yaml")
 
@@ -93,7 +97,9 @@ def load_probes(args) -> list[dict[str, Any]]:
         if args.group and group != args.group:
             continue
         for entry in entries or []:
-            lang = entry.get("lang") or (entry.get("turns", [{}])[-1].get("lang") if group in TURN_GROUPS else None)
+            lang = entry.get("lang") or (
+                entry.get("turns", [{}])[-1].get("lang") if group in TURN_GROUPS else None
+            )
             if args.no_ar and lang == "ar":
                 continue
             if args.judge and not entry.get("judge"):
@@ -142,7 +148,9 @@ def build_handler(model_id: str | None, candidates: dict[str, dict[str, Any]]) -
     return OpenAIHandler(settings)
 
 
-def _search(engine: ImprovedSearchEngine, query: str, category: str, probe: dict[str, Any]) -> list[SearchResult]:
+def _search(
+    engine: ImprovedSearchEngine, query: str, category: str, probe: dict[str, Any]
+) -> list[SearchResult]:
     """Real retrieval, or the probe's own synthetic_context when it has one.
 
     synthetic_context (adversarial group) hand-crafts the retrieved passages
@@ -181,7 +189,8 @@ def _answer(
     trade worth making.
     """
     llm_context = [
-        {"text": r.text, "document": r.document, "category": r.category, "page": r.page} for r in results
+        {"text": r.text, "document": r.document, "category": r.category, "page": r.page}
+        for r in results
     ]
     sources = build_source_payload(results, limit=handler.max_context_results)
     raw = "".join(handler.stream_response(query, llm_context, category, chat_history, lang)).strip()
@@ -203,7 +212,9 @@ def _answer(
     }
 
 
-def run(handler: OpenAIHandler, engine: ImprovedSearchEngine, probes: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def run(
+    handler: OpenAIHandler, engine: ImprovedSearchEngine, probes: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
     """Run every probe through the REAL pipeline, once. Expensive; no caching."""
     for probe in probes:
         try:
@@ -211,7 +222,7 @@ def run(handler: OpenAIHandler, engine: ImprovedSearchEngine, probes: list[dict[
                 _run_turn_probe(handler, engine, probe)
             else:
                 _run_flat_probe(handler, engine, probe)
-        except Exception as exc:  # noqa: BLE001 - report, don't abort the run
+        except Exception as exc:
             label = probe.get("query") or probe.get("pair_id") or "?"
             print(f"  !! {label[:50]!r} failed: {exc}")
             probe["error"] = str(exc)
@@ -222,13 +233,19 @@ def run(handler: OpenAIHandler, engine: ImprovedSearchEngine, probes: list[dict[
     return probes
 
 
-def _run_flat_probe(handler: OpenAIHandler, engine: ImprovedSearchEngine, probe: dict[str, Any]) -> None:
+def _run_flat_probe(
+    handler: OpenAIHandler, engine: ImprovedSearchEngine, probe: dict[str, Any]
+) -> None:
     category = probe.get("category", "all")
     results = _search(engine, probe["query"], category, probe)
-    probe["answer"] = _answer(handler, probe["query"], results, category, [], probe.get("lang", "en"))
+    probe["answer"] = _answer(
+        handler, probe["query"], results, category, [], probe.get("lang", "en")
+    )
 
 
-def _run_turn_probe(handler: OpenAIHandler, engine: ImprovedSearchEngine, probe: dict[str, Any]) -> None:
+def _run_turn_probe(
+    handler: OpenAIHandler, engine: ImprovedSearchEngine, probe: dict[str, Any]
+) -> None:
     """A fixed history + one live final turn — see citation_eval.yaml's note.
 
     Two things are checked: whether _history_without_stale_markers actually
@@ -245,10 +262,11 @@ def _run_turn_probe(handler: OpenAIHandler, engine: ImprovedSearchEngine, probe:
 
     results = engine.search(last["content"], category)
     llm_context = [
-        {"text": r.text, "document": r.document, "category": r.category, "page": r.page} for r in results
+        {"text": r.text, "document": r.document, "category": r.category, "page": r.page}
+        for r in results
     ]
 
-    messages = handler._build_messages(  # noqa: SLF001 - the seam under test, same as the unit test does
+    messages = handler._build_messages(
         last["content"], llm_context, category, chat_history=chat_history, lang=lang
     )
     probe["leakage"] = leakage_check(messages)
@@ -289,7 +307,9 @@ def evaluate(probes: list[dict[str, Any]]) -> dict[str, Any]:
         if probe.get("expected_refusal"):
             refusal_checks.append(refusal_is_clean(answer["normalized"], answer["sources"]))
 
-        legacy_interventions.append(legacy_intervention_occurred(answer["raw"], answer["normalized"]))
+        legacy_interventions.append(
+            legacy_intervention_occurred(answer["raw"], answer["normalized"])
+        )
 
         if "leakage" in probe:
             leakage_results.append(not probe["leakage"].leaked)
@@ -334,8 +354,10 @@ def print_summary(model_id: str, result: dict[str, Any]) -> None:
         value = f"{summary.value:.1%}" if summary.value is not None else "n/a"
         print(f"  {name:<28} {value:>10}  {summary.n}")
     if result["marker_coverage_parity_gap_en_minus_ar"] is not None:
-        print(f"  {'marker_coverage EN-AR gap':<28} "
-              f"{result['marker_coverage_parity_gap_en_minus_ar']:>10.1%}")
+        print(
+            f"  {'marker_coverage EN-AR gap':<28} "
+            f"{result['marker_coverage_parity_gap_en_minus_ar']:>10.1%}"
+        )
     if result["errored"]:
         print(f"  ** {len(result['errored'])} probe(s) errored — see the run log above **")
 
@@ -348,13 +370,17 @@ def compare(baseline_result, challenger_result, *, baseline_id: str, challenger_
     if baseline_result["errored"] or challenger_result["errored"]:
         side = "baseline" if baseline_result["errored"] else "challenger"
         count = len(baseline_result["errored"] or challenger_result["errored"])
-        print(f"  RECOMMENDATION — none. {count} {side} probe(s) errored during the run; "
-              f"this comparison is inconclusive. Fix the failures and re-run.")
+        print(
+            f"  RECOMMENDATION — none. {count} {side} probe(s) errored during the run; "
+            f"this comparison is inconclusive. Fix the failures and re-run."
+        )
         return None
 
     report = compare_to_baseline(
-        baseline_result["metrics"], challenger_result["metrics"],
-        challenger_id=challenger_id, baseline_id=baseline_id,
+        baseline_result["metrics"],
+        challenger_result["metrics"],
+        challenger_id=challenger_id,
+        baseline_id=baseline_id,
     )
 
     if report.baseline_fails_floor:
@@ -364,12 +390,20 @@ def compare(baseline_result, challenger_result, *, baseline_id: str, challenger_
 
     for verdict in report.verdicts:
         status = "PASS" if verdict.passed else ("FAIL" if verdict.passed is False else "n/a ")
-        baseline_str = f"{verdict.baseline:.1%}" if isinstance(verdict.baseline, float) else str(verdict.baseline)
-        challenger_str = (
-            f"{verdict.challenger:.1%}" if isinstance(verdict.challenger, float) else str(verdict.challenger)
+        baseline_str = (
+            f"{verdict.baseline:.1%}"
+            if isinstance(verdict.baseline, float)
+            else str(verdict.baseline)
         )
-        print(f"  [{status}] {verdict.metric:<26} baseline={baseline_str:<8} "
-              f"challenger={challenger_str:<8}  {verdict.reason}")
+        challenger_str = (
+            f"{verdict.challenger:.1%}"
+            if isinstance(verdict.challenger, float)
+            else str(verdict.challenger)
+        )
+        print(
+            f"  [{status}] {verdict.metric:<26} baseline={baseline_str:<8} "
+            f"challenger={challenger_str:<8}  {verdict.reason}"
+        )
 
     print("\n  RESULT:", "PASS — clears the gate" if report.passed else "DOES NOT CLEAR THE GATE")
     print("  Layer 1 only — this is a citation-FORMAT verdict, not a grounding one.")
@@ -408,15 +442,26 @@ def write_artifact(path: str, model_id: str, probes: list[dict[str, Any]]) -> No
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument("--limit", type=int, help="cap the number of probes (a cheap smoke run)")
     parser.add_argument("--group", help="restrict to one probe group")
     parser.add_argument("--no-ar", action="store_true", help="skip Arabic probes")
-    parser.add_argument("--judge", action="store_true",
-                         help="restrict to the judge:true subset — see docs/citation-eval-judge-protocol.md")
-    parser.add_argument("--baseline", help="model id for the baseline (default: the live deployed default)")
-    parser.add_argument("--model", action="append", dest="models",
-                         help="challenger model id to compare against the baseline (repeatable)")
+    parser.add_argument(
+        "--judge",
+        action="store_true",
+        help="restrict to the judge:true subset — see docs/citation-eval-judge-protocol.md",
+    )
+    parser.add_argument(
+        "--baseline", help="model id for the baseline (default: the live deployed default)"
+    )
+    parser.add_argument(
+        "--model",
+        action="append",
+        dest="models",
+        help="challenger model id to compare against the baseline (repeatable)",
+    )
     parser.add_argument("--out", help="append a JSONL run artifact to this path")
     args = parser.parse_args()
 

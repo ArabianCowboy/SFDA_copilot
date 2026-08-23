@@ -28,9 +28,19 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Any, Dict, Optional, Tuple
+from collections.abc import Callable, Sequence
+from typing import Any, cast
 
-from flask import Blueprint, Response, current_app, g, jsonify, render_template, request
+from flask import (
+    Blueprint,
+    Response,
+    current_app,
+    g,
+    jsonify,
+    make_response,
+    render_template,
+    request,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +56,7 @@ admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
 _UNGATED_ENDPOINTS = frozenset({"admin.console"})
 
 
-def _bearer_token() -> Optional[str]:
+def _bearer_token() -> str | None:
     """The token from an explicit Authorization header, or None.
 
     Deliberately not ``_get_token_from_request``: that one falls back to a
@@ -57,12 +67,12 @@ def _bearer_token() -> Optional[str]:
     header = request.headers.get("Authorization", "")
     if not header.startswith("Bearer "):
         return None
-    token = header[len("Bearer "):].strip()
+    token = header[len("Bearer ") :].strip()
     return token or None
 
 
 @admin_bp.before_request
-def _gate() -> Optional[Response]:
+def _gate() -> Response | tuple[Response, int] | None:
     """Admit administrators presenting a bearer token; turn away everyone else."""
     if request.endpoint in _UNGATED_ENDPOINTS:
         return None
@@ -77,6 +87,7 @@ def _gate() -> Optional[Response]:
     identity, early_response = _authenticate_request()
     if early_response is not None:
         return early_response
+    assert identity is not None  # _authenticate_request's contract: exactly one is None
 
     # An outage is not a refusal, and saying "forbidden" when the truth is "we
     # could not check" tells an administrator they have lost access they still
@@ -90,20 +101,21 @@ def _gate() -> Optional[Response]:
         return jsonify({"error": "identity_unavailable"}), 503
 
     if not identity.is_admin:
-        logger.warning(
-            "Non-administrator %s attempted %s", identity.user_id, request.path
-        )
+        logger.warning("Non-administrator %s attempted %s", identity.user_id, request.path)
         return jsonify({"error": "forbidden"}), 403
 
     return None
 
 
 @admin_bp.route("/", strict_slashes=False)
-def console() -> Response:
+def console() -> Response | tuple[Response, int]:
     """The console shell. Renders no privileged data — see the module docstring."""
     from web.api.app import ADMIN_MODULE_FILENAMES, MODULE_FILENAMES
 
-    build_map = current_app.jinja_env.globals["_import_map"]
+    build_map = cast(
+        "Callable[[str, Sequence[str]], dict[str, Any]]",
+        current_app.jinja_env.globals["_import_map"],
+    )
 
     # Both directories, because the console's modules import the shared ones —
     # i18n, theme, the icon helper, the Supabase transport. An unmapped import
@@ -118,10 +130,10 @@ def console() -> Response:
     import_map["imports"].update(build_map("admin", ADMIN_MODULE_FILENAMES)["imports"])
 
     context = current_app.config["base_render_context"](admin=True)
-    return render_template("admin.html", **context, module_import_map=import_map)
+    return make_response(render_template("admin.html", **context, module_import_map=import_map))
 
 
-def _active_generation() -> Dict[str, Any]:
+def _active_generation() -> dict[str, Any]:
     """What the handler that answers questions is ACTUALLY using, right now.
 
     Read off the live object, not off the store. Everything else in this
@@ -154,7 +166,7 @@ def _active_generation() -> Dict[str, Any]:
 
 
 @admin_bp.route("/api/settings", methods=["GET"])
-def get_settings() -> Response:
+def get_settings() -> Response | tuple[Response, int]:
     """The effective settings, plus what an operator is allowed to choose.
 
     `overrides` is sent alongside `settings` so the console can distinguish a
@@ -164,22 +176,24 @@ def get_settings() -> Response:
     from web.services.settings_service import allowed_models, deployed_defaults
 
     service = current_app.config["settings_service"]
-    return jsonify({
-        "settings": service.snapshot(),
-        "overrides": service.overrides(),
-        # What each value reverts TO. An overridden field hides its own default
-        # — the effective value *is* the override — so without this the console
-        # cannot offer "revert" without guessing, and a guess that happens to
-        # equal the default would pin it instead of restoring inheritance.
-        "defaults": deployed_defaults(),
-        "allowed_models": allowed_models(),
-        # Configured is not the same fact as live; see _active_generation.
-        "active": _active_generation(),
-    })
+    return jsonify(
+        {
+            "settings": service.snapshot(),
+            "overrides": service.overrides(),
+            # What each value reverts TO. An overridden field hides its own default
+            # — the effective value *is* the override — so without this the console
+            # cannot offer "revert" without guessing, and a guess that happens to
+            # equal the default would pin it instead of restoring inheritance.
+            "defaults": deployed_defaults(),
+            "allowed_models": allowed_models(),
+            # Configured is not the same fact as live; see _active_generation.
+            "active": _active_generation(),
+        }
+    )
 
 
 @admin_bp.route("/api/settings", methods=["PUT"])
-def put_settings() -> Response:
+def put_settings() -> Response | tuple[Response, int]:
     """Apply a patch. 422 with per-field codes, or 200 with the new state.
 
     A key set to null is removed, reverting to the deployed default. That is
@@ -205,15 +219,15 @@ def put_settings() -> Response:
     def apply_now() -> None:
         outcome["applied"] = apply_settings()
 
-    errors = service.update(
-        payload, actor=actor_from_request(g.identity), on_committed=apply_now
-    )
+    errors = service.update(payload, actor=actor_from_request(g.identity), on_committed=apply_now)
 
     if errors:
-        return jsonify({
-            "error": "validation_failed",
-            "errors": [error.as_dict() for error in errors],
-        }), 422
+        return jsonify(
+            {
+                "error": "validation_failed",
+                "errors": [error.as_dict() for error in errors],
+            }
+        ), 422
 
     logger.info("Settings updated by %s: %s", g.identity.email, sorted(payload))
 
@@ -227,19 +241,21 @@ def put_settings() -> Response:
 
     from web.services.settings_service import deployed_defaults
 
-    return jsonify({
-        "settings": service.snapshot(),
-        "overrides": service.overrides(),
-        "defaults": deployed_defaults(),
-        "applied": applied,
-        # Read AFTER the swap, so `applied: false` is not the only way to learn
-        # that answers are still coming from the previous settings — this says
-        # which ones they are.
-        "active": _active_generation(),
-    })
+    return jsonify(
+        {
+            "settings": service.snapshot(),
+            "overrides": service.overrides(),
+            "defaults": deployed_defaults(),
+            "applied": applied,
+            # Read AFTER the swap, so `applied: false` is not the only way to learn
+            # that answers are still coming from the previous settings — this says
+            # which ones they are.
+            "active": _active_generation(),
+        }
+    )
 
 
-def _parse_pagination_params(req: Any = None) -> Tuple[int, int]:
+def _parse_pagination_params(req: Any = None) -> tuple[int, int]:
     """Parse and clamp pagination query parameters from the request.
 
     Clamps limit to [1, 200] (default 50) and offset to [0, 1_000_000] (default 0).
@@ -255,7 +271,7 @@ def _parse_pagination_params(req: Any = None) -> Tuple[int, int]:
 
 
 @admin_bp.route("/api/users")
-def users() -> Response:
+def users() -> Response | tuple[Response, int]:
     """Accounts, newest first, with their standing."""
     try:
         limit, offset = _parse_pagination_params(request)
@@ -269,20 +285,22 @@ def users() -> Response:
     rows, total = backend.list_users(
         limit=limit, offset=offset, search=request.args.get("q") or None
     )
-    return jsonify({
-        "users": rows,
-        "total": total,
-        "limit": limit,
-        "offset": offset,
-        # So the console can mark "you" in the list and grey out the controls it
-        # knows the server will refuse. The refusal is still enforced server-side;
-        # this only stops the operator discovering it by being told no.
-        "self_id": g.identity.user_id,
-    })
+    return jsonify(
+        {
+            "users": rows,
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+            # So the console can mark "you" in the list and grey out the controls it
+            # knows the server will refuse. The refusal is still enforced server-side;
+            # this only stops the operator discovering it by being told no.
+            "self_id": g.identity.user_id,
+        }
+    )
 
 
 @admin_bp.route("/api/users/<user_id>")
-def user_detail(user_id: str) -> Response:
+def user_detail(user_id: str) -> Response | tuple[Response, int]:
     """One account in full: identity, standing, profile.
 
     A **404** for an unknown account, unlike `PATCH`, which answers 409
@@ -332,7 +350,7 @@ _PROFILE_AGE_MIN, _PROFILE_AGE_MAX = 13, 120
 
 
 @admin_bp.route("/api/users/<user_id>/reset-password", methods=["POST"])
-def send_password_reset(user_id: str) -> Response:
+def send_password_reset(user_id: str) -> Response | tuple[Response, int]:
     """Send this account a recovery link. Never return one.
 
     The console's whole thesis is that an operator helps without ever learning a
@@ -367,8 +385,12 @@ def send_password_reset(user_id: str) -> Response:
     # this by sending one to every mutation route.
     payload = request.get_json(silent=True)
     if payload not in (None, {}):
-        return jsonify({"error": "unknown_field",
-                        "fields": sorted(payload) if isinstance(payload, dict) else []}), 422
+        return jsonify(
+            {
+                "error": "unknown_field",
+                "fields": sorted(payload) if isinstance(payload, dict) else [],
+            }
+        ), 422
 
     backend = current_app.config["admin_backend"]()
     if backend is None:
@@ -383,8 +405,10 @@ def send_password_reset(user_id: str) -> Response:
     actor = actor_from_request(g.identity)
     operation_id = str(_uuid.uuid4())
     backend.append_audit(
-        action="user.password_reset_requested", target_type="user",
-        target_id=user_id, actor=actor,
+        action="user.password_reset_requested",
+        target_type="user",
+        target_id=user_id,
+        actor=actor,
         after={"status": "requested", "operation_id": operation_id},
     )
 
@@ -397,20 +421,22 @@ def send_password_reset(user_id: str) -> Response:
         dispatcher.send_recovery(account["email"], recovery_redirect_url())
     except RecoveryRefused as refusal:
         backend.append_audit(
-            action="user.password_reset_failed", target_type="user",
-            target_id=user_id, actor=actor,
+            action="user.password_reset_failed",
+            target_type="user",
+            target_id=user_id,
+            actor=actor,
             after={"status": "failed", "operation_id": operation_id},
             # The code, never the provider's message body and never a link.
             note=refusal.code,
         )
-        status = 429 if refusal.code in (
-            "reset_rate_limited", "reset_quota_exhausted"
-        ) else 502
+        status = 429 if refusal.code in ("reset_rate_limited", "reset_quota_exhausted") else 502
         return jsonify({"error": refusal.code}), status
 
     backend.append_audit(
-        action="user.password_reset_accepted", target_type="user",
-        target_id=user_id, actor=actor,
+        action="user.password_reset_accepted",
+        target_type="user",
+        target_id=user_id,
+        actor=actor,
         after={"status": "accepted", "operation_id": operation_id},
     )
     # 200, not 202: nothing further happens on our side after this returns, and
@@ -423,10 +449,10 @@ def send_password_reset(user_id: str) -> Response:
 # immediate, correctable 422.
 _EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 _EMAIL_MAX_LENGTH = 254  # RFC 5321 4.5.3.1.3, not the profile-field 200 cap —
-                          # this is a real email column, not free text.
+# this is a real email column, not free text.
 
 
-def _actor_still_admin(backend) -> Optional[str]:
+def _actor_still_admin(backend) -> str | None:
     """None if the acting operator is still an enabled administrator right
     now; otherwise the refusal code.
 
@@ -446,7 +472,7 @@ def _actor_still_admin(backend) -> Optional[str]:
 
 
 @admin_bp.route("/api/users/<user_id>/revoke-sessions", methods=["POST"])
-def revoke_sessions(user_id: str) -> Response:
+def revoke_sessions(user_id: str) -> Response | tuple[Response, int]:
     """End every session this account holds, right now.
 
     **The mechanism, and why it is this and not something more direct.**
@@ -475,13 +501,17 @@ def revoke_sessions(user_id: str) -> Response:
     """
     import uuid as _uuid
 
-    from web.services.auth_admin import AuthAdminRefused
     from web.services.audit import actor_from_request
+    from web.services.auth_admin import AuthAdminRefused
 
     payload = request.get_json(silent=True)
     if payload not in (None, {}):
-        return jsonify({"error": "unknown_field",
-                        "fields": sorted(payload) if isinstance(payload, dict) else []}), 422
+        return jsonify(
+            {
+                "error": "unknown_field",
+                "fields": sorted(payload) if isinstance(payload, dict) else [],
+            }
+        ), 422
 
     backend = current_app.config["admin_backend"]()
     if backend is None:
@@ -497,8 +527,10 @@ def revoke_sessions(user_id: str) -> Response:
     actor = actor_from_request(g.identity)
     operation_id = str(_uuid.uuid4())
     backend.append_audit(
-        action="user.sessions_revoke_requested", target_type="user",
-        target_id=user_id, actor=actor,
+        action="user.sessions_revoke_requested",
+        target_type="user",
+        target_id=user_id,
+        actor=actor,
         after={"status": "requested", "operation_id": operation_id},
     )
 
@@ -512,8 +544,10 @@ def revoke_sessions(user_id: str) -> Response:
     except AuthAdminRefused as refusal:
         outcome = "outcome_unknown" if refusal.ambiguous else "failed"
         backend.append_audit(
-            action=f"user.sessions_revoke_{outcome}", target_type="user",
-            target_id=user_id, actor=actor,
+            action=f"user.sessions_revoke_{outcome}",
+            target_type="user",
+            target_id=user_id,
+            actor=actor,
             after={"status": outcome, "operation_id": operation_id},
             # The code, never the provider's message body.
             note=refusal.code,
@@ -525,15 +559,17 @@ def revoke_sessions(user_id: str) -> Response:
         return jsonify({"error": refusal.code, "outcome_unknown": refusal.ambiguous}), status
 
     backend.append_audit(
-        action="user.sessions_revoke_accepted", target_type="user",
-        target_id=user_id, actor=actor,
+        action="user.sessions_revoke_accepted",
+        target_type="user",
+        target_id=user_id,
+        actor=actor,
         after={"status": "accepted", "operation_id": operation_id},
     )
     return jsonify({"accepted": True, "operation_id": operation_id})
 
 
 @admin_bp.route("/api/users/<user_id>/change-email", methods=["POST"])
-def change_email(user_id: str) -> Response:
+def change_email(user_id: str) -> Response | tuple[Response, int]:
     """Set this account's email immediately. No reader confirmation exists.
 
     **Why immediate, and why that is disclosed rather than hidden.** GoTrue's
@@ -560,8 +596,8 @@ def change_email(user_id: str) -> Response:
     """
     import uuid as _uuid
 
-    from web.services.auth_admin import AuthAdminRefused
     from web.services.audit import actor_from_request
+    from web.services.auth_admin import AuthAdminRefused
 
     if g.identity.user_id and g.identity.user_id == user_id:
         return jsonify({"error": "cannot_change_own_email"}), 409
@@ -603,8 +639,11 @@ def change_email(user_id: str) -> Response:
     actor = actor_from_request(g.identity)
     operation_id = str(_uuid.uuid4())
     backend.append_audit(
-        action="user.email_change_requested", target_type="user",
-        target_id=user_id, actor=actor, before={"email": old_email},
+        action="user.email_change_requested",
+        target_type="user",
+        target_id=user_id,
+        actor=actor,
+        before={"email": old_email},
         after={"status": "requested", "operation_id": operation_id, "email": new_email},
     )
 
@@ -618,8 +657,11 @@ def change_email(user_id: str) -> Response:
     except AuthAdminRefused as refusal:
         outcome = "outcome_unknown" if refusal.ambiguous else "failed"
         backend.append_audit(
-            action=f"user.email_change_{outcome}", target_type="user",
-            target_id=user_id, actor=actor, before={"email": old_email},
+            action=f"user.email_change_{outcome}",
+            target_type="user",
+            target_id=user_id,
+            actor=actor,
+            before={"email": old_email},
             after={"status": outcome, "operation_id": operation_id, "email": new_email},
             note=refusal.code,
         )
@@ -631,15 +673,18 @@ def change_email(user_id: str) -> Response:
         return jsonify({"error": refusal.code, "outcome_unknown": refusal.ambiguous}), status
 
     backend.append_audit(
-        action="user.email_change_accepted", target_type="user",
-        target_id=user_id, actor=actor, before={"email": old_email},
+        action="user.email_change_accepted",
+        target_type="user",
+        target_id=user_id,
+        actor=actor,
+        before={"email": old_email},
         after={"status": "accepted", "operation_id": operation_id, "email": new_email},
     )
     return jsonify({"accepted": True, "operation_id": operation_id})
 
 
 @admin_bp.route("/api/users/<user_id>/profile", methods=["PATCH"])
-def patch_profile(user_id: str) -> Response:
+def patch_profile(user_id: str) -> Response | tuple[Response, int]:
     """Rewrite a reader's own description of themselves, and record the diff.
 
     Its own route and its own RPC rather than a widening of `PATCH /users/<id>`.
@@ -663,7 +708,7 @@ def patch_profile(user_id: str) -> Response:
         # so, not silently ignored — see test_no_console_route_accepts_a_password.
         return jsonify({"error": "unknown_field", "fields": sorted(unknown)}), 422
 
-    values = {}
+    values: dict[str, Any] = {}
     for field in _PROFILE_STRING_FIELDS:
         value = payload.get(field)
         if value is not None and not isinstance(value, str):
@@ -705,7 +750,7 @@ def patch_profile(user_id: str) -> Response:
 
 
 @admin_bp.route("/api/users/<user_id>", methods=["PATCH"])
-def patch_user(user_id: str) -> Response:
+def patch_user(user_id: str) -> Response | tuple[Response, int]:
     """Change a role or chat access.
 
     "Chat access disabled" is named for what it actually does. The flag stops
@@ -761,7 +806,10 @@ def patch_user(user_id: str) -> Response:
         # instance nobody can administer.
         logger.warning(
             "Refused %s on %s by %s: %s",
-            request.method, user_id, g.identity.email, refused.code,
+            request.method,
+            user_id,
+            g.identity.email,
+            refused.code,
         )
         return jsonify({"error": refused.code}), 409
 
@@ -772,13 +820,16 @@ def patch_user(user_id: str) -> Response:
 
     logger.info(
         "%s changed %s (role=%s disabled=%s)",
-        g.identity.email, user_id, role, is_disabled,
+        g.identity.email,
+        user_id,
+        role,
+        is_disabled,
     )
     return jsonify({"user": {"id": user_id, **updated}})
 
 
 @admin_bp.route("/api/audit")
-def audit() -> Response:
+def audit() -> Response | tuple[Response, int]:
     """Recorded actions, newest first.
 
     Reading the log is deliberately not itself recorded. Auditing reads of a
@@ -806,18 +857,23 @@ def audit() -> Response:
 
     backend = current_app.config["admin_backend"]()
     entries = list_entries(
-        backend, limit=limit, offset=offset,
-        target_type=target_type, target_id=target_id,
+        backend,
+        limit=limit,
+        offset=offset,
+        target_type=target_type,
+        target_id=target_id,
     )
-    return jsonify({
-        "entries": [entry.as_dict() for entry in entries],
-        "limit": limit,
-        "offset": offset,
-    })
+    return jsonify(
+        {
+            "entries": [entry.as_dict() for entry in entries],
+            "limit": limit,
+            "offset": offset,
+        }
+    )
 
 
 @admin_bp.route("/api/identity")
-def identity() -> Response:
+def identity() -> Response | tuple[Response, int]:
     """Confirms the caller is an administrator.
 
     Reaching this at all is the answer; the body just names who. The console
@@ -825,10 +881,12 @@ def identity() -> Response:
     loaded the shell is told nothing and shown nothing.
     """
     flags = g.identity
-    return jsonify({
-        "user_id": flags.user_id,
-        "email": flags.email,
-        "role": flags.role,
-        "tier": flags.tier,
-        "is_admin": flags.is_admin,
-    })
+    return jsonify(
+        {
+            "user_id": flags.user_id,
+            "email": flags.email,
+            "role": flags.role,
+            "tier": flags.tier,
+            "is_admin": flags.is_admin,
+        }
+    )

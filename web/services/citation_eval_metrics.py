@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 from web.services.citations import CitationDiagnostics, extract_cited_indices
 
@@ -49,7 +49,7 @@ def split_sentences(text: str) -> list[str]:
     return [s.strip() for s in _SENTENCE_BOUNDARY.split(text.strip()) if s.strip()]
 
 
-def marker_coverage(answer: str, sources: list[dict[str, Any]]) -> Optional[float]:
+def marker_coverage(answer: str, sources: list[dict[str, Any]]) -> float | None:
     """Fraction of *answer*'s sentences carrying >=1 citation marker.
 
     Deliberately counts any ``[n]``-shaped marker, not only valid ones —
@@ -71,7 +71,7 @@ def marker_coverage(answer: str, sources: list[dict[str, Any]]) -> Optional[floa
     return covered / len(sentences)
 
 
-def hallucinated_marker_rate(diagnostics: CitationDiagnostics) -> Optional[float]:
+def hallucinated_marker_rate(diagnostics: CitationDiagnostics) -> float | None:
     """Share of every emitted ``[n]`` marker that pointed outside the source set.
 
     Returns ``None`` when the answer emitted no markers at all. A
@@ -161,19 +161,19 @@ class UsageEstimate:
     fell back to a tokenizer count passed in by the caller.
     """
 
-    prompt_tokens: Optional[int]
-    completion_tokens: Optional[int]
-    cost_usd: Optional[float]
+    prompt_tokens: int | None
+    completion_tokens: int | None
+    cost_usd: float | None
     exact: bool
 
 
 def estimate_cost(
-    usage: Optional[dict[str, int]],
+    usage: dict[str, int] | None,
     pricing_table: dict[str, tuple[float, float]],
     model_id: str,
     *,
-    fallback_prompt_tokens: Optional[int] = None,
-    fallback_completion_tokens: Optional[int] = None,
+    fallback_prompt_tokens: int | None = None,
+    fallback_completion_tokens: int | None = None,
 ) -> UsageEstimate:
     """Turn provider usage (or a tokenizer fallback) into a dollar estimate.
 
@@ -200,12 +200,14 @@ def estimate_cost(
         exact = False
 
     rates = pricing_table.get(model_id)
-    cost: Optional[float] = None
+    cost: float | None = None
     if rates is not None and prompt is not None and completion is not None:
         prompt_rate, completion_rate = rates
         cost = (prompt / 1_000_000) * prompt_rate + (completion / 1_000_000) * completion_rate
 
-    return UsageEstimate(prompt_tokens=prompt, completion_tokens=completion, cost_usd=cost, exact=exact)
+    return UsageEstimate(
+        prompt_tokens=prompt, completion_tokens=completion, cost_usd=cost, exact=exact
+    )
 
 
 # ── The gate ─────────────────────────────────────────────────────────────
@@ -236,7 +238,7 @@ class MetricSummary:
             computed over sentences, not probes.
     """
 
-    value: Optional[float]
+    value: float | None
     n: int
 
 
@@ -250,9 +252,9 @@ class GateVerdict:
     """
 
     metric: str
-    baseline: Optional[float]
-    challenger: Optional[float]
-    passed: Optional[bool]
+    baseline: float | None
+    challenger: float | None
+    passed: bool | None
     reason: str
 
 
@@ -340,7 +342,7 @@ def compare_to_baseline(
 
 
 def _verdict_for(
-    metric: str, baseline: Optional[MetricSummary], challenger: Optional[MetricSummary]
+    metric: str, baseline: MetricSummary | None, challenger: MetricSummary | None
 ) -> GateVerdict:
     if baseline is None or challenger is None:
         return GateVerdict(metric, None, None, None, "missing on one side — cannot compare")
@@ -360,21 +362,38 @@ def _verdict_for(
     if metric in _STRUCTURAL_METRICS:
         passed = challenger.value >= 1.0
         return GateVerdict(
-            metric, baseline.value, challenger.value, passed,
+            metric,
+            baseline.value,
+            challenger.value,
+            passed,
             "must be 100% on labelled probes — structural, not a relative comparison",
         )
 
     if metric in _INFORMATIONAL_METRICS:
-        return GateVerdict(metric, baseline.value, challenger.value, None, "reported only, not gated")
+        return GateVerdict(
+            metric, baseline.value, challenger.value, None, "reported only, not gated"
+        )
 
-    return _relative_verdict(metric, baseline, challenger, tolerance=_GENERAL_REGRESSION_TOLERANCE_PP)
+    return _relative_verdict(
+        metric, baseline, challenger, tolerance=_GENERAL_REGRESSION_TOLERANCE_PP
+    )
 
 
 def _hallucination_verdict(baseline: MetricSummary, challenger: MetricSummary) -> GateVerdict:
     metric = "hallucinated_marker_rate"
+    if challenger.value is None:
+        # No markers ever emitted this run, so the rate has no denominator —
+        # see MetricSummary.value's docstring. Nothing to compare against the
+        # floor, so this is "we don't know", not a pass or a fail.
+        return GateVerdict(
+            metric, baseline.value, challenger.value, None, "no markers emitted — rate undefined"
+        )
     if challenger.value > HALLUCINATED_MARKER_RATE_FLOOR:
         return GateVerdict(
-            metric, baseline.value, challenger.value, False,
+            metric,
+            baseline.value,
+            challenger.value,
+            False,
             f"exceeds absolute floor {HALLUCINATED_MARKER_RATE_FLOOR:.0%}",
         )
     if challenger.n < MIN_SAMPLE_FOR_RELATIVE_COMPARISON:
@@ -383,7 +402,11 @@ def _hallucination_verdict(baseline: MetricSummary, challenger: MetricSummary) -
         # minimum, since it's an absolute comparison, not a delta.
         return GateVerdict(metric, baseline.value, challenger.value, True, "within absolute floor")
     return _relative_verdict(
-        metric, baseline, challenger, tolerance=_HALLUCINATION_REGRESSION_TOLERANCE_PP, higher_is_worse=True
+        metric,
+        baseline,
+        challenger,
+        tolerance=_HALLUCINATION_REGRESSION_TOLERANCE_PP,
+        higher_is_worse=True,
     )
 
 
@@ -395,10 +418,27 @@ def _relative_verdict(
     tolerance: float,
     higher_is_worse: bool = False,
 ) -> GateVerdict:
-    if challenger.n < MIN_SAMPLE_FOR_RELATIVE_COMPARISON or baseline.n < MIN_SAMPLE_FOR_RELATIVE_COMPARISON:
+    if (
+        challenger.n < MIN_SAMPLE_FOR_RELATIVE_COMPARISON
+        or baseline.n < MIN_SAMPLE_FOR_RELATIVE_COMPARISON
+    ):
         return GateVerdict(
-            metric, baseline.value, challenger.value, None,
+            metric,
+            baseline.value,
+            challenger.value,
+            None,
             f"fewer than {MIN_SAMPLE_FOR_RELATIVE_COMPARISON} observations — delta not trusted",
+        )
+    if baseline.value is None or challenger.value is None:
+        # Undefined for this run (e.g. no markers ever emitted) — nothing to
+        # compare a delta against, same "we don't know" verdict as too few
+        # observations, not a crash on None-vs-float arithmetic below.
+        return GateVerdict(
+            metric,
+            baseline.value,
+            challenger.value,
+            None,
+            "metric undefined for baseline or challenger — delta not computable",
         )
     if higher_is_worse:
         regressed = challenger.value > baseline.value + tolerance
@@ -407,12 +447,15 @@ def _relative_verdict(
         regressed = challenger.value < baseline.value - tolerance
         reason = f"regressed beyond baseline - {tolerance:.0%}"
     return GateVerdict(
-        metric, baseline.value, challenger.value, not regressed,
+        metric,
+        baseline.value,
+        challenger.value,
+        not regressed,
         "no material regression" if not regressed else reason,
     )
 
 
-def language_parity_gap(en_summary: MetricSummary, ar_summary: MetricSummary) -> Optional[float]:
+def language_parity_gap(en_summary: MetricSummary, ar_summary: MetricSummary) -> float | None:
     """EN-AR delta for a paired metric. Reported, never auto-gated.
 
     Positive means English scored higher. This is deliberately NOT folded

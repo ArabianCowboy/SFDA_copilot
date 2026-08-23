@@ -69,6 +69,4 @@ def test_theme_change_is_announced(browser_page: Page):
     browser_page.goto("/")
     browser_page.locator("#landing-theme-toggle").click()
 
-    expect(browser_page.locator('.sr-only[role="status"]')).to_contain_text(
-        "Theme changed to"
-    )
+    expect(browser_page.locator('.sr-only[role="status"]')).to_contain_text("Theme changed to")

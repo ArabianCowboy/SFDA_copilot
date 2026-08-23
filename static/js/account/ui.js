@@ -84,20 +84,24 @@ function formatSince(isoString) {
   const date = new Date(isoString);
   if (Number.isNaN(date.getTime())) return '—';
   const parts = new Intl.DateTimeFormat(I18n.lang, {
-    year: 'numeric', month: 'long', day: 'numeric',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
   }).formatToParts(date);
   return parts.map((p) => p.value).join('');
 }
 
-export function renderStanding({ role, tier, isAdmin, isDisabled, createdAt, conversationCount }) {
+export function renderStanding({ tier, isAdmin, isDisabled, createdAt, conversationCount }) {
   const roleEl = el('standing-role');
-  if (roleEl) roleEl.textContent = I18n.t(isAdmin ? 'profile.account.roleAdmin' : 'profile.account.roleUser');
+  if (roleEl)
+    roleEl.textContent = I18n.t(isAdmin ? 'profile.account.roleAdmin' : 'profile.account.roleUser');
 
   const tierEl = el('standing-tier');
   if (tierEl) {
-    tierEl.textContent = tier === 'internal'
-      ? I18n.t('profile.account.tierInternal')
-      : I18n.t('profile.account.tierFree');
+    tierEl.textContent =
+      tier === 'internal'
+        ? I18n.t('profile.account.tierInternal')
+        : I18n.t('profile.account.tierFree');
   }
 
   const sinceEl = el('standing-since');
@@ -105,14 +109,21 @@ export function renderStanding({ role, tier, isAdmin, isDisabled, createdAt, con
 
   const conversationsEl = el('standing-conversations');
   if (conversationsEl) {
-    conversationsEl.textContent = conversationCount == null
-      ? '—'
-      : I18n.plural(conversationCount, 'profile.account.conversationOne', 'profile.account.conversations');
+    conversationsEl.textContent =
+      conversationCount == null
+        ? '—'
+        : I18n.plural(
+            conversationCount,
+            'profile.account.conversationOne',
+            'profile.account.conversations',
+          );
   }
 
   const statusEl = el('standing-status');
   if (statusEl) {
-    statusEl.textContent = I18n.t(isDisabled ? 'profile.account.standingDisabled' : 'profile.account.standingEnabled');
+    statusEl.textContent = I18n.t(
+      isDisabled ? 'profile.account.standingDisabled' : 'profile.account.standingEnabled',
+    );
   }
 }
 
@@ -181,8 +192,9 @@ export function clearIdentityNotes() {
 
 export function populatePreferences(profile) {
   const theme = profile?.preferences?.theme || 'system';
-  const themeInput = document.getElementById(`theme-choice-${theme}`)
-    || document.getElementById('theme-choice-system');
+  const themeInput =
+    document.getElementById(`theme-choice-${theme}`) ||
+    document.getElementById('theme-choice-system');
   if (themeInput) themeInput.checked = true;
 
   const langInput = document.getElementById(`language-choice-${I18n.lang}`);
@@ -200,7 +212,9 @@ export function showPreferencesSaved() {
   // visit; this one is allowed to fade because nothing was left half-done —
   // unlike the identity form's note, which stays until the next edit.
   clearTimeout(showPreferencesSaved._timer);
-  showPreferencesSaved._timer = setTimeout(() => { if (note) note.hidden = true; }, 4000);
+  showPreferencesSaved._timer = setTimeout(() => {
+    if (note) note.hidden = true;
+  }, 4000);
 }
 
 export function showPreferencesError() {
@@ -299,7 +313,10 @@ export function populateConsent(profile) {
 
 export function showConsentState(granted) {
   const note = el('consent-state-note');
-  if (note) note.textContent = I18n.t(granted ? 'profile.account.consentGranted' : 'profile.account.consentNotGranted');
+  if (note)
+    note.textContent = I18n.t(
+      granted ? 'profile.account.consentGranted' : 'profile.account.consentNotGranted',
+    );
   const clearAgeRow = el('consent-clear-age-row');
   if (clearAgeRow) clearAgeRow.hidden = !granted;
 }
@@ -312,7 +329,9 @@ export function showConsentSaved() {
   }
   el('consent-error')?.setAttribute('hidden', '');
   clearTimeout(showConsentSaved._timer);
-  showConsentSaved._timer = setTimeout(() => { if (note) note.hidden = true; }, 4000);
+  showConsentSaved._timer = setTimeout(() => {
+    if (note) note.hidden = true;
+  }, 4000);
 }
 
 export function showConsentError() {

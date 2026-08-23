@@ -11,9 +11,10 @@ partial translation degrades to mixed language instead of a broken interface.
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import yaml
 

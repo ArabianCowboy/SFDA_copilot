@@ -30,7 +30,10 @@ import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
+
+# datetime.UTC is Python 3.11+; the VPS production floor is 3.10.
+UTC = timezone.utc
 
 # Must be set before PyTorch/sentence-transformers loads to prevent
 # segfault during interpreter shutdown on macOS arm64 (Python 3.14+).
@@ -43,26 +46,22 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT))
 
 # ─────────────────────────── 3rd‑party libs ──────────────────────────
+import pickle
+
 import faiss
 import numpy as np
 import pandas as pd
-import pickle
 import PyPDF2
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from sklearn.feature_extraction.text import TfidfVectorizer
 from tqdm import tqdm
 
-# ──────────────────────────── local modules ──────────────────────────
-from web.utils.config_loader import config
-from web.utils.embedding_helpers import get_embedding_client
-from web.services.search_exceptions import EmbeddingError
 from web.services.build_registry import (
     CHUNKS_CSV_NAME,
     EXTRACTION_CHUNKING_VERSION,
     FAISS_INDEX_NAME,
     TFIDF_MATRIX_NAME,
     TFIDF_VECTORIZER_NAME,
-    BuildValidationError,
     activate_build,
     build_dir_for,
     extract_embedding_model_name,
@@ -70,6 +69,11 @@ from web.services.build_registry import (
     validate_build_dir,
     write_manifest,
 )
+from web.services.search_exceptions import EmbeddingError
+
+# ──────────────────────────── local modules ──────────────────────────
+from web.utils.config_loader import config
+from web.utils.embedding_helpers import get_embedding_client
 
 # ───────────────────────────── constants ─────────────────────────────
 DEFAULT_TFIDF_MAX_FEATURES = 5_000
@@ -88,10 +92,10 @@ ZERO_VECTOR_FAILURE_THRESHOLD = 0.005  # 0.5%
 NORMALIZATION_TOLERANCE = 1e-3
 
 TABLE_REGEXES = [
-    r"\+[-+]+\+",                  # ASCII tables
-    r"\|.*\|",                     # Pipe‑delimited tables
-    r"\s{2,}.+\s{2,}",             # Space‑aligned columns
-    r"<table.*?>",                 # HTML tables
+    r"\+[-+]+\+",  # ASCII tables
+    r"\|.*\|",  # Pipe‑delimited tables
+    r"\s{2,}.+\s{2,}",  # Space‑aligned columns
+    r"<table.*?>",  # HTML tables
 ]
 
 # ──────────────────────────── logging cfg  ───────────────────────────
@@ -113,7 +117,7 @@ class DataProcessingError(Exception):
 
 
 # ──────────────────────────── module helpers ──────────────────────────
-def _detect_normalization(embeddings: np.ndarray) -> Dict[str, Any]:
+def _detect_normalization(embeddings: np.ndarray) -> dict[str, Any]:
     """Empirically determine whether *embeddings* are (approximately) unit-length.
 
     This measures the actual produced vectors rather than trusting any one
@@ -161,9 +165,7 @@ class DataProcessor:
         """Load settings, prepare embedding client and paths."""
         self.chunk_size: int = config.get("data_processing", "chunk_size", 7_000)
         self.chunk_overlap: int = config.get("data_processing", "chunk_overlap", 400)
-        self.embedding_batch_size: int = config.get(
-            "data_processing", "embedding_batch_size", 100
-        )
+        self.embedding_batch_size: int = config.get("data_processing", "embedding_batch_size", 100)
 
         embedding_type = config.get("search_engine", "embedding_type", "local")
         self.embedding_type = embedding_type
@@ -197,15 +199,15 @@ class DataProcessor:
             failures that used to be silently swallowed.
         """
         LOGGER.info("Starting document processing …")
-        categories: Dict[str, Path] = {
+        categories: dict[str, Path] = {
             "regulatory": self.REGULATORY_DIR,
             "pharmacovigilance": self.PHARMA_DIR,
             "veterinary": self.VETERINARY_DIR,
             "biological": self.BIOLOGICAL_DIR,
         }
 
-        chunks: List[Dict[str, str | int]] = []
-        skipped_documents: List[Dict[str, str]] = []
+        chunks: list[dict[str, str | int]] = []
+        skipped_documents: list[dict[str, str]] = []
         documents_processed = 0
 
         for category, directory in categories.items():
@@ -305,9 +307,7 @@ class DataProcessor:
         return True
 
     # ────────────────────────── private helpers ──────────────────────
-    def _extract_text_from_pdf(
-        self, path: Path
-    ) -> tuple[List[Dict[str, str | int]], str | None]:
+    def _extract_text_from_pdf(self, path: Path) -> tuple[list[dict[str, str | int]], str | None]:
         """Read *path* and return ``(page-text dicts, skip_reason)``.
 
         ``skip_reason`` is ``None`` when at least one page yielded
@@ -318,7 +318,7 @@ class DataProcessor:
         try:
             with path.open("rb") as file:
                 reader = PyPDF2.PdfReader(file)
-                pages: List[Dict[str, str | int]] = []
+                pages: list[dict[str, str | int]] = []
 
                 for page_idx, page in enumerate(reader.pages, start=1):
                     raw_text = page.extract_text() or ""
@@ -351,10 +351,10 @@ class DataProcessor:
         return any(re.search(pattern, text) for pattern in TABLE_REGEXES)
 
     def _split_into_chunks(
-        self, pages_data: List[Dict[str, str | int]]
-    ) -> List[Dict[str, str | int]]:
+        self, pages_data: list[dict[str, str | int]]
+    ) -> list[dict[str, str | int]]:
         """Chunk each page using adaptive sizes (tables vs plain text)."""
-        chunks: List[Dict[str, str | int]] = []
+        chunks: list[dict[str, str | int]] = []
 
         for page_info in pages_data:
             is_table = self._has_table(str(page_info["text"]))
@@ -410,7 +410,7 @@ class DataProcessor:
 
         LOGGER.info("TF‑IDF artefacts saved → %s", build_dir)
 
-    def _create_faiss_index(self, texts: pd.Series, build_dir: Path) -> Dict[str, Any]:
+    def _create_faiss_index(self, texts: pd.Series, build_dir: Path) -> dict[str, Any]:
         """Compute embeddings & persist FAISS index (FlatL2).
 
         Unlike the previous implementation, this does **not** catch and log
@@ -488,9 +488,9 @@ class DataProcessor:
         build_id: str,
         chunk_count: int,
         documents_processed: int,
-        skipped_documents: List[Dict[str, str]],
-        embeddings_meta: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        skipped_documents: list[dict[str, str]],
+        embeddings_meta: dict[str, Any],
+    ) -> dict[str, Any]:
         """Assemble the build's "ID card" (``manifest.json``).
 
         Recorded here so that :class:`~web.services.search_index.SearchIndex`
@@ -500,7 +500,7 @@ class DataProcessor:
         """
         return {
             "build_id": build_id,
-            "build_timestamp_utc": datetime.now(timezone.utc).isoformat(),
+            "build_timestamp_utc": datetime.now(UTC).isoformat(),
             "extraction_chunking_version": EXTRACTION_CHUNKING_VERSION,
             "embedding_type": self.embedding_type,
             "embedding_model_name": extract_embedding_model_name(self.embedding_client),
@@ -518,7 +518,7 @@ class DataProcessor:
         }
 
     # Embeddings ------------------------------------------------------
-    def _get_embeddings(self, texts: List[str]) -> np.ndarray:
+    def _get_embeddings(self, texts: list[str]) -> np.ndarray:
         """Delegate to configured embedding client."""
         return self.embedding_client.get_embeddings(texts, self.embedding_batch_size)
 

@@ -20,7 +20,6 @@ from web.services.audit import AuditActor
 from web.services.openai_app import OpenAIHandler
 from web.services.result_combiner import SearchResult
 
-
 ADMIN = {"Authorization": "Bearer fake_admin_token"}
 
 # Settings writes now carry who made them, because the change and its audit
@@ -57,7 +56,7 @@ def _meta_model(raw: str) -> str:
 
     for line in raw.splitlines():
         if line.startswith("data:") and '"model"' in line:
-            return json.loads(line[len("data:"):].strip())["model"]
+            return json.loads(line[len("data:") :].strip())["model"]
     raise AssertionError("no meta frame in the stream")
 
 
@@ -222,9 +221,7 @@ def test_the_settings_api_reports_the_handler_that_is_actually_answering(app):
 def test_the_two_agree_once_the_settings_are_applied(app):
     with app.app_context():
         client = app.test_client()
-        response = client.put(
-            "/admin/api/settings", json={"model": "gpt-4o"}, headers=ADMIN
-        )
+        response = client.put("/admin/api/settings", json={"model": "gpt-4o"}, headers=ADMIN)
 
     body = response.get_json()
     assert response.status_code == 200
@@ -286,4 +283,5 @@ def test_the_citation_clamp_survives_an_override(monkeypatch):
     handler = OpenAIHandler({"max_context_results": 500})
 
     from web.utils.config_loader import config
+
     assert handler.max_context_results == config.get("search_engine", "k", 8)

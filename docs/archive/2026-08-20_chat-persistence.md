@@ -29,7 +29,7 @@ any of them:**
    `docs/ARCHITECTURE.md`. `web/tests/test_session_isolation.py` carries a note so the
    resume machinery cannot quietly return.
 2. **"Only a `verified` citation renders as openable evidence" (§3).** Reversed in step 5:
-   a stale citation still opens. Classification drives *disclosure*, not *access*.
+   a stale citation still opens. Classification drives _disclosure_, not _access_.
 3. **"Step 8 is the first feature to call `chat_sessions_delete_own` from a browser"
    (§8/§9).** Reversed. The browser never touches the chat tables; `chat_delete_session`
    was re-added as an RPC behind a Flask route.
@@ -43,7 +43,7 @@ a clean rewrite. Read it as a record of how the thinking moved, and take
 
 # [HISTORICAL] Save Chat Sessions Per User — Implementation Plan
 
-Planning record for the `TODO.md` *Planned work* entry **"Save chat sessions per
+Planning record for the `TODO.md` _Planned work_ entry **"Save chat sessions per
 user"**. Written the same way as
 [2026-08-17_pagination.md](2026-08-17_pagination.md): the
 useful half is the cost.
@@ -76,8 +76,8 @@ The rest, in order of how much they were worth:
   400-character snippet and a null document — three CHECK constraints that every test in
   the suite was silently failing to assert, because the double is what tests run against.
   `InMemoryChatBackend._validate_sources` now mirrors the schema, and round 2 caught that
-  the first version of that fix validated *before* the replay check while the RPC returns
-  *after* it — making the double stricter than Postgres on the one path where that is wrong.
+  the first version of that fix validated _before_ the replay check while the RPC returns
+  _after_ it — making the double stricter than Postgres on the one path where that is wrong.
 - **A cold-hydration race.** `_load_history` reads an empty window, goes to Postgres, and
   installs what it found; the lock inside each store method does not span that gap, so two
   tabs could have the slower one erase a completed turn. `replace()` now refuses to
@@ -99,15 +99,15 @@ The rest, in order of how much they were worth:
 
 ## [HISTORICAL] Provenance
 
-| Pass | Who | Contributed |
-|---|---|---|
-| Research | Antigravity `gemini-3.7-flash-high` | Community practice, failure taxonomy |
-| Design | OpenCode `gpt-5.6-luna` (xhigh, read-only) | Independent schema |
-| Docs | Context7 `/supabase/supabase` | RLS, cascade, indexing guidance |
-| Reviews A, B | external, no codebase access | Corpus-loss paths, `seq` ambiguity, operational gaps |
-| Debate | Claude Opus, read-only | 17 gaps; the argument to delete the state machine |
-| Fresh eyes | Claude Opus, read-only | 15 internal contradictions; the proportionality argument |
-| Bug hunt ×2 | OpenCode `gpt-5.6-sol`, read-only | Post-implementation. Round 1: the laxer test double, the cold-hydration race, redundant indexes, the archive delete grant. Round 2: defects in round 1's own fixes, and the transcript-coherence argument that gated the resume rule |
+| Pass         | Who                                        | Contributed                                                                                                                                                                                                                          |
+| ------------ | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Research     | Antigravity `gemini-3.7-flash-high`        | Community practice, failure taxonomy                                                                                                                                                                                                 |
+| Design       | OpenCode `gpt-5.6-luna` (xhigh, read-only) | Independent schema                                                                                                                                                                                                                   |
+| Docs         | Context7 `/supabase/supabase`              | RLS, cascade, indexing guidance                                                                                                                                                                                                      |
+| Reviews A, B | external, no codebase access               | Corpus-loss paths, `seq` ambiguity, operational gaps                                                                                                                                                                                 |
+| Debate       | Claude Opus, read-only                     | 17 gaps; the argument to delete the state machine                                                                                                                                                                                    |
+| Fresh eyes   | Claude Opus, read-only                     | 15 internal contradictions; the proportionality argument                                                                                                                                                                             |
+| Bug hunt ×2  | OpenCode `gpt-5.6-sol`, read-only          | Post-implementation. Round 1: the laxer test double, the cold-hydration race, redundant indexes, the archive delete grant. Round 2: defects in round 1's own fixes, and the transcript-coherence argument that gated the resume rule |
 
 Claims from reviews A and B that did **not** survive verification are in §12, so they
 are not re-inherited.
@@ -118,38 +118,38 @@ are not re-inherited.
 
 Re-read here before being built on. **Bold rows changed the design.**
 
-| Claim | Verdict |
-|---|---|
-| **`conv_id` is `uuid.uuid4().hex` — 32 chars, no dashes** | **Confirmed** — `app.py:559,1319,1495,1615`. A `uuid` column round-trips to the *dashed* form, so every cross-boundary equality silently fails. §2.5 |
-| **TESTING identities are `"test-user-id"` etc. — not UUIDs** | **Confirmed** — `app.py:303-315`. `get_supabase()`/`get_supabase_admin()` return `None` under TESTING (`supabase_client.py:61,98,134`) |
-| **A second bypass identity already exists** | **Confirmed** — `fake_admin_token` → `test-admin-id`. What is missing is a second *non-admin, non-disabled* reader; `fake_disabled_token` is intercepted at `app.py:523` |
-| **`_truncate` assumes strict `[u,a,u,a,…]` alternation** | **Confirmed** — `conversation_store.py:175-183` |
-| **`_finalize_answer` keeps only cited sources** | **Confirmed** — `app.py:608-620`. `cited` is sorted, deduped, and may be **sparse** |
-| **`build_source_payload` emits `index`, not `source_index`, and has no `cited` key** | **Confirmed** — `citations.py:119-131`. §3 names the remap |
-| **`read_active_build_id(processed_data_dir)` takes an argument and may return `None`** | **Confirmed** — `build_registry.py:116-128` |
-| **`on[frame.event]?.()` silently drops unknown SSE events** | **Confirmed** — `services.js:237` |
-| **`handlers.js` already anticipates a persistence failure** | **Confirmed** — the `failed` branch comment names *"suggestion generation, history persistence"* as auxiliary, renders the answer, toasts, and calls `RobotStateManager.showError()` (`handlers.js:506-525`) |
-| **The request body is `{query, category, lang}`** | **Confirmed** — `services.js:204`. A client-minted id changes this file |
-| **`_validate_chat_request` has no length cap** | **Confirmed** — strips, rejects empty, checks category and engine only (`app.py:1270-1295`) |
-| **`audit_log.actor_id` is `uuid` with deliberately no FK** | **Confirmed** — *"an audit row that can no longer say who acted has lost the thing it exists to record"* (`20260814032447_audit_log.sql:22-27`) |
-| **`audit_log`'s second lock is a `before update or delete` trigger** | **Confirmed** — `audit_log_is_append_only()` (`:65-98`). `chat_archive` **cannot** copy it; §3 |
-| **Blocking route retrieves before minting a conversation** | **Confirmed** — `app.py:1469-1473`, pinned by `test_a_retrieval_failure_does_not_start_a_conversation` |
-| **`profiles_guard_privilege_columns` is a deny-list** naming `role`, `tier`, `is_disabled` | **Confirmed** — `20260814005509…:174-186`, and the migration says the deny-list is deliberate |
-| **`profiles` column grants are an allow-list** | **Confirmed** — `grant insert/update (id, full_name, organization, specialization, preferences)` (`:141-151`) |
-| Both chat routes are `@auth_required` — **there are no guests** | **Confirmed** — `app.py:1298,1441` |
-| `stateByMessage` caps at `MAX_TRACKED_ANSWERS = 100`, evicts oldest-first | **Confirmed** — `citations.js:62-71` |
-| `neutraliseRestoredCitations` strips dead controls deliberately | **Confirmed** — `citations.js:214-228` |
-| `_snippet` bounded at 321 chars | **Confirmed** — `citations.py:97-102` |
-| `CITATION_MARKER` is `[0-9]{1,2}`; `_context_ceiling()` caps at `search_engine.k` | **Confirmed** — a source index >99 is unreachable |
-| `chat_limit` defaults to `"10 per minute"`, shared across both routes | **Confirmed** — `app.py:1265-1268` |
-| `updated_at` is maintained by a `before insert or update` trigger | **Confirmed** — `app_settings_touch_updated_at` (`20260814110200`) |
-| An in-memory backend double is the house pattern | **Confirmed** — `AdminBackend` / `SupabaseAdminBackend` / `InMemoryAdminBackend` (`admin_store.py:93,185,391`) |
-| `SUPABASE_BROWSER_MOCK` implements `auth` + a `profiles` chain only | **Confirmed** — `conftest.py:13-80` |
+| Claim                                                                                      | Verdict                                                                                                                                                                                                      |
+| ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **`conv_id` is `uuid.uuid4().hex` — 32 chars, no dashes**                                  | **Confirmed** — `app.py:559,1319,1495,1615`. A `uuid` column round-trips to the _dashed_ form, so every cross-boundary equality silently fails. §2.5                                                         |
+| **TESTING identities are `"test-user-id"` etc. — not UUIDs**                               | **Confirmed** — `app.py:303-315`. `get_supabase()`/`get_supabase_admin()` return `None` under TESTING (`supabase_client.py:61,98,134`)                                                                       |
+| **A second bypass identity already exists**                                                | **Confirmed** — `fake_admin_token` → `test-admin-id`. What is missing is a second _non-admin, non-disabled_ reader; `fake_disabled_token` is intercepted at `app.py:523`                                     |
+| **`_truncate` assumes strict `[u,a,u,a,…]` alternation**                                   | **Confirmed** — `conversation_store.py:175-183`                                                                                                                                                              |
+| **`_finalize_answer` keeps only cited sources**                                            | **Confirmed** — `app.py:608-620`. `cited` is sorted, deduped, and may be **sparse**                                                                                                                          |
+| **`build_source_payload` emits `index`, not `source_index`, and has no `cited` key**       | **Confirmed** — `citations.py:119-131`. §3 names the remap                                                                                                                                                   |
+| **`read_active_build_id(processed_data_dir)` takes an argument and may return `None`**     | **Confirmed** — `build_registry.py:116-128`                                                                                                                                                                  |
+| **`on[frame.event]?.()` silently drops unknown SSE events**                                | **Confirmed** — `services.js:237`                                                                                                                                                                            |
+| **`handlers.js` already anticipates a persistence failure**                                | **Confirmed** — the `failed` branch comment names _"suggestion generation, history persistence"_ as auxiliary, renders the answer, toasts, and calls `RobotStateManager.showError()` (`handlers.js:506-525`) |
+| **The request body is `{query, category, lang}`**                                          | **Confirmed** — `services.js:204`. A client-minted id changes this file                                                                                                                                      |
+| **`_validate_chat_request` has no length cap**                                             | **Confirmed** — strips, rejects empty, checks category and engine only (`app.py:1270-1295`)                                                                                                                  |
+| **`audit_log.actor_id` is `uuid` with deliberately no FK**                                 | **Confirmed** — _"an audit row that can no longer say who acted has lost the thing it exists to record"_ (`20260814032447_audit_log.sql:22-27`)                                                              |
+| **`audit_log`'s second lock is a `before update or delete` trigger**                       | **Confirmed** — `audit_log_is_append_only()` (`:65-98`). `chat_archive` **cannot** copy it; §3                                                                                                               |
+| **Blocking route retrieves before minting a conversation**                                 | **Confirmed** — `app.py:1469-1473`, pinned by `test_a_retrieval_failure_does_not_start_a_conversation`                                                                                                       |
+| **`profiles_guard_privilege_columns` is a deny-list** naming `role`, `tier`, `is_disabled` | **Confirmed** — `20260814005509…:174-186`, and the migration says the deny-list is deliberate                                                                                                                |
+| **`profiles` column grants are an allow-list**                                             | **Confirmed** — `grant insert/update (id, full_name, organization, specialization, preferences)` (`:141-151`)                                                                                                |
+| Both chat routes are `@auth_required` — **there are no guests**                            | **Confirmed** — `app.py:1298,1441`                                                                                                                                                                           |
+| `stateByMessage` caps at `MAX_TRACKED_ANSWERS = 100`, evicts oldest-first                  | **Confirmed** — `citations.js:62-71`                                                                                                                                                                         |
+| `neutraliseRestoredCitations` strips dead controls deliberately                            | **Confirmed** — `citations.js:214-228`                                                                                                                                                                       |
+| `_snippet` bounded at 321 chars                                                            | **Confirmed** — `citations.py:97-102`                                                                                                                                                                        |
+| `CITATION_MARKER` is `[0-9]{1,2}`; `_context_ceiling()` caps at `search_engine.k`          | **Confirmed** — a source index >99 is unreachable                                                                                                                                                            |
+| `chat_limit` defaults to `"10 per minute"`, shared across both routes                      | **Confirmed** — `app.py:1265-1268`                                                                                                                                                                           |
+| `updated_at` is maintained by a `before insert or update` trigger                          | **Confirmed** — `app_settings_touch_updated_at` (`20260814110200`)                                                                                                                                           |
+| An in-memory backend double is the house pattern                                           | **Confirmed** — `AdminBackend` / `SupabaseAdminBackend` / `InMemoryAdminBackend` (`admin_store.py:93,185,391`)                                                                                               |
+| `SUPABASE_BROWSER_MOCK` implements `auth` + a `profiles` chain only                        | **Confirmed** — `conftest.py:13-80`                                                                                                                                                                          |
 
 **Two table-access patterns exist here.** Browser-direct (`profiles`: policy admits the
 row, **column grants** decide what may be written) and Flask-mediated (`app_settings`,
-`audit_log`: RLS on, *no policies*, `revoke all from anon, authenticated`, RPC-only,
-and *"Do not 'fix' this by adding a policy."*). The chat tables use both — §2.4.
+`audit_log`: RLS on, _no policies_, `revoke all from anon, authenticated`, RPC-only,
+and _"Do not 'fix' this by adding a policy."_). The chat tables use both — §2.4.
 
 ---
 
@@ -167,7 +167,7 @@ and *"Do not 'fix' this by adding a policy."*). The chat tables use both — §2
    expected use. The content is regulatory Q&A, not health data. §7's posture follows
    from this, and a proposal to exclude `data/pharmacovigilance/` turns from the
    archive was **declined as disproportionate**.
-6. **Notice at first use, no gate.** Acceptance is a *record*, not a precondition —
+6. **Notice at first use, no gate.** Acceptance is a _record_, not a precondition —
    see §7.
 
 ---
@@ -178,7 +178,7 @@ and *"Do not 'fix' this by adding a policy."*). The chat tables use both — §2
 
 `chat_messages`, one row per message. The pair-shaped alternative was argued for
 (everything downstream is pair-shaped: `append_turn(conv, user, assistant, …)`,
-`_truncate` dropping whole *pairs*, `_clamp` protecting the newest *exchange*) and not
+`_truncate` dropping whole _pairs_, `_clamp` protecting the newest _exchange_) and not
 taken.
 
 **The interior-unpaired-row hazard is designed out rather than defended against.**
@@ -187,7 +187,7 @@ so `[u,a,u,u,a]` would corrupt the prompt window. Revision 2 answered that with 
 pair-assembly builder joining on `client_request_id`. **That is now unnecessary work
 and is cut**: `chat_append_turn` writes both rows in one statement (§3), a user row
 without its assistant row is unreachable, and per-message deletion is in §8's
-*deliberately not built*. What remains is `order by seq` plus **one test asserting the
+_deliberately not built_. What remains is `order by seq` plus **one test asserting the
 rows arrive paired** — cheaper than a builder, and it fails loudly if the invariant
 ever breaks.
 
@@ -195,13 +195,13 @@ If branching or message editing is ever wanted, this is the decision to reopen f
 
 ### [HISTORICAL] 2.2 Citation sources as rows — **all** retrieved, not only cited
 
-Rows, because the invariant at the top of `citations.py` — *"`sources[i]["index"]` must
-equal the `[i]` label the model saw"* — is load-bearing, and as rows the database
+Rows, because the invariant at the top of `citations.py` — _"`sources[i]["index"]` must
+equal the `[i]` label the model saw"_ — is load-bearing, and as rows the database
 enforces it via `unique (message_id, source_index)`.
 
 **Persist every retrieved passage with a `cited boolean`.** `_finalize_answer`
 (`app.py:608-620`) discards uncited passages and keeps only a count; for training the
-retrieval set *is* the signal, positives and negatives both, and it is unrecoverable
+retrieval set _is_ the signal, positives and negatives both, and it is unrecoverable
 later because retrieval is not reproducible across rebuilds. `retrieved` is already in
 scope at that call site.
 
@@ -221,15 +221,15 @@ One insert writes both rows, taking `next_seq` and `next_seq + 1`.
 
 ### [HISTORICAL] 2.4 RLS — readers read, the server writes
 
-| Operation | Who | Mechanism |
-|---|---|---|
-| `SELECT` own sessions / messages / sources | Reader | RLS `owner_id = (select auth.uid())` |
-| `DELETE` own session | Reader | RLS policy, cascading |
-| `INSERT`/`UPDATE` message content | **Server only** | `security definer` RPC |
+| Operation                                  | Who             | Mechanism                            |
+| ------------------------------------------ | --------------- | ------------------------------------ |
+| `SELECT` own sessions / messages / sources | Reader          | RLS `owner_id = (select auth.uid())` |
+| `DELETE` own session                       | Reader          | RLS policy, cascading                |
+| `INSERT`/`UPDATE` message content          | **Server only** | `security definer` RPC               |
 
 **Message content is not reader-writable**, a deliberate narrowing of §1.1. A reader
 who can write `chat_messages` can author or rewrite an assistant answer and its
-citation rows, and it renders as something *the system* said — a provenance forgery
+citation rows, and it renders as something _the system_ said — a provenance forgery
 primitive reachable from a browser console, on an assistant whose first principle is
 resolvable sources.
 
@@ -397,8 +397,8 @@ revoke update, delete, truncate on public.chat_archive from service_role;
 Append-only **in a weaker sense than `audit_log`**, and the difference is worth stating
 rather than glossing: `audit_log`'s second lock is a `before update or delete` trigger
 (`20260814032447_audit_log.sql:65-98`). `chat_archive` cannot have one, because
-`admin_purge_chat_archive` must delete. So the archive is append-only *except through one
-`security definer` path*, and that path is the whole exposure.
+`admin_purge_chat_archive` must delete. So the archive is append-only _except through one
+`security definer` path_, and that path is the whole exposure.
 
 JSONB here and rows there is not an inconsistency: the reader table needs per-source
 constraints because a citation must resolve; the archive needs a faithful snapshot and is
@@ -430,7 +430,7 @@ worst outcome available here.~~
 **Reversed in step 5 (2026-08-20). A stale citation still opens; what changes is what the
 reader is told.** The rule above is right about the act it describes and wrong about the act
 hydration performs, and the two were conflated. Re-resolving a `chunk_id` against a rebuilt
-index *can* surface a plausible but wrong passage — nothing does that, and nothing should.
+index _can_ surface a plausible but wrong passage — nothing does that, and nothing should.
 But `chat_message_sources` stores the document, page, category and snippet **frozen at write
 time**, so opening a stored citation shows what the model actually read. That is a record,
 not a lookup, and withholding it hides the audit trail rather than protecting it.
@@ -438,7 +438,7 @@ not a lookup, and withholding it hides the audit trail rather than protecting it
 Kept strictly the rule had two costs it did not price. One corpus rebuild would deaden every
 citation in every stored conversation **at once**, on the surface built for a reader auditing
 an answer. And an answer whose markers reverted to plain text with no trigger is
-indistinguishable from an answer that cited nothing — the same *control that does nothing*
+indistinguishable from an answer that cited nothing — the same _control that does nothing_
 failure `neutraliseRestoredCitations` was written to avoid, arrived at from the other side.
 
 So the three states survive as classification and drive disclosure, not access: `verified`
@@ -519,13 +519,13 @@ admin_delete_chat_sessions(p_before timestamptz, p_owner_id uuid) returns bigint
 
 Revision 1 built a reserve-then-finalise state machine. It is deleted, for four reasons:
 
-- **It breaks a guarantee that has a test.** Streaming retrieval happens *inside*
+- **It breaks a guarantee that has a test.** Streaming retrieval happens _inside_
   `generate()` (`app.py:1334`), so reserving in the view body means a `SearchEngineError`
   leaves a durable session and an orphan question. The blocking route deliberately
   retrieves first, pinned by `test_a_retrieval_failure_does_not_start_a_conversation`
   (`app.py:1469-1473`).
 - **It costs time-to-first-byte**, and the reason given for "view body" does not apply to
-  it: the `Set-Cookie` constraint governs *Flask session writes*, not a Supabase RPC.
+  it: the `Set-Cookie` constraint governs _Flask session writes_, not a Supabase RPC.
 - **Its `GeneratorExit` handler can swallow the re-raise.** `app.py:1406-1420` is
   `except GeneratorExit: log; raise`; a network RPC before that `raise` can replace the
   exception, so `stream_response`'s context manager never closes the upstream connection —
@@ -573,7 +573,7 @@ without it a replay skips the message rows and inserts a second archive row.
 **`persistence_unavailable` is an `error` frame, not a new event name.**
 `on[frame.event]?.()` (`services.js:237`) silently drops unregistered names. As an `error`
 frame, `handlers.js:449` captures it and `506-525` already does the right thing — the
-comment there names *"history persistence"* explicitly. Two edits are still needed at that
+comment there names _"history persistence"_ explicitly. Two edits are still needed at that
 site: the toast becomes `chat.persistenceUnavailable` rather than `chat.sendFailed`, and
 **`RobotStateManager.showError()` (`handlers.js:524`) must not fire** when `handle.final`
 is set — the mascot entering an error state under a complete, correctly cited answer
@@ -591,7 +591,7 @@ an email, so the Flask boundary guards with `uuid.UUID(x)` and degrades to cache
 a log rather than raising.
 
 **`ConversationStore` is re-keyed to `(owner_id, conversation_id)` and remains the
-computed prompt window.** It is *not* a cache of these rows: `append_turn` writes back what
+computed prompt window.** It is _not_ a cache of these rows: `append_turn` writes back what
 `_truncate` returned and `_clamp` rewrites content with `ELISION_NOTICE`
 (`conversation_store.py:96-97,131-151`), so it holds different text from the rows. Calling
 it write-through would let a restart change the prompt mid-conversation. **History is read
@@ -601,7 +601,7 @@ across `test_chat_stream.py`, `test_new_chat.py` and `test_session_isolation.py`
 scheduled in step 2, not left implicit.
 
 **Reset and undo** keep their mechanism, with one addition in §5: `forget` and a second
-reset drop the cookie *pointer* only and never delete a durable session. Session rows are
+reset drop the cookie _pointer_ only and never delete a durable session. Session rows are
 created lazily on first append, so `/api/conversation/reset` (30/min) cannot fill a sidebar
 with empty sessions.
 
@@ -615,7 +615,7 @@ reloads the page, so a rule is required in Phase 1, not Phase 2:
 > **owned cookie with a durable row → else that owner's latest `updated_at`
 > (`chat_latest_session`) → else create lazily on first append.**
 
-**Naively, that rule resurrects exactly what *New chat* destroys.** Three paths:
+**Naively, that rule resurrects exactly what _New chat_ destroys.** Three paths:
 
 1. After a reset the cookie holds a freshly minted id with **no durable row**, so the first
    branch fails, the fallback fires, and the next language toggle restores the conversation
@@ -632,7 +632,7 @@ just needed stating correctly.** The proposed fix was a "deliberately empty" mar
 by a reset and honoured by the rule. It is not needed, and a marker that three separate
 branches of the reset route had to remember to write is a marker one of them would forget.
 
-**Shipped rule — keyed on the *presence* of `conv_id`, not on whether it resolves:**
+**Shipped rule — keyed on the _presence_ of `conv_id`, not on whether it resolves:**
 
 > **A cookie that names a conversation is honoured as-is. Only a cookie with no
 > conversation at all resumes the owner's most recent one.**
@@ -645,13 +645,13 @@ append lands on an id the cookie no longer names. The fallback fires exactly whe
 **The fallback half ships OFF** (`CHAT_RESUME_LATEST_SESSION`, default false). A bug-hunt
 pass made the argument that closed it: the visible transcript restores from per-tab
 `sessionStorage` and is dropped on sign-out, while these rows are per-account and durable —
-so *every* case where the fallback fires is a case where the two disagree, and the reader
+so _every_ case where the fallback fires is a case where the two disagree, and the reader
 gets a blank screen backed by a model that remembers. Pinned by
 `test_the_resume_fallback_is_off_by_default`; the behaviour itself is pinned by two tests
 that set the flag, so step 6 only has to flip it.
 
 **A gap that remains open, knowingly.** With the flag on, ending a conversation and then
-logging out *before asking anything else* loses the reset: the cookie is purged, so the next
+logging out _before asking anything else_ loses the reset: the cookie is purged, so the next
 visit sees no `conv_id` and resumes the conversation that was ended. Closing it needs a
 durable owner-level reset marker or an empty session row, and §4.2 deliberately creates
 sessions lazily so `/api/conversation/reset` (30/min) cannot fill a sidebar with empties.
@@ -672,14 +672,14 @@ logout and on every identity change via `_bind_session_to_identity`); **durable 
 survive**. A returning reader A is distinguished from a new reader B by the verified
 Supabase user UUID, not by browser state.
 
-| Test | Under persistence |
-|---|---|
-| `test_logout_clears_the_conversation_cookie` | Passes |
-| `test_logout_clears_the_server_side_conversation_store` | **Must be rewritten** — it currently asserts the absence of the feature. Replacement: cache empty, durable session still present for the original account |
-| `test_logout_succeeds_even_though_supabase_is_absent` | Passes |
-| `test_a_different_reader_does_not_inherit_the_streaming_conversation` | **Rewritten** — it failed loudly rather than going vacuous; see below |
-| `test_a_different_reader_does_not_inherit_the_blocking_history` | Passes |
-| `test_the_same_reader_keeps_their_conversation` | Passes |
+| Test                                                                  | Under persistence                                                                                                                                         |
+| --------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `test_logout_clears_the_conversation_cookie`                          | Passes                                                                                                                                                    |
+| `test_logout_clears_the_server_side_conversation_store`               | **Must be rewritten** — it currently asserts the absence of the feature. Replacement: cache empty, durable session still present for the original account |
+| `test_logout_succeeds_even_though_supabase_is_absent`                 | Passes                                                                                                                                                    |
+| `test_a_different_reader_does_not_inherit_the_streaming_conversation` | **Rewritten** — it failed loudly rather than going vacuous; see below                                                                                     |
+| `test_a_different_reader_does_not_inherit_the_blocking_history`       | Passes                                                                                                                                                    |
+| `test_the_same_reader_keeps_their_conversation`                       | Passes                                                                                                                                                    |
 
 **Corrections, the last one from implementation.** Revision 2 claimed five of six pass
 unchanged; they pass only after the store re-key (§4.2), which is not "unchanged". And
@@ -695,7 +695,7 @@ the RPC**, and this test keeps passing while proving nothing about the durable p
 
 **Predicted "vacuous", observed "fails".** Better than expected, and worth recording. The
 fake second reader shares `test-user-id`, so once the current-session rule existed the purge
-dropped the cookie and the very next line resumed *that same owner's* latest session and
+dropped the cookie and the very next line resumed _that same owner's_ latest session and
 rehydrated it. The blocking variant failed with two prior messages where it asserted zero.
 A test that can no longer distinguish the property it names is more useful failing than
 passing, and this one failed.
@@ -730,18 +730,19 @@ before, in `test_chat_persistence.py` and `test_session_isolation.py`:
 > returns `(None, None)`, `chat_archive` holds 0 rows — so every control here
 > governs a collection process that is not running, and a Settings toggle
 > reading "Research archive: ON" would assert something false to the person it
-> exists to inform. Consent specifically was dropped as the *wrong instrument*
+> exists to inform. Consent specifically was dropped as the _wrong instrument_
 > rather than as scope: the basis is legitimate interest, and recording consent
 > that was not required manufactures the proof-and-symmetry obligations that
 > come with claiming it.
 >
 > **Three corrections to what is written below**, worth having beside it:
+>
 > - The opt-out flag as designed here (read via `IdentityFlags` behind the
 >   30-second cache) **races**: the decision is taken at request start and
 >   applied to a write that lands later. It needs to be checked and serialized
 >   inside the write transaction.
 > - It also **fails open** — the unresolved-identity fallback would read as
->   *opted in*.
+>   _opted in_.
 > - The **export was pointed the wrong way**. This section specifies an operator
 >   export of `chat_archive`; the access right that is actually owed is the
 >   reader's own history. If an export returns, it should be that one, and its
@@ -758,7 +759,6 @@ before, in `test_chat_persistence.py` and `test_session_isolation.py`:
 > says nothing about the archive logs a loud error at startup. Reopen this
 > section before enabling collection.
 
-
 **Owner decision: a notice, recorded, not a gate.** Persistence is on regardless.
 The hard gate was considered and dropped: it would have forced a blocking bilingual screen
 into the first increment and made the ephemeral path permanent — a second conversation path
@@ -769,7 +769,7 @@ written in the same transaction as the turn, carrying the same question and answ
 while `chat_messages` holds that text under a real `owner_id` with a `created_at` in the
 same microsecond. Joining the archive back to a person is a text equality, not a hash
 inversion. The hashing is still worth keeping — it is real protection if the archive leaks
-*alone*, and it is what makes the owner purge path possible — but it does not carry legal
+_alone_, and it is what makes the owner purge path possible — but it does not carry legal
 weight on its own.
 
 **What ships:**
@@ -786,7 +786,7 @@ weight on its own.
   history is unaffected.
 - **All three columns join the `profiles_guard_privilege_columns` deny-list.** Column grants
   are an allow-list so a new column is write-denied by default — but the trigger is a
-  *deliberate* deny-list, so if anyone later bundles these into the grant while touching the
+  _deliberate_ deny-list, so if anyone later bundles these into the grant while touching the
   profile form, consent becomes writable from a browser console and nothing fires. Both
   locks, as `role`/`tier`/`is_disabled` have.
 - **Acceptance and withdrawal are written by a Flask route**, never a PostgREST upsert. Read
@@ -815,10 +815,10 @@ the only party holding them.
 
 **Retention.**
 
-| Store | Keep | Who deletes |
-|---|---|---|
+| Store                        | Keep                       | Who deletes                             |
+| ---------------------------- | -------------------------- | --------------------------------------- |
 | `chat_sessions` and children | Reader's own, indefinitely | Reader, or `admin_delete_chat_sessions` |
-| `chat_archive` | 24 months | `admin_purge_chat_archive` only |
+| `chat_archive`               | 24 months                  | `admin_purge_chat_archive` only         |
 
 `admin_purge_chat_archive(p_before, p_owner_key)` takes a cutoff (the 24-month job), an
 owner key (erasure and withdrawal), or both — **and refuses when both are null**, which
@@ -847,10 +847,29 @@ the filters and the row count — **not the text**.
 stored rows and the export agree:
 
 ```json
-{"occurred_at":"…","owner_key":"…","session_key":"…","lang":"ar","category":"…",
- "model":"…","corpus_revision":"…","question":"…","answer":"…",
- "sources":[{"source_index":1,"cited":true,"document":"…","page":12,
-             "category":"…","snippet":"…","chunk_id":"…","score":0.41}]}
+{
+  "occurred_at": "…",
+  "owner_key": "…",
+  "session_key": "…",
+  "lang": "ar",
+  "category": "…",
+  "model": "…",
+  "corpus_revision": "…",
+  "question": "…",
+  "answer": "…",
+  "sources": [
+    {
+      "source_index": 1,
+      "cited": true,
+      "document": "…",
+      "page": 12,
+      "category": "…",
+      "snippet": "…",
+      "chunk_id": "…",
+      "score": 0.41
+    }
+  ]
+}
 ```
 
 ---
@@ -860,16 +879,16 @@ stored rows and the export agree:
 **Minimum coherent increment is steps 1-4** — through the first durable write. Revision 2
 described an increment its own table did not schedule; this is the correction.
 
-| # | Step | Gate | Status |
-|---|---|---|---|
-| 1 | Migration: reader tables + archive, policies, grants, RPCs | applies; **RLS proven from a reader JWT** (§9); RPC round-trip by hand | **applied 2026-08-20; gate CLOSED 2026-08-21** — policies exercised as a real `authenticated` role with real JWT claims; see §9 |
-| 2 | `ChatBackend` Protocol + Supabase/InMemory backends; uuid canonicalisation; `ConversationStore` re-key; salt helpers + `.env.example` | `pytest -m "not browser and not integration"` | **done** |
-| 3 | Current-session rule (§5); ownership verification; logout/purge split; second non-admin bypass identity; replacement isolation assertions | `test_session_isolation.py`, `test_new_chat.py` | **done** |
-| 4 | Write at `final`; client-minted `client_request_id`; `persistence_unavailable` as an `error` frame; `handlers.js` toast + robot fix | `test_chat_stream.py`, `test_chat_api.py`; **both catalogues**; `ASSET_VERSION` bump | **done** |
-| 5 | Citation persistence (all retrieved, `cited`) + `corpus_revision` **rendering** gate | `test_citations.py` + sparse-index, NaN, stale-build tests; `ASSET_VERSION` bump | **done 2026-08-20** — with the gate's *rendering* rule reversed; see below |
-| 6 | Hydration replaces `sessionStorage`; eviction neutralises its own markers | `-m browser`, `test_source_panel.py`; `ASSET_VERSION` bump | **done 2026-08-20** — `GET /api/chat/history`; `Transcript.save/restore` and `neutraliseRestoredCitations` deleted; `chat_resume_latest_session` on |
-| 7 | ~~Notice screen + acceptance/withdrawal routes; `profiles` consent columns; purge CLI; export RPC; frequency RPC~~ **Shipped 2026-08-21 as a notice ONLY**, plus the archive revoke and a disclosure guard. Everything else cut — see the revision note under §7 | `-m browser`, `test_rtl.py`, `test_css_contract.py`; both catalogues; `ASSET_VERSION` bump | **done 2026-08-21**, deliberately narrowed |
-| 8 | Phase 2 sidebar, titling, rename, delete; `chat_list_sessions` | `-m browser`, `test_css_contract.py`, `test_rtl.py`; `ASSET_VERSION` bump | **done 2026-08-21** — with the browser-direct delete reversed and an in-flight refusal added; see below |
+| #   | Step                                                                                                                                                                                                                                                             | Gate                                                                                       | Status                                                                                                                                              |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Migration: reader tables + archive, policies, grants, RPCs                                                                                                                                                                                                       | applies; **RLS proven from a reader JWT** (§9); RPC round-trip by hand                     | **applied 2026-08-20; gate CLOSED 2026-08-21** — policies exercised as a real `authenticated` role with real JWT claims; see §9                     |
+| 2   | `ChatBackend` Protocol + Supabase/InMemory backends; uuid canonicalisation; `ConversationStore` re-key; salt helpers + `.env.example`                                                                                                                            | `pytest -m "not browser and not integration"`                                              | **done**                                                                                                                                            |
+| 3   | Current-session rule (§5); ownership verification; logout/purge split; second non-admin bypass identity; replacement isolation assertions                                                                                                                        | `test_session_isolation.py`, `test_new_chat.py`                                            | **done**                                                                                                                                            |
+| 4   | Write at `final`; client-minted `client_request_id`; `persistence_unavailable` as an `error` frame; `handlers.js` toast + robot fix                                                                                                                              | `test_chat_stream.py`, `test_chat_api.py`; **both catalogues**; `ASSET_VERSION` bump       | **done**                                                                                                                                            |
+| 5   | Citation persistence (all retrieved, `cited`) + `corpus_revision` **rendering** gate                                                                                                                                                                             | `test_citations.py` + sparse-index, NaN, stale-build tests; `ASSET_VERSION` bump           | **done 2026-08-20** — with the gate's _rendering_ rule reversed; see below                                                                          |
+| 6   | Hydration replaces `sessionStorage`; eviction neutralises its own markers                                                                                                                                                                                        | `-m browser`, `test_source_panel.py`; `ASSET_VERSION` bump                                 | **done 2026-08-20** — `GET /api/chat/history`; `Transcript.save/restore` and `neutraliseRestoredCitations` deleted; `chat_resume_latest_session` on |
+| 7   | ~~Notice screen + acceptance/withdrawal routes; `profiles` consent columns; purge CLI; export RPC; frequency RPC~~ **Shipped 2026-08-21 as a notice ONLY**, plus the archive revoke and a disclosure guard. Everything else cut — see the revision note under §7 | `-m browser`, `test_rtl.py`, `test_css_contract.py`; both catalogues; `ASSET_VERSION` bump | **done 2026-08-21**, deliberately narrowed                                                                                                          |
+| 8   | Phase 2 sidebar, titling, rename, delete; `chat_list_sessions`                                                                                                                                                                                                   | `-m browser`, `test_css_contract.py`, `test_rtl.py`; `ASSET_VERSION` bump                  | **done 2026-08-21** — with the browser-direct delete reversed and an in-flight refusal added; see below                                             |
 
 **Step 8 shipped 2026-08-21, and two written positions were reversed.**
 
@@ -878,7 +897,7 @@ described an increment its own table did not schedule; this is the correction.
   route in between", and §8 deleted `chat_delete_session` on the argument that an
   RPC would be "a second, privileged path" to what RLS already permits. Both
   fell to facts already in the tree. First, `revoke all on public.chat_sessions
-  from service_role` leaves Flask holding SELECT and nothing else, so the choice
+from service_role` leaves Flask holding SELECT and nothing else, so the choice
   was never "browser-direct or an RPC" — it was "browser-direct or nothing".
   Second, and decisively, a browser-direct delete cannot finish the job: it
   cannot clear `conv_id`, `prev_conv_id` or the `ConversationStore` window, and
@@ -896,7 +915,7 @@ described an increment its own table did not schedule; this is the correction.
   session lifecycle three ways: it can fail on its own and strand an untitled
   conversation, it can land on a row the reader renamed or deleted in between,
   and two first turns from two tabs would both see `title is null`. `create or
-  replace` was not usable — a changed signature makes a second function, and
+replace` was not usable — a changed signature makes a second function, and
   PostgREST would then find a 13-argument call ambiguous and stop persisting
   every turn on a deployment where the migration "succeeded".
 
@@ -1012,7 +1031,7 @@ garnish, regenerated on demand); `chunk_sha256` resolution; a transcript console
 ## [HISTORICAL] 9. Costs priced rather than assumed
 
 - ~~**One Postgres round trip per turn**~~ — **overpriced; it is one per conversation per
-  process.** Implementation reads durable rows only when the RAM window is *cold*
+  process.** Implementation reads durable rows only when the RAM window is _cold_
   (`_load_history`), so an ongoing exchange costs nothing and the read happens on a new
   device, after a restart, or after the store's hour of inactivity. The store is still not a
   cache of these rows — §4.2's argument stands, and `replace()` seeds the window rather than
@@ -1040,21 +1059,21 @@ garnish, regenerated on demand); `chunk_sha256` resolution; a transcript console
   `authenticated` as reader A, and the whole thing aborted so nothing committed. Results, with
   both readers' rows present in every table:
 
-  | Property | Result |
-  |---|---|
-  | `chat_sessions_select_own` | A sees **1** session of 2 |
-  | `chat_messages_select_own` | A sees **2** messages of 4 |
-  | `chat_message_sources_select_own` | A sees **1** source of 2 |
-  | `chat_archive` readable? | **DENIED** — no grant, no policy |
-  | Forge a `chat_messages` row? | **DENIED** — no insert policy |
-  | Tamper with a stored answer? | **DENIED** — no update policy |
-  | Delete another reader's session | **0 rows** |
-  | Delete own session | **1 row**, children cascaded, **0 orphans** |
+  | Property                          | Result                                      |
+  | --------------------------------- | ------------------------------------------- |
+  | `chat_sessions_select_own`        | A sees **1** session of 2                   |
+  | `chat_messages_select_own`        | A sees **2** messages of 4                  |
+  | `chat_message_sources_select_own` | A sees **1** source of 2                    |
+  | `chat_archive` readable?          | **DENIED** — no grant, no policy            |
+  | Forge a `chat_messages` row?      | **DENIED** — no insert policy               |
+  | Tamper with a stored answer?      | **DENIED** — no update policy               |
+  | Delete another reader's session   | **0 rows**                                  |
+  | Delete own session                | **1 row**, children cascaded, **0 orphans** |
 
   **What this does and does not prove.** It proves the policies themselves: the same `role`
   and the same claims PostgREST would set, evaluated by the same expressions. It does not
   exercise PostgREST's own request handling, nor the anon-key path through the JS client — so
-  a browser reading these tables directly is still untested *plumbing*, on *verified* policy.
+  a browser reading these tables directly is still untested _plumbing_, on _verified_ policy.
   The distinction matters for step 8, which is the first feature to call
   `chat_sessions_delete_own` from a browser with no Flask route in between.
 
@@ -1067,6 +1086,7 @@ garnish, regenerated on demand); `chunk_sha256` resolution; a transcript console
   one being that a browser-direct delete cannot clear the cookie or the RAM window, so
   `chat_append_turn` recreates the session it deleted. The "untested plumbing" observation
   therefore still stands and is still untested, because nothing exercises it.
+
 - **Reader-RLS reads need a browser mock.** `SUPABASE_BROWSER_MOCK` (`conftest.py:13-80`)
   implements `auth` and `profiles` only. If the browser ever reads chat tables directly it
   needs a new `from()` chain; Flask-mediated reads need nothing, since browser tests already
@@ -1088,7 +1108,7 @@ What is left is scope and copy, none of it blocking:
 
 1. **Quotas** — no max sessions or messages per owner. Not needed at current scale;
    revisit before the reader count makes an unbounded message table interesting. Note the
-   per-*message* half is now partly covered: `MAX_CHAT_QUERY_CHARS` bounds a question at
+   per-_message_ half is now partly covered: `MAX_CHAT_QUERY_CHARS` bounds a question at
    8,000 characters, so a single row can no longer be arbitrarily large.
 2. ~~**A question-length cap**~~ — **done in step 4.** `MAX_CHAT_QUERY_CHARS = 8_000`,
    enforced in `_validate_chat_request` as a 400, above the database, so an over-long
@@ -1139,13 +1159,13 @@ What is left is scope and copy, none of it blocking:
 
 ## [HISTORICAL] 12. Review claims that did not survive
 
-| Claim | Verdict |
-|---|---|
-| "Guests and mid-chat sign-in are unspecified" | **Wrong.** Both chat routes are `@auth_required` (`app.py:1298,1441`). There are no guests |
-| "Whitespace-only first message violates the title check" | **Wrong.** `query` is stripped and empty rejected with 400 (`app.py:1273-1278`) |
-| "Drop `source_index` outside 1-99" | **Unreachable.** `CITATION_MARKER` is `[0-9]{1,2}`; `_context_ceiling()` caps at `search_engine.k` |
-| "`retrieved` unbounded — could claim 10^9" | **Overstated.** Server-written from `len(retrieved)`, on a table with client writes revoked |
-| "The RAM cache should hold the prompt slice only" | **Already true** (`conversation_store.py:96-97`). The real defect is the opposite — it is *lossy*, §4.2 |
-| "Two tabs burn the eight-thread pool" | **Real, but predates this plan and is not fixed by idempotency.** `chat_limit` already allows 10 generations/min against 8 threads; the control would be a per-owner in-flight semaphore |
-| "A second TESTING identity is missing" | **Half wrong** — `fake_admin_token` exists. What is missing is a second *non-admin* reader, §6 |
-| "`seq` allocation is ambiguous" | **Correct**, and dissolved once reserve/complete went |
+| Claim                                                    | Verdict                                                                                                                                                                                  |
+| -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| "Guests and mid-chat sign-in are unspecified"            | **Wrong.** Both chat routes are `@auth_required` (`app.py:1298,1441`). There are no guests                                                                                               |
+| "Whitespace-only first message violates the title check" | **Wrong.** `query` is stripped and empty rejected with 400 (`app.py:1273-1278`)                                                                                                          |
+| "Drop `source_index` outside 1-99"                       | **Unreachable.** `CITATION_MARKER` is `[0-9]{1,2}`; `_context_ceiling()` caps at `search_engine.k`                                                                                       |
+| "`retrieved` unbounded — could claim 10^9"               | **Overstated.** Server-written from `len(retrieved)`, on a table with client writes revoked                                                                                              |
+| "The RAM cache should hold the prompt slice only"        | **Already true** (`conversation_store.py:96-97`). The real defect is the opposite — it is _lossy_, §4.2                                                                                  |
+| "Two tabs burn the eight-thread pool"                    | **Real, but predates this plan and is not fixed by idempotency.** `chat_limit` already allows 10 generations/min against 8 threads; the control would be a per-owner in-flight semaphore |
+| "A second TESTING identity is missing"                   | **Half wrong** — `fake_admin_token` exists. What is missing is a second _non-admin_ reader, §6                                                                                           |
+| "`seq` allocation is ambiguous"                          | **Correct**, and dissolved once reserve/complete went                                                                                                                                    |

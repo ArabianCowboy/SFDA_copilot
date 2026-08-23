@@ -33,7 +33,7 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Optional, Protocol
+from typing import Protocol
 from urllib.parse import quote, urlparse
 
 from supabase import Client, create_client
@@ -91,10 +91,8 @@ class SupabaseRecoveryDispatcher:
 
     def send_recovery(self, email: str, redirect_to: str) -> None:
         try:
-            self._client.auth.reset_password_for_email(
-                email, {"redirect_to": redirect_to}
-            )
-        except Exception as exc:  # noqa: BLE001 - provider surface is untyped
+            self._client.auth.reset_password_for_email(email, {"redirect_to": redirect_to})
+        except Exception as exc:
             code = classify_send_failure(exc)
             # The address is not logged. A recovery request is a statement that
             # someone may have lost an account, and this log is read by more
@@ -112,7 +110,7 @@ class InMemoryRecoveryDispatcher:
 
     def __init__(self) -> None:
         self.sent: list[dict] = []
-        self.refuse_with: Optional[str] = None
+        self.refuse_with: str | None = None
 
     def send_recovery(self, email: str, redirect_to: str) -> None:
         if self.refuse_with:
@@ -120,11 +118,11 @@ class InMemoryRecoveryDispatcher:
         self.sent.append({"email": email, "redirect_to": redirect_to})
 
 
-_client: Optional[Client] = None
+_client: Client | None = None
 _warned = False
 
 
-def get_recovery_dispatcher() -> Optional[RecoveryDispatcher]:
+def get_recovery_dispatcher() -> RecoveryDispatcher | None:
     """Anon-key dispatcher, or None when it cannot be built.
 
     None means no recovery mail can be sent. Callers must treat that as a
@@ -153,7 +151,7 @@ def get_recovery_dispatcher() -> Optional[RecoveryDispatcher]:
     return SupabaseRecoveryDispatcher(_client)
 
 
-def recovery_redirect_url(lang: Optional[str] = None) -> str:
+def recovery_redirect_url(lang: str | None = None) -> str:
     """Where the recovery link comes back to.
 
     Built from ``PUBLIC_BASE_URL`` and **never** from ``request.host_url``: the
@@ -168,9 +166,7 @@ def recovery_redirect_url(lang: Optional[str] = None) -> str:
     """
     base = (os.getenv("PUBLIC_BASE_URL") or "").strip().rstrip("/")
     if not base:
-        raise RecoveryRefused(
-            "reset_not_configured", "PUBLIC_BASE_URL is not set"
-        )
+        raise RecoveryRefused("reset_not_configured", "PUBLIC_BASE_URL is not set")
 
     # Non-empty is not the same as usable. This value ends up in an email as a
     # link people are told to click, so a typo here is not a 404 — it is a

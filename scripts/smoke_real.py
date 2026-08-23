@@ -22,6 +22,7 @@ Usage:
     python scripts/smoke_real.py "ما هي متطلبات تسجيل الأدوية؟" ar
 """
 
+import contextlib
 import os
 import sys
 import time
@@ -34,19 +35,22 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # script died on `print` before reaching any of the pipeline it exists to
 # check, and the Arabic half of the product had no smoke test at all.
 for _stream in (sys.stdout, sys.stderr):
-    try:
+    with contextlib.suppress(AttributeError, ValueError):  # pragma: no cover - non-standard stream
         _stream.reconfigure(encoding="utf-8", errors="replace")
-    except (AttributeError, ValueError):  # pragma: no cover - non-standard stream
-        pass
 
 from dotenv import load_dotenv
+
 load_dotenv()
 
 from web.services.citations import build_source_payload, normalize_legacy_citations
 from web.services.openai_app import OpenAIHandler
 from web.services.search_engine import ImprovedSearchEngine
 
-QUERY = sys.argv[1] if len(sys.argv) > 1 else "What are the requirements for drug registration in Saudi Arabia?"
+QUERY = (
+    sys.argv[1]
+    if len(sys.argv) > 1
+    else "What are the requirements for drug registration in Saudi Arabia?"
+)
 LANG = sys.argv[2] if len(sys.argv) > 2 else "en"
 
 print(f"query: {QUERY!r}  lang={LANG}\n" + "-" * 70)
@@ -55,28 +59,35 @@ t0 = time.time()
 engine = ImprovedSearchEngine()
 if not engine.is_initialized():
     engine.initialize()
-print(f"[{time.time()-t0:5.1f}s] search engine ready")
+print(f"[{time.time() - t0:5.1f}s] search engine ready")
 
 handler = OpenAIHandler()
-print(f"[{time.time()-t0:5.1f}s] model={handler.model} max_context_results={handler.max_context_results}")
+print(
+    f"[{time.time() - t0:5.1f}s] model={handler.model} max_context_results={handler.max_context_results}"
+)
 
 t1 = time.time()
 results = engine.search(QUERY, "regulatory")
-print(f"[{time.time()-t0:5.1f}s] retrieved {len(results)} passages in {time.time()-t1:.2f}s")
+print(f"[{time.time() - t0:5.1f}s] retrieved {len(results)} passages in {time.time() - t1:.2f}s")
 
 sources = build_source_payload(results, limit=handler.max_context_results)
 print("\nSOURCES")
 for s in sources:
-    print(f"  [{s['index']}] {s['document'][:52]:<52} p.{str(s['page']):<5} "
-          f"score={s['score']}  sem={s['semantic_score']}  lex={s['lexical_score']}")
+    print(
+        f"  [{s['index']}] {s['document'][:52]:<52} p.{s['page']!s:<5} "
+        f"score={s['score']}  sem={s['semantic_score']}  lex={s['lexical_score']}"
+    )
 
 # JSON-serialisability is the thing that silently 500s in production.
 import json
+
 json.dumps(sources)
 print("  -> payload is JSON-native OK")
 
-llm_context = [{"text": r.text, "document": r.document, "category": r.category, "page": r.page}
-               for r in results]
+llm_context = [
+    {"text": r.text, "document": r.document, "category": r.category, "page": r.page}
+    for r in results
+]
 
 print("\nSTREAMING")
 t2 = time.time()
@@ -88,13 +99,14 @@ for token in handler.stream_response(QUERY, llm_context, "regulatory", [], lang=
         print(f"  first token after {first:.2f}s")
     parts.append(token)
 answer = normalize_legacy_citations("".join(parts).strip(), sources)
-print(f"  {len(parts)} tokens, {len(answer)} chars, total {time.time()-t2:.2f}s")
+print(f"  {len(parts)} tokens, {len(answer)} chars, total {time.time() - t2:.2f}s")
 
 print("\nANSWER\n" + "-" * 70)
 print(answer[:1400])
 print("-" * 70)
 
 import re
+
 # The same function the route uses, rather than a second copy of the marker
 # grammar — two copies in one repo is how the JS and Python sides drift. This
 # used to re-derive "hallucinated" by findall-ing every [n] a second time and
@@ -113,8 +125,10 @@ hallucinated_rate = (
 print(f"\nCITATIONS: {seen or 'NONE'}")
 print(f"  valid (these become the answer's sources): {valid}")
 print(f"  hallucinated (left as literal text by the UI): {bad or 'none'}")
-print(f"  hallucinated_marker_rate: {hallucinated_rate:.1%} "
-      f"({len(diagnostics.invalid)}/{diagnostics.total_markers} markers)")
+print(
+    f"  hallucinated_marker_rate: {hallucinated_rate:.1%} "
+    f"({len(diagnostics.invalid)}/{diagnostics.total_markers} markers)"
+)
 legacy = len(re.findall(r"\[Source:", answer))
 print(f"  legacy prose citations remaining: {legacy}")
 
@@ -123,8 +137,10 @@ if valid:
     docs = {s["document"] for s in sources if s["index"] in valid}
     print(f"\n  → panel shows {len(valid)} passage(s) from {len(docs)} document(s)")
 elif sources:
-    print(f"\n  → no citations: NO source control rendered "
-          f"({len(sources)} passage(s) retrieved, none offered as evidence)")
+    print(
+        f"\n  → no citations: NO source control rendered "
+        f"({len(sources)} passage(s) retrieved, none offered as evidence)"
+    )
 else:
     print("\n  → nothing retrieved: NO source control rendered at all")
 

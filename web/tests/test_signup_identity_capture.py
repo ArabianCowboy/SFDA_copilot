@@ -54,7 +54,11 @@ def test_signup_sends_both_names_as_gotrue_metadata(browser_page: Page):
 
     expect(browser_page.locator("#signup-sent")).to_be_visible()
     metadata = browser_page.evaluate("window.__supabaseState.lastSignUpMetadata")
-    assert metadata == {"first_name": "Amina", "family_name": "Al-Otaibi", "marketing_consent": False}
+    assert metadata == {
+        "first_name": "Amina",
+        "family_name": "Al-Otaibi",
+        "marketing_consent": False,
+    }
 
 
 def test_terms_acceptance_is_required_by_the_form(browser_page: Page):

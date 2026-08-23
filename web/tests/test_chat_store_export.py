@@ -100,14 +100,27 @@ def test_export_walks_more_sessions_than_one_sidebar_page():
 def test_export_carries_sources_with_each_message():
     backend = InMemoryChatBackend()
     backend.append_turn(
-        owner_id=OWNER, session_id="sourced", client_request_id="r1",
-        question="What is required?", answer="See the regulation.",
-        sources=[{
-            "source_index": 1, "cited": True, "document": "Doc.pdf",
-            "page": 3, "category": "regulatory", "score": 0.9,
-        }],
-        lang="en", category="regulatory", model="gpt-4o-mini",
-        corpus_revision=None, owner_key=None, session_key=None,
+        owner_id=OWNER,
+        session_id="sourced",
+        client_request_id="r1",
+        question="What is required?",
+        answer="See the regulation.",
+        sources=[
+            {
+                "source_index": 1,
+                "cited": True,
+                "document": "Doc.pdf",
+                "page": 3,
+                "category": "regulatory",
+                "score": 0.9,
+            }
+        ],
+        lang="en",
+        category="regulatory",
+        model="gpt-4o-mini",
+        corpus_revision=None,
+        owner_key=None,
+        session_key=None,
         archive_opted_out=True,
     )
 

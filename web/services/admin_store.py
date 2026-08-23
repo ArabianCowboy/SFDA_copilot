@@ -22,12 +22,16 @@ from __future__ import annotations
 import logging
 import uuid
 from dataclasses import replace
-from typing import Optional, Protocol
+from datetime import timezone
+from typing import Protocol
 
 from web.services.identity_cache import IdentityFlags
 from web.utils.supabase_client import get_supabase_admin
 
 logger = logging.getLogger(__name__)
+
+# datetime.UTC is Python 3.11+; the VPS production floor is 3.10.
+UTC = timezone.utc
 
 
 class AdminActionRefused(Exception):
@@ -61,7 +65,7 @@ _REFUSAL_CODES = {
 _IDENTITY_COLUMNS = "id, role, tier, is_disabled"
 
 
-def _generated_full_name(first_name: Optional[str], family_name: Optional[str]) -> Optional[str]:
+def _generated_full_name(first_name: str | None, family_name: str | None) -> str | None:
     """Mirror `profiles.full_name`'s generated-column expression exactly.
 
     Used only by the in-memory test double — the real backend reads
@@ -90,10 +94,10 @@ def _refusal_from(exception: Exception) -> Exception:
     Returns the exception to raise, so the caller keeps `raise ... from` and the
     original traceback when this is not a refusal at all.
     """
-    sqlstate = (
-        getattr(exception, "code", None)
-        or (exception.args[0].get("code") if exception.args
-            and isinstance(exception.args[0], dict) else None)
+    sqlstate = getattr(exception, "code", None) or (
+        exception.args[0].get("code")
+        if exception.args and isinstance(exception.args[0], dict)
+        else None
     )
     if sqlstate in _REFUSAL_CODES:
         return AdminActionRefused(_REFUSAL_CODES[sqlstate])
@@ -110,11 +114,11 @@ def _refusal_from(exception: Exception) -> Exception:
 class AdminBackend(Protocol):
     """Privileged reads and writes. Implementations must not raise for "not found"."""
 
-    def fetch_identity(self, user_id: str, email: Optional[str]) -> Optional[IdentityFlags]:
+    def fetch_identity(self, user_id: str, email: str | None) -> IdentityFlags | None:
         """Return the reader's flags, or None when they have no profile row."""
         ...
 
-    def get_standing_line_facts(self, user_id: str) -> Optional[dict]:
+    def get_standing_line_facts(self, user_id: str) -> dict | None:
         """``{"created_at": ..., "conversation_count": ...}`` for /account.
 
         Separate from `fetch_identity` deliberately: those flags are cached
@@ -138,8 +142,12 @@ class AdminBackend(Protocol):
         ...
 
     def list_audit(
-        self, *, limit: int, offset: int,
-        target_type: Optional[str] = None, target_id: Optional[str] = None,
+        self,
+        *,
+        limit: int,
+        offset: int,
+        target_type: str | None = None,
+        target_id: str | None = None,
     ) -> list:
         """Recorded actions, most recent first, optionally for one target.
 
@@ -150,11 +158,11 @@ class AdminBackend(Protocol):
         """
         ...
 
-    def list_users(self, *, limit: int, offset: int, search: Optional[str]) -> tuple:
+    def list_users(self, *, limit: int, offset: int, search: str | None) -> tuple:
         """``(rows, total)``. Emails come from auth, standing from profiles."""
         ...
 
-    def get_user(self, user_id: str) -> Optional[dict]:
+    def get_user(self, user_id: str) -> dict | None:
         """One account in full, or None when there is no such account.
 
         Unlike the list, this does not invent defaults for a missing profile —
@@ -174,8 +182,16 @@ class AdminBackend(Protocol):
         ...
 
     def update_profile(
-        self, user_id: str, *, first_name, family_name, age, organization,
-        specialization, expected_updated_at, actor,
+        self,
+        user_id: str,
+        *,
+        first_name,
+        family_name,
+        age,
+        organization,
+        specialization,
+        expected_updated_at,
+        actor,
     ) -> dict:
         """Rewrite a reader's identity and profile text, recording the diff.
 
@@ -187,9 +203,15 @@ class AdminBackend(Protocol):
         ...
 
     def append_audit(
-        self, *, action: str, target_type: str, target_id: str, actor,
-        before: Optional[dict] = None, after: Optional[dict] = None,
-        note: Optional[str] = None,
+        self,
+        *,
+        action: str,
+        target_type: str,
+        target_id: str,
+        actor,
+        before: dict | None = None,
+        after: dict | None = None,
+        note: str | None = None,
     ) -> None:
         """Record one action that could not share a transaction with its effect.
 
@@ -218,7 +240,7 @@ class SupabaseAdminBackend:
     def __init__(self, client) -> None:
         self._client = client
 
-    def fetch_identity(self, user_id: str, email: Optional[str]) -> Optional[IdentityFlags]:
+    def fetch_identity(self, user_id: str, email: str | None) -> IdentityFlags | None:
         response = (
             self._client.table("profiles")
             .select(_IDENTITY_COLUMNS)
@@ -242,10 +264,8 @@ class SupabaseAdminBackend:
             is_disabled=bool(row.get("is_disabled")),
         )
 
-    def get_standing_line_facts(self, user_id: str) -> Optional[dict]:
-        response = self._client.rpc(
-            "get_identity_flags", {"p_user_id": user_id}
-        ).execute()
+    def get_standing_line_facts(self, user_id: str) -> dict | None:
+        response = self._client.rpc("get_identity_flags", {"p_user_id": user_id}).execute()
         rows = getattr(response, "data", None) or []
         if not rows:
             return None
@@ -255,16 +275,11 @@ class SupabaseAdminBackend:
             "conversation_count": row.get("conversation_count") or 0,
         }
 
-
     # ── Settings ──────────────────────────────────────────────────────────────
 
     def get_settings(self) -> dict:
         response = (
-            self._client.table("app_settings")
-            .select("settings")
-            .eq("id", 1)
-            .limit(1)
-            .execute()
+            self._client.table("app_settings").select("settings").eq("id", 1).limit(1).execute()
         )
         rows = getattr(response, "data", None) or []
         return (rows[0].get("settings") if rows else {}) or {}
@@ -298,8 +313,12 @@ class SupabaseAdminBackend:
         return getattr(response, "data", None) or {}
 
     def list_audit(
-        self, *, limit: int, offset: int,
-        target_type: Optional[str] = None, target_id: Optional[str] = None,
+        self,
+        *,
+        limit: int,
+        offset: int,
+        target_type: str | None = None,
+        target_id: str | None = None,
     ) -> list:
         query = self._client.table("audit_log").select("*")
         # `audit_log_target_idx (target_type, target_id, occurred_at desc)`
@@ -310,16 +329,12 @@ class SupabaseAdminBackend:
         if target_id is not None:
             query = query.eq("target_id", target_id)
 
-        response = (
-            query.order("id", desc=True)
-            .range(offset, offset + limit - 1)
-            .execute()
-        )
+        response = query.order("id", desc=True).range(offset, offset + limit - 1).execute()
         return getattr(response, "data", None) or []
 
     # ── Accounts ──────────────────────────────────────────────────────────────
 
-    def list_users(self, *, limit: int, offset: int, search: Optional[str]) -> tuple:
+    def list_users(self, *, limit: int, offset: int, search: str | None) -> tuple:
         response = self._client.rpc(
             "admin_list_users",
             {"p_limit": limit, "p_offset": offset, "p_search": search or None},
@@ -331,8 +346,16 @@ class SupabaseAdminBackend:
         return [{k: v for k, v in row.items() if k != "total"} for row in rows], total
 
     def update_profile(
-        self, user_id: str, *, first_name, family_name, age, organization,
-        specialization, expected_updated_at, actor,
+        self,
+        user_id: str,
+        *,
+        first_name,
+        family_name,
+        age,
+        organization,
+        specialization,
+        expected_updated_at,
+        actor,
     ) -> dict:
         try:
             uuid.UUID(str(user_id))
@@ -362,31 +385,39 @@ class SupabaseAdminBackend:
         return getattr(response, "data", None) or {}
 
     def append_audit(
-        self, *, action: str, target_type: str, target_id: str, actor,
-        before: Optional[dict] = None, after: Optional[dict] = None,
-        note: Optional[str] = None,
+        self,
+        *,
+        action: str,
+        target_type: str,
+        target_id: str,
+        actor,
+        before: dict | None = None,
+        after: dict | None = None,
+        note: str | None = None,
     ) -> None:
         # A direct insert rather than an RPC: there is no accompanying mutation
         # to share a transaction with, which is the entire reason this exists.
         # `service_role` already holds insert on audit_log (20260814032139), so
         # this needs no new privilege.
-        self._client.table("audit_log").insert({
-            "actor_id": actor.user_id,
-            "actor_email": actor.email,
-            "action": action,
-            "target_type": target_type,
-            "target_id": target_id,
-            "before": before,
-            "after": after,
-            # None rather than "": the RPCs guard with `nullif(...)::inet` and a
-            # direct insert has no such guard, so an empty string would fail the
-            # cast instead of storing NULL.
-            "request_ip": actor.request_ip or None,
-            "user_agent": actor.user_agent,
-            "note": note,
-        }).execute()
+        self._client.table("audit_log").insert(
+            {
+                "actor_id": actor.user_id,
+                "actor_email": actor.email,
+                "action": action,
+                "target_type": target_type,
+                "target_id": target_id,
+                "before": before,
+                "after": after,
+                # None rather than "": the RPCs guard with `nullif(...)::inet` and a
+                # direct insert has no such guard, so an empty string would fail the
+                # cast instead of storing NULL.
+                "request_ip": actor.request_ip or None,
+                "user_agent": actor.user_agent,
+                "note": note,
+            }
+        ).execute()
 
-    def get_user(self, user_id: str) -> Optional[dict]:
+    def get_user(self, user_id: str) -> dict | None:
         # Same reasoning as `set_user_flags` below: a non-uuid identifies no
         # account, and that is a "not found", not a crash.
         try:
@@ -394,9 +425,7 @@ class SupabaseAdminBackend:
         except (ValueError, AttributeError, TypeError):
             return None
 
-        response = self._client.rpc(
-            "admin_get_user", {"p_user_id": user_id}
-        ).execute()
+        response = self._client.rpc("admin_get_user", {"p_user_id": user_id}).execute()
         rows = getattr(response, "data", None) or []
         return rows[0] if rows else None
 
@@ -446,19 +475,19 @@ class InMemoryAdminBackend:
     change, and nothing survives a restart.
     """
 
-    def __init__(self, settings: Optional[dict] = None) -> None:
+    def __init__(self, settings: dict | None = None) -> None:
         self._settings = dict(settings or {})
         self._audit: list = []
         self._next_id = 1
         self._users = self._seed_users()
 
-    def fetch_identity(self, user_id: str, email: Optional[str]) -> Optional[IdentityFlags]:
+    def fetch_identity(self, user_id: str, email: str | None) -> IdentityFlags | None:
         # Identity in TESTING comes from _TESTING_IDENTITIES before any backend
         # is consulted, so this is only reached by a caller that bypassed the
         # bypass. Unprivileged is the right answer for that.
         return None
 
-    def get_standing_line_facts(self, user_id: str) -> Optional[dict]:
+    def get_standing_line_facts(self, user_id: str) -> dict | None:
         row = next((r for r in self._users if r["id"] == user_id), None)
         if row is None:
             return None
@@ -485,34 +514,40 @@ class InMemoryAdminBackend:
         return dict(self._settings)
 
     def _record(self, *, action, target_type, target_id, actor, before=None, after=None, note=None):
-        from datetime import datetime, timezone
+        from datetime import datetime
 
-        self._audit.append({
-            "id": self._next_id,
-            "occurred_at": datetime.now(timezone.utc).isoformat(),
-            "actor_id": actor.user_id,
-            "actor_email": actor.email,
-            "action": action,
-            "target_type": target_type,
-            "target_id": target_id,
-            "before": before,
-            "after": after,
-            "request_ip": actor.request_ip,
-            "user_agent": actor.user_agent,
-            "note": note,
-        })
+        self._audit.append(
+            {
+                "id": self._next_id,
+                "occurred_at": datetime.now(UTC).isoformat(),
+                "actor_id": actor.user_id,
+                "actor_email": actor.email,
+                "action": action,
+                "target_type": target_type,
+                "target_id": target_id,
+                "before": before,
+                "after": after,
+                "request_ip": actor.request_ip,
+                "user_agent": actor.user_agent,
+                "note": note,
+            }
+        )
         self._next_id += 1
 
     def list_audit(
-        self, *, limit: int, offset: int,
-        target_type: Optional[str] = None, target_id: Optional[str] = None,
+        self,
+        *,
+        limit: int,
+        offset: int,
+        target_type: str | None = None,
+        target_id: str | None = None,
     ) -> list:
         rows = list(reversed(self._audit))
         if target_type is not None:
             rows = [r for r in rows if r.get("target_type") == target_type]
         if target_id is not None:
             rows = [r for r in rows if r.get("target_id") == target_id]
-        return rows[offset:offset + limit]
+        return rows[offset : offset + limit]
 
     # ── Accounts ──────────────────────────────────────────────────────────────
     #
@@ -523,29 +558,61 @@ class InMemoryAdminBackend:
 
     def _seed_users(self) -> list:
         return [
-            {"id": "test-admin-id", "email": "admin@example.com", "role": "admin",
-             "tier": "internal", "is_disabled": False, "disabled_at": None,
-             "disabled_reason": None, "created_at": "2026-01-01T00:00:00+00:00",
-             "last_sign_in_at": "2026-08-14T00:00:00+00:00", "email_identity_verified": True},
-            {"id": "test-user-id", "email": "test@example.com", "role": "user",
-             "tier": "free", "is_disabled": False, "disabled_at": None,
-             "disabled_reason": None, "created_at": "2026-02-01T00:00:00+00:00",
-             "last_sign_in_at": "2026-08-13T00:00:00+00:00", "email_identity_verified": True},
-            {"id": "test-disabled-id", "email": "disabled@example.com", "role": "user",
-             "tier": "free", "is_disabled": True, "disabled_at": "2026-08-01T00:00:00+00:00",
-             "disabled_reason": "seeded", "created_at": "2026-03-01T00:00:00+00:00",
-             "last_sign_in_at": None, "email_identity_verified": True},
+            {
+                "id": "test-admin-id",
+                "email": "admin@example.com",
+                "role": "admin",
+                "tier": "internal",
+                "is_disabled": False,
+                "disabled_at": None,
+                "disabled_reason": None,
+                "created_at": "2026-01-01T00:00:00+00:00",
+                "last_sign_in_at": "2026-08-14T00:00:00+00:00",
+                "email_identity_verified": True,
+            },
+            {
+                "id": "test-user-id",
+                "email": "test@example.com",
+                "role": "user",
+                "tier": "free",
+                "is_disabled": False,
+                "disabled_at": None,
+                "disabled_reason": None,
+                "created_at": "2026-02-01T00:00:00+00:00",
+                "last_sign_in_at": "2026-08-13T00:00:00+00:00",
+                "email_identity_verified": True,
+            },
+            {
+                "id": "test-disabled-id",
+                "email": "disabled@example.com",
+                "role": "user",
+                "tier": "free",
+                "is_disabled": True,
+                "disabled_at": "2026-08-01T00:00:00+00:00",
+                "disabled_reason": "seeded",
+                "created_at": "2026-03-01T00:00:00+00:00",
+                "last_sign_in_at": None,
+                "email_identity_verified": True,
+            },
             # An account in auth with no profile row. Rare in production now the
             # signup trigger is repaired, and seeded here precisely because it is
             # rare: it is the state the detail view exists to make visible, and
             # without a fixture nothing would ever exercise that path.
-            {"id": "test-orphan-id", "email": "orphan@example.com", "role": "user",
-             "tier": "free", "is_disabled": False, "disabled_at": None,
-             "disabled_reason": None, "created_at": "2026-04-01T00:00:00+00:00",
-             "last_sign_in_at": None, "has_profile": False},
+            {
+                "id": "test-orphan-id",
+                "email": "orphan@example.com",
+                "role": "user",
+                "tier": "free",
+                "is_disabled": False,
+                "disabled_at": None,
+                "disabled_reason": None,
+                "created_at": "2026-04-01T00:00:00+00:00",
+                "last_sign_in_at": None,
+                "has_profile": False,
+            },
         ]
 
-    def list_users(self, *, limit: int, offset: int, search: Optional[str]) -> tuple:
+    def list_users(self, *, limit: int, offset: int, search: str | None) -> tuple:
         rows = self._users
         if search:
             needle = search.lower()
@@ -553,19 +620,40 @@ class InMemoryAdminBackend:
         # `has_profile` is detail-only; the list deliberately does not carry it,
         # matching admin_list_users, which cannot distinguish the case at all.
         listed = [{k: v for k, v in r.items() if k != "has_profile"} for r in rows]
-        return listed[offset:offset + limit], len(rows)
+        return listed[offset : offset + limit], len(rows)
 
     def append_audit(
-        self, *, action: str, target_type: str, target_id: str, actor,
-        before: Optional[dict] = None, after: Optional[dict] = None,
-        note: Optional[str] = None,
+        self,
+        *,
+        action: str,
+        target_type: str,
+        target_id: str,
+        actor,
+        before: dict | None = None,
+        after: dict | None = None,
+        note: str | None = None,
     ) -> None:
-        self._record(action=action, target_type=target_type, target_id=target_id,
-                     actor=actor, before=before, after=after, note=note)
+        self._record(
+            action=action,
+            target_type=target_type,
+            target_id=target_id,
+            actor=actor,
+            before=before,
+            after=after,
+            note=note,
+        )
 
     def update_profile(
-        self, user_id: str, *, first_name, family_name, age, organization,
-        specialization, expected_updated_at, actor,
+        self,
+        user_id: str,
+        *,
+        first_name,
+        family_name,
+        age,
+        organization,
+        specialization,
+        expected_updated_at,
+        actor,
     ) -> dict:
         # Mirrors admin_update_profile, including the parts that are easy to
         # leave out of a double and then never test: the actor revalidation, the
@@ -579,26 +667,38 @@ class InMemoryAdminBackend:
         if row is None or not row.get("has_profile", True):
             raise AdminActionRefused("no_such_account")
 
-        if (expected_updated_at is not None
-                and expected_updated_at != row.get("updated_at", row["created_at"])):
+        if expected_updated_at is not None and expected_updated_at != row.get(
+            "updated_at", row["created_at"]
+        ):
             raise AdminActionRefused("profile_changed_since_loaded")
 
-        before = {k: row.get(k) for k in
-                  ("first_name", "family_name", "age", "organization", "specialization")}
-        after = {"first_name": first_name, "family_name": family_name, "age": age,
-                 "organization": organization, "specialization": specialization}
+        before = {
+            k: row.get(k)
+            for k in ("first_name", "family_name", "age", "organization", "specialization")
+        }
+        after = {
+            "first_name": first_name,
+            "family_name": family_name,
+            "age": age,
+            "organization": organization,
+            "specialization": specialization,
+        }
         if before == after:
             return after
 
         row.update(after)
         row["updated_at"] = f"{row.get('updated_at', row['created_at'])}+"
         self._record(
-            action="user.profile_change", target_type="user", target_id=user_id,
-            actor=actor, before=before, after=after,
+            action="user.profile_change",
+            target_type="user",
+            target_id=user_id,
+            actor=actor,
+            before=before,
+            after=after,
         )
         return after
 
-    def get_user(self, user_id: str) -> Optional[dict]:
+    def get_user(self, user_id: str) -> dict | None:
         row = next((r for r in self._users if r["id"] == user_id), None)
         if row is None:
             return None
@@ -715,7 +815,7 @@ class InMemoryAdminBackend:
         return {"role": row["role"], "tier": row["tier"], "is_disabled": row["is_disabled"]}
 
 
-def get_admin_backend() -> Optional[AdminBackend]:
+def get_admin_backend() -> AdminBackend | None:
     """The configured backend, or None when privileged reads are unavailable.
 
     None is a normal state, not an error: it means TESTING, or no service-role
@@ -727,7 +827,7 @@ def get_admin_backend() -> Optional[AdminBackend]:
     return SupabaseAdminBackend(client)
 
 
-def _fallback(cache, user_id: str, email: Optional[str]) -> IdentityFlags:
+def _fallback(cache, user_id: str, email: str | None) -> IdentityFlags:
     """What to serve when the lookup could not be made.
 
     Prefers the last answer we had, **specifically so that a disabled account
@@ -746,7 +846,7 @@ def _fallback(cache, user_id: str, email: Optional[str]) -> IdentityFlags:
 
 
 def resolve_identity_flags(
-    cache, user_id: str, email: Optional[str] = None, *, fresh: bool = False
+    cache, user_id: str, email: str | None = None, *, fresh: bool = False
 ) -> IdentityFlags:
     """Resolve a reader's standing, preferring the cache.
 

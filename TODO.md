@@ -22,7 +22,7 @@ When two documents disagree about how this system works, the order that settles 
 is in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). Rules that are individually
 correct but collide at one specific point — and there are eight known ones — are listed
 there too, under
-[*Rules that collide*](docs/ARCHITECTURE.md#rules-that-collide). Read that section
+[_Rules that collide_](docs/ARCHITECTURE.md#rules-that-collide). Read that section
 before your next migration or your first RTL component.
 
 **Adding an entry, or closing one?** The template and the closing procedure are at the
@@ -78,7 +78,6 @@ public `EXECUTE` on the `handle_new_user` signup trigger, pinning
 `profiles`/`users`).
 
 ---
-
 
 ---
 
@@ -145,8 +144,8 @@ source is a liability, not a feature." `BASE_SYSTEM_MESSAGE` in
 `openai_app.py:35-59` is tuned so that every claim carries a `[n]` marker, no
 number is ever invented, and a refusal carries no markers at all. The API
 decides whether an answer gets a source panel by counting those markers
-(`extract_cited_indices`), so a model that follows those instructions *less
-reliably* does not fail loudly — it produces a confident answer with citations
+(`extract_cited_indices`), so a model that follows those instructions _less
+reliably_ does not fail loudly — it produces a confident answer with citations
 that do not support it, on a regulatory question, for a professional who will
 quote it to an auditor.
 
@@ -164,7 +163,7 @@ adversarial reviews (OpenCode, `gpt-5.6-terra` and `gpt-5.6-luna`, no repo
 edits) debated before a line of code was written — both found and the plan
 was corrected for real defects in the first draft: a `base_url` constructor
 snippet that would have raised on every ordinary call (`settings` was
-normalized *after* the client was built, not before), an Arabic HHEM-scoring
+normalized _after_ the client was built, not before), an Arabic HHEM-scoring
 assumption with no evidence behind it, arbitrary gate thresholds with no
 sample-size reasoning, and a redundant addendum this file did not need. The
 same "debate the plan before building it" pattern this file already records
@@ -175,7 +174,7 @@ What shipped: `web/services/citations.py` gained `CitationDiagnostics` /
 `extract_cited_indices` always computed internally but only ever logged
 (`citations.py:345-352`) is now a returnable, aggregable number, with
 `extract_cited_indices` itself unchanged as a thin wrapper over it.
-`web/services/citation_eval_metrics.py` is Layer 1 (citation *format*, not
+`web/services/citation_eval_metrics.py` is Layer 1 (citation _format_, not
 fidelity — coverage, hallucination rate, refusal cleanliness scoped to
 labelled probes, cross-turn leakage) with a gate that combines an absolute
 floor with a minimum-sample-size guard, specifically so a ten-probe smoke
@@ -253,7 +252,7 @@ prerequisite now exists — see the update in "Answer from a second provider"
 above for what shipped. Not yet run for real, so this entry stays open too.
 
 **What it would disturb.** Everything in the entry above still applies — the
-citation-fidelity question is about the *model*, and routing through OpenRouter
+citation-fidelity question is about the _model_, and routing through OpenRouter
 does not answer it. Three things are specific to the aggregator:
 
 - **A router is not a model.** The same id can be served by different providers
@@ -263,7 +262,7 @@ does not answer it. Three things are specific to the aggregator:
 - **Free tiers carry their own limits** — roughly 50 requests/day, and 20/minute
   on `:free` variants at the time of writing. That is below this app's own
   15/minute chat limit, so a free model would need the quota work to know about
-  a *provider* ceiling as well as a per-reader one.
+  a _provider_ ceiling as well as a per-reader one.
 - **A third party sees the prompts.** Every question includes retrieved SFDA
   passages and the reader's own words. Sending those to an aggregator that
   routes to an undisclosed provider is a disclosure decision, not a technical
@@ -316,14 +315,14 @@ in both `web/i18n/en.yaml` and `web/i18n/ar.yaml` — no JS module reads them.
    `age` during signup passes them via user metadata into `handle_new_user`, so
    an account starts with real identity data.
 3. **The profile modal strains in visible ways.** The form is seeded from the
-   *startup snapshot*: `loadProfileWithTimeout` fills `AppState.userProfile` once
+   _startup snapshot_: `loadProfileWithTimeout` fills `AppState.userProfile` once
    at sign-in (`static/js/app.js:207`), and `handleProfileButtonClick` only calls
    `Services.getProfile` on a cache miss (handlers.js:655-678) — so the modal
    shows whatever the page captured on load, never a fresh read. The theme radios
    never reflect the stored preference: both `populateProfileForm` (ui.js:625)
    and the empty-profile reset (handlers.js:895) check `ThemeManager.getCurrent()`
    — the live `data-bs-theme` attribute — not `profile.preferences.theme`, so a
-   reader who saved Dark is shown their *current* theme, not their saved one. And
+   reader who saved Dark is shown their _current_ theme, not their saved one. And
    the surface is silently English-only while the `runtime.profile.*` keys
    written for exactly this sit unused.
 
@@ -338,7 +337,7 @@ which is why they are written out rather than left in the prose above.
    than `profile.preferences.theme`. Save Dark, switch to Light, reopen the
    modal: it shows Light, and saving from there silently overwrites the stored
    preference with the current one. Neither test in
-   `test_profile_theme_integration.py` asserts which radio is *selected*:
+   `test_profile_theme_integration.py` asserts which radio is _selected_:
    `test_profile_form_loads_cached_profile` opens the modal but checks only the
    name and organization fields, and `test_profile_update_applies_and_persists_theme`
    saves and never reopens it. The gap is the read-back, so that is where the
@@ -347,7 +346,7 @@ which is why they are written out rather than left in the prose above.
 2. **Every profile string is hardcoded English.** Five call sites in
    `static/js/modules/handlers.js` — 841, 862, 866, 877 and 901 — pass literals
    to `showProfileError`/`showToast`, while
-   `runtime.profile.{loadFailed,saveFailed,saved}` sit in *both*
+   `runtime.profile.{loadFailed,saveFailed,saved}` sit in _both_
    `web/i18n/en.yaml` and `web/i18n/ar.yaml` and are read by no module. An
    Arabic reader gets English on this one surface.
    `test_arabic_catalogue_covers_every_runtime_key` cannot catch this: it
@@ -423,10 +422,10 @@ something that is not code.** Superseded by the full design in
   (`test_profile_completion_notice.py`), and search scope as a reversible
   preference defaulting to `all` (`test_search_scope_preference.py`).
 - **Security** shipped (Step 5): password change via GoTrue `reauthenticate()`
-  + `updateUser({ nonce, password })`, email change, and "sign out everywhere
-  else" via `signOut({ scope: 'others' })` — there is no session-listing
-  endpoint in the API and there cannot be a session list
-  (`test_account_security.py`).
+  - `updateUser({ nonce, password })`, email change, and "sign out everywhere
+    else" via `signOut({ scope: 'others' })` — there is no session-listing
+    endpoint in the API and there cannot be a session list
+    (`test_account_security.py`).
 - **Export and bulk conversation deletion** shipped (Step 7):
   `GET /account/api/export` streams NDJSON scoped from `g.identity`, never
   from anything the caller supplies; `DELETE /account/api/conversations` is
@@ -440,12 +439,12 @@ something that is not code.** Superseded by the full design in
 **Still open — two items, each blocked on a decision or a document, not on
 engineering.** Each has its own entry below rather than living only here:
 
-- Bilingual GoTrue email templates — see *Security email is English-only*.
-- Account deletion (Step 7) — see *Account deletion (Spec 4)*.
+- Bilingual GoTrue email templates — see _Security email is English-only_.
+- Account deletion (Step 7) — see _Account deletion (Spec 4)_.
 
 **Consent (Step 6) shipped 2026-08-23**, unblocked by publishing `/privacy` as an
 openly-labelled draft rather than by waiting for reviewed text. The review that is
-still owed is tracked separately — see *The privacy policy (/privacy) is a draft*.
+still owed is tracked separately — see _The privacy policy (/privacy) is a draft_.
 
 Also deferred, and not blocked on anything but appetite: full account-menu
 consolidation (the sidebar footer collapsing to one control, per Decision 1),
@@ -472,7 +471,7 @@ archived plan.
 **Where:** rate limiting is one global setting. `web/config.yaml` has
 `server.rate_limit` (`per_day: 200`, `per_hour: 50`, `per_minute: 10`,
 `chat_api: "15 per minute"`), and `web/api/app.py` builds a `Limiter` keyed by
-`get_remote_address` with `storage_uri="memory://"`. `chat_limit` is a *callable*
+`get_remote_address` with `storage_uri="memory://"`. `chat_limit` is a _callable_
 limit, re-read per request, so the value is already live-tunable — what is not
 live is who it applies to. `public.profiles` gained a `tier` column
 (`20260814005509_lock_profile_privileges_and_repair_signup.sql`) that nothing
@@ -493,7 +492,7 @@ loses counters on restart, which is acceptable for a burst limit and not for a
 daily budget: a monthly allowance that resets on every deploy is not an
 allowance. That means real persistence — a `usage_daily(user_id, day, used)` row
 and one atomic `insert ... on conflict ... where used < limit returning`, taken
-in the view body *before* the generator, so a denial is a 429 instead of an SSE
+in the view body _before_ the generator, so a denial is a 429 instead of an SSE
 stream that dies halfway.
 
 The reader-facing half matters as much: a quota is a normal boundary, not a
@@ -553,7 +552,7 @@ teardown ERROR this time but an assertion failure —
 `test_opening_sources_does_not_move_the_answer` and
 `test_scrolling_up_hands_control_back_to_the_reader` both failing on
 "transcript moved 652px" (a real scroll-position check, not a fixture crash).
-Unlike the original write-up, the *same pair* failed across several repeats
+Unlike the original write-up, the _same pair_ failed across several repeats
 rather than a different test each time — but it failed identically on
 pre-existing, unmodified code too, and stopped correlating with any particular
 diff once ~8 leftover Chromium processes and a stray unrelated `opencode`
@@ -582,7 +581,7 @@ sidebar and a large share of traffic converges on a small set of answers.
 **The mechanism matters more than the goal here, so it is worth being exact.**
 The obvious route — let an administrator read conversations and notice the
 patterns — is both more invasive and worse at the job than the alternative.
-Frequency is an aggregate question: it needs the *text* of what was asked, not
+Frequency is an aggregate question: it needs the _text_ of what was asked, not
 who asked it. A table of `(asked_at, lang, scope, question_text, cited_count)`
 with **no `user_id` column at all** answers "what are the twenty most common
 questions this month" completely and exactly, in one `group by`, forever — while
@@ -592,18 +591,18 @@ someone keeps doing it.
 Leaving identity out is not only a privacy posture, it is the thing that makes
 the table cheap to keep: with no reader attached there is no retention deadline,
 no disclosure to write, and no question about who else may be granted admin
-later. If "how many *distinct* people asked this" is ever needed, a per-period
+later. If "how many _distinct_ people asked this" is ever needed, a per-period
 salted hash gives that without storing who.
 
 **The cost saving is real but not where it looks.** Two different caches get
 conflated, and only one of them pays:
 
-- **OpenAI prompt caching** discounts a repeated *prefix*, and the prefix here is
+- **OpenAI prompt caching** discounts a repeated _prefix_, and the prefix here is
   `BASE_SYSTEM_MESSAGE` + retrieved passages + the question. The system message
   alone is **246 tokens** (measured with `o200k_base`), well under the ~1024-token
   floor at which caching engages — so nothing is cached on the strength of the
   system prompt. The prefix only qualifies once passages are included, and those
-  are identical only when the question is identical. So repeated questions *do*
+  are identical only when the question is identical. So repeated questions _do_
   hit, which is the intuition behind putting them in the sidebar. The cache also
   goes cold after a short idle window unless `prompt_cache_retention` is set.
 - **An answer cache in this app** — normalised question + language + model +
@@ -638,7 +637,7 @@ FAISS search, TF-IDF, and fusion as well as the API call. The cache relieves the
 bottleneck that actually binds, which is a better argument for it than the bill.
 
 **What it would disturb — and this is the real cost.** A cached regulatory
-answer is a *stale* regulatory answer the moment the corpus changes, and
+answer is a _stale_ regulatory answer the moment the corpus changes, and
 PRODUCT.md's first principle is that provenance is the product. So the cache key
 must include the index build identity and every entry must be invalidated when
 the index is rebuilt — a cache that outlives its evidence is worse than no cache,
@@ -659,7 +658,7 @@ grounds: it depends on conversation persistence, which does not exist yet (see
 below) and is the largest deferred item in the admin plan; and it buys a worse
 dataset at a much higher privacy cost than a question log that answers the same
 question better. If per-reader context is ever genuinely needed — a specific
-complaint to investigate — the narrow form is a reader-initiated *answer receipt*
+complaint to investigate — the narrow form is a reader-initiated _answer receipt_
 they can share, not a browsing surface for everyone.
 
 **Open questions.** Whether the log stores the raw question or a normalised form
@@ -682,7 +681,7 @@ landing. Surfaced 2026-08-15 by the audit of the outage bug above.
 verifications — identity, settings, users, audit — before an operator has
 clicked anything, and opening one account costs **two more**. There is an
 identity-flags cache (`web/services/identity_cache.py`, 30s TTL) but it covers
-the *profile* lookup that follows, and console requests deliberately pass
+the _profile_ lookup that follows, and console requests deliberately pass
 `fresh=True` to bypass even that, for a documented and correct reason: being
 thirty seconds behind a demotion is unacceptable on the surface that can disable
 an account.
@@ -695,7 +694,7 @@ and eight concurrent stalls exhaust the only worker for every reader.
 **What fixing it costs — and why it is not obviously worth paying.** The obvious
 move, caching token→user for a short TTL, buys latency at the price of a revoked
 session staying valid for that TTL. That is a real security trade and it is not
-the same trade as the identity-flags cache, which only ever caches *flags* for
+the same trade as the identity-flags cache, which only ever caches _flags_ for
 an already-verified caller. The alternative is verifying the JWT locally against
 the project's signing key, which removes the round trip entirely and keeps
 revocation semantics honest for expiry — but not for revocation, and it means
@@ -712,7 +711,8 @@ this caused without touching the trade.
 
 ### Admin broadcast & Reader Notification Center (Popups, Banners, and Inbox History)
 
-**Where:** 
+**Where:**
+
 - Database: `supabase/migrations/` (tables: `public.notifications`, `public.user_notification_reads`, RLS policies, RPC queries for read metrics).
 - Admin Backend: `web/api/admin.py`, `web/services/admin_store.py` (`POST /admin/api/notifications`, `GET /admin/api/notifications/history`, `DELETE /admin/api/notifications/<id>`).
 - Admin UI: `web/templates/admin.html`, `static/js/admin/ui.js`, `handlers.js` (new Notifications management tab with broadcast composer & history table).
@@ -724,6 +724,7 @@ this caused without touching the trade.
 Operators need a direct mechanism to send real-time or persistent notifications to readers (maintenance, emergency regulatory alerts, feature announcements), while readers need a central inbox to review past notifications they might have dismissed.
 
 **What it involves & key features:**
+
 - **Notification Types**: 3 display styles:
   - `toast` (auto-dismissing corner toast for updates/tips).
   - `banner` (top-of-screen bar for maintenance warnings).
@@ -779,7 +780,9 @@ decision is the kind of hard-to-reverse action this file exists to flag rather t
 **What's needed to unblock:** an explicit yes/no on self-deletion from whoever owns that call,
 given the audit-log retention question it raises. Once decided, the two migrations in §16·4 are
 already written and only need re-verification against the live schema before applying.
-  - Hybrid delivery: Supabase Realtime broadcast for active sessions + REST DB query on page load for offline/new sessions.
+
+- Hybrid delivery: Supabase Realtime broadcast for active sessions + REST DB query on page load for offline/new sessions.
+
 ---
 
 ### The CSP still allows an image from any HTTPS origin
@@ -875,7 +878,7 @@ useful half is the cost.** If you cannot say what fixing it would disturb, you h
 finished looking.
 
 Then add one line to **Open now** at the top, linking to the heading, with a short clause
-saying what state it is in — *not started*, *blocked on X*, *diagnosed, unfixed*. The index
+saying what state it is in — _not started_, _blocked on X_, _diagnosed, unfixed_. The index
 and the body must agree; when they drift, the body wins, and that has already happened
 once in this file.
 
@@ -884,8 +887,8 @@ once in this file.
 1. **Add a closing note to the entry itself** — dated, saying what actually shipped and
    where. If the original diagnosis turned out to be wrong, say so rather than editing it
    into looking right; the correction is the valuable part.
-2. **Move the whole entry** to `docs/archive/TODO-resolved.md`, under *Resolved bugs* or
-   *Resolved planned work*. **Do not strike it through and leave it here.** A file where a
+2. **Move the whole entry** to `docs/archive/TODO-resolved.md`, under _Resolved bugs_ or
+   _Resolved planned work_. **Do not strike it through and leave it here.** A file where a
    handful of entries in forty read as current is a file nobody trusts the index of — that
    is why the archive exists.
 3. **Delete its line from Open now.**

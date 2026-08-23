@@ -44,7 +44,9 @@ const Account = {
     initLanguageToggle();
     bindThemeChoice();
     bindLanguageChoice();
-    document.getElementById('account-gate-retry')?.addEventListener('click', () => location.reload());
+    document
+      .getElementById('account-gate-retry')
+      ?.addEventListener('click', () => location.reload());
 
     if (!window.SUPABASE_URL || !window.SUPABASE_ANON_KEY) {
       showLoadFailed();

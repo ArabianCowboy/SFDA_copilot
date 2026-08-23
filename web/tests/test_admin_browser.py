@@ -12,6 +12,7 @@ file — and the failure mode is CI's backend job trying to run Playwright.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import re
 from urllib.parse import parse_qs, urlparse
@@ -179,7 +180,9 @@ def test_a_changed_setting_is_marked_as_changed(browser_page: Page):
     browser_page.locator("#tab-settings").click()
 
     rows = browser_page.locator(".admin-field")
-    expect(rows.filter(has=browser_page.locator(".admin-field-origin.is-override"))).to_have_count(1)
+    expect(rows.filter(has=browser_page.locator(".admin-field-origin.is-override"))).to_have_count(
+        1
+    )
     expect(
         browser_page.locator('.admin-field[data-field="temperature"] .admin-field-origin')
     ).to_have_text("Changed here")
@@ -195,12 +198,12 @@ def test_a_rejected_save_puts_the_message_beside_its_field(browser_page: Page):
         lambda route: route.fulfill(
             status=422,
             content_type="application/json",
-            body=json.dumps({
-                "error": "validation_failed",
-                "errors": [
-                    {"field": "max_tokens", "code": "above_ceiling", "limit": 16384}
-                ],
-            }),
+            body=json.dumps(
+                {
+                    "error": "validation_failed",
+                    "errors": [{"field": "max_tokens", "code": "above_ceiling", "limit": 16384}],
+                }
+            ),
         ),
     )
     browser_page.locator("#settings-save").click()
@@ -227,14 +230,20 @@ def test_the_settings_form_is_translated(browser_page: Page):
 AUDIT = {
     "entries": [
         {
-            "id": 2, "occurred_at": "2026-08-14T03:20:00+00:00",
-            "actor_email": "admin@example.com", "action": "settings.update",
-            "target_type": "settings", "target_id": "app_settings",
-            "before": {"model": "gpt-4o-mini"}, "after": {"model": "gpt-4o"},
-            "request_ip": "127.0.0.1", "note": None,
+            "id": 2,
+            "occurred_at": "2026-08-14T03:20:00+00:00",
+            "actor_email": "admin@example.com",
+            "action": "settings.update",
+            "target_type": "settings",
+            "target_id": "app_settings",
+            "before": {"model": "gpt-4o-mini"},
+            "after": {"model": "gpt-4o"},
+            "request_ip": "127.0.0.1",
+            "note": None,
         },
     ],
-    "limit": 50, "offset": 0,
+    "limit": 50,
+    "offset": 0,
 }
 
 
@@ -263,7 +272,8 @@ def test_an_empty_log_says_so_rather_than_rendering_an_empty_table(browser_page:
     browser_page.route(
         "**/admin/api/audit*",
         lambda route: route.fulfill(
-            status=200, content_type="application/json",
+            status=200,
+            content_type="application/json",
             body=json.dumps({"entries": [], "limit": 50, "offset": 0}),
         ),
     )
@@ -301,15 +311,23 @@ def test_the_activity_tab_is_reachable_by_keyboard(browser_page: Page):
 
 REASONING_SETTINGS = {
     "settings": {
-        "model": "gpt-4o-mini", "temperature": 0.1,
-        "max_tokens": 16384, "max_context_results": 8, "reasoning_effort": None,
+        "model": "gpt-4o-mini",
+        "temperature": 0.1,
+        "max_tokens": 16384,
+        "max_context_results": 8,
+        "reasoning_effort": None,
     },
     "overrides": {},
     "allowed_models": [
         {"id": "gpt-4o-mini", "label": "GPT-4o mini", "max_output_tokens": 16384},
-        {"id": "gpt-5.6-luna", "label": "GPT-5.6 Luna", "max_output_tokens": 128000,
-         "token_param": "max_completion_tokens", "supports_temperature": False,
-         "reasoning_efforts": ["none", "low", "medium", "high", "xhigh", "max"]},
+        {
+            "id": "gpt-5.6-luna",
+            "label": "GPT-5.6 Luna",
+            "max_output_tokens": 128000,
+            "token_param": "max_completion_tokens",
+            "supports_temperature": False,
+            "reasoning_efforts": ["none", "low", "medium", "high", "xhigh", "max"],
+        },
     ],
 }
 
@@ -366,16 +384,25 @@ def test_model_default_is_offered_as_a_distinct_choice(browser_page: Page):
 
 ON_A_REASONING_MODEL = {
     "settings": {
-        "model": "gpt-5.6-luna", "temperature": 0.1, "max_tokens": 128000,
-        "max_context_results": 8, "reasoning_effort": "xhigh",
+        "model": "gpt-5.6-luna",
+        "temperature": 0.1,
+        "max_tokens": 128000,
+        "max_context_results": 8,
+        "reasoning_effort": "xhigh",
     },
     "overrides": {
-        "model": "gpt-5.6-luna", "temperature": 0.1, "max_tokens": 128000,
-        "max_context_results": 8, "reasoning_effort": "xhigh",
+        "model": "gpt-5.6-luna",
+        "temperature": 0.1,
+        "max_tokens": 128000,
+        "max_context_results": 8,
+        "reasoning_effort": "xhigh",
     },
     "defaults": {
-        "model": "gpt-4o-mini", "temperature": 0.1, "max_tokens": 16384,
-        "max_context_results": 8, "reasoning_effort": None,
+        "model": "gpt-4o-mini",
+        "temperature": 0.1,
+        "max_tokens": 16384,
+        "max_context_results": 8,
+        "reasoning_effort": None,
     },
     "allowed_models": REASONING_SETTINGS["allowed_models"],
 }
@@ -389,13 +416,14 @@ def _capture_put(page: Page, settings: dict, *, response=None, status: int = 200
         if route.request.method == "PUT":
             sent.append(route.request.post_data_json)
             route.fulfill(
-                status=status, content_type="application/json",
-                body=json.dumps(response if response is not None
-                                else {**settings, "applied": True}),
+                status=status,
+                content_type="application/json",
+                body=json.dumps(
+                    response if response is not None else {**settings, "applied": True}
+                ),
             )
         else:
-            route.fulfill(status=200, content_type="application/json",
-                          body=json.dumps(settings))
+            route.fulfill(status=200, content_type="application/json", body=json.dumps(settings))
 
     page.route("**/admin/api/settings", handle)
     return sent
@@ -462,10 +490,15 @@ def test_a_refusal_against_a_hidden_field_is_still_said_out_loud(browser_page: P
     _admin_console(browser_page, settings=ON_A_REASONING_MODEL)
     browser_page.locator("#tab-settings").click()
     _capture_put(
-        browser_page, ON_A_REASONING_MODEL, status=422,
-        response={"error": "validation_failed", "errors": [
-            {"field": "reasoning_effort", "code": "reasoning_not_supported"},
-        ]},
+        browser_page,
+        ON_A_REASONING_MODEL,
+        status=422,
+        response={
+            "error": "validation_failed",
+            "errors": [
+                {"field": "reasoning_effort", "code": "reasoning_not_supported"},
+            ],
+        },
     )
 
     browser_page.locator("#setting-model").select_option("gpt-4o-mini")
@@ -478,9 +511,13 @@ def test_the_form_says_when_it_is_not_the_model_answering(browser_page: Page):
     """Configured is not the same fact as live, and the console used to report
     only the first — which is how it showed Luna while every answer came from
     gpt-4o-mini, with the disagreement visible only in the server's terminal."""
-    _admin_console(browser_page, settings={
-        **ON_A_REASONING_MODEL, "active": {"model": "gpt-4o-mini"},
-    })
+    _admin_console(
+        browser_page,
+        settings={
+            **ON_A_REASONING_MODEL,
+            "active": {"model": "gpt-4o-mini"},
+        },
+    )
     browser_page.locator("#tab-settings").click()
 
     expect(browser_page.locator("#settings-not-live")).to_contain_text("gpt-4o-mini")
@@ -488,9 +525,13 @@ def test_the_form_says_when_it_is_not_the_model_answering(browser_page: Page):
 
 def test_no_warning_when_the_live_model_is_the_configured_one(browser_page: Page):
     """A permanent notice is a notice nobody reads."""
-    _admin_console(browser_page, settings={
-        **ON_A_REASONING_MODEL, "active": {"model": "gpt-5.6-luna"},
-    })
+    _admin_console(
+        browser_page,
+        settings={
+            **ON_A_REASONING_MODEL,
+            "active": {"model": "gpt-5.6-luna"},
+        },
+    )
     browser_page.locator("#tab-settings").click()
 
     expect(browser_page.locator("#setting-model")).to_be_visible()
@@ -511,11 +552,21 @@ def test_the_token_box_declares_the_selected_model_s_ceiling(browser_page: Page)
 # ── Reverting an override ─────────────────────────────────────────────────────
 
 OVERRIDDEN = {
-    "settings": {"model": "gpt-4o", "temperature": 0.9, "max_tokens": 16384,
-                 "max_context_results": 8, "reasoning_effort": None},
+    "settings": {
+        "model": "gpt-4o",
+        "temperature": 0.9,
+        "max_tokens": 16384,
+        "max_context_results": 8,
+        "reasoning_effort": None,
+    },
     "overrides": {"temperature": 0.9},
-    "defaults": {"model": "gpt-4o-mini", "temperature": 0.1, "max_tokens": 16384,
-                 "max_context_results": 8, "reasoning_effort": None},
+    "defaults": {
+        "model": "gpt-4o-mini",
+        "temperature": 0.1,
+        "max_tokens": 16384,
+        "max_context_results": 8,
+        "reasoning_effort": None,
+    },
     "allowed_models": [
         {"id": "gpt-4o-mini", "label": "GPT-4o mini", "max_output_tokens": 16384},
         {"id": "gpt-4o", "label": "GPT-4o", "max_output_tokens": 16384},
@@ -564,11 +615,13 @@ def test_a_staged_revert_is_sent_as_null(browser_page: Page):
     def capture(route):
         if route.request.method == "PUT":
             sent.append(route.request.post_data_json)
-            route.fulfill(status=200, content_type="application/json",
-                          body=json.dumps({**OVERRIDDEN, "overrides": {}, "applied": True}))
+            route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps({**OVERRIDDEN, "overrides": {}, "applied": True}),
+            )
         else:
-            route.fulfill(status=200, content_type="application/json",
-                          body=json.dumps(OVERRIDDEN))
+            route.fulfill(status=200, content_type="application/json", body=json.dumps(OVERRIDDEN))
 
     browser_page.route("**/admin/api/settings", capture)
     browser_page.locator('.admin-field[data-field="temperature"] .admin-field-revert').click()
@@ -586,55 +639,111 @@ def test_a_staged_revert_is_sent_as_null(browser_page: Page):
 # reader, so every console endpoint 403s unless the test fulfils it. The server
 # side of these routes is covered by test_admin_users.py.
 ACCOUNTS = [
-    {"id": "test-admin-id", "email": "admin@example.com", "role": "admin",
-     "tier": "internal", "is_disabled": False, "last_sign_in_at": None},
+    {
+        "id": "test-admin-id",
+        "email": "admin@example.com",
+        "role": "admin",
+        "tier": "internal",
+        "is_disabled": False,
+        "last_sign_in_at": None,
+    },
     # The only seeded account that has ever signed in. Every entry here used to
     # carry None, so the people table's date path was never rendered by a test
     # at all — which is how it shipped for a year formatting the cell with
     # `toLocaleDateString`, whose Arabic output the bidi algorithm mangles.
-    {"id": "test-user-id", "email": "test@example.com", "role": "user",
-     "tier": "free", "is_disabled": False,
-     "last_sign_in_at": "2026-08-15T12:00:00+00:00"},
-    {"id": "test-disabled-id", "email": "disabled@example.com", "role": "user",
-     "tier": "free", "is_disabled": True, "last_sign_in_at": None},
-    {"id": "test-orphan-id", "email": "orphan@example.com", "role": "user",
-     "tier": "free", "is_disabled": False, "last_sign_in_at": None},
+    {
+        "id": "test-user-id",
+        "email": "test@example.com",
+        "role": "user",
+        "tier": "free",
+        "is_disabled": False,
+        "last_sign_in_at": "2026-08-15T12:00:00+00:00",
+    },
+    {
+        "id": "test-disabled-id",
+        "email": "disabled@example.com",
+        "role": "user",
+        "tier": "free",
+        "is_disabled": True,
+        "last_sign_in_at": None,
+    },
+    {
+        "id": "test-orphan-id",
+        "email": "orphan@example.com",
+        "role": "user",
+        "tier": "free",
+        "is_disabled": False,
+        "last_sign_in_at": None,
+    },
 ]
 
 DETAILS = {
     "test-user-id": {
-        "id": "test-user-id", "email": "test@example.com", "has_profile": True,
-        "role": "user", "tier": "free", "is_disabled": False,
-        "created_at": "2026-02-01T00:00:00+00:00", "last_sign_in_at": None,
+        "id": "test-user-id",
+        "email": "test@example.com",
+        "has_profile": True,
+        "role": "user",
+        "tier": "free",
+        "is_disabled": False,
+        "created_at": "2026-02-01T00:00:00+00:00",
+        "last_sign_in_at": None,
         "email_confirmed_at": "2026-02-01T00:00:00+00:00",
         # Non-null, because the profile form sends it back as the version it was
         # loaded at and a null one would let the assertion pass vacuously.
         "updated_at": "2026-05-01T09:00:00+00:00",
-        "disabled_at": None, "disabled_by_email": None, "disabled_reason": None,
-        "first_name": "Test", "family_name": "User", "age": None,
-        "full_name": "Test User", "organization": "Test Organization",
-        "specialization": "Regulatory Affairs", "last_seen_at": None,
+        "disabled_at": None,
+        "disabled_by_email": None,
+        "disabled_reason": None,
+        "first_name": "Test",
+        "family_name": "User",
+        "age": None,
+        "full_name": "Test User",
+        "organization": "Test Organization",
+        "specialization": "Regulatory Affairs",
+        "last_seen_at": None,
     },
     "test-disabled-id": {
-        "id": "test-disabled-id", "email": "disabled@example.com", "has_profile": True,
-        "role": "user", "tier": "free", "is_disabled": True,
-        "created_at": "2026-03-01T00:00:00+00:00", "last_sign_in_at": None,
-        "email_confirmed_at": "2026-03-01T00:00:00+00:00", "updated_at": None,
+        "id": "test-disabled-id",
+        "email": "disabled@example.com",
+        "has_profile": True,
+        "role": "user",
+        "tier": "free",
+        "is_disabled": True,
+        "created_at": "2026-03-01T00:00:00+00:00",
+        "last_sign_in_at": None,
+        "email_confirmed_at": "2026-03-01T00:00:00+00:00",
+        "updated_at": None,
         "disabled_at": "2026-06-01T00:00:00+00:00",
         "disabled_by_email": "admin@example.com",
         "disabled_reason": "Sharing an account with a colleague",
-        "first_name": None, "family_name": None, "age": None,
-        "full_name": None, "organization": None,
-        "specialization": None, "last_seen_at": None,
+        "first_name": None,
+        "family_name": None,
+        "age": None,
+        "full_name": None,
+        "organization": None,
+        "specialization": None,
+        "last_seen_at": None,
     },
     "test-orphan-id": {
-        "id": "test-orphan-id", "email": "orphan@example.com", "has_profile": False,
-        "role": None, "tier": None, "is_disabled": None,
-        "created_at": "2026-04-01T00:00:00+00:00", "last_sign_in_at": None,
-        "email_confirmed_at": None, "updated_at": None,
-        "disabled_at": None, "disabled_by_email": None, "disabled_reason": None,
-        "first_name": None, "family_name": None, "age": None,
-        "full_name": None, "organization": None, "specialization": None,
+        "id": "test-orphan-id",
+        "email": "orphan@example.com",
+        "has_profile": False,
+        "role": None,
+        "tier": None,
+        "is_disabled": None,
+        "created_at": "2026-04-01T00:00:00+00:00",
+        "last_sign_in_at": None,
+        "email_confirmed_at": None,
+        "updated_at": None,
+        "disabled_at": None,
+        "disabled_by_email": None,
+        "disabled_reason": None,
+        "first_name": None,
+        "family_name": None,
+        "age": None,
+        "full_name": None,
+        "organization": None,
+        "specialization": None,
         "last_seen_at": None,
     },
 }
@@ -654,8 +763,11 @@ def _open_people(page: Page, *, lang: str = "", accounts=None) -> None:
         if match:
             account = DETAILS.get(match.group(1))
             if account is None:
-                route.fulfill(status=404, content_type="application/json",
-                              body=json.dumps({"error": "no_such_account"}))
+                route.fulfill(
+                    status=404,
+                    content_type="application/json",
+                    body=json.dumps({"error": "no_such_account"}),
+                )
                 return
             _json(route, {"user": account, "self_id": "test-admin-id"})
             return
@@ -666,15 +778,23 @@ def _open_people(page: Page, *, lang: str = "", accounts=None) -> None:
         offset = int((query_params.get("offset") or ["0"])[0])
         rows = [a for a in account_list if needle in a["email"].lower()]
         sliced = rows[offset : offset + limit]
-        _json(route, {"users": sliced, "total": len(rows), "limit": limit,
-                      "offset": offset, "self_id": "test-admin-id"})
+        _json(
+            route,
+            {
+                "users": sliced,
+                "total": len(rows),
+                "limit": limit,
+                "offset": offset,
+                "self_id": "test-admin-id",
+            },
+        )
 
     page.route("**/admin/api/users*", users_or_detail)
     page.route("**/admin/api/users/*", users_or_detail)
-    page.route("**/admin/api/audit*",
-               lambda route: _json(route, {"entries": [], "limit": 50, "offset": 0}))
-    page.route("**/admin/api/settings*",
-               lambda route: _json(route, SETTINGS))
+    page.route(
+        "**/admin/api/audit*", lambda route: _json(route, {"entries": [], "limit": 50, "offset": 0})
+    )
+    page.route("**/admin/api/settings*", lambda route: _json(route, SETTINGS))
 
     page.goto(f"/admin?testing=true{lang}")
     expect(page.locator("#admin-console")).to_be_visible()
@@ -737,9 +857,7 @@ def test_the_people_table_dates_survive_arabic(browser_page: Page):
     # timezone-dependent. The mangling this guards against fails the shape.
     stamp = seen.inner_text().strip()
     assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", stamp), f"not an ISO stamp: {stamp!r}"
-    assert not re.search(r"[‎‏؜⁦-⁩]", stamp), (
-        f"stamp carries bidi control characters: {stamp!r}"
-    )
+    assert not re.search(r"[‎‏؜⁦-⁩]", stamp), f"stamp carries bidi control characters: {stamp!r}"
     assert seen.evaluate("el => getComputedStyle(el).textAlign") == "end"
 
 
@@ -748,7 +866,9 @@ def test_the_detail_keeps_machine_values_left_to_right_in_arabic(browser_page: P
     browser_page.locator(".admin-account-open", has_text="test@example.com").click()
 
     expect(browser_page.locator("html")).to_have_attribute("dir", "rtl")
-    expect(browser_page.locator("#account-heading .admin-cell-machine")).to_have_attribute("dir", "ltr")
+    expect(browser_page.locator("#account-heading .admin-cell-machine")).to_have_attribute(
+        "dir", "ltr"
+    )
 
 
 def test_the_people_list_can_be_searched(browser_page: Page):
@@ -838,8 +958,10 @@ def test_sending_a_reset_asks_first_and_reports_the_outcome(browser_page: Page):
     browser_page.route(
         "**/admin/api/users/*/reset-password",
         lambda route: route.fulfill(
-            status=200, content_type="application/json",
-            body=json.dumps({"accepted": True, "operation_id": "op-1"})),
+            status=200,
+            content_type="application/json",
+            body=json.dumps({"accepted": True, "operation_id": "op-1"}),
+        ),
     )
     browser_page.locator(".admin-account-open", has_text="test@example.com").click()
 
@@ -856,8 +978,10 @@ def test_a_rate_limited_reset_gets_its_own_sentence(browser_page: Page):
     browser_page.route(
         "**/admin/api/users/*/reset-password",
         lambda route: route.fulfill(
-            status=429, content_type="application/json",
-            body=json.dumps({"error": "reset_quota_exhausted"})),
+            status=429,
+            content_type="application/json",
+            body=json.dumps({"error": "reset_quota_exhausted"}),
+        ),
     )
     browser_page.locator(".admin-account-open", has_text="test@example.com").click()
 
@@ -880,8 +1004,10 @@ def test_ending_sessions_asks_first_and_reports_the_outcome(browser_page: Page):
     browser_page.route(
         "**/admin/api/users/*/revoke-sessions",
         lambda route: route.fulfill(
-            status=200, content_type="application/json",
-            body=json.dumps({"accepted": True, "operation_id": "op-1"})),
+            status=200,
+            content_type="application/json",
+            body=json.dumps({"accepted": True, "operation_id": "op-1"}),
+        ),
     )
     browser_page.locator(".admin-account-open", has_text="test@example.com").click()
 
@@ -912,9 +1038,14 @@ def test_an_outage_on_a_session_end_is_not_retried(browser_page: Page):
     _open_people(browser_page)
     browser_page.route(
         "**/admin/api/users/*/revoke-sessions",
-        lambda route: (calls.append(1), route.fulfill(
-            status=503, content_type="application/json",
-            body=json.dumps({"error": "storage_unavailable"}))),
+        lambda route: (
+            calls.append(1),
+            route.fulfill(
+                status=503,
+                content_type="application/json",
+                body=json.dumps({"error": "storage_unavailable"}),
+            ),
+        ),
     )
     browser_page.locator(".admin-account-open", has_text="test@example.com").click()
     browser_page.once("dialog", lambda dialog: dialog.accept())
@@ -929,6 +1060,7 @@ def _accept_email_change_dialogs(new_email: str, *, confirm: bool = True):
     other action on this page: a prompt for the new address, then a confirm.
     Playwright's `once("dialog", ...)` only ever handles the first one, so
     this needs `on(...)` with type branching instead."""
+
     def handle(dialog):
         if dialog.type == "prompt":
             dialog.accept(new_email)
@@ -936,6 +1068,7 @@ def _accept_email_change_dialogs(new_email: str, *, confirm: bool = True):
             dialog.accept()
         else:
             dialog.dismiss()
+
     return handle
 
 
@@ -944,8 +1077,10 @@ def test_changing_email_prompts_confirms_and_reports_the_outcome(browser_page: P
     browser_page.route(
         "**/admin/api/users/*/change-email",
         lambda route: route.fulfill(
-            status=200, content_type="application/json",
-            body=json.dumps({"accepted": True, "operation_id": "op-1"})),
+            status=200,
+            content_type="application/json",
+            body=json.dumps({"accepted": True, "operation_id": "op-1"}),
+        ),
     )
     browser_page.locator(".admin-account-open", has_text="test@example.com").click()
 
@@ -964,9 +1099,9 @@ def test_declining_the_email_change_confirmation_sends_nothing(browser_page: Pag
     )
     browser_page.locator(".admin-account-open", has_text="test@example.com").click()
 
-    browser_page.on("dialog", _accept_email_change_dialogs(
-        "new-address@example.com", confirm=False
-    ))
+    browser_page.on(
+        "dialog", _accept_email_change_dialogs("new-address@example.com", confirm=False)
+    )
     browser_page.locator("#account-change-email").click()
     browser_page.wait_for_timeout(300)
 
@@ -998,8 +1133,10 @@ def test_a_duplicate_email_gets_its_own_sentence(browser_page: Page):
     browser_page.route(
         "**/admin/api/users/*/change-email",
         lambda route: route.fulfill(
-            status=409, content_type="application/json",
-            body=json.dumps({"error": "email_already_registered"})),
+            status=409,
+            content_type="application/json",
+            body=json.dumps({"error": "email_already_registered"}),
+        ),
     )
     browser_page.locator(".admin-account-open", has_text="test@example.com").click()
 
@@ -1014,9 +1151,14 @@ def test_an_outage_on_an_email_change_is_not_retried(browser_page: Page):
     _open_people(browser_page)
     browser_page.route(
         "**/admin/api/users/*/change-email",
-        lambda route: (calls.append(1), route.fulfill(
-            status=503, content_type="application/json",
-            body=json.dumps({"error": "storage_unavailable"}))),
+        lambda route: (
+            calls.append(1),
+            route.fulfill(
+                status=503,
+                content_type="application/json",
+                body=json.dumps({"error": "storage_unavailable"}),
+            ),
+        ),
     )
     browser_page.locator(".admin-account-open", has_text="test@example.com").click()
 
@@ -1153,8 +1295,7 @@ def test_a_failed_open_does_not_lock_the_account_shut(browser_page: Page):
     """The guard is released in `finally`. Released only on success, one failed
     load would make that account permanently unopenable for the session."""
     _open_people(browser_page)
-    browser_page.route("**/admin/api/users/test-user-id",
-                       lambda route: route.fulfill(status=500))
+    browser_page.route("**/admin/api/users/test-user-id", lambda route: route.fulfill(status=500))
     browser_page.locator(".admin-account-open", has_text="test@example.com").click()
     expect(browser_page.locator("#account-error")).to_be_visible()
 
@@ -1175,8 +1316,11 @@ def test_a_transient_outage_on_a_read_is_retried_once(browser_page: Page):
     def flaky(route):
         calls.append(1)
         if len(calls) == 1:
-            route.fulfill(status=503, content_type="application/json",
-                          body=json.dumps({"error": "identity_unavailable"}))
+            route.fulfill(
+                status=503,
+                content_type="application/json",
+                body=json.dumps({"error": "identity_unavailable"}),
+            )
             return
         _json(route, {"user": DETAILS["test-user-id"], "self_id": "test-admin-id"})
 
@@ -1198,9 +1342,14 @@ def test_an_outage_on_a_mutation_is_not_retried(browser_page: Page):
     _open_people(browser_page)
     browser_page.route(
         "**/admin/api/users/*/reset-password",
-        lambda route: (calls.append(1), route.fulfill(
-            status=503, content_type="application/json",
-            body=json.dumps({"error": "storage_unavailable"}))),
+        lambda route: (
+            calls.append(1),
+            route.fulfill(
+                status=503,
+                content_type="application/json",
+                body=json.dumps({"error": "storage_unavailable"}),
+            ),
+        ),
     )
     browser_page.locator(".admin-account-open", has_text="test@example.com").click()
     browser_page.once("dialog", lambda dialog: dialog.accept())
@@ -1228,8 +1377,10 @@ def test_the_profile_can_be_edited_and_carries_the_version_it_was_loaded_at(
     _open_people(browser_page)
     browser_page.route(
         "**/admin/api/users/*/profile",
-        lambda route: (sent.append(route.request.post_data),
-                       _json(route, {"profile": DETAILS["test-user-id"]})),
+        lambda route: (
+            sent.append(route.request.post_data),
+            _json(route, {"profile": DETAILS["test-user-id"]}),
+        ),
     )
     browser_page.locator(".admin-account-open", has_text="test@example.com").click()
 
@@ -1255,8 +1406,10 @@ def test_a_stale_profile_save_is_refused_rather_than_overwriting(browser_page: P
     browser_page.route(
         "**/admin/api/users/*/profile",
         lambda route: route.fulfill(
-            status=409, content_type="application/json",
-            body=json.dumps({"error": "profile_changed_since_loaded"})),
+            status=409,
+            content_type="application/json",
+            body=json.dumps({"error": "profile_changed_since_loaded"}),
+        ),
     )
     browser_page.locator(".admin-account-open", has_text="test@example.com").click()
     browser_page.locator("#account-first-name").fill("Somebody Else")
@@ -1414,13 +1567,22 @@ def test_people_pager_out_of_order_responses_resolve_correctly(browser_page: Pag
             held_routes.append(route)
             return
         rows = [a for a in ACCOUNTS if q in a["email"].lower()]
-        _json(route, {"users": rows, "total": len(rows), "limit": 50,
-                      "offset": 0, "self_id": "test-admin-id"})
+        _json(
+            route,
+            {
+                "users": rows,
+                "total": len(rows),
+                "limit": 50,
+                "offset": 0,
+                "self_id": "test-admin-id",
+            },
+        )
 
     browser_page.route("**/admin/api/users*", custom_users)
     browser_page.route("**/admin/api/users/*", custom_users)
-    browser_page.route("**/admin/api/audit*",
-                       lambda route: _json(route, {"entries": [], "limit": 50, "offset": 0}))
+    browser_page.route(
+        "**/admin/api/audit*", lambda route: _json(route, {"entries": [], "limit": 50, "offset": 0})
+    )
 
     browser_page.goto("/admin?testing=true")
     expect(browser_page.locator("#admin-console")).to_be_visible()
@@ -1438,10 +1600,17 @@ def test_people_pager_out_of_order_responses_resolve_correctly(browser_page: Pag
 
     # Now fulfill the held slow route
     for r in held_routes:
-        try:
-            _json(r, {"users": ACCOUNTS, "total": 4, "limit": 50, "offset": 0, "self_id": "test-admin-id"})
-        except Exception:
-            pass
+        with contextlib.suppress(Exception):
+            _json(
+                r,
+                {
+                    "users": ACCOUNTS,
+                    "total": 4,
+                    "limit": 50,
+                    "offset": 0,
+                    "self_id": "test-admin-id",
+                },
+            )
 
     browser_page.wait_for_timeout(300)
     # DOM still shows "orphan" result, not overwritten by slow
@@ -1462,12 +1631,21 @@ def test_people_pager_repeated_rapid_clicks_only_issue_one_request(browser_page:
         offset = int((query_params.get("offset") or ["0"])[0])
         calls.append(offset)
         rows = MANY_ACCOUNTS[offset : offset + 50]
-        _json(route, {"users": rows, "total": len(MANY_ACCOUNTS), "limit": 50,
-                      "offset": offset, "self_id": "test-admin-id"})
+        _json(
+            route,
+            {
+                "users": rows,
+                "total": len(MANY_ACCOUNTS),
+                "limit": 50,
+                "offset": offset,
+                "self_id": "test-admin-id",
+            },
+        )
 
     browser_page.route("**/admin/api/users*", users_handler)
-    browser_page.route("**/admin/api/audit*",
-                       lambda route: _json(route, {"entries": [], "limit": 50, "offset": 0}))
+    browser_page.route(
+        "**/admin/api/audit*", lambda route: _json(route, {"entries": [], "limit": 50, "offset": 0})
+    )
 
     browser_page.goto("/admin?testing=true")
     expect(browser_page.locator("#admin-console")).to_be_visible()
@@ -1508,7 +1686,9 @@ def test_people_pager_renders_in_arabic_with_ltr_bdi(browser_page: Page):
     status_text = status.inner_text()
     assert not re.search(r"[‎‏؜⁦-⁩]", status_text), f"status carries bidi marks: {status_text!r}"
 
-    expect(browser_page.locator('label[for="people-page-size"]')).to_have_text("عدد الصفوف في الصفحة")
+    expect(browser_page.locator('label[for="people-page-size"]')).to_have_text(
+        "عدد الصفوف في الصفحة"
+    )
 
 
 def test_people_pager_loading_busy_visual_threshold(browser_page: Page):
@@ -1518,12 +1698,21 @@ def test_people_pager_loading_busy_visual_threshold(browser_page: Page):
 
     # Fast initial load
     def fast_users(route):
-        _json(route, {"users": MANY_ACCOUNTS[0:50], "total": 60, "limit": 50,
-                      "offset": 0, "self_id": "test-admin-id"})
+        _json(
+            route,
+            {
+                "users": MANY_ACCOUNTS[0:50],
+                "total": 60,
+                "limit": 50,
+                "offset": 0,
+                "self_id": "test-admin-id",
+            },
+        )
 
     browser_page.route("**/admin/api/users*", fast_users)
-    browser_page.route("**/admin/api/audit*",
-                       lambda route: _json(route, {"entries": [], "limit": 50, "offset": 0}))
+    browser_page.route(
+        "**/admin/api/audit*", lambda route: _json(route, {"entries": [], "limit": 50, "offset": 0})
+    )
 
     browser_page.goto("/admin?testing=true")
     expect(browser_page.locator("#admin-console")).to_be_visible()
@@ -1531,13 +1720,23 @@ def test_people_pager_loading_busy_visual_threshold(browser_page: Page):
     expect(browser_page.locator(".admin-account-open")).to_have_count(50)
 
     # .is-busy-visual was never added on fast request
-    expect(browser_page.locator(".admin-table-wrapper")).not_to_have_class(re.compile(r"is-busy-visual"))
+    expect(browser_page.locator(".admin-table-wrapper")).not_to_have_class(
+        re.compile(r"is-busy-visual")
+    )
 
     # Now stub a slow request (>100ms)
     def slow_users(route):
         browser_page.wait_for_timeout(250)
-        _json(route, {"users": MANY_ACCOUNTS[50:60], "total": 60, "limit": 50,
-                      "offset": 50, "self_id": "test-admin-id"})
+        _json(
+            route,
+            {
+                "users": MANY_ACCOUNTS[50:60],
+                "total": 60,
+                "limit": 50,
+                "offset": 50,
+                "self_id": "test-admin-id",
+            },
+        )
 
     browser_page.route("**/admin/api/users*", slow_users)
     browser_page.locator("#people-next").click()
@@ -1548,11 +1747,15 @@ def test_people_pager_loading_busy_visual_threshold(browser_page: Page):
 
     # After 150ms (past 100ms threshold), is-busy-visual should be present
     browser_page.wait_for_timeout(150)
-    expect(browser_page.locator(".admin-table-wrapper")).to_have_class(re.compile(r"is-busy-visual"))
+    expect(browser_page.locator(".admin-table-wrapper")).to_have_class(
+        re.compile(r"is-busy-visual")
+    )
 
     # When request completes, is-busy-visual is cleared
     expect(browser_page.locator(".admin-account-open")).to_have_count(10)
-    expect(browser_page.locator(".admin-table-wrapper")).not_to_have_class(re.compile(r"is-busy-visual"))
+    expect(browser_page.locator(".admin-table-wrapper")).not_to_have_class(
+        re.compile(r"is-busy-visual")
+    )
 
 
 def test_people_pager_keyboard_focus_retention(browser_page: Page):
@@ -1605,17 +1808,39 @@ def test_people_pager_boundary_drift_resets_to_offset_0(browser_page: Page):
 
         if call_count[0] == 1:
             # First load: page 1 of 60
-            _json(route, {"users": MANY_ACCOUNTS[0:50], "total": 60, "limit": 50, "offset": 0, "self_id": "test-admin-id"})
+            _json(
+                route,
+                {
+                    "users": MANY_ACCOUNTS[0:50],
+                    "total": 60,
+                    "limit": 50,
+                    "offset": 0,
+                    "self_id": "test-admin-id",
+                },
+            )
         elif offset == 50:
             # Second load (Next clicked): boundary drift! users: [], total: 0
-            _json(route, {"users": [], "total": 0, "limit": 50, "offset": 50, "self_id": "test-admin-id"})
+            _json(
+                route,
+                {"users": [], "total": 0, "limit": 50, "offset": 50, "self_id": "test-admin-id"},
+            )
         else:
             # Third load (auto refetch on offset 0): return surviving accounts
-            _json(route, {"users": ACCOUNTS, "total": 4, "limit": 50, "offset": 0, "self_id": "test-admin-id"})
+            _json(
+                route,
+                {
+                    "users": ACCOUNTS,
+                    "total": 4,
+                    "limit": 50,
+                    "offset": 0,
+                    "self_id": "test-admin-id",
+                },
+            )
 
     browser_page.route("**/admin/api/users*", drift_flow)
-    browser_page.route("**/admin/api/audit*",
-                       lambda route: _json(route, {"entries": [], "limit": 50, "offset": 0}))
+    browser_page.route(
+        "**/admin/api/audit*", lambda route: _json(route, {"entries": [], "limit": 50, "offset": 0})
+    )
 
     browser_page.goto("/admin?testing=true")
     expect(browser_page.locator("#admin-console")).to_be_visible()

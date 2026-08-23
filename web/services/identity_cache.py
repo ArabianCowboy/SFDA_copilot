@@ -67,7 +67,7 @@ class IdentityFlags:
         return self.role == "admin" and self.is_resolved
 
     @classmethod
-    def unprivileged(cls, user_id: str, email: str | None = None) -> "IdentityFlags":
+    def unprivileged(cls, user_id: str, email: str | None = None) -> IdentityFlags:
         """A reader with no powers and no block — a real, resolved fact.
 
         For an account that genuinely has no profile row. Distinct from
@@ -83,7 +83,7 @@ class IdentityFlags:
         )
 
     @classmethod
-    def unknown(cls, user_id: str, email: str | None = None) -> "IdentityFlags":
+    def unknown(cls, user_id: str, email: str | None = None) -> IdentityFlags:
         """We could not determine this reader's standing.
 
         Fails closed on privilege and open on access: no console, but the
@@ -121,6 +121,7 @@ class IdentityFlagsCache:
     @staticmethod
     def _now() -> float:
         import time
+
         return time.monotonic()
 
     def _evict(self) -> None:

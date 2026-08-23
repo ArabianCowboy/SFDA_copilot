@@ -124,8 +124,12 @@ def test_the_forgot_link_swaps_the_login_pane_for_the_request_form(browser_page:
 def test_the_request_says_nothing_about_whether_the_address_exists(browser_page: Page):
     """Anti-enumeration is a server property, but the surface must not undo it by
     branching on the response."""
-    browser_page.route("**/auth/recover", lambda route: route.fulfill(
-        status=202, content_type="application/json", body='{"sent": true}'))
+    browser_page.route(
+        "**/auth/recover",
+        lambda route: route.fulfill(
+            status=202, content_type="application/json", body='{"sent": true}'
+        ),
+    )
 
     browser_page.goto("/")
     browser_page.locator("#auth-button-main").click()
@@ -142,9 +146,12 @@ def test_the_request_says_nothing_about_whether_the_address_exists(browser_page:
 
 
 def test_a_rate_limited_request_is_explained_rather_than_shown_in_english(browser_page: Page):
-    browser_page.route("**/auth/recover", lambda route: route.fulfill(
-        status=429, content_type="application/json",
-        body='{"error": "reset_rate_limited"}'))
+    browser_page.route(
+        "**/auth/recover",
+        lambda route: route.fulfill(
+            status=429, content_type="application/json", body='{"error": "reset_rate_limited"}'
+        ),
+    )
 
     browser_page.goto("/")
     browser_page.locator("#auth-button-main").click()
@@ -209,9 +216,7 @@ def test_a_rate_limited_signup_is_not_shown_in_raw_english(browser_page: Page):
     browser_page.goto("/")
     browser_page.locator("#auth-button-main").click()
     browser_page.locator("#signup-tab").click()
-    browser_page.evaluate(
-        "window.__supabaseState.signUpError = 'Email rate limit exceeded'"
-    )
+    browser_page.evaluate("window.__supabaseState.signUpError = 'Email rate limit exceeded'")
     browser_page.locator("#signup-first-name").fill("New")
     browser_page.locator("#signup-email").fill("new@example.com")
     browser_page.locator("#signup-password").fill("ValidPass1")

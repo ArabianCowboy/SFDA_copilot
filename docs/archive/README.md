@@ -9,19 +9,19 @@ no longer exist. Never implement from anything here without checking the live do
 first — [`docs/ARCHITECTURE.md`](../ARCHITECTURE.md) is the system contract, and
 [`supabase/README.md`](../../supabase/README.md) is the database one.
 
-They are kept because this project writes a plan as *what we decided, what it cost, and what
-we got wrong* — and the second and third parts stay useful long after the first stops being
+They are kept because this project writes a plan as _what we decided, what it cost, and what
+we got wrong_ — and the second and third parts stay useful long after the first stops being
 true. Most of the value in here is in the corrections.
 
 **If you landed here from a search, you almost certainly want one of these instead:**
 
-| Question | Live authority |
-|---|---|
-| How does the system work now? | [`docs/ARCHITECTURE.md`](../ARCHITECTURE.md) |
-| Migrations, RLS, RPC rules, schema | [`supabase/README.md`](../../supabase/README.md) |
-| Design tokens, RTL, component rules | [`DESIGN.md`](../../DESIGN.md) |
-| Copy, terminology, product claims | [`docs/PRODUCT.md`](../PRODUCT.md) |
-| What is still open | [`TODO.md`](../../TODO.md) |
+| Question                            | Live authority                                   |
+| ----------------------------------- | ------------------------------------------------ |
+| How does the system work now?       | [`docs/ARCHITECTURE.md`](../ARCHITECTURE.md)     |
+| Migrations, RLS, RPC rules, schema  | [`supabase/README.md`](../../supabase/README.md) |
+| Design tokens, RTL, component rules | [`DESIGN.md`](../../DESIGN.md)                   |
+| Copy, terminology, product claims   | [`docs/PRODUCT.md`](../PRODUCT.md)               |
+| What is still open                  | [`TODO.md`](../../TODO.md)                       |
 
 Three standing rules for this directory:
 
@@ -37,13 +37,13 @@ Three standing rules for this directory:
 **Scan this table first.** It exists so you do not have to open a 4,800-line document to
 find out whether it is the one you want.
 
-| Archived | Subject | What it decided | What it reversed | Lines |
-|---|---|---|---|---|
-| [2026-08-17_pagination.md](2026-08-17_pagination.md) | Admin People pager | Offset pagination with a deterministic tie-break; page sizes 25/50/100/200 capped at 200; a sequence token, not network order, as the correctness guarantee | Nothing. Self-consistent and contradicts no live code — archived because it is finished, not because it went wrong. The one deviation it records, a deferred `pg_trgm` index, is still deferred. | 1,044 |
-| [2026-08-20_chat-persistence.md](2026-08-20_chat-persistence.md) | Durable chat history | Two message rows per turn written by one statement; ordering by per-session `seq`, never a timestamp; every retrieved passage stored with a `cited` flag; write at `final` | **Four positions, listed in its banner.** The cookie-held `conv_id` and the whole resume subsystem; "only a verified citation is openable"; "step 8 calls the delete RPC browser-direct"; and all of §7, cut rather than deferred. | 1,131 |
-| [2026-08-22_per-tab-deep-linking.md](2026-08-22_per-tab-deep-linking.md) | `/c/<uuid>` conversations | **The URL is the pointer** — no cookie, no `sessionStorage`, no per-tab state; `/c/<id>` unauthenticated with no existence oracle; Back replaces the undo toast | Its own §9 says `POST /api/conversation/reset` was "left alone deliberately"; the route was deleted entirely. Its §0.1/§0.3 also record a `SameSite` claim every earlier round had asserted and got wrong. | 1,193 |
-| [2026-08-23_profile-refactor.md](2026-08-23_profile-refactor.md) | `/account`, identity, data rights | A server-rendered page, not a modal; `full_name` becomes a generated column over `first_name`/`family_name`/`age`; preferences merge rather than replace; no avatar upload, ever | **Its own header**, which said "not started, nothing here is built" while ~90% shipped. Also a name-splitting backfill, withdrawn twice, and the entire active-sessions list, cut because the API has no such endpoint. | 4,867 |
-| [TODO-resolved.md](TODO-resolved.md) | 33 closed entries | — | Several carry a `(original entry)` heading: the first diagnosis, kept where a later one superseded it and the difference was worth recording. | 1,998 |
+| Archived                                                                 | Subject                           | What it decided                                                                                                                                                                  | What it reversed                                                                                                                                                                                                                   | Lines |
+| ------------------------------------------------------------------------ | --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- |
+| [2026-08-17_pagination.md](2026-08-17_pagination.md)                     | Admin People pager                | Offset pagination with a deterministic tie-break; page sizes 25/50/100/200 capped at 200; a sequence token, not network order, as the correctness guarantee                      | Nothing. Self-consistent and contradicts no live code — archived because it is finished, not because it went wrong. The one deviation it records, a deferred `pg_trgm` index, is still deferred.                                   | 1,044 |
+| [2026-08-20_chat-persistence.md](2026-08-20_chat-persistence.md)         | Durable chat history              | Two message rows per turn written by one statement; ordering by per-session `seq`, never a timestamp; every retrieved passage stored with a `cited` flag; write at `final`       | **Four positions, listed in its banner.** The cookie-held `conv_id` and the whole resume subsystem; "only a verified citation is openable"; "step 8 calls the delete RPC browser-direct"; and all of §7, cut rather than deferred. | 1,131 |
+| [2026-08-22_per-tab-deep-linking.md](2026-08-22_per-tab-deep-linking.md) | `/c/<uuid>` conversations         | **The URL is the pointer** — no cookie, no `sessionStorage`, no per-tab state; `/c/<id>` unauthenticated with no existence oracle; Back replaces the undo toast                  | Its own §9 says `POST /api/conversation/reset` was "left alone deliberately"; the route was deleted entirely. Its §0.1/§0.3 also record a `SameSite` claim every earlier round had asserted and got wrong.                         | 1,193 |
+| [2026-08-23_profile-refactor.md](2026-08-23_profile-refactor.md)         | `/account`, identity, data rights | A server-rendered page, not a modal; `full_name` becomes a generated column over `first_name`/`family_name`/`age`; preferences merge rather than replace; no avatar upload, ever | **Its own header**, which said "not started, nothing here is built" while ~90% shipped. Also a name-splitting backfill, withdrawn twice, and the entire active-sessions list, cut because the API has no such endpoint.            | 4,867 |
+| [TODO-resolved.md](TODO-resolved.md)                                     | 33 closed entries                 | —                                                                                                                                                                                | Several carry a `(original entry)` heading: the first diagnosis, kept where a later one superseded it and the difference was worth recording.                                                                                      | 1,998 |
 
 Two items from the profile refactor are still open and live in
 [`TODO.md`](../../TODO.md), not here: bilingual security email templates and account
@@ -60,7 +60,7 @@ The question comes up, so here is the answer on the record.
 Merging ~10,000 lines into a single archive file would trade a solved problem for a new one:
 
 - **Search loses its most useful field.** `rg "conversation_id" docs/archive/` currently tells
-  you *which plan* every hit belongs to. In one file every hit reports the same filename and
+  you _which plan_ every hit belongs to. In one file every hit reports the same filename and
   a line number, and you have to scroll to find out what you are reading.
 - **Git history breaks.** All four plans moved here with `git mv` and were recorded as renames
   at 97–99% similarity, so `git log --follow` walks back through every revision of the
@@ -88,7 +88,7 @@ line 3,204 with no banner anywhere near it, and detailed historical prose reads 
 a specification.
 
 The scale of the hazard, measured: this directory is **78% of all documentation in the
-repository**, and before quarantine a search for `conv_id` — a mechanism that was *deleted* —
+repository**, and before quarantine a search for `conv_id` — a mechanism that was _deleted_ —
 returned **34 hits, 33 of them here**.
 
 Four layers, in order of how much work they actually do — layer 1 does nearly all of it,
@@ -132,7 +132,7 @@ When a plan is finished:
 6. **Add a row to the table above.** An index that lags the directory is worse than no index.
 
 Do not retroactively rewrite the plans already here to be shorter. They are verbose because
-implementation plans are mostly execution scaffold — that is a reason to summarise the *next*
+implementation plans are mostly execution scaffold — that is a reason to summarise the _next_
 one as you write it, not to spend hours editing finished history.
 
 Year subdirectories are not needed yet. Introduce them when this listing outgrows a single

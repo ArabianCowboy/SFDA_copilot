@@ -31,10 +31,10 @@ import re
 import pytest
 from playwright.sync_api import expect
 
-from .conftest import chat_history, route_chat_history, stored_answer
 from web.api.app import create_app
 from web.services.result_combiner import SearchResult
 
+from .conftest import chat_history, route_chat_history, stored_answer
 
 AUTH = {"Authorization": "Bearer fake_token"}
 # The owner the TESTING bypass resolves to. History is keyed by (owner,
@@ -104,9 +104,9 @@ def conversation_of(response) -> str:
         event, data = "message", None
         for line in block.splitlines():
             if line.startswith("event:"):
-                event = line[len("event:"):].strip()
+                event = line[len("event:") :].strip()
             elif line.startswith("data:"):
-                data = json.loads(line[len("data:"):].strip())
+                data = json.loads(line[len("data:") :].strip())
         if event == "meta" and data is not None:
             return data["conversation_id"]
     raise AssertionError("no meta frame in the streamed response")
@@ -136,17 +136,24 @@ def test_arabic_history_survives_the_blocking_path(app, client):
     """
     query = ARABIC_PHRASE * 12
     conversation_id = "aaaaaaaa-2222-3333-4444-555555555555"
-    drain(client.post(
-        "/api/chat",
-        json={"query": query, "lang": "ar", "conversation_id": conversation_id},
-        headers=AUTH,
-    ))
-    drain(client.post(
-        "/api/chat",
-        json={"query": "second question", "conversation_id": conversation_id,
-              "allow_create": False},
-        headers=AUTH,
-    ))
+    drain(
+        client.post(
+            "/api/chat",
+            json={"query": query, "lang": "ar", "conversation_id": conversation_id},
+            headers=AUTH,
+        )
+    )
+    drain(
+        client.post(
+            "/api/chat",
+            json={
+                "query": "second question",
+                "conversation_id": conversation_id,
+                "allow_create": False,
+            },
+            headers=AUTH,
+        )
+    )
 
     history = app.config["llm_history"][-1]
     assert history, "the Arabic exchange was trimmed to nothing"
@@ -198,7 +205,9 @@ def test_the_session_cookie_stays_under_the_browsers_limit_with_incompressible_c
     response = client.post("/api/chat", json={"query": incompressible}, headers=AUTH)
     assert response.status_code == 200
 
-    session_cookies = [c for c in response.headers.getlist("Set-Cookie") if c.startswith("session=")]
+    session_cookies = [
+        c for c in response.headers.getlist("Set-Cookie") if c.startswith("session=")
+    ]
     assert session_cookies, "precondition: a session cookie was actually set"
     max_size = app.config.get("MAX_COOKIE_SIZE", 4093)
     assert len(session_cookies[0]) <= max_size, f"cookie header is {len(session_cookies[0])} bytes"
@@ -302,9 +311,9 @@ def test_back_after_new_chat_restores_the_conversation(authenticated_page):
     restoring a client-held DOM fragment the way the toast's action used to."""
     route_chat_history(
         authenticated_page,
-        chat_history(stored_answer(
-            "What are the registration requirements?", "Mock regulatory answer"
-        )),
+        chat_history(
+            stored_answer("What are the registration requirements?", "Mock regulatory answer")
+        ),
     )
     send(authenticated_page)
     authenticated_page.locator(NEW_CHAT).click()

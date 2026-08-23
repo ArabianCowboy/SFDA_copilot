@@ -2,29 +2,30 @@
 target: web/templates/partials/_sidebar.html
 total_score: 29
 max_score: 40
-na_heuristics: 
+na_heuristics:
 p0_count: 0
 p1_count: 2
 timestamp: 2026-08-21T22-03-42Z
 slug: web-templates-partials-sidebar-html
 ---
+
 Method: dual-agent (A: a59dfab8420ecfd3a · B: a37feb34705a7f386)
 
 ## Design Health Score
 
-| # | Heuristic | Score | Key Issue |
-|---|-----------|-------|-----------|
-| 1 | Visibility of System Status | 3/4 | FAQ clicks silently no-op mid-stream instead of calling `_refuseWhileStreaming()` like every sibling handler |
-| 2 | Match System / Real World | 4/4 | Physical segmented-control metaphor and calendar-day buckets both match real mental models |
-| 3 | User Control and Freedom | 4/4 | Inline rename/delete with scoped Escape, undo window, arrow-key tabs |
-| 4 | Consistency and Standards | 3/4 | Active-state marker unified across FAQ/history rows, but the busy-state guard isn't applied uniformly |
-| 5 | Error Prevention | 3/4 | Inline delete confirm, matched maxlength — but no guard on double-firing an FAQ request mid-stream |
-| 6 | Recognition Rather Than Recall | 2/4 | No search/filter over conversation history; 30-row page + Load More only |
-| 7 | Flexibility and Efficiency | 2/4 | No bulk actions, no shortcuts beyond arrow-key tabs, no search |
-| 8 | Aesthetic and Minimalist Design | 3/4 | Disciplined chrome, but FAQ rail content undercuts the minimalism the shell promises |
-| 9 | Error Recovery | 4/4 | Three distinct history states (loading/empty/unavailable+retry), specific toast copy |
-| 10 | Help and Documentation | 1/4 | No first-run affordance explaining Chats vs FAQ; no contextual help |
-| **Total** | | **29/40** | **Good (low end)** |
+| #         | Heuristic                       | Score     | Key Issue                                                                                                    |
+| --------- | ------------------------------- | --------- | ------------------------------------------------------------------------------------------------------------ |
+| 1         | Visibility of System Status     | 3/4       | FAQ clicks silently no-op mid-stream instead of calling `_refuseWhileStreaming()` like every sibling handler |
+| 2         | Match System / Real World       | 4/4       | Physical segmented-control metaphor and calendar-day buckets both match real mental models                   |
+| 3         | User Control and Freedom        | 4/4       | Inline rename/delete with scoped Escape, undo window, arrow-key tabs                                         |
+| 4         | Consistency and Standards       | 3/4       | Active-state marker unified across FAQ/history rows, but the busy-state guard isn't applied uniformly        |
+| 5         | Error Prevention                | 3/4       | Inline delete confirm, matched maxlength — but no guard on double-firing an FAQ request mid-stream           |
+| 6         | Recognition Rather Than Recall  | 2/4       | No search/filter over conversation history; 30-row page + Load More only                                     |
+| 7         | Flexibility and Efficiency      | 2/4       | No bulk actions, no shortcuts beyond arrow-key tabs, no search                                               |
+| 8         | Aesthetic and Minimalist Design | 3/4       | Disciplined chrome, but FAQ rail content undercuts the minimalism the shell promises                         |
+| 9         | Error Recovery                  | 4/4       | Three distinct history states (loading/empty/unavailable+retry), specific toast copy                         |
+| 10        | Help and Documentation          | 1/4       | No first-run affordance explaining Chats vs FAQ; no contextual help                                          |
+| **Total** |                                 | **29/40** | **Good (low end)**                                                                                           |
 
 ## Design Specificity Verdict
 
@@ -45,36 +46,42 @@ The sidebar is a well-argued, internally consistent component — its cross-list
 ## Priority Issues
 
 **[P1] FAQ clicks give zero feedback when refused mid-stream**
+
 - Why it matters: `handleFaqClick` checks `isRequestInProgress()` and returns silently, while `openSession`/rename/delete all call `_refuseWhileStreaming()` for the identical guard. A reader clicking a question while an answer streams gets a dead button with no explanation — inconsistent with every sibling control in the same file.
 - Fix: call the same busy-guard/toast path at the top of `handleFaqClick` that the other three handlers use.
 - File: `static/js/modules/handlers.js:1145-1153`
 - Suggested command: `/impeccable harden`
 
 **[P1] FAQ rail violates the system's own ≤4-per-group chunking rule on real content**
+
 - Why it matters: `regulatory` (5 questions) and `pharmacovigilance` (6 questions) both exceed the checklist threshold, and this is the default landing panel for a first-time reader with no history — the component whose job is to be the easiest on-ramp presents its heaviest load exactly when the reader has the least context to filter it.
 - Fix: cap visible questions per category with a "more" affordance in the same inline style already used for history pagination, rather than the accordion `DESIGN.md` deliberately rejected.
 - File: `faq.yaml:16-45` (content), rendered via `static/js/modules/ui.js:967-1022`
 - Suggested command: `/impeccable layout`
 
 **[P2] `--fg-faint` fails WCAG AA contrast on the untitled-conversation label**
-- Why it matters: `ink-300` (#857A94) on the porcelain/white sidebar surfaces computes to roughly 3.6:1–4.0:1, below the 4.5:1 AA threshold for normal text — and by `DESIGN.md`'s own rule for this state ("color only, never italic... `--fg-faint` is the whole cue it needs"), contrast is the *entire* signal, which is exactly the one under-threshold.
+
+- Why it matters: `ink-300` (#857A94) on the porcelain/white sidebar surfaces computes to roughly 3.6:1–4.0:1, below the 4.5:1 AA threshold for normal text — and by `DESIGN.md`'s own rule for this state ("color only, never italic... `--fg-faint` is the whole cue it needs"), contrast is the _entire_ signal, which is exactly the one under-threshold.
 - Fix: step up to `--fg-muted` (ink-500, ≈5.5:1–6.2:1, already used elsewhere for secondary UI text) or darken the `ink-300` primitive.
 - File: `static/css/components.css:647, 768-772`; ramp at `static/css/tokens.css:25` (light)
 - Suggested command: `/impeccable audit`
 
 **[P2] No search/filter over conversation history**
+
 - Why it matters: history is a bounded 30-row page with "Load more" and no filter surface anywhere in the sidebar — a returning reader with more than a screenful of history has no path back to an older conversation beyond scrolling, which is exactly the failure mode day-bucket grouping was built to reduce but doesn't solve past "Older."
 - Fix: a lightweight inline filter input above the history list, filtering the already-loaded page client-side for the common case.
 - File: `web/templates/partials/_sidebar.html` (`.history-section` container)
 - Suggested command: `/impeccable shape`
 
 **[P3] `DESIGN.md` and internal identifiers still say "Explore"**
+
 - Why it matters: low severity (invisible to users) but it's exactly the drift `DESIGN.md`'s own "one mapping written down twice is the same mapping drifting eventually" rule warns against — and a separate, currently-uncommitted edit to `TODO.md` already fixes the same wording in the changelog without touching `DESIGN.md` itself (see note below the report).
 - Fix: rename the internal identifiers to `faq` for consistency, or add a one-line note in `DESIGN.md` acknowledging the intentional internal/external naming split.
 - File: `web/templates/partials/_sidebar.html:85-92`; `DESIGN.md` (Navigation section)
 - Suggested command: `/impeccable document`
 
 **[P3] `.history-empty` line-height sits exactly at the detector's threshold**
+
 - Why it matters: `--lh-snug: 1.3` triggers a boundary-case `tight-leading` warning; almost certainly a rounding artifact rather than a real readability defect, but worth a deliberate nudge so it stops tripping the detector on every future scan.
 - Fix: bump `--lh-snug` a hair above 1.3, or exempt this specific rule if it's confirmed cosmetic.
 - File: `static/css/components.css:764`; token at `static/css/tokens.css:93`

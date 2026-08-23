@@ -70,8 +70,8 @@ three adversarial reviews, which overturned four load-bearing pieces of the firs
 Closes two `TODO.md` entries at once — "The active conversation is per-browser, not per-tab"
 (`TODO.md:787`, now struck) and roadmap §10.3 "Deep-linking (`/c/<id>`)"
 (`2026-08-20_chat-persistence.md:1054-1062`) — which that entry already argues
-are one change: *"both need a conversation id that travels with the request rather than with the
-browser."*
+are one change: _"both need a conversation id that travels with the request rather than with the
+browser."_
 
 **This plan disagrees with `TODO.md` about the mechanism, and §1 is that argument.** `TODO.md:805-808`
 specifies "a tab-scoped pointer — held in `sessionStorage`". The research says `sessionStorage` is
@@ -81,7 +81,7 @@ Only where it lives changes.
 
 **How this document was built — two rounds.**
 
-*Round 1 — three independent passes.* A read-only exploration agent mapped `_resolve_conversation_id`,
+_Round 1 — three independent passes._ A read-only exploration agent mapped `_resolve_conversation_id`,
 the three chat routes, `ConversationStore`, `_InFlightGenerations`, identity resolution, the sidebar
 frontend, page routing, the language toggle, the test suite, and web-storage/CSRF posture. A research
 agent read the source of six production chat implementations — `vercel/ai-chatbot` (current `main`
@@ -90,7 +90,7 @@ and the older widely-tutorialised revision), `huggingface/chat-ui`, LibreChat, O
 and the RFC/OWASP/W3C-TAG literature. `agy-delegate` (Antigravity, `gemini-3.7-flash-high`) was asked
 not for a plan but for the mistakes developers make and the questions they answer too late.
 
-*Round 2 — three adversarial reviews of the round-1 draft, in separate lanes, all read-only.*
+_Round 2 — three adversarial reviews of the round-1 draft, in separate lanes, all read-only._
 `opencode-delegate` (OpenCode, `gpt-5.6-terra`, `high`, `--read-only`) on architecture and
 correctness; `agy-delegate` (`gemini-3.7-flash-high`) on operations, sequencing and testing, and
 made to defend or concede three of its own round-1 recommendations this draft had rejected;
@@ -99,19 +99,19 @@ outright, corrected a migration default that would have failed 100% of new conve
 found five client-side state gaps, and surfaced a pre-existing CSRF hole this change is the natural
 place to close. §11 records what each earned.
 
-*Round 3 — an independent reviewer outside that fleet*, reviewing the round-2 draft cold. It found
+_Round 3 — an independent reviewer outside that fleet_, reviewing the round-2 draft cold. It found
 the one thing all three lanes and this document had missed (`handlers.js:1361`), plus four
 corrections; one of its twelve findings was wrong and two had already been fixed in round 2, which
 is the expected cost of reviewing in parallel rather than in sequence. §11.5.
 
-*Documentation checks.* PostgREST's and Playwright's current docs were fetched (`ctx7`) to verify
+_Documentation checks._ PostgREST's and Playwright's current docs were fetched (`ctx7`) to verify
 the two load-bearing claims no amount of reading this repo could settle — RPC overload resolution
 with a defaulted argument (§3.6) and context-level request routing (§7.1). Both held; both added a
 step nobody had raised. §11.6.
 
 **Every claim any pass made about this codebase was re-checked against the source before being
 trusted into this document**, including the reviews' own claims — one of which (§11.1) was
-verified to be *worse* than the reviewer stated, and one of which (§11.5) was verified to be wrong. Where a pass was wrong or out of scope, §0.2 says
+verified to be _worse_ than the reviewer stated, and one of which (§11.5) was verified to be wrong. Where a pass was wrong or out of scope, §0.2 says
 so. Where a review overturned this document, §0.3 says so rather than quietly absorbing it.
 
 ---
@@ -120,54 +120,54 @@ so. Where a review overturned this document, §0.3 says so rather than quietly a
 
 ### [HISTORICAL] 0.1 Confirmed
 
-| Claim | File:Line | Status |
-|---|---|---|
-| `_resolve_conversation_id` is the single current-session rule; exactly three callers | `web/api/app.py:671-763`; callers `:2069`, `:2533`, `:2824` | ✅ confirmed |
-| The rule: *"A cookie that names a conversation is honoured as-is. Only a cookie with no conversation at all resumes the owner's most recent one."* | `app.py:676-677` | ✅ confirmed |
-| `session["conv_id"]` has **eight** write sites and three pop sites | writes `:718`, `:755`, `:758`, `:762`, `:2383`, `:2503`, `:2944`, `:2996`; pops `:2078`, `:2137`, `auth.py:80` | ✅ confirmed — and no others on the normal path (independently re-checked in review) |
-| `/api/chat/history` takes no session id, by design | `app.py:2048-2054` | ✅ confirmed |
-| …and that GET **writes** the session cookie | `app.py:2056-2058` | ✅ confirmed |
-| `_validate_chat_request` accepts `query`, `category`, `lang`, `client_request_id` — **no** conversation id field | `app.py:1985-2030` | ✅ confirmed |
-| …and parses with **`request.get_json(force=True, silent=True)`** — the only `force=True` in the app | `app.py:1987`; other sites `:2408`, `:2929` use `silent=True` alone | ✅ confirmed — load-bearing for §3.6 |
-| The client always sends `Content-Type: application/json` on chat requests | `services.js:179`, `:221`, `:340`, `:388`, `:410`, `:615` | ✅ confirmed — so §3.6's fix breaks nothing |
-| `client_request_id` is already **client-minted**, canonicalised, malformed → fresh id rather than 400 | `app.py:2019-2027` | ✅ confirmed |
-| `chat_append_turn` takes `p_session_id`, **lazily creates** `insert … on conflict (id) do nothing`, then verifies ownership `where id = p_session_id and owner_id = p_owner_id for update`, raising if null | `20260820131914_chat_session_persistence.sql:376-397` | ✅ confirmed |
-| **`p_owner_id` is always server-derived from `g.identity`, never from the request body** | `app.py:2523` via `_durable_owner()` (`:636-662`) | ✅ confirmed — why a hostile id can only ever create a row owned by the caller |
-| **`_persist_turn`'s contract is that it never raises** — it catches bare `Exception` and returns `False`, deliberately, so a filing failure never discards a good answer | `app.py:1134-1145` | ✅ confirmed — the reason §3.4 was rewritten |
-| Streaming order is `yield sse("final", …)` → `store.append_turn(…)` → `_persist_turn(…)` | `app.py:2610`, `:2642`, `:2661` | ✅ confirmed — the RAM write precedes and is independent of the durable one |
-| The blocking route has the same ordering and answers `200` with `persisted: false` | `app.py:2846-2879` | ✅ confirmed |
-| `chat_load_session` filters `owner_id and session_id`; a foreign id returns **zero rows**, not an error | migration `:556-559` | ✅ confirmed |
-| *"An unowned id is never distinguishable from an absent one."* | `20260821145319_chat_navigation_rpcs.sql:36` | ✅ confirmed — 404 discipline is house policy |
-| `/select` already returns one answer for both: *"Not yours, or not there. Deliberately one answer."* | `app.py:2371` | ✅ confirmed |
-| **The drop-and-recreate precedent is `20260821145416`, not `20260820131914`** — the latter's `:514-519` is `revoke`/`grant` | `20260821145416_chat_first_turn_title.sql:68-70` | ✅ corrected in review |
-| …and that migration already ruled on defaults for this exact function: `p_title` is *"Last, and defaulted, so the argument list stays append-only. A caller that has not been updated yet still resolves, and files an untitled session rather than failing"* | same file:83-86 | ✅ confirmed — decides §3.5 |
-| `ConversationStore` is keyed `(owner_id, conversation_id)`; the docstring says the re-key was done **for this feature**: *"Phase 2's deep links would let one arrive from a URL."* | `web/services/conversation_store.py:36-51` | ✅ confirmed |
-| `ConversationStore.clear` is deliberately **not** owner-scoped | same file:192-207 | ✅ confirmed |
-| `_InFlightGenerations` keys `(str(owner_id), str(conversation_id))`, **counted not flagged**, explicitly because *"one reader can legitimately have two submissions in flight against one conversation (two tabs, or a retry)"* | `app.py:996-998`, `:1013` | ✅ confirmed |
-| The hold is released in a `finally`, naming `GeneratorExit` as *"the ORDINARY way this generator ends"*; it is claimed in the **view body** because the generator does not start until the WSGI server iterates it | `app.py:2543-2550`, `:2745-2756`, `:1019-1023` | ✅ confirmed |
-| Session writes must happen in the view body — Flask writes `Set-Cookie` in `finalize_request()` before the generator is iterated | `app.py:2526-2531` | ✅ confirmed — and removing the cookie does **not** obsolete it (§5.1) |
-| All chat/session routes are `@auth_required`; anonymous readers never reach them | `app.py:569-577` | ✅ confirmed |
-| Every asset URL in `index.html` is `url_for()`-absolute, including the ES import map | `index.html:42-46`, `:98`, `:697`; `app.py:1849-1857` | ✅ confirmed — path depth cannot break asset resolution |
-| `Referrer-Policy: strict-origin-when-cross-origin` and `X-Frame-Options: SAMEORIGIN` are already served, both as **Talisman defaults** applied to every response | verified in `.venv`; `app.py:1375-1379` | ✅ confirmed — clickjacking on `/c/<id>` needs no new code; §6.1 pins the referrer one |
-| CSP `img-src` is `'self' data: https:` — an unrestricted HTTPS wildcard; `script-src` trusts three third-party origins | `app.py:1354`, `:1356` | ✅ confirmed — see §6.4 |
-| Language toggle is cookie + full navigation, preserving the path | `i18n.js:45-67`; `pick_lang` precedence `?lang=` → cookie → `Accept-Language` | ✅ confirmed |
-| There is **no** `robots.txt`; `admin.html:18` already ships a robots meta, `index.html` does not | `ls`; grep | ✅ confirmed |
-| There is **no CSRF protection anywhere**, acknowledged in-source | `admin.py:18-19` | ✅ confirmed |
-| `_get_token_from_request` accepts the `sb-access-token` **cookie** and `session["supabase_access_token"]` | `app.py:269-273` | ✅ confirmed |
-| ~~`SESSION_COOKIE_SAMESITE` is never configured~~ — **wrong, caught during implementation.** `Talisman(app, ...)` sets it unconditionally via its own default: `'Lax'`, verified by reading `app.config['SESSION_COOKIE_SAMESITE']` off a real `create_app()` | `flask_talisman/talisman.py:199`; `DEFAULT_SESSION_COOKIE_SAMESITE = "Lax"` | ❌ every round — 3 delegate reviews, the security review, and this document's own §0.1 — stated this as confirmed. See §3.5. |
-| No client-side router and only two HTML routes app-wide | `app.py:1905`, `admin.py:101`; `app.js:91-93` | ✅ confirmed |
-| **There is exactly one History-API call in the codebase, and it hard-codes `/`**: `window.history.replaceState({}, '', '/')` in the password-recovery flow. No `pushState`, no `popstate`, no `pageshow` handler anywhere | `static/js/modules/handlers.js:1361` | ✅ confirmed — round-1 said "nothing to integrate with"; that was wrong (§4.8) |
-| **`index()` sets no `Cache-Control`** — the only two in the app are on an unrelated route and on `/api/chat/history` | `app.py:1052`, `:2158`; absent at `:1905-1920` | ✅ confirmed — decides §8's step 0 |
-| `index()` interpolates `is_authenticated` and `user_email` into the template, so the HTML **does** vary by reader | `app.py:1908-1911` | ✅ confirmed — §3.1's claim needed narrowing |
-| **The resolved `conversation_id` is already echoed on every chat route** — stream `meta` and `final`, blocking response, history response | `app.py:2559`, `:2615`, `:2869`, `:2148` | ✅ confirmed — the field exists; only the client's reconciliation rule is new (§3.2) |
-| PostgREST: *"If a function parameter has a default value, it can be omitted in the API request"*, and overloads resolve by argument count — but *"overloaded functions with the same argument names but different types are not supported"* | `/postgrest/postgrest` docs, `references/api/functions.md` | ✅ confirmed — validates §3.6's `default true`, and why the old signature must be dropped rather than left alongside |
-| PostgREST answers an unknown signature with `404 PGRST202 "Could not find the … function in the schema cache"` | same, `references/errors.md` | ✅ confirmed — the failure mode if code deploys before schema |
-| `browserContext.route()` *"Intercepts network requests made by any page in the browser context"*; `storage_state` covers cookies + localStorage + IndexedDB and **not** `sessionStorage` | `/websites/playwright_dev`, `class-browsercontext` | ✅ confirmed — §7.1's fix is the documented mechanism, and the omission of `sessionStorage` reinforces §1.2 |
-| The installed Playwright has `BrowserContext.route` and `storage_state` but **not** `page.session_storage` / `page.local_storage` | verified in `.venv` | ✅ confirmed — §7 must assert storage via `page.evaluate`, not the newer `WebStorage` API |
-| No bundler, no `node_modules`; native ES modules + an import map that globs the directory at import time | `package.json`; `app.py:249`, `:1849-1857` | ✅ confirmed |
-| **Every Playwright mock in `conftest.py` is `page.route(...)`; there is not one `context.route(...)`**, and the Supabase mock stores auth in per-page `window.__supabaseState` | `conftest.py:16`, `:380`, `:426`, `:437-468`, `:499`, `:516` | ✅ confirmed — §7.1 is blocked on this |
-| `conversation_of()` reads `flask_session["conv_id"]` in **both** test helper modules | `test_chat_persistence.py:102-104`; `test_chat_sessions.py:97-99` | ✅ confirmed — decides §7.3 |
-| Werkzeug's `<uuid:>` regex is `[A-Fa-f0-9]{8}-…` — it **accepts uppercase**, rejects undashed/braced/URN, and `to_python` normalises via `uuid.UUID()` | verified in `.venv`; `werkzeug/routing/converters.py` | ✅ confirmed — a strict subset of `canonical_uuid`, so no id can diverge between them; but two URL casings map to one conversation (§4.6) |
+| Claim                                                                                                                                                                                                                                                         | File:Line                                                                                                      | Status                                                                                                                                    |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `_resolve_conversation_id` is the single current-session rule; exactly three callers                                                                                                                                                                          | `web/api/app.py:671-763`; callers `:2069`, `:2533`, `:2824`                                                    | ✅ confirmed                                                                                                                              |
+| The rule: _"A cookie that names a conversation is honoured as-is. Only a cookie with no conversation at all resumes the owner's most recent one."_                                                                                                            | `app.py:676-677`                                                                                               | ✅ confirmed                                                                                                                              |
+| `session["conv_id"]` has **eight** write sites and three pop sites                                                                                                                                                                                            | writes `:718`, `:755`, `:758`, `:762`, `:2383`, `:2503`, `:2944`, `:2996`; pops `:2078`, `:2137`, `auth.py:80` | ✅ confirmed — and no others on the normal path (independently re-checked in review)                                                      |
+| `/api/chat/history` takes no session id, by design                                                                                                                                                                                                            | `app.py:2048-2054`                                                                                             | ✅ confirmed                                                                                                                              |
+| …and that GET **writes** the session cookie                                                                                                                                                                                                                   | `app.py:2056-2058`                                                                                             | ✅ confirmed                                                                                                                              |
+| `_validate_chat_request` accepts `query`, `category`, `lang`, `client_request_id` — **no** conversation id field                                                                                                                                              | `app.py:1985-2030`                                                                                             | ✅ confirmed                                                                                                                              |
+| …and parses with **`request.get_json(force=True, silent=True)`** — the only `force=True` in the app                                                                                                                                                           | `app.py:1987`; other sites `:2408`, `:2929` use `silent=True` alone                                            | ✅ confirmed — load-bearing for §3.6                                                                                                      |
+| The client always sends `Content-Type: application/json` on chat requests                                                                                                                                                                                     | `services.js:179`, `:221`, `:340`, `:388`, `:410`, `:615`                                                      | ✅ confirmed — so §3.6's fix breaks nothing                                                                                               |
+| `client_request_id` is already **client-minted**, canonicalised, malformed → fresh id rather than 400                                                                                                                                                         | `app.py:2019-2027`                                                                                             | ✅ confirmed                                                                                                                              |
+| `chat_append_turn` takes `p_session_id`, **lazily creates** `insert … on conflict (id) do nothing`, then verifies ownership `where id = p_session_id and owner_id = p_owner_id for update`, raising if null                                                   | `20260820131914_chat_session_persistence.sql:376-397`                                                          | ✅ confirmed                                                                                                                              |
+| **`p_owner_id` is always server-derived from `g.identity`, never from the request body**                                                                                                                                                                      | `app.py:2523` via `_durable_owner()` (`:636-662`)                                                              | ✅ confirmed — why a hostile id can only ever create a row owned by the caller                                                            |
+| **`_persist_turn`'s contract is that it never raises** — it catches bare `Exception` and returns `False`, deliberately, so a filing failure never discards a good answer                                                                                      | `app.py:1134-1145`                                                                                             | ✅ confirmed — the reason §3.4 was rewritten                                                                                              |
+| Streaming order is `yield sse("final", …)` → `store.append_turn(…)` → `_persist_turn(…)`                                                                                                                                                                      | `app.py:2610`, `:2642`, `:2661`                                                                                | ✅ confirmed — the RAM write precedes and is independent of the durable one                                                               |
+| The blocking route has the same ordering and answers `200` with `persisted: false`                                                                                                                                                                            | `app.py:2846-2879`                                                                                             | ✅ confirmed                                                                                                                              |
+| `chat_load_session` filters `owner_id and session_id`; a foreign id returns **zero rows**, not an error                                                                                                                                                       | migration `:556-559`                                                                                           | ✅ confirmed                                                                                                                              |
+| _"An unowned id is never distinguishable from an absent one."_                                                                                                                                                                                                | `20260821145319_chat_navigation_rpcs.sql:36`                                                                   | ✅ confirmed — 404 discipline is house policy                                                                                             |
+| `/select` already returns one answer for both: _"Not yours, or not there. Deliberately one answer."_                                                                                                                                                          | `app.py:2371`                                                                                                  | ✅ confirmed                                                                                                                              |
+| **The drop-and-recreate precedent is `20260821145416`, not `20260820131914`** — the latter's `:514-519` is `revoke`/`grant`                                                                                                                                   | `20260821145416_chat_first_turn_title.sql:68-70`                                                               | ✅ corrected in review                                                                                                                    |
+| …and that migration already ruled on defaults for this exact function: `p_title` is _"Last, and defaulted, so the argument list stays append-only. A caller that has not been updated yet still resolves, and files an untitled session rather than failing"_ | same file:83-86                                                                                                | ✅ confirmed — decides §3.5                                                                                                               |
+| `ConversationStore` is keyed `(owner_id, conversation_id)`; the docstring says the re-key was done **for this feature**: _"Phase 2's deep links would let one arrive from a URL."_                                                                            | `web/services/conversation_store.py:36-51`                                                                     | ✅ confirmed                                                                                                                              |
+| `ConversationStore.clear` is deliberately **not** owner-scoped                                                                                                                                                                                                | same file:192-207                                                                                              | ✅ confirmed                                                                                                                              |
+| `_InFlightGenerations` keys `(str(owner_id), str(conversation_id))`, **counted not flagged**, explicitly because _"one reader can legitimately have two submissions in flight against one conversation (two tabs, or a retry)"_                               | `app.py:996-998`, `:1013`                                                                                      | ✅ confirmed                                                                                                                              |
+| The hold is released in a `finally`, naming `GeneratorExit` as _"the ORDINARY way this generator ends"_; it is claimed in the **view body** because the generator does not start until the WSGI server iterates it                                            | `app.py:2543-2550`, `:2745-2756`, `:1019-1023`                                                                 | ✅ confirmed                                                                                                                              |
+| Session writes must happen in the view body — Flask writes `Set-Cookie` in `finalize_request()` before the generator is iterated                                                                                                                              | `app.py:2526-2531`                                                                                             | ✅ confirmed — and removing the cookie does **not** obsolete it (§5.1)                                                                    |
+| All chat/session routes are `@auth_required`; anonymous readers never reach them                                                                                                                                                                              | `app.py:569-577`                                                                                               | ✅ confirmed                                                                                                                              |
+| Every asset URL in `index.html` is `url_for()`-absolute, including the ES import map                                                                                                                                                                          | `index.html:42-46`, `:98`, `:697`; `app.py:1849-1857`                                                          | ✅ confirmed — path depth cannot break asset resolution                                                                                   |
+| `Referrer-Policy: strict-origin-when-cross-origin` and `X-Frame-Options: SAMEORIGIN` are already served, both as **Talisman defaults** applied to every response                                                                                              | verified in `.venv`; `app.py:1375-1379`                                                                        | ✅ confirmed — clickjacking on `/c/<id>` needs no new code; §6.1 pins the referrer one                                                    |
+| CSP `img-src` is `'self' data: https:` — an unrestricted HTTPS wildcard; `script-src` trusts three third-party origins                                                                                                                                        | `app.py:1354`, `:1356`                                                                                         | ✅ confirmed — see §6.4                                                                                                                   |
+| Language toggle is cookie + full navigation, preserving the path                                                                                                                                                                                              | `i18n.js:45-67`; `pick_lang` precedence `?lang=` → cookie → `Accept-Language`                                  | ✅ confirmed                                                                                                                              |
+| There is **no** `robots.txt`; `admin.html:18` already ships a robots meta, `index.html` does not                                                                                                                                                              | `ls`; grep                                                                                                     | ✅ confirmed                                                                                                                              |
+| There is **no CSRF protection anywhere**, acknowledged in-source                                                                                                                                                                                              | `admin.py:18-19`                                                                                               | ✅ confirmed                                                                                                                              |
+| `_get_token_from_request` accepts the `sb-access-token` **cookie** and `session["supabase_access_token"]`                                                                                                                                                     | `app.py:269-273`                                                                                               | ✅ confirmed                                                                                                                              |
+| ~~`SESSION_COOKIE_SAMESITE` is never configured~~ — **wrong, caught during implementation.** `Talisman(app, ...)` sets it unconditionally via its own default: `'Lax'`, verified by reading `app.config['SESSION_COOKIE_SAMESITE']` off a real `create_app()` | `flask_talisman/talisman.py:199`; `DEFAULT_SESSION_COOKIE_SAMESITE = "Lax"`                                    | ❌ every round — 3 delegate reviews, the security review, and this document's own §0.1 — stated this as confirmed. See §3.5.              |
+| No client-side router and only two HTML routes app-wide                                                                                                                                                                                                       | `app.py:1905`, `admin.py:101`; `app.js:91-93`                                                                  | ✅ confirmed                                                                                                                              |
+| **There is exactly one History-API call in the codebase, and it hard-codes `/`**: `window.history.replaceState({}, '', '/')` in the password-recovery flow. No `pushState`, no `popstate`, no `pageshow` handler anywhere                                     | `static/js/modules/handlers.js:1361`                                                                           | ✅ confirmed — round-1 said "nothing to integrate with"; that was wrong (§4.8)                                                            |
+| **`index()` sets no `Cache-Control`** — the only two in the app are on an unrelated route and on `/api/chat/history`                                                                                                                                          | `app.py:1052`, `:2158`; absent at `:1905-1920`                                                                 | ✅ confirmed — decides §8's step 0                                                                                                        |
+| `index()` interpolates `is_authenticated` and `user_email` into the template, so the HTML **does** vary by reader                                                                                                                                             | `app.py:1908-1911`                                                                                             | ✅ confirmed — §3.1's claim needed narrowing                                                                                              |
+| **The resolved `conversation_id` is already echoed on every chat route** — stream `meta` and `final`, blocking response, history response                                                                                                                     | `app.py:2559`, `:2615`, `:2869`, `:2148`                                                                       | ✅ confirmed — the field exists; only the client's reconciliation rule is new (§3.2)                                                      |
+| PostgREST: _"If a function parameter has a default value, it can be omitted in the API request"_, and overloads resolve by argument count — but _"overloaded functions with the same argument names but different types are not supported"_                   | `/postgrest/postgrest` docs, `references/api/functions.md`                                                     | ✅ confirmed — validates §3.6's `default true`, and why the old signature must be dropped rather than left alongside                      |
+| PostgREST answers an unknown signature with `404 PGRST202 "Could not find the … function in the schema cache"`                                                                                                                                                | same, `references/errors.md`                                                                                   | ✅ confirmed — the failure mode if code deploys before schema                                                                             |
+| `browserContext.route()` _"Intercepts network requests made by any page in the browser context"_; `storage_state` covers cookies + localStorage + IndexedDB and **not** `sessionStorage`                                                                      | `/websites/playwright_dev`, `class-browsercontext`                                                             | ✅ confirmed — §7.1's fix is the documented mechanism, and the omission of `sessionStorage` reinforces §1.2                               |
+| The installed Playwright has `BrowserContext.route` and `storage_state` but **not** `page.session_storage` / `page.local_storage`                                                                                                                             | verified in `.venv`                                                                                            | ✅ confirmed — §7 must assert storage via `page.evaluate`, not the newer `WebStorage` API                                                 |
+| No bundler, no `node_modules`; native ES modules + an import map that globs the directory at import time                                                                                                                                                      | `package.json`; `app.py:249`, `:1849-1857`                                                                     | ✅ confirmed                                                                                                                              |
+| **Every Playwright mock in `conftest.py` is `page.route(...)`; there is not one `context.route(...)`**, and the Supabase mock stores auth in per-page `window.__supabaseState`                                                                                | `conftest.py:16`, `:380`, `:426`, `:437-468`, `:499`, `:516`                                                   | ✅ confirmed — §7.1 is blocked on this                                                                                                    |
+| `conversation_of()` reads `flask_session["conv_id"]` in **both** test helper modules                                                                                                                                                                          | `test_chat_persistence.py:102-104`; `test_chat_sessions.py:97-99`                                              | ✅ confirmed — decides §7.3                                                                                                               |
+| Werkzeug's `<uuid:>` regex is `[A-Fa-f0-9]{8}-…` — it **accepts uppercase**, rejects undashed/braced/URN, and `to_python` normalises via `uuid.UUID()`                                                                                                        | verified in `.venv`; `werkzeug/routing/converters.py`                                                          | ✅ confirmed — a strict subset of `canonical_uuid`, so no id can diverge between them; but two URL casings map to one conversation (§4.6) |
 
 ### [HISTORICAL] 0.2 Where a round-1 pass was wrong, or out of scope
 
@@ -190,25 +190,25 @@ nothing. Full accounting in §11.
    the placement was wrong. Replaced by a preflight (§3.4).
 2. **The migration default was backwards** — `default false` would have failed every new
    conversation during the deploy window (§3.5).
-3. **§7's "must keep passing unchanged" list was wrong** — it confused a surviving *property* with
-   a surviving *test* (§7.3).
+3. **§7's "must keep passing unchanged" list was wrong** — it confused a surviving _property_ with
+   a surviving _test_ (§7.3).
 4. **§8's hard cut ignored tabs already open at deploy time** (§8).
 
 A third review round (a reviewer working independently of the three above) added five more, all
 verified:
 
-5. **"Nothing to integrate with" was false** — `handlers.js:1361` already calls `replaceState` and
+1. **"Nothing to integrate with" was false** — `handlers.js:1361` already calls `replaceState` and
    hard-codes `/`, silently erasing a deep link on password recovery (§4.8).
-6. **"Byte-identical HTML" was imprecise** and made one proposed test unwritable (§3.1, §7.3).
-7. **A failed sidebar navigation leaves the URL lying**, because `pushState` fires before the fetch
+2. **"Byte-identical HTML" was imprecise** and made one proposed test unwritable (§3.1, §7.3).
+3. **A failed sidebar navigation leaves the URL lying**, because `pushState` fires before the fetch
    that may 404 (§4.3).
-8. **The deletion inventory was incomplete** — it missed the entire resume/resumed-notice surface
+4. **The deletion inventory was incomplete** — it missed the entire resume/resumed-notice surface
    (§5.5), and missed that Decision 1(a) closes a gap the code documents as knowingly open.
-9. **`index.html` carries no `Cache-Control`**, which extends §8's old-client window indefinitely.
+5. **`index.html` carries no `Cache-Control`**, which extends §8's old-client window indefinitely.
 
 ---
 
-## [HISTORICAL] 1. Architecture — the URL is the pointer. There is no per-tab pointer.
+## [HISTORICAL] 1. Architecture — the URL is the pointer. There is no per-tab pointer
 
 **Locked.** It reverses `TODO.md`'s stated mechanism, and both round-2 reviewers who were asked
 about it concurred.
@@ -219,26 +219,26 @@ Six independent implementations read at source level. **None keeps a server-side
 conversation" pointer, and none keeps a per-tab client one either.** The session cookie carries
 identity; the URL carries the conversation.
 
-| Project | Conversation id lives in | Server-side "current conversation"? |
-|---|---|---|
-| `vercel/ai-chatbot` | `/chat/<uuid>` path | No — cookies hold `sidebar_state`, `chat-model` |
-| `huggingface/chat-ui` | `/conversation/<ObjectId>` path | No — `authCondition()` returns identity only |
-| LibreChat | `/c/:conversationId` path | No — JWT; `req.session` is OIDC tokens only |
-| Open WebUI | `/c/[id]` path | No — the socket pool maps sid→user, never sid→chat |
-| Lobe Chat | `?session=` v1, path segment v2 | No |
-| `assistant-ui` | refuses to own it — `threadId` in, `onThreadIdChange` out | n/a |
+| Project               | Conversation id lives in                                  | Server-side "current conversation"?                |
+| --------------------- | --------------------------------------------------------- | -------------------------------------------------- |
+| `vercel/ai-chatbot`   | `/chat/<uuid>` path                                       | No — cookies hold `sidebar_state`, `chat-model`    |
+| `huggingface/chat-ui` | `/conversation/<ObjectId>` path                           | No — `authCondition()` returns identity only       |
+| LibreChat             | `/c/:conversationId` path                                 | No — JWT; `req.session` is OIDC tokens only        |
+| Open WebUI            | `/c/[id]` path                                            | No — the socket pool maps sid→user, never sid→chat |
+| Lobe Chat             | `?session=` v1, path segment v2                           | No                                                 |
+| `assistant-ui`        | refuses to own it — `threadId` in, `onThreadIdChange` out | n/a                                                |
 
-Lobe Chat states the doctrine in a source comment: *"URL is the source of truth for workspace
-context… URL is a passive source, not an explicit user intent."*
+Lobe Chat states the doctrine in a source comment: _"URL is the source of truth for workspace
+context… URL is a passive source, not an explicit user intent."_
 
-You do not *add* per-tab state; you *delete* the shared state and let the URL be the state.
+You do not _add_ per-tab state; you _delete_ the shared state and let the URL be the state.
 Deep-linking then falls out for free — the same observation `TODO.md:814-817` makes from the other
 direction.
 
 Corroboration by omission: LibreChat, Lobe Chat, `chatbot-ui` and `assistant-ui` have **zero**
 `BroadcastChannel` or `storage`-event listeners for chat identity.
 
-### [HISTORICAL] 1.2 Why `sessionStorage` is the wrong store for *this* pointer
+### [HISTORICAL] 1.2 Why `sessionStorage` is the wrong store for _this_ pointer
 
 `services.js:131-149` is a correct use of `sessionStorage` and this plan keeps it. It does not
 generalise, for one reason:
@@ -251,7 +251,7 @@ So a `sessionStorage` pointer reintroduces the exact collision it exists to prev
 users hit most. Tab B starts pointing at Tab A's conversation, and the first question typed into B
 lands in A — `TODO.md:793-796` verbatim, with a new cause.
 
-The URL does not have this failure. A duplicated tab showing `/c/A` genuinely *is* a second view of
+The URL does not have this failure. A duplicated tab showing `/c/A` genuinely _is_ a second view of
 A, because that is what the user asked for by duplicating it.
 
 Three further hazards the URL avoids: session restore (`Ctrl+Shift+T`) resurrects a pointer to a
@@ -280,14 +280,14 @@ an asynchronous one.
 
 Today an empty cookie resumes the reader's most recent conversation
 (`CHAT_RESUME_LATEST_SESSION`, `app.py:739-759`). Roadmap §6 records that this flag was deliberately
-*"held off for"* two steps and shipped only once hydration was correct. Under URL-as-truth, `/` has
+_"held off for"_ two steps and shipped only once hydration was correct. Under URL-as-truth, `/` has
 no conversation, so the flag has nowhere to act.
 
-| Option | Behaviour | Cost |
-|---|---|---|
-| **(a) `/` is always a new chat** — ChatGPT's model, recommended | Resume disappears as an automatic behaviour; the sidebar's top row is one click away | A real, visible product change, and **"sign in on a new device and your conversation is there" is the named casualty** — `app.py:721-723` says that is precisely what the branch is for. Two tests rewritten, and the whole resumed-notice surface deleted (§5.5) |
-| **(b) `/` 302-redirects to `/c/<latest>`** | Resume preserved, now visible in the URL | **Rejected.** Opening a second tab lands on the same conversation again — the original collision, restored, in the commonest flow |
-| **(c) `/` is a new chat plus a "continue where you left off" affordance** | Resume becomes explicit | Extra UI and copy in two languages; a third path through hydration |
+| Option                                                                    | Behaviour                                                                            | Cost                                                                                                                                                                                                                                                              |
+| ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **(a) `/` is always a new chat** — ChatGPT's model, recommended           | Resume disappears as an automatic behaviour; the sidebar's top row is one click away | A real, visible product change, and **"sign in on a new device and your conversation is there" is the named casualty** — `app.py:721-723` says that is precisely what the branch is for. Two tests rewritten, and the whole resumed-notice surface deleted (§5.5) |
+| **(b) `/` 302-redirects to `/c/<latest>`**                                | Resume preserved, now visible in the URL                                             | **Rejected.** Opening a second tab lands on the same conversation again — the original collision, restored, in the commonest flow                                                                                                                                 |
+| **(c) `/` is a new chat plus a "continue where you left off" affordance** | Resume becomes explicit                                                              | Extra UI and copy in two languages; a third path through hydration                                                                                                                                                                                                |
 
 Recommendation: **(a)**, with the sidebar as the resume affordance it already is. This is the one
 place the plan removes a behaviour rather than moving one, which is why it is the owner's call —
@@ -296,9 +296,9 @@ dismissing.
 
 **(a) also closes a gap the code documents as knowingly open.** `app.py:732-738`:
 
-> *"One gap stays open knowingly: ending a conversation and then logging out BEFORE asking anything
+> _"One gap stays open knowingly: ending a conversation and then logging out BEFORE asking anything
 > else purges the cookie, so the next visit looks like a new device and resumes the conversation
-> that was ended. Closing it properly needs a durable owner-level reset marker."*
+> that was ended. Closing it properly needs a durable owner-level reset marker."_
 
 With no cookie and no automatic resume, that gap disappears without the reset marker ever being
 built. Worth recording as a benefit of (a), not just a cost.
@@ -307,7 +307,7 @@ built. Worth recording as a benefit of (a), not just a cost.
 
 Undo lives in the Flask session (`prev_conv_id`, `prev_chat_history`) and is therefore
 browser-wide — the same defect as `conv_id`, in a control nobody has complained about yet. Roadmap
-§10.5 records that undo was *"kept and scoped"* on purpose.
+§10.5 records that undo was _"kept and scoped"_ on purpose.
 
 Under URL-as-truth, "New chat" is a navigation from `/c/A` to `/`, and undo is the Back button —
 free, per-tab, already understood.
@@ -334,7 +334,7 @@ The `gen_random_uuid()` column default is effectively unused on the normal path.
 `chat_append_turn`'s ownership `select … for update` is the guarantee, and `p_owner_id` is always
 server-derived (`app.py:2523`), verified in the security review.
 
-Rejected: LibreChat's `uuidv5(userId:clientRequestId)` gives server authority *and* retry
+Rejected: LibreChat's `uuidv5(userId:clientRequestId)` gives server authority _and_ retry
 idempotency, but costs a round trip before the URL can change, and this app already gets replay
 safety from `unique (session_id, client_request_id, role)`.
 
@@ -348,7 +348,7 @@ Rejected: a custom `X-Conversation-Id` header — tidier in the abstract, but a 
 require and others fall back from is the shape that grows an inconsistency at the fifth endpoint.
 
 **Amended after review:** the round-1 draft listed "visible in ordinary request logging" as a
-*benefit*. It is also a cost — see §6.3. The recommendation stands; the reasoning is corrected.
+_benefit_. It is also a cost — see §6.3. The recommendation stands; the reasoning is corrected.
 
 ### [HISTORICAL] Decision 5 — Is `/c/<id>` server-rendered with the transcript, or a shell the client hydrates?
 
@@ -386,7 +386,7 @@ cookie persistence.
 Three properties, each a decision:
 
 **It is not `@auth_required`.** `/` is not either. A deep link opened by a signed-out reader must
-land on the landing page *and keep its path*, so signing in hydrates the conversation they clicked.
+land on the landing page _and keep its path_, so signing in hydrates the conversation they clicked.
 
 **It performs no ownership check and touches no session state.** The response **never varies with
 the id** — that is the security property, and it is narrower than the round-1 draft's "byte-identical
@@ -404,7 +404,7 @@ varying the uuid produces no observable difference.** This is the security-criti
   conversation — the bug this feature removes, reintroduced through the front door, in an app with
   no CSRF protection and a token reader that accepts cookies. A pure render cannot do this.
 - **It survives link scanners.** Defender Safe Links detonates URLs before the human clicks. `GET
-  /c/<id>` mutating nothing is RFC 9110 safe-method semantics; the scanner ecosystem is what turns
+/c/<id>` mutating nothing is RFC 9110 safe-method semantics; the scanner ecosystem is what turns
   violating it into a production bug rather than a theoretical one.
 - **Clickjacking needs no new code** — Talisman already serves `X-Frame-Options: SAMEORIGIN` on
   every response.
@@ -413,7 +413,7 @@ Enforcement lives entirely in `GET /api/chat/history`, which is authenticated an
 cross-site without a token.
 
 **The `<uuid:…>` converter is the shape guard, not a canonicaliser.** It accepts only the 36-char
-dashed form and is a *strict subset* of `canonical_uuid` — verified in both directions, so no id can
+dashed form and is a _strict subset_ of `canonical_uuid` — verified in both directions, so no id can
 diverge between routing and the rest of the app. But its regex accepts **uppercase**, so
 `/c/<UPPER>` and `/c/<lower>` are one conversation at two URLs. See §4.6.
 
@@ -429,7 +429,7 @@ allow_create    : bool(body.get("allow_create"))
 - **`conversation_id` absent or malformed → mint a fresh one**, matching `client_request_id`'s rule
   at `app.py:2019-2027`. A 400 would turn a client bug into a failed question. (§8 narrows when
   "absent" can legitimately happen.)
-- **Well-formed → a *request* to file this turn under that id**, never a claim of ownership.
+- **Well-formed → a _request_ to file this turn under that id**, never a claim of ownership.
 
 **`allow_create` must be threaded end to end, and the round-1 draft did not specify this.** A
 literal implementation of the draft would have taken the SQL default and never created a first turn.
@@ -446,7 +446,7 @@ tell "this conversation is gone" from "the backend is down" — today both colla
 **The response already echoes the resolved id; what is new is the client's duty to reconcile.**
 Every chat route returns `conversation_id` today — stream `meta` (`app.py:2559`) and `final`
 (`:2615`), the blocking response (`:2869`), the history response (`:2148`) — and this plan keeps
-all four. But once the URL is the pointer, an echo that *differs* from the path is a desync of
+all four. But once the URL is the pointer, an echo that _differs_ from the path is a desync of
 exactly the kind §4 warns about. Specify it as a rule rather than leaving it implicit:
 
 > On the first frame or response carrying `conversation_id`, the client compares it to
@@ -460,7 +460,7 @@ cases where a silent divergence would be hardest to diagnose.
 
 `chat_load_session` returns **zero rows** for "not yours" and for "empty conversation" alike.
 Harmless while the server minted the id — it was yours by construction. Once the id arrives from a
-URL the two must diverge, or a hostile or stale deep link renders as an *empty conversation*.
+URL the two must diverge, or a hostile or stale deep link renders as an _empty conversation_.
 
 - Add `chat_session_exists(p_owner_id uuid, p_session_id uuid) returns boolean` — one
   `security definer` function, `set search_path = ''`, filtered on `p_owner_id`, execute revoked
@@ -480,8 +480,8 @@ means a brand-new conversation has no row. §4.2 handles this, and its round-1 h
 
 **This section replaced the round-1 draft's `p_allow_create`-only design, which was broken.**
 
-The draft claimed a stale-tab send against a deleted conversation would be *"surfaced as 404, not
-500."* It would not. Verified order in the streaming route:
+The draft claimed a stale-tab send against a deleted conversation would be _"surfaced as 404, not
+500."_ It would not. Verified order in the streaming route:
 
 ```
 yield sse("final", …)        app.py:2610   ← the reader already has the answer
@@ -581,19 +581,19 @@ conversations**: old Flask omits the argument, PostgREST resolves to the new sig
 `default true` makes an un-updated caller behave exactly as it does today, and the new Flask passes
 `false` explicitly on turns 2+ — which is where the protection is wanted. This is not a novel
 judgement: `20260821145416:83-86` already ruled the same way for `p_title`, in a comment that reads
-as if written for this case — *"Last, and defaulted, so the argument list stays append-only. A
+as if written for this case — _"Last, and defaulted, so the argument list stays append-only. A
 caller that has not been updated yet still resolves, and files an untitled session rather than
-failing."*
+failing."_
 
 Follow that migration's shape exactly (`:68-70`): an explicit `drop function` of the old signature
 and a `create` in the same file, since `apply_migration` wraps the file in one transaction and there
 is therefore no instant at which neither version exists. The round-1 draft cited
 `20260820131914:515-518` as this precedent; those lines are `revoke`/`grant`.
 
-PostgREST's own documentation confirms both halves of this: *"If a function parameter has a default
-value, it can be omitted in the API request"* — which is what makes `default true` safe for the
+PostgREST's own documentation confirms both halves of this: _"If a function parameter has a default
+value, it can be omitted in the API request"_ — which is what makes `default true` safe for the
 un-updated caller — and overloads resolve by **argument count**, which is why the old signature must
-be dropped rather than left standing beside the new one. (Overloads sharing argument *names* with
+be dropped rather than left standing beside the new one. (Overloads sharing argument _names_ with
 different types are explicitly unsupported, so leaving both would be a latent trap, not merely
 untidy.)
 
@@ -615,8 +615,8 @@ an asset: nothing to integrate with, nothing to desync from.
 The research documents what desync costs. LibreChat calls `navigate('/c/new')` without
 `{replace: true}` immediately before its `replaceState`, leaving the router's location saying
 `/c/new` while the store holds the real id — issue #7700, still open. The report's summary is the
-sentence to keep: *"The trick that makes the stream survive is the same trick that desyncs the
-router; you must decide which one you feed."* Here there is only one thing to feed.
+sentence to keep: _"The trick that makes the stream survive is the same trick that desyncs the
+router; you must decide which one you feed."_ Here there is only one thing to feed.
 
 ### [HISTORICAL] 4.1 A new module: `static/js/modules/route.js`
 
@@ -668,11 +668,11 @@ X genuinely never existed.
 is per-entry rather than per-tab, and is not web storage — so §1.3's "no new storage key" holds.
 The lifecycle:
 
-| `state.convId` | `state.committed` | On load | On history 404 |
-|---|---|---|---|
-| absent | — | new chat at `/` | n/a |
-| present | `false` | do **not** fetch; the turn was lost to the reload — start a fresh composer at `/`, via `Route.replace(null)` | n/a |
-| present | `true` | fetch `?c=` | conversation is gone → `Route.replace(null)` |
+| `state.convId` | `state.committed` | On load                                                                                                      | On history 404                               |
+| -------------- | ----------------- | ------------------------------------------------------------------------------------------------------------ | -------------------------------------------- |
+| absent         | —                 | new chat at `/`                                                                                              | n/a                                          |
+| present        | `false`           | do **not** fetch; the turn was lost to the reload — start a fresh composer at `/`, via `Route.replace(null)` | n/a                                          |
+| present        | `true`            | fetch `?c=`                                                                                                  | conversation is gone → `Route.replace(null)` |
 
 `committed` flips to `true` on the `final` frame, which is the first moment the row is durable.
 §9 already accepts that an aborted first turn leaves no durable trace — this makes the client agree
@@ -688,10 +688,10 @@ remove. Specify it as one machine.
 **Two entry points with opposite semantics, and conflating them is the single most common way to get
 this wrong.**
 
-| Trigger | Can it be refused? | Rule |
-|---|---|---|
-| **Sidebar click / New chat** — reader *asks* to navigate | **Yes.** Today `openSession` refuses while a stream is live (`handlers.js:611-617`) | Refuse first, navigate second. The URL must not move until the refusal check passes |
-| **`popstate`** — Back/Forward | **No.** The URL has *already* changed before the handler runs | Abort the in-flight stream fetch and proceed. There is nothing to refuse |
+| Trigger                                                  | Can it be refused?                                                                  | Rule                                                                                |
+| -------------------------------------------------------- | ----------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| **Sidebar click / New chat** — reader _asks_ to navigate | **Yes.** Today `openSession` refuses while a stream is live (`handlers.js:611-617`) | Refuse first, navigate second. The URL must not move until the refusal check passes |
+| **`popstate`** — Back/Forward                            | **No.** The URL has _already_ changed before the handler runs                       | Abort the in-flight stream fetch and proceed. There is nothing to refuse            |
 
 The round-1 draft said "abort the fetch, as `openSession` already refuses-if-busy today," which
 prescribes both behaviours in one sentence. They are opposites. Sidebar clicks refuse; `popstate`
@@ -705,8 +705,8 @@ aborts.
 4. Fetch history. **On 404 or failure, roll the URL back** with `Route.replace(previousPath)` and
    surface the shared not-found handling (§4.5).
 
-Step 4 is the correction. `openSession`'s own rule is *"a failed select must leave the reader where
-they were"* (`handlers.js:605-609`) — but `pushState` has already fired by then, so without an
+Step 4 is the correction. `openSession`'s own rule is _"a failed select must leave the reader where
+they were"_ (`handlers.js:605-609`) — but `pushState` has already fired by then, so without an
 explicit rollback the reader sits on a URL naming a conversation they are not viewing, and their
 next question inherits the dead id. That is LibreChat #7700's exact shape, rebuilt locally. Roll back
 with `replace`, not `history.back()`, so the rollback does not re-enter the `popstate` handler and
@@ -750,7 +750,7 @@ conversation the route does not name leaves the URL alone, as today.
 ### [HISTORICAL] 4.5 Deep links across the auth boundary
 
 A signed-out reader who opens `/c/<id>` gets the landing page at that path. After sign-in,
-`settleTranscript(user)` (`app.js:108`) already waits for *"who is here?"* before drawing anything —
+`settleTranscript(user)` (`app.js:108`) already waits for _"who is here?"_ before drawing anything —
 hydrate from `Route.current()` at that moment. The path is preserved by construction, so no redirect
 target needs storing and LibreChat's open-redirect guard has nothing to guard.
 
@@ -760,7 +760,7 @@ fetch: show a "conversation not found" state and `Route.replace(null)` — repla
 **This handling belongs in the shared hydrate layer, not at the deep-link entry point.** The
 round-1 draft specified it only for opening someone else's link, but the sidebar reaches the same
 404 by an ordinary route: the conversation is deleted in tab B between tab A listing it and tab A
-clicking it — which per-tab conversations make *more* likely, not less. Today both callers collapse
+clicking it — which per-tab conversations make _more_ likely, not less. Today both callers collapse
 any failure into a generic toast (`app.js:221-226`, `handlers.js:651-658`). Define the 404 →
 not-found → `Route.replace(null)` behaviour once, where both `settleTranscript` and `openSession`
 reach it, and test the sidebar case explicitly — it is the natural home for the cross-tab delete
@@ -779,9 +779,9 @@ It hard-codes `/` and passes `{}` instead of `history.state`. A signed-out reade
 replaced with `/`** — and, once §4.2 lands, the `history.state` carrying `convId` discarded with it.
 
 Route it through `route.js`: preserve the pathname, strip only `?recovery=1`, and spread the
-existing state. The comment above it (*"Past this line the password is already changed. Nothing
-below may report failure"*) is the reason it is unconditional, and that reasoning is sound — it just
-should not be unconditional about the *path*.
+existing state. The comment above it (_"Past this line the password is already changed. Nothing
+below may report failure"_) is the reason it is unconditional, and that reasoning is sound — it just
+should not be unconditional about the _path_.
 
 This also corrects §4's framing: there was never "nothing to integrate with." There was one
 integration, and it was silently hostile to this feature.
@@ -791,7 +791,7 @@ integration, and it was silently hostile to this feature.
 Werkzeug's converter accepts uppercase hex, so `/c/F47AC…` and `/c/f47ac…` route to the same
 conversation as two distinct URLs — two history entries, two log lines, and a `Route.current()`
 that can miss a string comparison against a lowercase minted id. Not a security divergence (the
-converter is a strict subset of `canonical_uuid`), but the same *shape* as the dash-normalisation
+converter is a strict subset of `canonical_uuid`), but the same _shape_ as the dash-normalisation
 bug `app.py:704-719` already documents as having bitten once.
 
 `Route.current()` lowercases before comparing, and the route issues a 301 to the canonical form when
@@ -804,7 +804,7 @@ Nothing to change, and worth stating because roadmap §10.3 named it as a risk. 
 `reload()`s or rewrites `?lang=` and `replace()`s (`i18n.js:59-66`); both preserve the path. The
 `__langfix` pre-paint guard (`index.html:63-74`) does not touch the path either.
 
-Deep-linking makes the toggle *better*: the conversation is in the URL, so it survives the
+Deep-linking makes the toggle _better_: the conversation is in the URL, so it survives the
 navigation without depending on a cookie the reload might race.
 
 ---
@@ -823,13 +823,13 @@ All eight `session["conv_id"]` writes and three pops go, along with `conv_id` an
 `CONVERSATION_SESSION_KEYS`/`CONVERSATION_ID_KEYS` (`auth.py:35-43`). `purge_conversation_state()`
 keeps purging the store; it has no cookie left to clear.
 
-**Two things this does *not* obsolete**, both confirmed in review:
+**Two things this does _not_ obsolete**, both confirmed in review:
 
 - **The streaming view-body constraint** (`app.py:2526-2531`) stands. The comment distinguishes
   cookie writes from durable ones, and the `_InFlightGenerations` hold must still be acquired before
   the generator is iterated so a concurrent delete is blocked.
 - **`_bind_session_to_identity`'s rotation** (`app.py:296-313`). Roadmap §6 records that isolation
-  *"rests entirely on the owner filter inside the RPC"* — rotation was already only a convenience —
+  _"rests entirely on the owner filter inside the RPC"_ — rotation was already only a convenience —
   and owner-keyed RAM history prevents an identity change from making another reader's cached
   context reachable. §7 pins this rather than assuming it.
 
@@ -849,12 +849,12 @@ reintroduce an equivalent unprotected cookie-repoint endpoint.
 
 ### [HISTORICAL] 5.3 `active` leaves the `/api/chat/sessions` response
 
-`app.py:2252` fills it from the cookie, justified as *"The client cannot know which conversation the
-server considers current — it is a signed cookie"* (`:2237-2241`).
+`app.py:2252` fills it from the cookie, justified as _"The client cannot know which conversation the
+server considers current — it is a signed cookie"_ (`:2237-2241`).
 
 **That justification inverts.** The client now knows exactly, from its own URL, and the server's
-answer is wrong for every tab but one — by that comment's own standard, *"worse than one that
-highlights none."* Drop the field; `UI.History.setActive` (`ui.js:1167-1171`) takes
+answer is wrong for every tab but one — by that comment's own standard, _"worse than one that
+highlights none."_ Drop the field; `UI.History.setActive` (`ui.js:1167-1171`) takes
 `Route.current()`.
 
 ### [HISTORICAL] 5.4 Undo state
@@ -866,15 +866,15 @@ highlights none."* Drop the field; `UI.History.setActive` (`ui.js:1167-1171`) ta
 Decision 1(a) does not just orphan a branch; it orphans a feature with server, wire, client and
 catalogue components. All of it goes, and missing any one leaves dead code that reads as intentional:
 
-| Piece | Where |
-|---|---|
-| The config flag itself | `CHAT_RESUME_LATEST_SESSION`, `app.py:1299` |
-| The resume branch and its outage handling | `app.py:739-759`, and the `resume_failed` rollbacks at `:2078`, `:2079-2085` |
-| `latest_session()` — three implementations, one caller | `chat_store.py:330` (protocol), `:422` (Supabase), `:796` (in-memory); called only at `app.py:741` |
-| The `chat_latest_session` RPC | `20260820131914…sql:619` — keep or drop deliberately; the sidebar does not use it |
-| `resumed` on the wire | `app.py:2148`, `:2090`, `:2110`; `services.js:539`, `:554`, `:582` |
-| The resumed-notice UI | `app.js:220` `showResumedNotice()`; `handlers.js:638`, `:721` `hideResumedNotice()`; `ui.js`'s notice and its `localStorage` per-reader key at `ui.js:105-120` |
-| Its i18n keys, both catalogues | `web/i18n/en.yaml`, `ar.yaml` |
+| Piece                                                  | Where                                                                                                                                                          |
+| ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| The config flag itself                                 | `CHAT_RESUME_LATEST_SESSION`, `app.py:1299`                                                                                                                    |
+| The resume branch and its outage handling              | `app.py:739-759`, and the `resume_failed` rollbacks at `:2078`, `:2079-2085`                                                                                   |
+| `latest_session()` — three implementations, one caller | `chat_store.py:330` (protocol), `:422` (Supabase), `:796` (in-memory); called only at `app.py:741`                                                             |
+| The `chat_latest_session` RPC                          | `20260820131914…sql:619` — keep or drop deliberately; the sidebar does not use it                                                                              |
+| `resumed` on the wire                                  | `app.py:2148`, `:2090`, `:2110`; `services.js:539`, `:554`, `:582`                                                                                             |
+| The resumed-notice UI                                  | `app.js:220` `showResumedNotice()`; `handlers.js:638`, `:721` `hideResumedNotice()`; `ui.js`'s notice and its `localStorage` per-reader key at `ui.js:105-120` |
+| Its i18n keys, both catalogues                         | `web/i18n/en.yaml`, `ar.yaml`                                                                                                                                  |
 
 `resumed` is also the reason `historyNoticeKey(identity)` exists in `localStorage`. Removing the
 notice removes the only writer of that key, so sweep it the way `Transcript.discard()` sweeps its
@@ -883,11 +883,11 @@ retired predecessor (`i18n.js:101-105`) rather than leaving it to rot in readers
 ### [HISTORICAL] 5.6 What explicitly stays
 
 - **`ConversationStore`'s `(owner, conversation)` key** — the whole point.
-- **`clear()` staying owner-blind** (`:192-207`) — *"Under-purging is a leak of one reader's
-  questions into another's prompt."*
+- **`clear()` staying owner-blind** (`:192-207`) — _"Under-purging is a leak of one reader's
+  questions into another's prompt."_
 - **`_InFlightGenerations` exactly as it is** — counted, keyed on the pair, released in `finally`.
-- **`GET /api/chat/sessions` not resolving the current-session rule** — *"Listing conversations is
-  not starting one."*
+- **`GET /api/chat/sessions` not resolving the current-session rule** — _"Listing conversations is
+  not starting one."_
 - **The single-worker contract** (`conversation_store.py:15-21`). See §9.
 
 ---
@@ -914,7 +914,7 @@ request line now records it: reverse proxy, CDN, APM, any log-shipping SaaS. Pre
 in a cookie and a JSON body and appeared in none of them.
 
 This does not block the plan, but it is a real change under the "content reaches a third party"
-half of the threat model, and the round-1 draft listed log visibility as a *benefit* without
+half of the threat model, and the round-1 draft listed log visibility as a _benefit_ without
 weighing it. Before shipping: confirm no third-party log sink in the path retains full request
 paths, or scrub `/c/<uuid>` → `/c/:id` at the access-log layer. LibreChat's
 `client/src/lib/rum/routes.ts` is a copyable implementation of exactly this normalisation.
@@ -935,7 +935,7 @@ This is a supply-chain/XSS-conditional exposure, not an exploit today. Tighten `
 There is none today, and that is the safe state. `Disallow` and `noindex` defeat each other: a
 crawler blocked from fetching the page never reads the `noindex`. **Three of the five documented
 AI-chat indexing incidents have exactly this root cause** — Gemini (Feb 2024) needed its
-`Disallow: /share/` *removed* so the noindex became readable, and Claude repeated it in July 2026.
+`Disallow: /share/` _removed_ so the noindex became readable, and Claude repeated it in July 2026.
 `robots.txt` also publishes the list of paths you wanted quiet, and Slack states it does not honour
 it.
 
@@ -944,7 +944,7 @@ it.
 Pasting `/c/<id>` into Slack causes Slack's servers to fetch it; unfurling is on by default and
 opt-out is the poster's. This is safe **because auth is a cookie and §3.1's render is
 content-free** — an unfurl bot gets the same generic shell as everyone else, which is what ChatGPT
-and Claude were measured to return. It would *not* be safe if the URL ever became a capability
+and Claude were measured to return. It would _not_ be safe if the URL ever became a capability
 (a share token). §9 keeps it that way.
 
 ---
@@ -966,7 +966,7 @@ network) and **no auth** (it renders the signed-out view). The multi-tab tests b
 until:
 
 - route registration moves to `context.route(...)` on a context-level fixture — Playwright's docs
-  state it *"intercepts network requests made by any page in the browser context"*, which is exactly
+  state it _"intercepts network requests made by any page in the browser context"_, which is exactly
   the property needed and the reason this is a fixture change rather than a per-test workaround; and
 - the Supabase browser mock persists its session where sibling pages inherit it — context cookies
   or `localStorage`, which is also what the real client does (`services.js:149`). Note
@@ -1009,17 +1009,17 @@ New:
   existing `fake_reader_b_token` / `test-reader-b-id` bypass identity. Assert the response is
   **byte-identical** to a nonexistent id, not merely the same status.
 - `test_a_stale_conversation_is_refused_before_the_answer_is_generated` — §3.4's preflight. Must
-  assert *no* `final` frame and *no* `ConversationStore` entry, not merely a non-200; the round-1
+  assert _no_ `final` frame and _no_ `ConversationStore` entry, not merely a non-200; the round-1
   design would have passed a status-only assertion.
 - `test_a_malformed_conversation_id_is_refused_at_routing` — extend the parametrised
   `test_a_session_id_that_is_not_a_uuid_is_refused_everywhere` (`test_chat_sessions.py:692`) to
   `/c/<id>`, including the 32-char undashed legacy form and an uppercase one.
 - `test_the_deep_link_route_writes_no_session_state` — §3.1's CSRF property, invisible otherwise.
 - `test_the_deep_link_route_response_does_not_vary_with_the_conversation_id` — the no-oracle
-  property, scoped correctly. **Compare a real id against a random one *as the same reader*.** The
+  property, scoped correctly. **Compare a real id against a random one _as the same reader_.** The
   round-1 draft named this `…renders_the_same_page_for_any_reader`, which is unwritable: `index()`
   interpolates `is_authenticated` and `user_email` (`app.py:1908-1911`), so the page legitimately
-  differs between readers. The property is invariance across *ids*, not across *readers*.
+  differs between readers. The property is invariance across _ids_, not across _readers_.
 - `test_the_response_id_wins_when_it_differs_from_the_url` — §3.2's reconciliation rule.
 - `test_a_failed_sidebar_navigation_rolls_the_url_back` — §4.3 step 4.
 - `test_forward_into_an_uncommitted_conversation_does_not_report_it_missing` — §4.3's
@@ -1032,16 +1032,16 @@ New:
 - `test_an_absent_conversation_id_starts_a_new_conversation` rather than resuming — Decision 1.
 
 **Rewritten. The round-1 draft listed the first four of these as "must keep passing unchanged" and
-that was wrong** — it confused a surviving *property* with a surviving *test*. Each still tests
+that was wrong** — it confused a surviving _property_ with a surviving _test_. Each still tests
 something true; each reads the conversation id from a place that will not exist:
 
-| Test | Why it breaks |
-|---|---|
-| `test_the_streaming_route_keys_history_by_owner` (`test_session_isolation.py:209`) | reads `flask_session["conv_id"]` → `KeyError` |
-| `test_a_second_reader_cannot_load_the_first_readers_session` (`:226`) | same |
-| `test_the_refusal_lifts_once_the_answer_has_landed` (`test_chat_sessions.py:657`) | `conversation_of()` returns `None`; deletes `/sessions/None` |
-| `test_a_conversation_being_written_to_cannot_be_deleted` (`:594`) | seeds `flask_session["conv_id"]` and posts no `conversation_id`, so the stream runs on a different id and the racing delete returns 200, not 409 |
-| `test_a_second_reader_cannot_hydrate_the_first_readers_transcript` (`test_chat_persistence.py:877`) | hydrates with no `?c=`, so under Decision 1 it never reaches `chat_load_session` |
+| Test                                                                                                | Why it breaks                                                                                                                                    |
+| --------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `test_the_streaming_route_keys_history_by_owner` (`test_session_isolation.py:209`)                  | reads `flask_session["conv_id"]` → `KeyError`                                                                                                    |
+| `test_a_second_reader_cannot_load_the_first_readers_session` (`:226`)                               | same                                                                                                                                             |
+| `test_the_refusal_lifts_once_the_answer_has_landed` (`test_chat_sessions.py:657`)                   | `conversation_of()` returns `None`; deletes `/sessions/None`                                                                                     |
+| `test_a_conversation_being_written_to_cannot_be_deleted` (`:594`)                                   | seeds `flask_session["conv_id"]` and posts no `conversation_id`, so the stream runs on a different id and the racing delete returns 200, not 409 |
+| `test_a_second_reader_cannot_hydrate_the_first_readers_transcript` (`test_chat_persistence.py:877`) | hydrates with no `?c=`, so under Decision 1 it never reaches `chat_load_session`                                                                 |
 
 The shared helper is the root cause: `conversation_of()` reads `flask_session["conv_id"]` in **both**
 test modules (`test_chat_persistence.py:102-104`, `test_chat_sessions.py:97-99`). Re-point it at the
@@ -1076,8 +1076,8 @@ turn into a fresh conversation and hydrates nothing; new client + old server 404
 has its `?c=` ignored. Ship steps 2 and 3 together and revert them together.
 
 **A one-release cookie fallback is warranted after all, and the round-1 draft's rejection of it was
-wrong.** That rejection rested on "client and server ship together" — true for *new page loads*,
-false for *tabs already open at deploy time*. `asset_version` only busts a URL when something is
+wrong.** That rejection rested on "client and server ship together" — true for _new page loads_,
+false for _tabs already open at deploy time_. `asset_version` only busts a URL when something is
 fetched; a tab open across the deploy keeps running old JS, sends no `conversation_id`, and under
 §3.2's mint-on-absent rule turns each subsequent question into its own one-turn conversation with no
 model context. The same applies under any rolling/blue-green topology.
@@ -1156,7 +1156,7 @@ Order:
    no-oracle grounds, and the security review agreed after probing it. Flagged anyway because it is
    the load-bearing security decision and it is counter-intuitive.
 3. **Decision 2's shape** if the toast is kept: does Back-as-undo confuse a reader who expects it?
-4. **How long is the §8 fallback window in practice** — one release, or one release *plus* a measured
+4. **How long is the §8 fallback window in practice** — one release, or one release _plus_ a measured
    period with no old-client requests observed? The second is more honest and needs a log signal to
    measure, which §6.3 may want scrubbed.
 
@@ -1168,7 +1168,7 @@ Three reviewers, three lanes, one round. Each found something the others did not
 argument for running them in separate lanes rather than asking one reviewer for everything.
 
 1. **OpenCode (`gpt-5.6-terra`, architecture) broke §3.4 outright** — the single most valuable
-   finding here. `p_allow_create` was placed at durable-append time, which runs *after* the answer
+   finding here. `p_allow_create` was placed at durable-append time, which runs _after_ the answer
    has streamed and inside a function whose contract is that it never raises. The stale-link 404 the
    whole section promised was unreachable. On verification the failure was **worse** than reported:
    `store.append_turn` at `app.py:2642` precedes `_persist_turn`, so the deleted conversation's turn
@@ -1188,7 +1188,7 @@ argument for running them in separate lanes rather than asking one reviewer for 
 4. **Claude Sonnet (security) found the `force=True` hole** — pre-existing, unrelated to this
    feature, and widened by it, since the draft was already editing the exact function. One-line fix.
    It also flagged the URL becoming JS-readable against a wildcard `img-src`, the access-log
-   exposure the draft had listed as a *benefit*, and identified that deleting `/select` closes a
+   exposure the draft had listed as a _benefit_, and identified that deleting `/select` closes a
    live zero-crafting CSRF hole incidentally — worth a regression test, which §7.3 now has.
 5. **A third round, by a reviewer working independently of those three, found the one thing all of
    them missed**: `handlers.js:1361`. Three reviewers and this document all asserted there was no
@@ -1201,7 +1201,7 @@ argument for running them in separate lanes rather than asking one reviewer for 
    four routes) and two had already been fixed in round 2, which is the expected cost of reviewing
    in parallel rather than in sequence.
 6. **Documentation lookups corrected one thing and confirmed two.** PostgREST's docs confirm the
-   `default true` reasoning and, more usefully, that overloads resolve by argument *count* while
+   `default true` reasoning and, more usefully, that overloads resolve by argument _count_ while
    same-name/different-type overloads are unsupported — which is why §3.6 drops the old signature
    rather than leaving it beside the new one, and added the schema-cache-reload step nobody had
    raised. Playwright's docs confirm `context.route` is the documented mechanism for §7.1, and

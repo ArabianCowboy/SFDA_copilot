@@ -19,7 +19,6 @@ from web.api.app import create_app
 from web.services.result_combiner import SearchResult
 from web.services.search_exceptions import SearchEngineError
 
-
 AUTH = {"Authorization": "Bearer fake_token"}
 
 
@@ -50,9 +49,7 @@ SUGGESTIONS = ["What documents are required?", "How long does review take?"]
 def app():
     """A testing app whose mocked services return real objects, not MagicMocks."""
     application = create_app(testing=True)
-    application.config["search_engine"].search.return_value = [
-        make_result(i) for i in range(1, 9)
-    ]
+    application.config["search_engine"].search.return_value = [make_result(i) for i in range(1, 9)]
 
     # handle_chat extends the very list it just passed to generate_response, so
     # mock.call_args would hand back the *mutated* list. Snapshot at call time.
@@ -86,6 +83,7 @@ def client(app):
 
 # ── Auth ────────────────────────────────────────────────────────────────────
 
+
 def test_chat_requires_a_token(client):
     response = client.post("/api/chat", json={"query": "hello"})
     assert response.status_code == 401
@@ -93,6 +91,7 @@ def test_chat_requires_a_token(client):
 
 
 # ── Validation ──────────────────────────────────────────────────────────────
+
 
 @pytest.mark.parametrize("query", ["", "   "])
 def test_empty_query_is_rejected(client, query):
@@ -168,9 +167,11 @@ def test_a_malformed_body_is_a_400_not_a_500(app, client):
 
 # ── Happy path ──────────────────────────────────────────────────────────────
 
+
 def test_chat_returns_answer_and_suggestions(client):
     response = client.post(
-        "/api/chat", json={"query": "What are the requirements?", "category": "regulatory"},
+        "/api/chat",
+        json={"query": "What are the requirements?", "category": "regulatory"},
         headers=AUTH,
     )
     assert response.status_code == 200
@@ -194,6 +195,7 @@ def test_response_is_json_serialisable_end_to_end(client):
 
 # ── Sources ─────────────────────────────────────────────────────────────────
 
+
 def test_sources_are_only_what_the_answer_cited(client):
     """The contract: `sources` is evidence, not retrieval output.
 
@@ -206,8 +208,15 @@ def test_sources_are_only_what_the_answer_cited(client):
     assert [s["index"] for s in body["sources"]] == [1]
     assert body["retrieved"] == 8
     assert set(body["sources"][0]) == {
-        "index", "document", "page", "category",
-        "score", "semantic_score", "lexical_score", "chunk_id", "snippet",
+        "index",
+        "document",
+        "page",
+        "category",
+        "score",
+        "semantic_score",
+        "lexical_score",
+        "chunk_id",
+        "snippet",
     }
 
 
@@ -267,10 +276,15 @@ def test_an_unknown_lang_falls_back_to_english(app, client):
 
 def test_sources_survive_numpy_scalars_from_the_search_layer(app, client):
     import numpy as np
+
     app.config["search_engine"].search.return_value = [
         SearchResult(
-            text="chunk", score=np.float32(0.5), document="A.pdf", category="regulatory",
-            page=np.int64(7), chunk_id="a_p7",
+            text="chunk",
+            score=np.float32(0.5),
+            document="A.pdf",
+            category="regulatory",
+            page=np.int64(7),
+            chunk_id="a_p7",
             metadata={"semantic_score": np.float64(0.4), "lexical_score": np.float32(0.6)},
         )
     ]
@@ -280,6 +294,7 @@ def test_sources_survive_numpy_scalars_from_the_search_layer(app, client):
 
 
 # ── Conversation history ────────────────────────────────────────────────────
+
 
 def test_first_turn_sees_no_history(app, client):
     client.post("/api/chat", json={"query": "first question"}, headers=AUTH)
@@ -295,8 +310,11 @@ def test_history_accumulates_across_turns(app, client):
     )
     client.post(
         "/api/chat",
-        json={"query": "second question", "conversation_id": conversation_id,
-              "allow_create": False},
+        json={
+            "query": "second question",
+            "conversation_id": conversation_id,
+            "allow_create": False,
+        },
         headers=AUTH,
     )
 

@@ -38,11 +38,11 @@ from __future__ import annotations
 import logging
 import secrets
 import string
-from typing import Optional, Protocol
+from typing import Protocol
 
 import httpx
-from supabase import AuthApiError, AuthRetryableError, Client
 
+from supabase import AuthApiError, AuthRetryableError, Client
 from web.utils.supabase_client import get_supabase_admin
 
 logger = logging.getLogger(__name__)
@@ -95,7 +95,7 @@ def classify_admin_failure(error: Exception) -> tuple[str, bool]:
       request was sent and its outcome is genuinely unknown.
     """
     if isinstance(error, AuthApiError):
-        return _DEFINITIVE_CODES.get(error.code, "auth_admin_failed"), False
+        return _DEFINITIVE_CODES.get(error.code or "", "auth_admin_failed"), False
     if isinstance(error, AuthRetryableError):
         return "auth_admin_unreachable", True
     if isinstance(error, (httpx.ConnectError, httpx.ConnectTimeout)):
@@ -154,25 +154,25 @@ class SupabaseAuthAdminDispatcher:
         password = _generate_revocation_password()
         try:
             self._client.auth.admin.update_user_by_id(user_id, {"password": password})
-        except Exception as exc:  # noqa: BLE001 - provider surface is untyped
+        except Exception as exc:
             code, ambiguous = classify_admin_failure(exc)
-            logger.warning("session revocation refused (%s%s)",
-                            code, " ambiguous" if ambiguous else "")
+            logger.warning(
+                "session revocation refused (%s%s)", code, " ambiguous" if ambiguous else ""
+            )
             raise AuthAdminRefused(code, str(exc), ambiguous=ambiguous) from exc
         finally:
             # Rebound, not just out of scope, so no traceback captured above
             # this frame can recover it from a `locals()` dump.
-            password = None  # noqa: F841
+            password = None  # type: ignore[assignment]
 
     def change_email(self, user_id: str, new_email: str) -> None:
         try:
             self._client.auth.admin.update_user_by_id(
                 user_id, {"email": new_email, "email_confirm": False}
             )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             code, ambiguous = classify_admin_failure(exc)
-            logger.warning("email change refused (%s%s)",
-                            code, " ambiguous" if ambiguous else "")
+            logger.warning("email change refused (%s%s)", code, " ambiguous" if ambiguous else "")
             raise AuthAdminRefused(code, str(exc), ambiguous=ambiguous) from exc
 
 
@@ -187,11 +187,11 @@ class InMemoryAuthAdminDispatcher:
     a real one is.
     """
 
-    def __init__(self, users: Optional[list] = None) -> None:
+    def __init__(self, users: list | None = None) -> None:
         self._users = users if users is not None else []
         self.revoked: list[str] = []
         self.changed: list[dict] = []
-        self.refuse_with: Optional[str] = None
+        self.refuse_with: str | None = None
         self.refuse_ambiguous: bool = False
 
     def _refuse_if_configured(self) -> None:
@@ -217,10 +217,10 @@ class InMemoryAuthAdminDispatcher:
             row["email_identity_verified"] = False
 
 
-_client: Optional[Client] = None
+_client: Client | None = None
 
 
-def get_auth_admin_dispatcher() -> Optional[AuthAdminDispatcher]:
+def get_auth_admin_dispatcher() -> AuthAdminDispatcher | None:
     """Service-role dispatcher, or ``None`` when no service-role key is
     configured. ``None`` means neither action can be performed right now —
     callers must treat that as unavailable, not as a silent success.

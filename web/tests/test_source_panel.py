@@ -29,7 +29,6 @@ from .conftest import (
     stored_answer,
 )
 
-
 WIDE = {"width": 1600, "height": 900}
 NARROW = {"width": 900, "height": 800}
 
@@ -73,6 +72,7 @@ def _settle_scroll(page: Page) -> None:
 
 
 # ── What the transcript shows ───────────────────────────────────────────────
+
 
 def test_a_cited_answer_gets_one_line_naming_its_documents(sourced_page: Page):
     """Three passages cited, drawn from two documents — and the count says so.
@@ -144,6 +144,7 @@ def test_no_relevance_bar_is_rendered_anywhere(sourced_page: Page):
 
 
 # ── The panel ───────────────────────────────────────────────────────────────
+
 
 def test_the_panel_opens_in_the_rail_and_keeps_the_mascot(sourced_page: Page):
     """Sunny stays at the head of the shelf.
@@ -241,9 +242,7 @@ def test_escape_closes_the_panel_and_restores_the_mascot(sourced_page: Page):
     expect(sourced_page.locator(".robot-companion")).to_be_visible()
     # A trigger left claiming to be expanded over a hidden panel is a lie to
     # every assistive technology reading it.
-    expect(sourced_page.locator(".source-trigger")).to_have_attribute(
-        "aria-expanded", "false"
-    )
+    expect(sourced_page.locator(".source-trigger")).to_have_attribute("aria-expanded", "false")
 
 
 def test_closing_returns_focus_to_the_trigger(sourced_page: Page):
@@ -274,6 +273,7 @@ def test_retrieval_diagnostics_stay_collapsed_until_asked_for(sourced_page: Page
 
 
 # ── Bottom sheet ────────────────────────────────────────────────────────────
+
 
 def test_below_the_rail_breakpoint_the_panel_is_a_modal_sheet(sourced_page: Page):
     """It covers the reading column here, so it really is modal."""
@@ -314,6 +314,7 @@ def test_the_sheet_does_not_overflow_a_phone_viewport(sourced_page: Page):
 
 # ── Follow behaviour ────────────────────────────────────────────────────────
 
+
 def test_completing_an_answer_does_not_stop_the_transcript_following(sourced_page: Page):
     """The regression that made answers stream off-screen.
 
@@ -352,8 +353,7 @@ def test_scrolling_up_hands_control_back_to_the_reader(sourced_page: Page):
     # 'auto', not the CSS smooth default: this is standing in for the reader's
     # own scroll, and the assertion should not race an animation.
     sourced_page.evaluate(
-        "() => document.getElementById('messages')"
-        ".scrollTo({top: 0, behavior: 'auto'})"
+        "() => document.getElementById('messages').scrollTo({top: 0, behavior: 'auto'})"
     )
     expect(sourced_page.locator("#jump-to-latest")).to_be_visible()
 
@@ -394,9 +394,7 @@ def test_completion_does_not_yank_a_reader_who_scrolled_up(streaming_page: Page)
 
     # Following is working before the reader intervenes — otherwise the rest of
     # this test would be asserting against a transcript that never moved.
-    page.wait_for_function(
-        "() => document.getElementById('messages').scrollTop > 100"
-    )
+    page.wait_for_function("() => document.getElementById('messages').scrollTop > 100")
 
     # The reader takes control, mid-stream.
     page.evaluate("() => document.getElementById('messages').scrollTo({top: 0, behavior: 'auto'})")
@@ -423,6 +421,7 @@ def test_completion_does_not_yank_a_reader_who_scrolled_up(streaming_page: Page)
 
 
 # ── Stream lifecycle ────────────────────────────────────────────────────────
+
 
 def _open_stream(page: Page, question: str = "Who controls the scroll?") -> None:
     page.set_viewport_size(WIDE)
@@ -506,6 +505,7 @@ def test_an_error_after_final_keeps_the_canonical_answer(streaming_page: Page):
 
 # ── Panel ownership ─────────────────────────────────────────────────────────
 
+
 def test_only_one_trigger_ever_claims_to_be_expanded(sourced_page: Page):
     """Two answers, one panel.
 
@@ -554,6 +554,7 @@ def test_asking_again_closes_a_panel_showing_the_previous_answer(sourced_page: P
 
 # ── Session isolation ───────────────────────────────────────────────────────
 
+
 def test_logging_out_leaves_nothing_of_the_previous_reader(sourced_page: Page):
     """The tab is not reloaded on the way out.
 
@@ -593,8 +594,10 @@ def test_cancelling_after_final_keeps_the_canonical_answer(streaming_page: Page)
     )
     page.evaluate("f => window.__chat.push(f)", SSE_FINAL_FRAME)
     # The reader hits Stop, which aborts the fetch.
-    page.evaluate("() => window.__chat.controller.error(Object.assign("
-                  "new Error('aborted'), {name: 'AbortError'}))")
+    page.evaluate(
+        "() => window.__chat.controller.error(Object.assign("
+        "new Error('aborted'), {name: 'AbortError'}))"
+    )
 
     answer = page.locator(".chatbot-message").last
     expect(answer).to_contain_text("Sentence number 1")
@@ -604,6 +607,7 @@ def test_cancelling_after_final_keeps_the_canonical_answer(streaming_page: Page)
 
 
 # ── Restored transcripts ────────────────────────────────────────────────────
+
 
 def test_a_transcript_is_not_restored_when_startup_finds_no_reader(sourced_page: Page):
     """The transcript belongs to whoever saved it.
@@ -620,16 +624,17 @@ def test_a_transcript_is_not_restored_when_startup_finds_no_reader(sourced_page:
 
     # Save the transcript the way a language switch does, then reload into a
     # tab whose session does not come back.
-    page.evaluate("() => sessionStorage.setItem('sfda-transcript', JSON.stringify("
-                  "{owner: 'someone-else', turns: '<div class=\"message chatbot-message\">"
-                  "Previous reader\\'s answer</div>'}))")
+    page.evaluate(
+        "() => sessionStorage.setItem('sfda-transcript', JSON.stringify("
+        "{owner: 'someone-else', turns: '<div class=\"message chatbot-message\">"
+        "Previous reader\\'s answer</div>'}))"
+    )
     page.reload()
     page.wait_for_function("() => window.APP_INITIALIZED")
 
     # Nothing of theirs is on the page, and nothing is left waiting either.
     expect(page.locator(".chatbot-message")).to_have_count(0)
     assert page.evaluate("() => sessionStorage.getItem('sfda-transcript')") is None
-
 
 
 SEED_SUPABASE_SESSION = (
@@ -691,11 +696,13 @@ def test_a_restored_answer_opens_its_own_stored_evidence(sourced_page: Page):
     page.add_init_script(SEED_SUPABASE_SESSION)
     route_chat_history(
         page,
-        chat_history(stored_answer(
-            "What must the PSSF contain?",
-            "The stored answer, citing [1].",
-            sources=[STORED_SOURCE],
-        )),
+        chat_history(
+            stored_answer(
+                "What must the PSSF contain?",
+                "The stored answer, citing [1].",
+                sources=[STORED_SOURCE],
+            )
+        ),
     )
 
     page.locator(".lang-toggle-btn").locator("visible=true").first.click()
@@ -751,10 +758,14 @@ def test_evidence_from_the_active_build_is_not_badged(sourced_page: Page):
     page.add_init_script(SEED_SUPABASE_SESSION)
     route_chat_history(
         page,
-        chat_history(stored_answer(
-            "A question", "An answer citing [1].",
-            sources=[STORED_SOURCE], evidence_state="verified",
-        )),
+        chat_history(
+            stored_answer(
+                "A question",
+                "An answer citing [1].",
+                sources=[STORED_SOURCE],
+                evidence_state="verified",
+            )
+        ),
     )
     page.goto(f"/c/{STORED_CONVERSATION_ID}")
     page.wait_for_load_state("load")
@@ -780,10 +791,14 @@ def test_evidence_from_a_rebuilt_corpus_is_dated_but_still_opens(sourced_page: P
     page.add_init_script(SEED_SUPABASE_SESSION)
     route_chat_history(
         page,
-        chat_history(stored_answer(
-            "A question", "An answer citing [1].",
-            sources=[STORED_SOURCE], evidence_state="stale",
-        )),
+        chat_history(
+            stored_answer(
+                "A question",
+                "An answer citing [1].",
+                sources=[STORED_SOURCE],
+                evidence_state="stale",
+            )
+        ),
     )
     page.goto(f"/c/{STORED_CONVERSATION_ID}")
     page.wait_for_load_state("load")
@@ -806,10 +821,14 @@ def test_unverifiable_evidence_is_dated_on_the_same_terms(sourced_page: Page):
     page.add_init_script(SEED_SUPABASE_SESSION)
     route_chat_history(
         page,
-        chat_history(stored_answer(
-            "A question", "An answer citing [1].",
-            sources=[STORED_SOURCE], evidence_state="unverifiable",
-        )),
+        chat_history(
+            stored_answer(
+                "A question",
+                "An answer citing [1].",
+                sources=[STORED_SOURCE],
+                evidence_state="unverifiable",
+            )
+        ),
     )
     page.goto(f"/c/{STORED_CONVERSATION_ID}")
     page.wait_for_load_state("load")
@@ -880,9 +899,7 @@ def test_history_arriving_late_is_filed_above_the_live_exchange(browser_page: Pa
     )
     stored_at = next(i for i, t in enumerate(order) if "Older stored answer." in t)
     fresh_at = next(i for i, t in enumerate(order) if "A brand new question" in t)
-    assert stored_at < fresh_at, (
-        f"stored history was filed below the live exchange: {order}"
-    )
+    assert stored_at < fresh_at, f"stored history was filed below the live exchange: {order}"
 
 
 def test_late_history_cannot_resurrect_a_conversation_the_reader_ended(browser_page: Page):
@@ -925,6 +942,7 @@ def test_late_history_cannot_resurrect_a_conversation_the_reader_ended(browser_p
 
 # ── Arabic ──────────────────────────────────────────────────────────────────
 
+
 def test_the_panel_renders_in_arabic_rtl(sourced_page: Page):
     """Arabic is not a translation layer, so this ships in both directions."""
     sourced_page.set_viewport_size(WIDE)
@@ -941,9 +959,7 @@ def test_the_panel_renders_in_arabic_rtl(sourced_page: Page):
     assert spine and spine["width"] > 40, "spine collapsed under RTL"
 
     # Page numbers stay LTR-isolated so bidi cannot reorder them inside Arabic.
-    expect(sourced_page.locator("#source-panel .tab-page").first).to_have_attribute(
-        "dir", "ltr"
-    )
+    expect(sourced_page.locator("#source-panel .tab-page").first).to_have_attribute("dir", "ltr")
 
 
 def test_a_marker_free_answer_renders_no_control_in_arabic_either(uncited_page: Page):
@@ -965,6 +981,7 @@ def test_a_marker_free_answer_renders_no_control_in_arabic_either(uncited_page: 
 # One passage from one document is the state most likely to read as a bug
 # rather than a deliberate answer, so it is designed and asserted rather than
 # left to fall out of the layout.
+
 
 def test_a_single_source_presents_as_one_exhibit(sparse_page: Page):
     """One spine, full width, presented rather than stranded."""
@@ -1032,6 +1049,7 @@ def test_a_spine_label_is_not_the_date_every_filename_starts_with(sourced_page: 
 
 # ── The mascot reports what the reader is looking at ────────────────────────
 
+
 def test_the_mascot_carries_provenance_while_sources_are_open(sourced_page: Page):
     """Teal means "this came from a document" everywhere else in the
     transcript, so Sunny's eyes take it for as long as the evidence is on
@@ -1042,10 +1060,13 @@ def test_the_mascot_carries_provenance_while_sources_are_open(sourced_page: Page
     _ask(page)
 
     companion = page.locator(".robot-companion-body")
-    eye = lambda: page.evaluate(
-        "() => getComputedStyle(document.querySelector('.robot-companion-body .sunny-svg'))"
-        ".getPropertyValue('--sunny-eye').trim()"
-    )
+
+    def eye():
+        return page.evaluate(
+            "() => getComputedStyle(document.querySelector('.robot-companion-body .sunny-svg'))"
+            ".getPropertyValue('--sunny-eye').trim()"
+        )
+
     signal = page.evaluate(
         "() => getComputedStyle(document.documentElement).getPropertyValue('--signal').trim()"
     )
@@ -1076,6 +1097,6 @@ def test_the_present_gesture_is_one_shot_and_repeatable(sourced_page: Page):
     # One-shot: gone once it has played.
     expect(companion).not_to_contain_class("robot-presents", timeout=3000)
 
-    page.locator(".source-trigger").click()   # close
-    page.locator(".source-trigger").click()   # and open again
+    page.locator(".source-trigger").click()  # close
+    page.locator(".source-trigger").click()  # and open again
     expect(companion).to_contain_class("robot-presents")

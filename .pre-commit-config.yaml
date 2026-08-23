@@ -1,0 +1,57 @@
+# Python hooks use the well-maintained astral-sh mirror. JS/Markdown hooks are
+# `local` rather than the pre-commit.com mirrors (`mirrors-eslint`,
+# `mirrors-prettier`) — those mirrors lag badly behind current tool releases
+# (mirrors-prettier tops out at v3.1.0; this repo pins prettier ^3.9.6), so a
+# local hook calling the npm-installed binary directly is both simpler and
+# guaranteed to match the version `npm run lint`/`format` actually use.
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.4
+    hooks:
+      - id: ruff-check
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: local
+    hooks:
+      - id: mypy
+        name: mypy
+        # `mypy` resolves to the project venv via scripts/pre_commit_mypy.py,
+        # which prefers the repo's own .venv (so it sees the installed packages
+        # the app uses: faiss, sentence-transformers, supabase, ...); otherwise
+        # it falls back to a PATH-resolvable `mypy` (CI installs straight into
+        # the runner's Python).
+        entry: python scripts/pre_commit_mypy.py web
+        language: system
+        pass_filenames: false
+        files: \.py$
+
+      - id: eslint
+        name: eslint
+        # npx, not a direct node_modules/.bin path, so this resolves the
+        # correct shim on both Windows and Linux/CI.
+        entry: npx eslint
+        language: system
+        files: ^static/js/.*\.js$
+
+      - id: prettier
+        name: prettier
+        entry: npx prettier --write
+        language: system
+        files: \.(js|md)$
+
+      - id: markdownlint-cli2
+        name: markdownlint-cli2
+        # No filenames passed, and this wouldn't scope the run even if they
+        # were: markdownlint-cli2 auto-discovers .markdownlint-cli2.yaml and
+        # its own `globs: ["**/*.md"]` always wins over any file list passed
+        # on the command line — verified directly, not assumed. So committing
+        # any single .md file re-lints/re-fixes every .md file in the repo.
+        # At this repo's size (~18 files) that's a cheap, idempotent no-op on
+        # already-clean files, not a real cost — and passing filenames here
+        # would risk two overlapping --fix passes on the same files, which
+        # has been observed to crash markdownlint's autofixer mid-write.
+        entry: npx markdownlint-cli2 --fix
+        language: system
+        files: \.md$
+        pass_filenames: false

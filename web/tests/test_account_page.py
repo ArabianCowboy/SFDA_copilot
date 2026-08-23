@@ -12,7 +12,6 @@ import pytest
 
 from web.api.app import ACCOUNT_MODULE_FILENAMES, create_app
 
-
 AUTH = {"Authorization": "Bearer fake_token"}
 
 

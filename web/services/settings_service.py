@@ -16,7 +16,7 @@ import logging
 import math
 import threading
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from web.utils.config_loader import config
 
@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 # The settings an administrator may set. Anything else in a payload is rejected
 # rather than ignored: silently dropping an unknown key means an operator who
 # mistypes one is told their change was saved.
-GENERATION_KEYS: Tuple[str, ...] = (
+GENERATION_KEYS: tuple[str, ...] = (
     "model",
     "temperature",
     "max_tokens",
@@ -48,29 +48,32 @@ class ValidationError:
 
     field: str
     code: str
-    limit: Optional[Any] = None
+    limit: Any | None = None
 
-    def as_dict(self) -> Dict[str, Any]:
-        payload: Dict[str, Any] = {"field": self.field, "code": self.code}
+    def as_dict(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {"field": self.field, "code": self.code}
         if self.limit is not None:
             payload["limit"] = self.limit
         return payload
 
 
-def allowed_models() -> List[Dict[str, Any]]:
+def allowed_models() -> list[dict[str, Any]]:
     """The models an administrator may select, from config.yaml."""
     models = config.get("openai", "allowed_models", []) or []
     return [m for m in models if isinstance(m, dict) and m.get("id")]
 
 
-def model_spec(model_id: str) -> Dict[str, Any]:
+def model_spec(model_id: object) -> dict[str, Any]:
     """The model's parameter contract, with the defaults filled in.
 
     One place decides what a request to a given model may carry, because the
     OpenAI families do not agree: a reasoning model rejects `max_tokens` and
     `temperature` outright, and its accepted effort levels differ from the next
     model's. An unknown id gets the conservative shape — the one every model
-    has always accepted.
+    has always accepted. ``model_id`` is typed loosely on purpose: callers like
+    `validate` pass a value straight out of an untrusted JSON payload, and an
+    unknown/wrong-typed id is meant to fall through to that conservative shape
+    rather than be rejected before it can be compared.
     """
     entry = next((m for m in allowed_models() if m["id"] == model_id), {})
     return {
@@ -83,11 +86,11 @@ def model_spec(model_id: str) -> Dict[str, Any]:
     }
 
 
-def _model_ceiling(model_id: str) -> Optional[int]:
+def _model_ceiling(model_id: object) -> int | None:
     return model_spec(model_id)["max_output_tokens"]
 
 
-def deployed_defaults() -> Dict[str, Any]:
+def deployed_defaults() -> dict[str, Any]:
     """The values config.yaml ships, i.e. what an empty override set means."""
     return {
         "model": config.get("openai", "model", "gpt-4o-mini"),
@@ -128,7 +131,7 @@ def _in_range(value: Any, low: float, high: float) -> bool:
     return math.isfinite(as_float) and low <= as_float <= high
 
 
-def validate(patch: Dict[str, Any], current: Dict[str, Any]) -> List[ValidationError]:
+def validate(patch: dict[str, Any], current: dict[str, Any]) -> list[ValidationError]:
     """Validate the **resulting** settings, not the patch in isolation.
 
     The distinction is load-bearing. An operator who switches to a model with a
@@ -136,7 +139,7 @@ def validate(patch: Dict[str, Any], current: Dict[str, Any]) -> List[ValidationE
     pair from two individually valid values — and every request afterwards
     would 400 at the provider. Merging first is what catches that.
     """
-    errors: List[ValidationError] = []
+    errors: list[ValidationError] = []
 
     unknown = sorted(set(patch) - set(GENERATION_KEYS))
     errors.extend(ValidationError(field=key, code="unknown_setting") for key in unknown)
@@ -214,19 +217,20 @@ class SettingsService:
         # Separate from the cache lock: a write holds this across I/O, and
         # holding the cache lock across a network call would block every reader.
         self._write_lock = threading.Lock()
-        self._cached: Optional[Dict[str, Any]] = None
+        self._cached: dict[str, Any] | None = None
         self._loaded_at = 0.0
 
     @staticmethod
     def _now() -> float:
         import time
+
         return time.monotonic()
 
     @property
     def _backend(self):
         return self._backend_provider()
 
-    def _read_overrides(self) -> Dict[str, Any]:
+    def _read_overrides(self) -> dict[str, Any]:
         """Strict read. Raises if the store cannot answer.
 
         Used by :meth:`update`, which replaces the whole document: if a failed
@@ -247,7 +251,7 @@ class SettingsService:
             raise TypeError(f"stored settings must be a JSON object, got {type(stored).__name__}")
         return stored
 
-    def _overrides(self) -> Dict[str, Any]:
+    def _overrides(self) -> dict[str, Any]:
         """Lenient read for display and snapshots.
 
         Serves the deployed defaults rather than failing the request. A settings
@@ -261,15 +265,14 @@ class SettingsService:
             logger.error("Settings read failed; serving deployed defaults.", exc_info=True)
             return {}
 
-    def snapshot(self, *, force: bool = False) -> Dict[str, Any]:
+    def snapshot(self, *, force: bool = False) -> dict[str, Any]:
         """The effective settings: deployed defaults with overrides applied."""
         with self._lock:
             fresh = (
-                self._cached is not None
-                and not force
-                and self._now() - self._loaded_at < self._ttl
+                self._cached is not None and not force and self._now() - self._loaded_at < self._ttl
             )
             if fresh:
+                assert self._cached is not None  # `fresh` already checked this
                 return dict(self._cached)
 
         overrides = self._overrides()
@@ -294,11 +297,11 @@ class SettingsService:
             self._loaded_at = self._now()
         return dict(effective)
 
-    def overrides(self) -> Dict[str, Any]:
+    def overrides(self) -> dict[str, Any]:
         """What has actually been changed, for the console to show as such."""
         return {k: v for k, v in self._overrides().items() if k in GENERATION_KEYS}
 
-    def read_overrides(self) -> Dict[str, Any]:
+    def read_overrides(self) -> dict[str, Any]:
         """:meth:`overrides`, but it raises rather than answering ``{}``.
 
         For the one caller that has to tell "nothing is overridden" apart from
@@ -316,7 +319,7 @@ class SettingsService:
             return {}
         return {k: v for k, v in self._read_overrides().items() if k in GENERATION_KEYS}
 
-    def _publish(self, overrides: Dict[str, Any]) -> None:
+    def _publish(self, overrides: dict[str, Any]) -> None:
         """Install a known-committed document as the snapshot.
 
         Deliberately not a re-read. `snapshot(force=True)` after a write goes
@@ -333,7 +336,7 @@ class SettingsService:
             self._cached = dict(effective)
             self._loaded_at = self._now()
 
-    def update(self, patch: Dict[str, Any], *, actor, on_committed=None) -> List[ValidationError]:
+    def update(self, patch: dict[str, Any], *, actor, on_committed=None) -> list[ValidationError]:
         """Apply a patch. Returns errors; an empty list means it was written.
 
         A key set to None is removed, which is how an operator reverts to the
@@ -366,7 +369,9 @@ class SettingsService:
             try:
                 original = dict(self._read_overrides())
             except Exception:
-                logger.error("Settings read failed during update; refusing to write.", exc_info=True)
+                logger.error(
+                    "Settings read failed during update; refusing to write.", exc_info=True
+                )
                 return [ValidationError("_", "storage_unavailable")]
 
             stored = dict(original)

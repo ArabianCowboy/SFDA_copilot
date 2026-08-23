@@ -1,16 +1,17 @@
 import logging
 import os
-from typing import Optional
 
 import httpx
-from supabase import create_client, Client
+from flask import current_app
+
 # SyncClientOptions, not the base ClientOptions. Only the sync subclass carries
 # `httpx_client`; the base accepts it as no keyword at all, so importing the
 # wrong one is a TypeError at client construction — which is to say, at the
 # first authenticated request in production, and nowhere in the test suite,
 # because SupabaseClient returns None under TESTING and never builds one.
 from supabase.lib.client_options import SyncClientOptions
-from flask import current_app
+
+from supabase import Client, create_client
 
 logger = logging.getLogger(__name__)
 
@@ -47,18 +48,24 @@ def _auth_http_client() -> httpx.Client:
 
 
 class SupabaseClient:
-    _instance = None
+    _instance: Client | None = None
 
-    def __new__(cls):
+    def __new__(cls) -> Client | None:  # type: ignore[misc]
+        # Deliberately returns a `Client`, not a `SupabaseClient` instance —
+        # this is a factory hiding behind constructor syntax, same shape as
+        # `SupabaseAdminClient` below. mypy's `__new__` contract expects an
+        # instance of `cls`; this class intentionally does not follow it.
         if cls._instance is None:
-            url = os.getenv('SUPABASE_URL')
-            key = os.getenv('SUPABASE_ANON_KEY')
+            url = os.getenv("SUPABASE_URL")
+            key = os.getenv("SUPABASE_ANON_KEY")
 
             if not url or not key:
-                raise ValueError("SUPABASE_URL and SUPABASE_ANON_KEY environment variables are required")
+                raise ValueError(
+                    "SUPABASE_URL and SUPABASE_ANON_KEY environment variables are required"
+                )
 
             # Handle test environment
-            if current_app and current_app.config.get('TESTING'):
+            if current_app and current_app.config.get("TESTING"):
                 # In test environment, we don't actually create a Supabase client
                 # The mock will be injected by the test fixtures
                 return None
@@ -71,9 +78,17 @@ class SupabaseClient:
             )
         return cls._instance
 
+
 def get_supabase() -> Client:
-    """Get the Supabase client instance."""
-    return SupabaseClient()
+    """Get the Supabase client instance.
+
+    None only happens under TESTING (see `SupabaseClient.__new__`), and every
+    caller already runs behind its own TESTING branch that never reaches this
+    function in that mode — see e.g. `_authenticate_request` in app.py.
+    """
+    client = SupabaseClient()
+    assert client is not None
+    return client
 
 
 class SupabaseAdminClient:
@@ -91,10 +106,11 @@ class SupabaseAdminClient:
     only the admin surface needs.
     """
 
-    _instance: Optional[Client] = None
+    _instance: Client | None = None
     _warned = False
 
-    def __new__(cls) -> Optional[Client]:
+    def __new__(cls) -> Client | None:  # type: ignore[misc]
+        # Same factory-behind-constructor-syntax shape as SupabaseClient above.
         if current_app and current_app.config.get("TESTING"):
             return None
 
@@ -128,7 +144,7 @@ class SupabaseAdminClient:
         return cls._instance
 
 
-def get_supabase_admin() -> Optional[Client]:
+def get_supabase_admin() -> Client | None:
     """Service-role Supabase client, or None when unavailable.
 
     None means one of: running under TESTING, or no service-role key is

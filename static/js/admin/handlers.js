@@ -75,8 +75,7 @@ export function showAccessFailure(error) {
   showGateMessage(message);
   // Only a genuine fault gets a toast. A refusal is already stated in place,
   // and repeating it as an alert would make a normal boundary read as a crash.
-  const isRefusal =
-    error instanceof AdminRequestError && [401, 403].includes(error.status);
+  const isRefusal = error instanceof AdminRequestError && [401, 403].includes(error.status);
   if (!isRefusal) ErrorHandler.showToast(message, true);
 }
 
@@ -105,7 +104,7 @@ export function bindConsoleEvents() {
     // Under RTL the visual order is mirrored while the key names are not, which
     // is why the step is negated rather than the array reversed.
     const rtl = document.documentElement.getAttribute('dir') === 'rtl';
-    let next = null;
+    let next;
 
     if (event.key === 'ArrowRight') next = current + (rtl ? -1 : 1);
     else if (event.key === 'ArrowLeft') next = current + (rtl ? 1 : -1);
@@ -132,7 +131,7 @@ export async function loadAudit(services) {
   try {
     const { entries } = await services.audit();
     renderAudit(entries);
-  } catch (error) {
+  } catch {
     showAuditMessage(I18n.t('admin.audit.loadFailed'));
   }
 }
@@ -178,7 +177,7 @@ export async function initPeopleTab(services) {
   async function loadPage({
     targetOffset = offset,
     targetLimit = limit,
-    targetQuery = (search?.value.trim() || ''),
+    targetQuery = search?.value.trim() || '',
     callerActiveId = null,
   } = {}) {
     clearTimeout(searchTimer);
@@ -219,7 +218,7 @@ export async function initPeopleTab(services) {
 
       offset = typeof result.offset === 'number' ? result.offset : targetOffset;
       limit = typeof result.limit === 'number' ? result.limit : targetLimit;
-      total = typeof result.total === 'number' ? result.total : (result.users?.length || 0);
+      total = typeof result.total === 'number' ? result.total : result.users?.length || 0;
       query = targetQuery;
 
       showAccountList();
@@ -287,12 +286,12 @@ export async function initPeopleTab(services) {
       let entries = [];
       try {
         entries = (await services.audit({ targetType: 'user', targetId: userId })).entries;
-      } catch (error) {
+      } catch {
         entries = null;
       }
       if (mine !== generation) return;
       renderAccountDetail(user, entries, selfId);
-    } catch (error) {
+    } catch {
       if (mine !== generation) return;
       showAccountMessage(I18n.t('admin.account.loadFailed'));
     } finally {
@@ -329,7 +328,8 @@ export async function initPeopleTab(services) {
       setProfileSaving(false);
       const code = error instanceof AdminRequestError ? error.code : null;
       ErrorHandler.showToast(
-        I18n.t(PROFILE_REFUSALS[code] || 'admin.account.profileSaveFailed'), true,
+        I18n.t(PROFILE_REFUSALS[code] || 'admin.account.profileSaveFailed'),
+        true,
       );
     }
   });
@@ -450,11 +450,16 @@ export async function initPeopleTab(services) {
       } catch (error) {
         const code = error instanceof AdminRequestError ? error.code : null;
         const known = [
-          'auth_admin_unavailable', 'auth_admin_unreachable', 'auth_admin_failed',
-          'no_such_account', 'actor_no_longer_administrator',
+          'auth_admin_unavailable',
+          'auth_admin_unreachable',
+          'auth_admin_failed',
+          'no_such_account',
+          'actor_no_longer_administrator',
         ];
         ErrorHandler.showToast(
-          known.includes(code) ? I18n.t(`admin.account.${code}`) : I18n.t('admin.account.revokeFailed'),
+          known.includes(code)
+            ? I18n.t(`admin.account.${code}`)
+            : I18n.t('admin.account.revokeFailed'),
           true,
         );
       } finally {
@@ -480,7 +485,9 @@ export async function initPeopleTab(services) {
          confirmation step — the Admin API has no defer-until-confirmed flow,
          and the operator should read that before committing, not discover it
          after. */
-      if (!window.confirm(I18n.t('admin.account.confirmEmailChange', { email, newEmail: trimmed }))) {
+      if (
+        !window.confirm(I18n.t('admin.account.confirmEmailChange', { email, newEmail: trimmed }))
+      ) {
         return;
       }
 
@@ -491,12 +498,21 @@ export async function initPeopleTab(services) {
       } catch (error) {
         const code = error instanceof AdminRequestError ? error.code : null;
         const known = [
-          'email_already_registered', 'auth_admin_unavailable', 'auth_admin_unreachable',
-          'auth_admin_failed', 'no_such_account', 'same_email', 'invalid_email',
-          'cannot_change_own_email', 'actor_no_longer_administrator', 'too_long',
+          'email_already_registered',
+          'auth_admin_unavailable',
+          'auth_admin_unreachable',
+          'auth_admin_failed',
+          'no_such_account',
+          'same_email',
+          'invalid_email',
+          'cannot_change_own_email',
+          'actor_no_longer_administrator',
+          'too_long',
         ];
         ErrorHandler.showToast(
-          known.includes(code) ? I18n.t(`admin.account.${code}`) : I18n.t('admin.account.emailChangeFailed'),
+          known.includes(code)
+            ? I18n.t(`admin.account.${code}`)
+            : I18n.t('admin.account.emailChangeFailed'),
           true,
         );
       } finally {
@@ -551,12 +567,15 @@ export async function initPeopleTab(services) {
       // "you cannot demote yourself" is actionable and "something went wrong"
       // is not.
       const code = error instanceof AdminRequestError ? error.code : null;
-      const known = ['cannot_change_own_access', 'would_leave_no_administrator',
-                     'no_such_account', 'actor_no_longer_administrator', 'reason_required'];
+      const known = [
+        'cannot_change_own_access',
+        'would_leave_no_administrator',
+        'no_such_account',
+        'actor_no_longer_administrator',
+        'reason_required',
+      ];
       ErrorHandler.showToast(
-        known.includes(code)
-          ? I18n.t(`admin.people.${code}`)
-          : I18n.t('admin.people.changeFailed'),
+        known.includes(code) ? I18n.t(`admin.people.${code}`) : I18n.t('admin.people.changeFailed'),
         true,
       );
       button.disabled = false;
@@ -608,7 +627,7 @@ export async function initSettingsTab(services) {
     currentSettings = loaded.settings || {};
     currentActive = loaded.active || {};
     renderSettings(loaded);
-  } catch (error) {
+  } catch {
     showSettingsMessage(I18n.t('admin.settings.loadFailed'));
     ErrorHandler.showToast(I18n.t('admin.settings.loadFailed'), true);
     return;
@@ -690,7 +709,8 @@ export async function initSettingsTab(services) {
         // failed and the console said nothing at all.
         const homeless = showSettingsErrors(error.errors);
         homeless.forEach((entry) =>
-          ErrorHandler.showToast(I18n.t(`admin.errors.${entry.code}`), true));
+          ErrorHandler.showToast(I18n.t(`admin.errors.${entry.code}`), true),
+        );
         return;
       }
       ErrorHandler.showToast(I18n.t('admin.settings.saveFailed'), true);

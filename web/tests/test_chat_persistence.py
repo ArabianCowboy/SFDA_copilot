@@ -31,7 +31,6 @@ from web.services.chat_store import (
 from web.services.result_combiner import SearchResult
 from web.services.search_exceptions import SearchEngineError
 
-
 AUTH = {"Authorization": "Bearer fake_token"}
 OWNER = "test-user-id"
 AUTH_B = {"Authorization": "Bearer fake_reader_b_token"}
@@ -91,9 +90,9 @@ def frames(response) -> list[tuple[str, dict]]:
         event, data = "message", None
         for line in block.splitlines():
             if line.startswith("event:"):
-                event = line[len("event:"):].strip()
+                event = line[len("event:") :].strip()
             elif line.startswith("data:"):
-                data = json.loads(line[len("data:"):].strip())
+                data = json.loads(line[len("data:") :].strip())
         if data is not None:
             parsed.append((event, data))
     return parsed
@@ -115,6 +114,7 @@ def conversation_of(response) -> str:
 
 
 # ── The turn becomes durable ────────────────────────────────────────────────
+
 
 def test_a_streamed_turn_is_stored_as_a_user_row_and_an_assistant_row(client, backend):
     response = ask(client, "How long is the review?")
@@ -161,8 +161,10 @@ def test_a_retrieval_failure_stores_nothing_at_all(app, client, backend):
     app.config["search_engine"].search.side_effect = SearchEngineError("index down")
 
     response = ask(client)
-    assert ("error", {"error": "Search service is currently unavailable.",
-                      "code": "search_unavailable"}) in frames(response)
+    assert (
+        "error",
+        {"error": "Search service is currently unavailable.", "code": "search_unavailable"},
+    ) in frames(response)
 
     assert backend.sessions_for(OWNER) == []
     assert backend.archive == []
@@ -175,6 +177,7 @@ def test_an_aborted_answer_leaves_no_durable_trace(app, client, backend):
     today. Stated as a test so it reads as a decision rather than as a bug
     somebody later 'fixes' by reintroducing the state machine.
     """
+
     def die_mid_stream(*args, **kwargs):
         yield "Applications "
         raise RuntimeError("model died")
@@ -186,6 +189,7 @@ def test_an_aborted_answer_leaves_no_durable_trace(app, client, backend):
 
 
 # ── Citations survive the trip ──────────────────────────────────────────────
+
 
 def test_every_retrieved_passage_is_stored_with_its_cited_flag(client, backend):
     """Not only the cited ones.
@@ -210,11 +214,20 @@ def test_sources_come_back_ordered_by_source_index_regardless_of_insert_order(ba
     This one inserts out of order specifically to prove the double enforces
     the same ordering guarantee the RPC does, not merely whatever order a
     caller happened to append in."""
-    kwargs = dict(
-        owner_id=OWNER, session_id="s1", client_request_id="r1", question="q",
-        answer="a", lang="en", category="all", model="m", corpus_revision=None,
-        owner_key=None, session_key=None, archive_opted_out=True,
-    )
+    kwargs = {
+        "owner_id": OWNER,
+        "session_id": "s1",
+        "client_request_id": "r1",
+        "question": "q",
+        "answer": "a",
+        "lang": "en",
+        "category": "all",
+        "model": "m",
+        "corpus_revision": None,
+        "owner_key": None,
+        "session_key": None,
+        "archive_opted_out": True,
+    }
     backend.append_turn(
         sources=[
             {"source_index": 3, "snippet": "third"},
@@ -263,6 +276,7 @@ def test_a_turn_records_the_corpus_revision_it_was_answered_from(app, client, ba
 
 # ── Idempotency ─────────────────────────────────────────────────────────────
 
+
 def test_a_replayed_request_id_writes_one_turn(client, backend):
     conversation_id = "aaaaaaaa-2222-3333-4444-555555555555"
     request_id = "11111111-2222-3333-4444-555555555555"
@@ -281,7 +295,9 @@ def test_a_replay_does_not_advance_the_sequence(client, backend):
     ask(client, "first", conversation_id=conversation_id, client_request_id=request_id)
     ask(client, "first", conversation_id=conversation_id, client_request_id=request_id)
     ask(
-        client, "second", conversation_id=conversation_id,
+        client,
+        "second",
+        conversation_id=conversation_id,
         client_request_id="66666666-7777-8888-9999-000000000000",
     )
 
@@ -306,11 +322,21 @@ def test_a_replay_does_not_write_a_second_archive_row(client, backend, monkeypat
 def test_a_replay_is_reported_as_a_replay(backend):
     """`replayed` must come back true, or `_persist_turn`'s replay branch is
     dead code that no test ever enters — which is what it was."""
-    kwargs = dict(
-        owner_id=OWNER, session_id="s1", client_request_id="r1", question="q",
-        answer="a", sources=[], lang="en", category="all", model="m",
-        corpus_revision=None, owner_key=None, session_key=None, archive_opted_out=True,
-    )
+    kwargs = {
+        "owner_id": OWNER,
+        "session_id": "s1",
+        "client_request_id": "r1",
+        "question": "q",
+        "answer": "a",
+        "sources": [],
+        "lang": "en",
+        "category": "all",
+        "model": "m",
+        "corpus_revision": None,
+        "owner_key": None,
+        "session_key": None,
+        "archive_opted_out": True,
+    }
     first = backend.append_turn(**kwargs)
     second = backend.append_turn(**kwargs)
 
@@ -325,11 +351,20 @@ def test_a_replay_carrying_a_malformed_payload_is_still_a_no_op(backend):
     with a bad payload is a successful no-op there. The double validated first
     and raised instead — stricter than the database on the one path where being
     stricter is wrong, and invisible because the double is what tests run on."""
-    kwargs = dict(
-        owner_id=OWNER, session_id="s1", client_request_id="r1", question="q",
-        answer="a", lang="en", category="all", model="m", corpus_revision=None,
-        owner_key=None, session_key=None, archive_opted_out=True,
-    )
+    kwargs = {
+        "owner_id": OWNER,
+        "session_id": "s1",
+        "client_request_id": "r1",
+        "question": "q",
+        "answer": "a",
+        "lang": "en",
+        "category": "all",
+        "model": "m",
+        "corpus_revision": None,
+        "owner_key": None,
+        "session_key": None,
+        "archive_opted_out": True,
+    }
     backend.append_turn(sources=[{"source_index": 1, "snippet": "ok"}], **kwargs)
 
     replayed = backend.append_turn(sources=[{"source_index": 999}], **kwargs)
@@ -342,11 +377,19 @@ def test_the_archive_dedupes_per_session_not_per_owner(backend):
     """Matching `unique (owner_key, session_key, turn_key)`. Keyed on the owner
     alone, one request id reused in two conversations wrote both turns to the
     reader's history and only the first to the archive."""
-    kwargs = dict(
-        owner_id=OWNER, client_request_id="r1", question="q", answer="a",
-        sources=[], lang="en", category="all", model="m", corpus_revision=None,
-        owner_key="owner-digest", archive_opted_out=False,
-    )
+    kwargs = {
+        "owner_id": OWNER,
+        "client_request_id": "r1",
+        "question": "q",
+        "answer": "a",
+        "sources": [],
+        "lang": "en",
+        "category": "all",
+        "model": "m",
+        "corpus_revision": None,
+        "owner_key": "owner-digest",
+        "archive_opted_out": False,
+    }
     backend.append_turn(session_id="s1", session_key="session-1", **kwargs)
     backend.append_turn(session_id="s2", session_key="session-2", **kwargs)
 
@@ -369,20 +412,39 @@ def test_a_missing_request_id_still_answers(client, backend):
 
 # ── Ownership ───────────────────────────────────────────────────────────────
 
+
 def test_appending_into_someone_elses_session_is_refused(backend):
     """The guard that makes a guessed session id useless."""
     backend.append_turn(
-        owner_id=OWNER, session_id="s1", client_request_id="r1",
-        question="q", answer="a", sources=[], lang="en", category="all",
-        model="m", corpus_revision=None, owner_key=None, session_key=None,
+        owner_id=OWNER,
+        session_id="s1",
+        client_request_id="r1",
+        question="q",
+        answer="a",
+        sources=[],
+        lang="en",
+        category="all",
+        model="m",
+        corpus_revision=None,
+        owner_key=None,
+        session_key=None,
         archive_opted_out=True,
     )
 
     with pytest.raises(PersistenceUnavailable):
         backend.append_turn(
-            owner_id=OWNER_B, session_id="s1", client_request_id="r2",
-            question="q", answer="a", sources=[], lang="en", category="all",
-            model="m", corpus_revision=None, owner_key=None, session_key=None,
+            owner_id=OWNER_B,
+            session_id="s1",
+            client_request_id="r2",
+            question="q",
+            answer="a",
+            sources=[],
+            lang="en",
+            category="all",
+            model="m",
+            corpus_revision=None,
+            owner_key=None,
+            session_key=None,
             archive_opted_out=True,
         )
 
@@ -391,9 +453,18 @@ def test_loading_an_unowned_session_is_indistinguishable_from_an_empty_one(backe
     """Both answer `[]`, deliberately: probing for a stranger's session id must
     not be able to tell 'not yours' from 'not there'."""
     backend.append_turn(
-        owner_id=OWNER, session_id="s1", client_request_id="r1",
-        question="q", answer="a", sources=[], lang="en", category="all",
-        model="m", corpus_revision=None, owner_key=None, session_key=None,
+        owner_id=OWNER,
+        session_id="s1",
+        client_request_id="r1",
+        question="q",
+        answer="a",
+        sources=[],
+        lang="en",
+        category="all",
+        model="m",
+        corpus_revision=None,
+        owner_key=None,
+        session_key=None,
         archive_opted_out=True,
     )
 
@@ -412,6 +483,7 @@ def test_loading_an_unowned_session_is_indistinguishable_from_an_empty_one(backe
 # `web/tests/test_multi_tab_conversations.py` proves through the real
 # multi-tab surface (§7.2) rather than by simulating a cookie here.
 
+
 def test_hydration_restores_the_prompt_window_after_the_cache_is_lost(app, client):
     """A process restart, the store's TTL, or a new device all land here."""
     response = ask(client, "first")
@@ -422,15 +494,18 @@ def test_hydration_restores_the_prompt_window_after_the_cache_is_lost(app, clien
 
     handed_to_the_model = app.config["openai_handler"].stream_response.call_args[0][3]
     assert [message["content"] for message in handed_to_the_model] == [
-        "first", "".join(ANSWER_TOKENS),
+        "first",
+        "".join(ANSWER_TOKENS),
     ]
 
 
 # ── Failure is auxiliary ────────────────────────────────────────────────────
 
+
 def test_a_storage_failure_still_ships_the_answer(app, client):
     """`handlers.js` already names history persistence as an auxiliary failure
     that must render the answer anyway. This is the server half of that."""
+
     class Broken:
         def load_session(self, *args, **kwargs):
             raise PersistenceUnavailable("down")
@@ -444,8 +519,13 @@ def test_a_storage_failure_still_ships_the_answer(app, client):
     names = [event for event, _ in events]
 
     assert "final" in names and "done" in names
-    assert ("error", {"error": "This answer could not be saved to your history.",
-                      "code": "persistence_unavailable"}) in events
+    assert (
+        "error",
+        {
+            "error": "This answer could not be saved to your history.",
+            "code": "persistence_unavailable",
+        },
+    ) in events
     # An `error` frame, not a bespoke event name: services.js dispatches with
     # `on[frame.event]?.()` and silently drops anything unregistered.
     assert "persistence_unavailable" not in names
@@ -465,8 +545,13 @@ def test_a_misconfigured_backend_fails_loud_not_silent(app, client):
     app.config["chat_backend"] = lambda: None
 
     events = frames(ask(client))
-    assert ("error", {"error": "This answer could not be saved to your history.",
-                      "code": "persistence_unavailable"}) in events
+    assert (
+        "error",
+        {
+            "error": "This answer could not be saved to your history.",
+            "code": "persistence_unavailable",
+        },
+    ) in events
 
 
 def test_a_disabled_deployment_stays_a_quiet_noop(app, client):
@@ -506,6 +591,7 @@ def test_the_answer_is_recorded_in_ram_even_when_storage_fails(app, client):
 
 
 # ── The uuid boundary ───────────────────────────────────────────────────────
+
 
 def test_conversation_ids_are_minted_in_the_canonical_dashed_form(client):
     """`uuid4().hex` is 32 characters with no dashes. A `uuid` column accepts it
@@ -551,12 +637,11 @@ def test_the_final_frame_carries_the_conversation_id(client):
 
 # ── Bounds ──────────────────────────────────────────────────────────────────
 
+
 def test_an_over_long_question_is_refused_before_it_reaches_storage(client, backend):
     """`_validate_chat_request` had no length bound, so a 200KB body was
     accepted, embedded, answered and — once questions became durable — kept."""
-    response = client.post(
-        "/api/chat/stream", json={"query": "x" * 8_001}, headers=AUTH
-    )
+    response = client.post("/api/chat/stream", json={"query": "x" * 8_001}, headers=AUTH)
 
     assert response.status_code == 400
     assert backend.sessions_for(OWNER) == []
@@ -583,7 +668,8 @@ def test_hydration_is_bounded_through_the_request_path(app, client):
 
     handed_to_the_model = app.config["openai_handler"].stream_response.call_args[0][3]
     assert [m["content"] for m in handed_to_the_model] == [
-        "question 2", "".join(ANSWER_TOKENS),
+        "question 2",
+        "".join(ANSWER_TOKENS),
     ], "the hydration limit did not bound what reached the prompt"
 
 
@@ -613,6 +699,7 @@ def test_a_window_that_starts_mid_exchange_is_repaired(app):
 # rejects but the double accepts is a constraint nobody is asserting — a review
 # found three such, and these are what stop them coming back.
 
+
 @pytest.mark.parametrize(
     "sources, why",
     [
@@ -629,9 +716,18 @@ def test_a_window_that_starts_mid_exchange_is_repaired(app):
 def test_the_double_rejects_what_the_schema_rejects(backend, sources, why):
     with pytest.raises(PersistenceUnavailable):
         backend.append_turn(
-            owner_id=OWNER, session_id="s1", client_request_id="r1",
-            question="q", answer="a", sources=sources, lang="en", category="all",
-            model="m", corpus_revision=None, owner_key=None, session_key=None,
+            owner_id=OWNER,
+            session_id="s1",
+            client_request_id="r1",
+            question="q",
+            answer="a",
+            sources=sources,
+            lang="en",
+            category="all",
+            model="m",
+            corpus_revision=None,
+            owner_key=None,
+            session_key=None,
             archive_opted_out=True,
         )
 
@@ -640,10 +736,19 @@ def test_a_rejected_payload_leaves_no_half_written_session(backend):
     """The RPC gets this from its transaction; the double has to arrange it."""
     with pytest.raises(PersistenceUnavailable):
         backend.append_turn(
-            owner_id=OWNER, session_id="s1", client_request_id="r1",
-            question="q", answer="a", sources=[{"source_index": 150, "snippet": "x"}],
-            lang="en", category="all", model="m", corpus_revision=None,
-            owner_key=None, session_key=None, archive_opted_out=True,
+            owner_id=OWNER,
+            session_id="s1",
+            client_request_id="r1",
+            question="q",
+            answer="a",
+            sources=[{"source_index": 150, "snippet": "x"}],
+            lang="en",
+            category="all",
+            model="m",
+            corpus_revision=None,
+            owner_key=None,
+            session_key=None,
+            archive_opted_out=True,
         )
 
     assert backend.sessions_for(OWNER) == []
@@ -655,9 +760,18 @@ def test_a_non_array_source_payload_becomes_an_empty_list(backend):
     and aborts `jsonb_array_elements`, rolling back a turn the reader is already
     reading — so the RPC checks `jsonb_typeof` and this mirrors that."""
     backend.append_turn(
-        owner_id=OWNER, session_id="s1", client_request_id="r1",
-        question="q", answer="a", sources=None, lang="en", category="all",
-        model="m", corpus_revision=None, owner_key=None, session_key=None,
+        owner_id=OWNER,
+        session_id="s1",
+        client_request_id="r1",
+        question="q",
+        answer="a",
+        sources=None,
+        lang="en",
+        category="all",
+        model="m",
+        corpus_revision=None,
+        owner_key=None,
+        session_key=None,
         archive_opted_out=True,
     )
 
@@ -676,6 +790,7 @@ def test_the_real_citation_payload_satisfies_the_schema(client, backend):
 
 
 # ── Concurrency ─────────────────────────────────────────────────────────────
+
 
 def test_hydration_never_overwrites_a_window_that_already_has_turns(app):
     """Cold hydration is a check-then-act across two calls, and the lock inside
@@ -699,6 +814,7 @@ def test_hydration_never_overwrites_a_window_that_already_has_turns(app):
 
 # ── Ship state ──────────────────────────────────────────────────────────────
 
+
 def test_persistence_ships_on():
     """`CHAT_PERSISTENCE_ENABLED` waited for the MIGRATION — applied
     2026-08-20 as `supabase/migrations/20260820131914_chat_session_
@@ -713,8 +829,9 @@ def test_persistence_ships_on():
     Read off a non-testing app, because under TESTING the in-memory backend is
     selected unconditionally and would hide the production default.
     """
-    from web.api.app import _configure_app
     from flask import Flask
+
+    from web.api.app import _configure_app
 
     application = Flask(__name__)
     _configure_app(application, testing=False)
@@ -729,6 +846,7 @@ def test_persistence_ships_on():
 # Before `GET /api/chat/history` a restored answer kept its prose and lost its
 # citations, on a product whose first principle is that an answer without a
 # resolvable source is a liability.
+
 
 def hydrate(client, conversation_id, headers=AUTH, **params):
     """`?c=<id>` names the conversation (Decision 4 of
@@ -747,7 +865,10 @@ def test_the_transcript_comes_back_from_the_durable_rows(client):
     body = hydrate(client, conversation_id).get_json()
 
     assert [message["role"] for message in body["messages"]] == [
-        "user", "assistant", "user", "assistant",
+        "user",
+        "assistant",
+        "user",
+        "assistant",
     ], "the transcript did not come back oldest-first as an alternating exchange"
     assert body["messages"][0]["content"] == "first"
     assert body["messages"][2]["content"] == "second"
@@ -803,6 +924,7 @@ def test_a_user_message_carries_no_evidence_fields(client):
 
 # ── The evidence state ──────────────────────────────────────────────────────
 
+
 def test_a_live_answer_is_verified_by_construction(app, client):
     """Asserted on the wire, never compared — including when nothing can be
     compared. `read_active_build_id` returns None for the legacy flat layout, and
@@ -817,8 +939,10 @@ def test_a_live_answer_is_verified_by_construction(app, client):
 
 def test_a_stored_answer_from_the_active_build_is_verified(client):
     response = ask(client)
-    assert hydrate(client, conversation_of(response)).get_json()["messages"][1]["evidence_state"] \
+    assert (
+        hydrate(client, conversation_of(response)).get_json()["messages"][1]["evidence_state"]
         == "verified"
+    )
 
 
 def test_a_rebuilt_corpus_marks_stored_evidence_stale(app, client):
@@ -842,11 +966,14 @@ def test_an_unreadable_build_pointer_is_unverifiable_not_verified(app, client):
     response = ask(client)
     app.config["CORPUS_REVISION"] = None
 
-    assert hydrate(client, conversation_of(response)).get_json()["messages"][1]["evidence_state"] \
+    assert (
+        hydrate(client, conversation_of(response)).get_json()["messages"][1]["evidence_state"]
         == "unverifiable"
+    )
 
 
 # ── Who may hydrate ─────────────────────────────────────────────────────────
+
 
 def test_a_second_reader_cannot_hydrate_the_first_readers_transcript(client):
     """The owner filter, asserted through the route rather than the backend.
@@ -902,6 +1029,7 @@ def test_a_storage_failure_is_not_reported_as_an_empty_history(app, client, back
 # Decision 1a) — `/` is always a new conversation now, with no cookie-driven
 # fallback for an outage to corrupt.
 
+
 def test_persistence_enabled_with_no_backend_is_reported_not_shrugged_off(app, client):
     """The same gap `_persist_turn` was already fixed for, on the read side.
 
@@ -955,6 +1083,7 @@ def test_the_transcript_is_not_cacheable(client):
 
 # ── Bounds and disclosure ───────────────────────────────────────────────────
 
+
 def test_the_hydration_limit_is_clamped_at_both_ends(client):
     conversation_id = "aaaaaaaa-2222-3333-4444-555555555555"
     for _ in range(3):
@@ -996,6 +1125,7 @@ def test_a_window_never_starts_on_an_answer(client):
 # described, are both deleted (§5.5, Decision 1a).
 
 # ── The archive ─────────────────────────────────────────────────────────────
+
 
 def test_the_archive_records_a_turn_under_pseudonymous_keys(client, backend, monkeypatch):
     monkeypatch.setenv("ARCHIVE_OWNER_SALT", "owner-salt")
@@ -1174,4 +1304,3 @@ def test_the_disclosure_guard_actually_runs_at_startup(monkeypatch, caplog):
     assert any("archive_disclosed" in r.message for r in caplog.records), (
         "create_app did not reach the archive disclosure guard"
     )
-

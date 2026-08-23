@@ -53,8 +53,7 @@ def test_saving_identity_sends_the_writable_columns_and_shows_the_note(authentic
     assert sent["first_name"] == "Updated"
     assert sent["age"] == 30
     assert "full_name" not in sent, (
-        "full_name is a generated column and cannot be written since the "
-        "identity cutover"
+        "full_name is a generated column and cannot be written since the identity cutover"
     )
 
 

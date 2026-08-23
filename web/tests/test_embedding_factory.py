@@ -6,9 +6,9 @@ from unittest.mock import patch
 
 import pytest
 
+from web.services.data_processing import DataProcessor
 from web.services.search_engine import SearchEngine, SearchEngineConfig
 from web.services.search_exceptions import EmbeddingError, SearchEngineError
-from web.services.data_processing import DataProcessor
 from web.utils.embedding_helpers import EmbeddingClientFactory, get_embedding_client
 from web.utils.local_embedding_client import LocalEmbeddingClient
 from web.utils.openai_client import OpenAIClientManager
@@ -50,23 +50,27 @@ def test_factory_selects_registered_provider():
 
 
 def test_factory_rejects_unsupported_provider():
-    with patch.dict(
-        EmbeddingClientFactory._clients,
-        {"stub": StubEmbeddingClient},
-        clear=True,
+    with (
+        patch.dict(
+            EmbeddingClientFactory._clients,
+            {"stub": StubEmbeddingClient},
+            clear=True,
+        ),
+        pytest.raises(ValueError, match="Unsupported embedding type"),
     ):
-        with pytest.raises(ValueError, match="Unsupported embedding type"):
-            get_embedding_client("missing")
+        get_embedding_client("missing")
 
 
 def test_factory_chains_provider_initialization_error():
-    with patch.dict(
-        EmbeddingClientFactory._clients,
-        {"broken": BrokenEmbeddingClient},
-        clear=True,
+    with (
+        patch.dict(
+            EmbeddingClientFactory._clients,
+            {"broken": BrokenEmbeddingClient},
+            clear=True,
+        ),
+        pytest.raises(RuntimeError, match="Could not initialize") as exc_info,
     ):
-        with pytest.raises(RuntimeError, match="Could not initialize") as exc_info:
-            get_embedding_client("broken")
+        get_embedding_client("broken")
 
     assert isinstance(exc_info.value.__cause__, OSError)
 
@@ -82,12 +86,14 @@ def test_search_engine_chains_factory_failure():
         embedding_type="broken",
     )
 
-    with patch(
-        "web.services.search_engine.get_embedding_client",
-        side_effect=RuntimeError("provider failed"),
+    with (
+        patch(
+            "web.services.search_engine.get_embedding_client",
+            side_effect=RuntimeError("provider failed"),
+        ),
+        pytest.raises(SearchEngineError, match="Failed to initialize") as exc_info,
     ):
-        with pytest.raises(SearchEngineError, match="Failed to initialize") as exc_info:
-            engine._build_embedding_client()
+        engine._build_embedding_client()
 
     assert isinstance(exc_info.value.__cause__, RuntimeError)
 

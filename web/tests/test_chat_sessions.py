@@ -46,7 +46,6 @@ from web.services.chat_store import (
 )
 from web.services.result_combiner import SearchResult
 
-
 AUTH = {"Authorization": "Bearer fake_token"}
 OWNER = "test-user-id"
 AUTH_B = {"Authorization": "Bearer fake_reader_b_token"}
@@ -113,9 +112,9 @@ def conversation_of(response) -> str:
         event, data = "message", None
         for line in block.splitlines():
             if line.startswith("event:"):
-                event = line[len("event:"):].strip()
+                event = line[len("event:") :].strip()
             elif line.startswith("data:"):
-                data = json.loads(line[len("data:"):].strip())
+                data = json.loads(line[len("data:") :].strip())
         if event == "meta" and data is not None:
             return data["conversation_id"]
     raise AssertionError("no meta frame in the streamed response")
@@ -126,6 +125,7 @@ def listing(client, headers=AUTH, **params):
 
 
 # ── Titling: written by the turn that creates the session ────────────────────
+
 
 def test_the_first_question_names_the_conversation(client, backend):
     ask(client, "How long does a variation review take?")
@@ -143,8 +143,12 @@ def test_a_later_question_does_not_rename_the_conversation(client, backend):
     """
     response = ask(client, "First question, which becomes the title")
     conversation_id = conversation_of(response)
-    ask(client, "Second question, which must not", conversation_id=conversation_id,
-        allow_create=False)
+    ask(
+        client,
+        "Second question, which must not",
+        conversation_id=conversation_id,
+        allow_create=False,
+    )
 
     assert backend.list_sessions(OWNER).sessions[0].title == (
         "First question, which becomes the title"
@@ -162,7 +166,8 @@ def test_a_rename_survives_every_later_turn(client, backend):
     session_id = conversation_of(response)
 
     client.patch(
-        f"/api/chat/sessions/{session_id}", json={"title": "Bioequivalence file"},
+        f"/api/chat/sessions/{session_id}",
+        json={"title": "Bioequivalence file"},
         headers=AUTH,
     )
     ask(client, "A follow-up", conversation_id=session_id, allow_create=False)
@@ -206,6 +211,7 @@ def test_whitespace_inside_a_title_is_collapsed():
 
 # ── Listing ──────────────────────────────────────────────────────────────────
 
+
 def test_the_list_carries_title_time_and_length(client):
     ask(client, "A question")
     body = listing(client).get_json()
@@ -213,7 +219,7 @@ def test_the_list_carries_title_time_and_length(client):
     assert len(body["sessions"]) == 1
     row = body["sessions"][0]
     assert row["title"] == "A question"
-    assert row["message_count"] == 2      # one pair
+    assert row["message_count"] == 2  # one pair
     assert row["updated_at"]
     assert "active" not in body, (
         "the client knows its own current conversation from its own URL now "
@@ -248,7 +254,7 @@ def test_the_newest_conversation_comes_first(client):
 
 
 def test_a_full_page_offers_a_cursor_and_a_short_one_does_not(client):
-    """"Not full" is the only honest end-of-list signal a keyset pager has.
+    """ "Not full" is the only honest end-of-list signal a keyset pager has.
 
     A lookahead row would make the end exact, at the cost of one extra read on
     every page to save one empty read at the end.
@@ -271,7 +277,8 @@ def test_the_cursor_pages_without_repeating_or_skipping(client):
 
     first = listing(client, limit=2).get_json()
     second = listing(
-        client, limit=2,
+        client,
+        limit=2,
         cursor_updated_at=first["next_cursor"]["updated_at"],
         cursor_id=first["next_cursor"]["id"],
     ).get_json()
@@ -307,6 +314,7 @@ def test_an_outage_is_reported_rather_than_rendered_as_an_empty_list(client, bac
     it while the store is unreachable is the quiet untruth this product refuses
     everywhere else — `/api/chat/history` answers 503 for exactly this, and the
     index of the transcript inherits the rule."""
+
     def explode(*args, **kwargs):
         raise PersistenceUnavailable("down")
 
@@ -334,6 +342,7 @@ def test_the_list_is_never_cached(client):
 # conversation. Pinned here so a future refactor cannot reintroduce an
 # equivalent unprotected endpoint.
 
+
 def test_there_is_no_route_that_repoints_a_conversation_by_cookie(client):
     response = ask(client, "First conversation")
     session_id = conversation_of(response)
@@ -344,6 +353,7 @@ def test_there_is_no_route_that_repoints_a_conversation_by_cookie(client):
 
 
 # ── Renaming ─────────────────────────────────────────────────────────────────
+
 
 def test_renaming_changes_the_title(client, backend):
     response = ask(client, "Original")
@@ -370,9 +380,7 @@ def test_renaming_does_not_move_a_conversation_to_the_top(client):
     older = conversation_of(response)
     ask(client, "Newer conversation")
 
-    client.patch(
-        f"/api/chat/sessions/{older}", json={"title": "Renamed"}, headers=AUTH
-    )
+    client.patch(f"/api/chat/sessions/{older}", json={"title": "Renamed"}, headers=AUTH)
 
     titles = [s["title"] for s in listing(client).get_json()["sessions"]]
     assert titles == ["Newer conversation", "Renamed"]
@@ -386,7 +394,8 @@ def test_the_server_echoes_the_clamped_title_not_the_submitted_one(client):
     session_id = conversation_of(response)
 
     reply = client.patch(
-        f"/api/chat/sessions/{session_id}", json={"title": "  spaced   out  "},
+        f"/api/chat/sessions/{session_id}",
+        json={"title": "  spaced   out  "},
         headers=AUTH,
     )
 
@@ -394,14 +403,12 @@ def test_the_server_echoes_the_clamped_title_not_the_submitted_one(client):
 
 
 def test_clearing_a_title_is_allowed_and_stores_null(client, backend):
-    """"Untitled" is a state the sidebar already renders, so clearing the name is
+    """ "Untitled" is a state the sidebar already renders, so clearing the name is
     a meaningful action rather than an error."""
     response = ask(client, "Original")
     session_id = conversation_of(response)
 
-    reply = client.patch(
-        f"/api/chat/sessions/{session_id}", json={"title": "   "}, headers=AUTH
-    )
+    reply = client.patch(f"/api/chat/sessions/{session_id}", json={"title": "   "}, headers=AUTH)
 
     assert reply.status_code == 200
     assert reply.get_json()["title"] is None
@@ -423,15 +430,14 @@ def test_a_reader_cannot_rename_another_readers_conversation(client, app, backen
     response = ask(other, "Reader B's conversation", headers=AUTH_B)
     stranger = conversation_of(response)
 
-    reply = client.patch(
-        f"/api/chat/sessions/{stranger}", json={"title": "Mine now"}, headers=AUTH
-    )
+    reply = client.patch(f"/api/chat/sessions/{stranger}", json={"title": "Mine now"}, headers=AUTH)
 
     assert reply.status_code == 404
     assert backend.list_sessions(OWNER_B).sessions[0].title == "Reader B's conversation"
 
 
 # ── Deleting ─────────────────────────────────────────────────────────────────
+
 
 def test_deleting_removes_the_conversation_and_its_messages(client, backend):
     response = ask(client, "Doomed")
@@ -494,16 +500,22 @@ def test_a_question_reasked_after_a_delete_is_recorded_rather_than_replayed(clie
     conversation_id = "aaaaaaaa-2222-3333-4444-555555555555"
     client.post(
         "/api/chat/stream",
-        json={"query": "A question", "conversation_id": conversation_id,
-              "client_request_id": request_id},
+        json={
+            "query": "A question",
+            "conversation_id": conversation_id,
+            "client_request_id": request_id,
+        },
         headers=AUTH,
     ).get_data()
 
     client.delete(f"/api/chat/sessions/{conversation_id}", headers=AUTH)
     client.post(
         "/api/chat/stream",
-        json={"query": "A question", "conversation_id": conversation_id,
-              "client_request_id": request_id},
+        json={
+            "query": "A question",
+            "conversation_id": conversation_id,
+            "client_request_id": request_id,
+        },
         headers=AUTH,
     ).get_data()
 
@@ -512,6 +524,7 @@ def test_a_question_reasked_after_a_delete_is_recorded_rather_than_replayed(clie
 
 
 # ── The in-flight race ───────────────────────────────────────────────────────
+
 
 def test_a_conversation_being_written_to_cannot_be_deleted(app):
     """THE RACE THIS FEATURE WOULD OTHERWISE SHIP.
@@ -606,17 +619,14 @@ def test_an_abandoned_stream_does_not_leave_a_conversation_undeletable(app):
 
     # Nothing was persisted — the write happens at `final` — so a fresh turn
     # under the same id is what gives the delete something to remove.
-    app.config["openai_handler"].stream_response.side_effect = (
-        lambda *a, **k: iter(ANSWER_TOKENS)
-    )
+    app.config["openai_handler"].stream_response.side_effect = lambda *a, **k: iter(ANSWER_TOKENS)
     ask(client, "A question that lands", conversation_id=conversation_id)
 
-    assert client.delete(
-        f"/api/chat/sessions/{conversation_id}", headers=AUTH
-    ).status_code == 200
+    assert client.delete(f"/api/chat/sessions/{conversation_id}", headers=AUTH).status_code == 200
 
 
 # ── Malformed input ──────────────────────────────────────────────────────────
+
 
 @pytest.mark.parametrize("session_id", ["not-a-uuid", "../../etc/passwd", "1", ""])
 def test_a_session_id_that_is_not_a_uuid_is_refused_everywhere(client, session_id):
@@ -642,7 +652,7 @@ def test_every_session_route_requires_authentication(client):
 
 
 def test_a_new_chat_still_leaves_the_conversation_behind_it_in_the_sidebar(client):
-    """"New chat" is a client-side navigation now (Decision 2 of
+    """ "New chat" is a client-side navigation now (Decision 2 of
     docs/per-tab-conversation-deep-linking-plan.md) with no server round trip
     at all — asking a second, unrelated question is the whole of it, and the
     first conversation must still be exactly where it was."""

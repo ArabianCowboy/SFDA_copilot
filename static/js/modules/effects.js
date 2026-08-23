@@ -18,14 +18,14 @@ export const Effects = {
     if (!cards.length) return;
 
     if (prefersReducedMotion()) {
-      cards.forEach(card => card.classList.add(CONFIG.CLASSES.REVEALED));
+      cards.forEach((card) => card.classList.add(CONFIG.CLASSES.REVEALED));
       return;
     }
 
     /* Hide only now that we know this module is running and an observer is
        about to be attached. Authoring the hidden state in CSS meant a failed
        module left every card permanently invisible. */
-    cards.forEach(card => card.classList.add('is-armed'));
+    cards.forEach((card) => card.classList.add('is-armed'));
 
     const observer = new IntersectionObserver(
       (entries, obs) => {
@@ -36,9 +36,9 @@ export const Effects = {
           obs.unobserve(entry.target);
         });
       },
-      { threshold: 0.1, rootMargin: '0px 0px -50px 0px' }
+      { threshold: 0.1, rootMargin: '0px 0px -50px 0px' },
     );
 
-    cards.forEach(card => observer.observe(card));
+    cards.forEach((card) => observer.observe(card));
   },
 };

@@ -75,7 +75,7 @@ Supporting mechanisms, all confirmed in the shipped product:
   Pharmacovigilance, Veterinary Medicines, Biological Products.
 - FAQ entries in the sidebar seed common questions, so a first session often begins
   by clicking rather than typing.
-- Answers stream token-by-token over SSE. Reading happens *while* the answer is
+- Answers stream token-by-token over SSE. Reading happens _while_ the answer is
   still being written, and users scroll back mid-stream to re-read.
 - Users check citations. Provenance is used, not decorative.
 - Profiles carry a first name, family name, optional age, organization,
@@ -182,9 +182,9 @@ The corpus changes on every ingest and any hard figure goes stale at the next on
 Describe coverage by what it covers — the four categories — never by how many
 documents it holds. The count above is evidence for us, not a claim for a reader.
 
-*(The landing page did once say "over 99 SFDA guidelines". It was corrected; the
+_(The landing page did once say "over 99 SFDA guidelines". It was corrected; the
 catalogue now carries a comment at that string saying the omission is deliberate, so
-the next person to write that section does not helpfully add a number back.)*
+the next person to write that section does not helpfully add a number back.)_
 
 ## Product Principles
 

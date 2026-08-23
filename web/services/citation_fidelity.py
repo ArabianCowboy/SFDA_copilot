@@ -38,8 +38,9 @@ always injects a stub.
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +59,7 @@ class _LazyHHEM:
     """
 
     def __init__(self) -> None:
-        self._model = None
+        self._model: Any | None = None
 
     def __call__(self, premise: str, hypothesis: str) -> float:
         if self._model is None:
@@ -77,12 +78,15 @@ class _LazyHHEM:
         )
         try:
             return AutoModelForSequenceClassification.from_pretrained(
-                HHEM_MODEL_ID, trust_remote_code=True, local_files_only=True,
+                HHEM_MODEL_ID,
+                trust_remote_code=True,
+                local_files_only=True,
             )
         except LocalEntryNotFoundError:
             logger.warning("%s is not cached locally; downloading now.", HHEM_MODEL_ID)
             return AutoModelForSequenceClassification.from_pretrained(
-                HHEM_MODEL_ID, trust_remote_code=True,
+                HHEM_MODEL_ID,
+                trust_remote_code=True,
             )
 
 
@@ -113,14 +117,16 @@ class HHEMScorer:
             rather than reloaded per probe.
     """
 
-    def __init__(self, scorer: Optional[Scorer] = None) -> None:
+    def __init__(self, scorer: Scorer | None = None) -> None:
         self._scorer = scorer or _shared_default_scorer()
 
     def score(self, premise: str, hypothesis: str) -> float:
         """Raw factual-consistency probability that *premise* entails *hypothesis*."""
         return float(self._scorer(premise, hypothesis))
 
-    def citation_recall(self, sentence: str, cited_passages: list[str], *, lang: str) -> EntailmentResult:
+    def citation_recall(
+        self, sentence: str, cited_passages: list[str], *, lang: str
+    ) -> EntailmentResult:
         """Does the CONCATENATION of every cited passage entail *sentence*?
 
         ALCE's citation-recall definition: "is every claim in the answer
@@ -169,11 +175,13 @@ class HHEMScorer:
             # to keep the "what does this score mean" question answerable
             # from this method alone.
             premise = "\n".join(remainder)
-            results[index] = EntailmentResult(score=self.score(premise, sentence), confidence=_confidence(lang))
+            results[index] = EntailmentResult(
+                score=self.score(premise, sentence), confidence=_confidence(lang)
+            )
         return results
 
 
-_shared_lazy_hhem: Optional[_LazyHHEM] = None
+_shared_lazy_hhem: _LazyHHEM | None = None
 
 
 def _shared_default_scorer() -> _LazyHHEM:

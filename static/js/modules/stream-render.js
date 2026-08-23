@@ -85,11 +85,17 @@ export class MarkdownStream {
 
   /** Coalesce to at most one flush per animation frame, whatever the token rate. */
   _schedule() {
-    if (this.frame) { this.dirty = true; return; }
+    if (this.frame) {
+      this.dirty = true;
+      return;
+    }
     this.frame = requestAnimationFrame(() => {
       this.frame = 0;
       this._flush();
-      if (this.dirty) { this.dirty = false; this._schedule(); }
+      if (this.dirty) {
+        this.dirty = false;
+        this._schedule();
+      }
     });
   }
 

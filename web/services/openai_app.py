@@ -11,7 +11,8 @@ import json
 import logging
 import os
 import re
-from typing import Any, Dict, Iterator, List, Optional, Tuple, cast
+from collections.abc import Iterator
+from typing import Any, cast
 
 import tiktoken
 from openai import OpenAI
@@ -125,8 +126,8 @@ LANGUAGE_INSTRUCTIONS = {
 
 
 def _history_without_stale_markers(
-    chat_history: Optional[List[dict]],
-) -> List[dict]:
+    chat_history: list[dict] | None,
+) -> list[dict]:
     """Strip citation markers from replayed turns before they reach the model.
 
     Numbering is per-request: `_prepare_context` labels THIS request's passages
@@ -156,7 +157,7 @@ def _history_without_stale_markers(
 class OpenAIHandler:
     """Handles interactions with the OpenAI API for generating responses."""
 
-    def __init__(self, settings: Optional[Dict[str, Any]] = None) -> None:
+    def __init__(self, settings: dict[str, Any] | None = None) -> None:
         """Build a handler, optionally from runtime settings rather than the file.
 
         ``settings`` overrides the config.yaml values for this instance only.
@@ -246,13 +247,16 @@ class OpenAIHandler:
             logger.error(
                 "max_context_results (%s) != search k (%s). Citation indices would point at "
                 "passages the model never received. Clamping context to %s.",
-                self.max_context_results, search_k, min(search_k, self.max_context_results),
+                self.max_context_results,
+                search_k,
+                min(search_k, self.max_context_results),
             )
             self.max_context_results = min(search_k, self.max_context_results)
 
         logger.info(
             "OpenAIHandler initialized with model: %s, max_context_results: %s",
-            self.model, self.max_context_results,
+            self.model,
+            self.max_context_results,
         )
 
         # Bound to the model, here, at construction — which is precisely why a
@@ -327,7 +331,7 @@ class OpenAIHandler:
 
     # ── Prompt construction ────────────────────────────────────────────────
 
-    def _prepare_context(self, search_results: List[dict]) -> str:
+    def _prepare_context(self, search_results: list[dict]) -> str:
         """Format retrieved passages as numbered blocks the model can cite.
 
         Block ``[i]`` here is ``sources[i]`` in the API payload. Keep them
@@ -368,11 +372,11 @@ class OpenAIHandler:
     def _build_messages(
         self,
         query: str,
-        search_results: List[dict],
+        search_results: list[dict],
         category: str = "all",
-        chat_history: Optional[List[dict]] = None,
+        chat_history: list[dict] | None = None,
         lang: str = "en",
-    ) -> List[dict]:
+    ) -> list[dict]:
         """Single source of truth for the prompt, shared by both paths."""
         system_message = self._create_system_message(category, lang)
         context = self._prepare_context(search_results)
@@ -380,14 +384,16 @@ class OpenAIHandler:
 
         history = _history_without_stale_markers(chat_history)
 
-        messages: List[dict] = [{"role": "system", "content": system_message}]
+        messages: list[dict] = [{"role": "system", "content": system_message}]
         messages.extend(history)
         messages.append({"role": "user", "content": user_message})
 
         self._log_token_counts(system_message, history, user_message)
         return messages
 
-    def _log_token_counts(self, system_message: str, chat_history: List[dict], user_message: str) -> None:
+    def _log_token_counts(
+        self, system_message: str, chat_history: list[dict], user_message: str
+    ) -> None:
         system_tokens = len(self.tokenizer.encode(system_message))
         history_tokens = sum(len(self.tokenizer.encode(m["content"])) for m in chat_history)
         query_tokens = len(self.tokenizer.encode(user_message))
@@ -404,9 +410,9 @@ class OpenAIHandler:
     def stream_response(
         self,
         query: str,
-        search_results: List[dict],
+        search_results: list[dict],
         category: str = "all",
-        chat_history: Optional[List[dict]] = None,
+        chat_history: list[dict] | None = None,
         lang: str = "en",
     ) -> Iterator[str]:
         """Yield answer tokens as they arrive from the model."""
@@ -420,7 +426,7 @@ class OpenAIHandler:
         # generator gets GeneratorExit, and closing the stream here releases
         # the upstream HTTP connection instead of leaking it.
         with self.client.chat.completions.create(
-            messages=cast(List[ChatCompletionMessageParam], messages),
+            messages=cast(list[ChatCompletionMessageParam], messages),
             stream=True,
             **self._request_kwargs(self.max_tokens, self.temperature),
         ) as stream:
@@ -434,11 +440,11 @@ class OpenAIHandler:
     def generate_response(
         self,
         query: str,
-        search_results: List[dict],
+        search_results: list[dict],
         category: str = "all",
-        chat_history: Optional[List[dict]] = None,
+        chat_history: list[dict] | None = None,
         lang: str = "en",
-    ) -> Tuple[str, List[str]]:
+    ) -> tuple[str, list[str]]:
         """Blocking variant: collect the stream, then generate follow-ups."""
         if query.lower().strip() == EASTER_EGG_QUERY:
             return EASTER_EGG_RESPONSE, []
@@ -449,7 +455,10 @@ class OpenAIHandler:
             ).strip()
         except Exception:
             logger.error("Error generating OpenAI response", exc_info=True)
-            return "I'm sorry, I encountered an error while generating a response. Please try again.", []
+            return (
+                "I'm sorry, I encountered an error while generating a response. Please try again.",
+                [],
+            )
 
         if answer:
             logger.info("  Actual Output Tokens: %d", len(self.tokenizer.encode(answer)))
@@ -458,11 +467,9 @@ class OpenAIHandler:
 
     def generate_suggestions(
         self, original_query: str, assistant_response: str, lang: str = "en"
-    ) -> List[str]:
+    ) -> list[str]:
         """Generate 2-3 follow-up questions from the exchange."""
-        language_note = (
-            " Write the questions in Arabic." if (lang or "en").lower() == "ar" else ""
-        )
+        language_note = " Write the questions in Arabic." if (lang or "en").lower() == "ar" else ""
         prompt = (
             "You are an AI assistant. Based on the user's original query and the assistant's response, "
             "generate 2-3 concise and relevant follow-up questions that a user might ask next. "
@@ -480,7 +487,9 @@ class OpenAIHandler:
 
         try:
             response = self.client.chat.completions.create(
-                messages=cast(List[ChatCompletionMessageParam], [{"role": "user", "content": prompt}]),
+                messages=cast(
+                    list[ChatCompletionMessageParam], [{"role": "user", "content": prompt}]
+                ),
                 # Suggestions are three short questions, so they get their own
                 # small budget rather than the answer's — but they go through
                 # the same contract, because the model rejects the same

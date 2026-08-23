@@ -6,12 +6,10 @@ search queries with relevant synonyms, improving recall in the hybrid
 search engine.
 """
 
-from typing import Dict, List
-
 # Mapping of core pharmaceutical terms to their synonyms / related phrases.
 # Keys are matched as whole-word patterns in the query; values are appended
 # to the query string to broaden lexical coverage.
-PHARMA_TERMS_EXPANSION: Dict[str, List[str]] = {
+PHARMA_TERMS_EXPANSION: dict[str, list[str]] = {
     "side effects": [
         "adverse events",
         "adverse reactions",

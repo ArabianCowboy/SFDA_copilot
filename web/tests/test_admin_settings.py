@@ -11,14 +11,12 @@ from __future__ import annotations
 import pytest
 
 from web.api.app import create_app
-from web.services.audit import AuditActor
 from web.services.admin_store import InMemoryAdminBackend
+from web.services.audit import AuditActor
 from web.services.settings_service import (
     SettingsService,
     deployed_defaults,
-    validate,
 )
-
 
 ADMIN = {"Authorization": "Bearer fake_admin_token"}
 
@@ -165,6 +163,7 @@ def test_invalid_stored_settings_fall_back_to_the_deployed_defaults():
 def test_a_read_failure_serves_the_deployed_defaults():
     """A settings outage costs an operator their overrides, not every reader
     their answer."""
+
     class Broken:
         def get_settings(self):
             raise RuntimeError("supabase is down")
@@ -186,12 +185,12 @@ def test_a_failed_read_during_an_update_does_not_delete_the_other_overrides():
 
     def flaky():
         reads["n"] += 1
-        if reads["n"] > 1:          # the read inside update()
+        if reads["n"] > 1:  # the read inside update()
             raise RuntimeError("supabase blipped")
         return real_get()
 
     service = SettingsService(lambda: backend)
-    service.snapshot()               # first read succeeds and warms the cache
+    service.snapshot()  # first read succeeds and warms the cache
     backend.get_settings = flaky
     reads["n"] = 1
 
@@ -297,16 +296,12 @@ def test_a_valid_patch_returns_the_new_state(client):
 
 
 def test_a_rejected_patch_is_a_422_with_per_field_codes(client):
-    response = client.put(
-        "/admin/api/settings", json={"max_tokens": 999_999}, headers=ADMIN
-    )
+    response = client.put("/admin/api/settings", json={"max_tokens": 999_999}, headers=ADMIN)
 
     assert response.status_code == 422
     body = response.get_json()
     assert body["error"] == "validation_failed"
-    assert body["errors"] == [
-        {"field": "max_tokens", "code": "above_ceiling", "limit": 16384}
-    ]
+    assert body["errors"] == [{"field": "max_tokens", "code": "above_ceiling", "limit": 16384}]
 
 
 def test_a_non_object_payload_is_rejected(client):
@@ -320,9 +315,7 @@ def test_the_server_sends_codes_not_sentences(client):
     A message composed on the server would be a second translation path, and it
     would be English-only — which PRODUCT.md forbids outright.
     """
-    body = client.put(
-        "/admin/api/settings", json={"model": "nope"}, headers=ADMIN
-    ).get_json()
+    body = client.put("/admin/api/settings", json={"model": "nope"}, headers=ADMIN).get_json()
 
     for error in body["errors"]:
         assert set(error) <= {"field", "code", "limit"}
@@ -335,8 +328,13 @@ def test_every_error_code_has_a_string_in_both_catalogues():
 
     codes = set()
     for value in (
-        "not_allowed", "above_ceiling", "out_of_range", "not_a_number",
-        "not_a_positive_integer", "unknown_setting", "storage_unavailable",
+        "not_allowed",
+        "above_ceiling",
+        "out_of_range",
+        "not_a_number",
+        "not_a_positive_integer",
+        "unknown_setting",
+        "storage_unavailable",
     ):
         codes.add(value)
 
@@ -385,9 +383,9 @@ def test_reasoning_effort_is_only_sent_when_chosen(monkeypatch):
     from web.services.openai_app import OpenAIHandler
 
     unset = OpenAIHandler({"model": "gpt-5.6-luna"})._request_kwargs(100, 0.1)
-    chosen = OpenAIHandler(
-        {"model": "gpt-5.6-luna", "reasoning_effort": "none"}
-    )._request_kwargs(100, 0.1)
+    chosen = OpenAIHandler({"model": "gpt-5.6-luna", "reasoning_effort": "none"})._request_kwargs(
+        100, 0.1
+    )
 
     assert "reasoning_effort" not in unset
     assert chosen["reasoning_effort"] == "none"
@@ -396,27 +394,26 @@ def test_reasoning_effort_is_only_sent_when_chosen(monkeypatch):
 def test_an_effort_level_the_model_does_not_offer_is_refused(service):
     """The levels differ per model — Luna has `none`, Nano's floor is `minimal`.
     A shared list would offer a value the API then rejects."""
-    errors = service.update(
-        {"model": "gpt-5.6-luna", "reasoning_effort": "minimal"}, actor=ACTOR
-    )
+    errors = service.update({"model": "gpt-5.6-luna", "reasoning_effort": "minimal"}, actor=ACTOR)
     assert [e.code for e in errors] == ["not_allowed"]
     assert "none" in errors[0].limit
 
 
 def test_effort_on_a_non_reasoning_model_is_refused(service):
-    errors = service.update(
-        {"model": "gpt-4o-mini", "reasoning_effort": "high"}, actor=ACTOR
-    )
+    errors = service.update({"model": "gpt-4o-mini", "reasoning_effort": "high"}, actor=ACTOR)
     assert [e.code for e in errors] == ["reasoning_not_supported"]
 
 
 def test_switching_away_from_a_reasoning_model_catches_the_stale_effort(service):
     """Another invalid pair assembled from two individually valid values: the
     effort was fine for the old model and is meaningless to the new one."""
-    assert service.update(
-        {"model": "gpt-5.6-luna", "reasoning_effort": "high", "max_tokens": 4096},
-        actor=ACTOR,
-    ) == []
+    assert (
+        service.update(
+            {"model": "gpt-5.6-luna", "reasoning_effort": "high", "max_tokens": 4096},
+            actor=ACTOR,
+        )
+        == []
+    )
 
     errors = service.update({"model": "gpt-4o-mini"}, actor=ACTOR)
     assert [e.code for e in errors] == ["reasoning_not_supported"]

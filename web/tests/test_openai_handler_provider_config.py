@@ -71,14 +71,16 @@ def test_settings_normalization_happens_before_client_construction():
 def test_model_contract_override_is_used_instead_of_the_allowlist_lookup():
     """A harness candidate model, absent from config.yaml's allowed_models,
     must get ITS declared contract, not the conservative default one."""
-    handler = OpenAIHandler({
-        "model": "deepseek-v4-flash",
-        "model_contract": {
-            "token_param": "max_completion_tokens",
-            "supports_temperature": False,
-            "reasoning_efforts": [],
-        },
-    })
+    handler = OpenAIHandler(
+        {
+            "model": "deepseek-v4-flash",
+            "model_contract": {
+                "token_param": "max_completion_tokens",
+                "supports_temperature": False,
+                "reasoning_efforts": [],
+            },
+        }
+    )
     kwargs = handler._request_kwargs(1000, 0.2)
     assert "max_completion_tokens" in kwargs
     assert "max_tokens" not in kwargs

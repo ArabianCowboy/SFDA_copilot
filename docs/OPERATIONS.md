@@ -18,7 +18,7 @@ add it as a sibling section rather than a new file.
 
 **Status:** configured 2026-08-14, **delivery proven the same day.** See
 [Verification](#verification) for what was confirmed and how — including the
-thing that took longest to notice: the `mail.send` log line is *not* the
+thing that took longest to notice: the `mail.send` log line is _not_ the
 evidence, and waiting for it would have left this file saying "unproven"
 indefinitely.
 
@@ -45,9 +45,9 @@ successful send and two rejections. From the project's auth logs:
 ```
 
 **It failed worse than it looks.** GoTrue rolls the account back when the send
-fails, so the reader got no account *and* no email, and the address stayed free.
+fails, so the reader got no account _and_ no email, and the address stayed free.
 The browser surfaced Supabase's raw message — "email rate limit exceeded" —
-which is English-only and phrased as though the *reader* had exceeded a limit.
+which is English-only and phrased as though the _reader_ had exceeded a limit.
 
 ## Root cause
 
@@ -82,18 +82,18 @@ when a custom sender is configured:
 
 ## Configuration
 
-| Setting | Value |
-|---|---|
-| Supabase project | SFDA Copilot — `yjjuudnsnjzhyqllsqrd` (org: ArabianCowboy's Org) |
-| SMTP host | `smtp.resend.com` |
-| Port | `465` (implicit TLS) |
-| Username | `resend` |
-| Password | A Resend API key. Write-only — Supabase does not display it after save. Rotating it means generating a new key in Resend and re-saving here |
-| Sender email | `noreply@sfda-copilot.aifoudahub.com` |
-| Sender name | SFDA Copilot |
-| Minimum interval per user | 60 seconds |
-| GoTrue email limiter | 30/hour (raised automatically — see above) |
-| Resend sending region | `ap-northeast-1` (Tokyo) — inferred from the MX target below |
+| Setting                   | Value                                                                                                                                       |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| Supabase project          | SFDA Copilot — `yjjuudnsnjzhyqllsqrd` (org: ArabianCowboy's Org)                                                                            |
+| SMTP host                 | `smtp.resend.com`                                                                                                                           |
+| Port                      | `465` (implicit TLS)                                                                                                                        |
+| Username                  | `resend`                                                                                                                                    |
+| Password                  | A Resend API key. Write-only — Supabase does not display it after save. Rotating it means generating a new key in Resend and re-saving here |
+| Sender email              | `noreply@sfda-copilot.aifoudahub.com`                                                                                                       |
+| Sender name               | SFDA Copilot                                                                                                                                |
+| Minimum interval per user | 60 seconds                                                                                                                                  |
+| GoTrue email limiter      | 30/hour (raised automatically — see above)                                                                                                  |
+| Resend sending region     | `ap-northeast-1` (Tokyo) — inferred from the MX target below                                                                                |
 
 Everything in this table except the last two rows was reported by the person who
 made the change; the last two were read from the auth log and from public DNS.
@@ -105,12 +105,12 @@ were resolved from a public resolver (8.8.8.8) on 2026-08-14 and are live** —
 these are the values actually serving, not the values that were meant to be
 entered:
 
-| Purpose | Type | Name | Value |
-|---|---|---|---|
-| DKIM | TXT | `resend._domainkey.sfda-copilot.aifoudahub.com` | `p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDIHUJ6/qbnz6o21LqYK5N7E19vcHjs6LNYlPS3P6xsrUvlhGCUKYqkUDVaHdobsAfCpVqQOAUgi/m4LDXVujvB6vIzl8A+eIFaN+PevgQQ/RezSQewUE8DEerBdF9IvQhb6lZ9CDP3YmoY3A71/t7DvR4r8Pall9BUnwTYZxyIrQIDAQAB` |
-| SPF | TXT | `send.sfda-copilot.aifoudahub.com` | `v=spf1 include:amazonses.com ~all` |
-| Bounce/complaint | MX | `send.sfda-copilot.aifoudahub.com` | `10 feedback-smtp.ap-northeast-1.amazonses.com` |
-| DMARC | TXT | `_dmarc.sfda-copilot.aifoudahub.com` | `v=DMARC1; p=none;` |
+| Purpose          | Type | Name                                            | Value                                                                                                                                                                                                                        |
+| ---------------- | ---- | ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| DKIM             | TXT  | `resend._domainkey.sfda-copilot.aifoudahub.com` | `p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDIHUJ6/qbnz6o21LqYK5N7E19vcHjs6LNYlPS3P6xsrUvlhGCUKYqkUDVaHdobsAfCpVqQOAUgi/m4LDXVujvB6vIzl8A+eIFaN+PevgQQ/RezSQewUE8DEerBdF9IvQhb6lZ9CDP3YmoY3A71/t7DvR4r8Pall9BUnwTYZxyIrQIDAQAB` |
+| SPF              | TXT  | `send.sfda-copilot.aifoudahub.com`              | `v=spf1 include:amazonses.com ~all`                                                                                                                                                                                          |
+| Bounce/complaint | MX   | `send.sfda-copilot.aifoudahub.com`              | `10 feedback-smtp.ap-northeast-1.amazonses.com`                                                                                                                                                                              |
+| DMARC            | TXT  | `_dmarc.sfda-copilot.aifoudahub.com`            | `v=DMARC1; p=none;`                                                                                                                                                                                                          |
 
 Two things about this set are worth understanding rather than just recording.
 
@@ -119,7 +119,7 @@ there so they cannot collide with the root domain's own mail — the single most
 common reason domain verification fails is adding these at the apex instead.
 
 **`p=none` means DMARC is monitoring, not enforcing.** A message forging this
-domain is reported, not rejected. That is the correct place to *start* — you
+domain is reported, not rejected. That is the correct place to _start_ — you
 watch before you enforce — but it is not protection, and it should not be
 described as though it were. There is also no `rua=` address, so the aggregate
 reports that `p=none` exists to collect are being sent nowhere. Adding
@@ -139,14 +139,14 @@ reports that `p=none` exists to collect are being sent nowhere. Adding
 **Confirmed — mail is being delivered through Resend.** Three sends, all after
 the 11:17:50Z SMTP change, each verified in the database rather than by eye:
 
-| What | Evidence |
-|---|---|
-| Signup confirmation | `mohifouda@gmail.com` — `confirmation_sent_at = 12:06:22`, then `/verify 303` at 12:06:38 and `email_confirmed_at` set. Sixteen seconds is someone opening a real email and clicking a real link. |
-| Password recovery | `midoxp@gmail.com` — `recovery_sent_at` moved from null (since April 2025) to `16:48:19`. |
+| What                           | Evidence                                                                                                                                                                                                                        |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Signup confirmation            | `mohifouda@gmail.com` — `confirmation_sent_at = 12:06:22`, then `/verify 303` at 12:06:38 and `email_confirmed_at` set. Sixteen seconds is someone opening a real email and clicking a real link.                               |
+| Password recovery              | `midoxp@gmail.com` — `recovery_sent_at` moved from null (since April 2025) to `16:48:19`.                                                                                                                                       |
 | Recovery, completed end to end | `midoxp@yahoo.com` — `recovery_sent_at` set at `16:52:58`, then cleared once the single-use token was spent; `email_confirmed_at` set at `16:53:21` and `last_sign_in_at` at `17:03:47`, both previously null since 2025-11-16. |
 
 **The `mail.send` log line is not the test, and this is the trap.** The only
-`mail.send` in the auth log is still `2026-08-14T01:03:17Z`, from *before* the
+`mail.send` in the auth log is still `2026-08-14T01:03:17Z`, from _before_ the
 SMTP change — it has not appeared once for any of the three sends above.
 Whatever raises that line, custom SMTP does not. An earlier version of this file
 proposed watching for it; anyone who does will conclude delivery is broken while
@@ -162,7 +162,7 @@ select email, created_at, email_confirmed_at, confirmation_sent_at from auth.use
 ```
 
 `confirmation_sent_at` null and the address confirmed 25 ms after the account was
-created is auto-confirmation with no email attempted — a signup that *reads* as a
+created is auto-confirmation with no email attempted — a signup that _reads_ as a
 pass while sending nothing. **Confirmation was re-enabled at 12:05:17Z** (auth log:
 `reloading api with new configuration`, immediately before the 12:06:22 signup
 above), so that hole is closed and `confirmation_sent_at` is now meaningful.
@@ -177,7 +177,7 @@ place that distinguishes **accepted then bounced** from **accepted then ignored*
 its audit action `password_reset_accepted` rather than `sent`.
 
 Email confirmation being on is no longer an open question; the remaining decision
-recorded in `TODO.md` was whether a confirmed address is *required to chat*, and
+recorded in `TODO.md` was whether a confirmed address is _required to chat_, and
 it is — GoTrue refuses to issue a session for an unconfirmed address, so the
 enforcement sits at the session boundary and needs no application code.
 

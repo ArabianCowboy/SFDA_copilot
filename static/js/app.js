@@ -31,7 +31,11 @@ const App = {
   _transcriptSettled: false,
   _settledFor: null,
 
-  async loadProfileWithTimeout(userId, timeoutMs = CONFIG.API_TIMEOUT, retries = CONFIG.RETRY_MAX_ATTEMPTS) {
+  async loadProfileWithTimeout(
+    userId,
+    timeoutMs = CONFIG.API_TIMEOUT,
+    retries = CONFIG.RETRY_MAX_ATTEMPTS,
+  ) {
     let delay = CONFIG.RETRY_DELAY_INITIAL;
 
     for (let attempt = 1; attempt <= retries; attempt++) {
@@ -43,7 +47,7 @@ const App = {
       } catch (error) {
         logError(error, `loadProfileWithTimeout attempt ${attempt}/${retries}`);
         if (attempt < retries) {
-          await new Promise(resolve => setTimeout(resolve, delay));
+          await new Promise((resolve) => setTimeout(resolve, delay));
           delay *= 2;
         } else {
           throw error;
@@ -77,7 +81,7 @@ const App = {
       } catch (error) {
         const retryable = error.status === undefined || error.status >= 500;
         if (!retryable || attempt >= attempts) throw error;
-        await new Promise(resolve => setTimeout(resolve, delayMs));
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
       }
     }
     return null;
@@ -181,8 +185,9 @@ const App = {
        A's conversation titles into reader B's column is an account leak. */
     AppState.set('sidebarOwner', identity);
     AppState.set('sidebarTabSettled', false);
-    Handlers.loadSessions(identity)
-      .catch(error => logError(error, 'settleTranscript.loadSessions'));
+    Handlers.loadSessions(identity).catch((error) =>
+      logError(error, 'settleTranscript.loadSessions'),
+    );
   },
 
   /**
@@ -231,7 +236,7 @@ const App = {
     const epoch = Handlers.transcriptEpoch();
     const id = Route.current();
 
-    if (!id) return;  // "/" — always a new chat. Nothing to hydrate.
+    if (!id) return; // "/" — always a new chat. Nothing to hydrate.
 
     if (!Route.isCommitted()) {
       Route.replace(null);
@@ -313,10 +318,7 @@ const App = {
 
       const authModalEl = DOMCache.get(CONFIG.SELECTORS.AUTH_MODAL);
       if (authModalEl && window.bootstrap?.Modal) {
-        AppState.set(
-          'authModal',
-          window.bootstrap.Modal.getOrCreateInstance(authModalEl)
-        );
+        AppState.set('authModal', window.bootstrap.Modal.getOrCreateInstance(authModalEl));
       }
 
       const sendBtn = DOMCache.get(CONFIG.SELECTORS.SEND_BTN);
@@ -388,8 +390,8 @@ const App = {
         // Independent of everything else in this block — not awaited, so a
         // slow FAQ response no longer holds up the identity check below it.
         Services.getFaqData()
-          .then(faqData => UI.Faq.renderButtons(faqData))
-          .catch(error => {
+          .then((faqData) => UI.Faq.renderButtons(faqData))
+          .catch((error) => {
             logError(error, 'onAuthStateChange.getFaqData');
             UI.Faq.clearButtons();
             ErrorHandler.showToast(I18n.t('faq.loadFailed'), true);
@@ -407,7 +409,7 @@ const App = {
         const dispatchedForUserId = user.id;
 
         this.loadProfileWithTimeout(user.id)
-          .then(profileData => {
+          .then((profileData) => {
             if ((AppState.get('identityCheckId') || 0) !== checkId) return;
             if (!profileData) return;
             AppState.set('userProfile', profileData);
@@ -418,7 +420,7 @@ const App = {
               UI.queueProfileCompletionNotice(dispatchedForUserId);
             }
           })
-          .catch(err => logError(err, 'loadProfileWithTimeout'));
+          .catch((err) => logError(err, 'loadProfileWithTimeout'));
 
         /* Ask the server whether this reader is an administrator, and reveal
            the console link from the answer rather than from anything the page
@@ -445,18 +447,18 @@ const App = {
            `checkId`/`dispatchedForUserId` are the ones captured above, ahead
            of both this and the profile load. */
         this.fetchIdentityWithRetry()
-          .then(identity => {
+          .then((identity) => {
             if ((AppState.get('identityCheckId') || 0) !== checkId) return;
             if (identity && identity.user_id !== dispatchedForUserId) {
               logError(
                 `getIdentity answered for ${identity.user_id}, expected ${dispatchedForUserId}`,
-                'getIdentity.identityMismatch'
+                'getIdentity.identityMismatch',
               );
               return;
             }
             AuthView.renderAdminAffordance(!!identity?.is_admin);
           })
-          .catch(err => {
+          .catch((err) => {
             if ((AppState.get('identityCheckId') || 0) !== checkId) return;
             AuthView.renderAdminAffordance(false);
             /* A disabled account is not a fault — see getIdentity's own
@@ -508,7 +510,9 @@ const App = {
          means expired, already used, or forged — and the form must say so rather
          than accept a password it can never save. */
       try {
-        const { data: { session } } = await Services.supabase.auth.getSession();
+        const {
+          data: { session },
+        } = await Services.supabase.auth.getSession();
         Handlers.setRecoveryReady(!!session?.user);
       } catch (error) {
         logError(error, 'App.init.recoverySessionCheck');
@@ -519,7 +523,10 @@ const App = {
     }
 
     try {
-      const { data: { session: initialSession }, error: sessionError } = await Services.supabase.auth.getSession();
+      const {
+        data: { session: initialSession },
+        error: sessionError,
+      } = await Services.supabase.auth.getSession();
 
       if (sessionError) {
         logError(sessionError, 'App.init.initialSessionCheck');

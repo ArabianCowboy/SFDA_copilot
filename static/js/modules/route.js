@@ -54,7 +54,8 @@ export const Route = {
   enter(id) {
     window.history.replaceState(
       { ...window.history.state, convId: id, committed: false },
-      '', pathFor(id),
+      '',
+      pathFor(id),
     );
   },
 
@@ -69,7 +70,8 @@ export const Route = {
   replace(id) {
     window.history.replaceState(
       { ...window.history.state, convId: id || null, committed: true },
-      '', pathFor(id),
+      '',
+      pathFor(id),
     );
   },
 
@@ -99,7 +101,8 @@ export const Route = {
     if (!id) return;
     window.history.replaceState(
       { ...window.history.state, convId: id, committed: true },
-      '', window.location.pathname + window.location.search,
+      '',
+      window.location.pathname + window.location.search,
     );
   },
 

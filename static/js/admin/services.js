@@ -97,7 +97,10 @@ export function createAdminServices(getToken) {
 
     if (!response.ok) {
       throw new AdminRequestError(
-        response.status, payload?.error, payload?.message, payload?.errors,
+        response.status,
+        payload?.error,
+        payload?.message,
+        payload?.errors,
       );
     }
     return payload;

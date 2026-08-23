@@ -22,7 +22,7 @@ def sse(event: str, data: dict[str, Any]) -> bytes:
     reproduce because it encodes on the way out.
     """
     payload = json.dumps(data, ensure_ascii=False, separators=(",", ":"))
-    return f"event: {event}\ndata: {payload}\n\n".encode("utf-8")
+    return f"event: {event}\ndata: {payload}\n\n".encode()
 
 
 def ping() -> bytes:

@@ -13,7 +13,6 @@ searched and had nothing to say.
 
 from __future__ import annotations
 
-from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import numpy as np
@@ -38,6 +37,7 @@ def frame(rows: int = 3) -> pd.DataFrame:
 
 # ── Semantic ────────────────────────────────────────────────────────────────
 
+
 def test_a_failing_faiss_index_raises_rather_than_returning_nothing():
     index = MagicMock()
     index.ntotal = 3
@@ -50,6 +50,7 @@ def test_a_failing_faiss_index_raises_rather_than_returning_nothing():
 
 
 # ── Lexical ─────────────────────────────────────────────────────────────────
+
 
 def test_a_failing_vectorizer_raises_rather_than_returning_nothing():
     vectorizer = MagicMock()
@@ -79,6 +80,7 @@ def test_an_empty_category_is_still_a_legitimate_empty_result():
 
 # ── Translation ─────────────────────────────────────────────────────────────
 
+
 def test_a_translation_outage_raises_rather_than_querying_in_arabic():
     """Falling back to the untranslated query is not a graceful degradation.
 
@@ -103,9 +105,7 @@ def test_an_english_query_never_reaches_the_translator():
 
     processor = QueryProcessor(embedding_client=MagicMock(), translation_client=client)
 
-    assert processor.translate_query("registration requirements") == (
-        "registration requirements"
-    )
+    assert processor.translate_query("registration requirements") == ("registration requirements")
 
 
 def test_no_translation_client_leaves_the_query_untouched():
@@ -116,6 +116,7 @@ def test_no_translation_client_leaves_the_query_untouched():
 
 # ── The property all of the above exist to protect ──────────────────────────
 
+
 def test_a_failure_is_distinguishable_from_an_empty_result():
     """Both layers now signal the difference the routes depend on."""
     index = MagicMock()
@@ -123,9 +124,12 @@ def test_a_failure_is_distinguishable_from_an_empty_result():
     index.search.return_value = (np.array([[]]), np.array([[]]))
 
     # A search that genuinely matched nothing still returns an empty list...
-    assert SemanticSearcher(index, frame()).search(
-        np.zeros((1, 8), dtype="float32"), category="all", k=3
-    ) == []
+    assert (
+        SemanticSearcher(index, frame()).search(
+            np.zeros((1, 8), dtype="float32"), category="all", k=3
+        )
+        == []
+    )
 
     # ...while a broken one raises.
     index.search.side_effect = RuntimeError("boom")

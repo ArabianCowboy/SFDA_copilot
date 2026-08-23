@@ -37,6 +37,9 @@ from typing import Any
 
 import numpy as np
 
+from web.services.lexical_searcher import LexicalSearcher
+from web.services.query_processor import QueryProcessor
+from web.services.result_combiner import ResultCombiner, SearchResult, apply_relevance_floor
 from web.services.search_exceptions import (
     DataLoadError,
     EmbeddingError,
@@ -44,10 +47,7 @@ from web.services.search_exceptions import (
     SearchEngineNotInitializedError,
 )
 from web.services.search_index import SearchIndex, SearchIndexConfig
-from web.services.query_processor import QueryProcessor
 from web.services.semantic_searcher import SemanticSearcher
-from web.services.lexical_searcher import LexicalSearcher
-from web.services.result_combiner import ResultCombiner, SearchResult, apply_relevance_floor
 from web.utils.config_loader import config, project_root
 from web.utils.embedding_helpers import get_embedding_client
 
@@ -57,6 +57,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # SearchEngine configuration
 # ---------------------------------------------------------------------------
+
 
 @dataclass(frozen=True)
 class SearchEngineConfig:
@@ -96,9 +97,7 @@ class SearchEngineConfig:
             min_score = float(config.get("search_engine", "min_score", 0.0))
             min_ratio = float(config.get("search_engine", "min_score_ratio", 0.0))
         except Exception as exc:
-            raise SearchEngineError(
-                f"Failed to read search engine config: {exc}"
-            ) from exc
+            raise SearchEngineError(f"Failed to read search engine config: {exc}") from exc
 
         if not np.isclose(sem_w + lex_w, 1.0):
             logger.warning(
@@ -115,7 +114,9 @@ class SearchEngineConfig:
                 logger.warning(
                     "search_engine.%s = %s is outside [0, 1]; clamping. Scores are "
                     "cosine blends in [0,1], so this value would have filtered "
-                    "everything or nothing.", name, value,
+                    "everything or nothing.",
+                    name,
+                    value,
                 )
         min_score = min(max(min_score, 0.0), 1.0)
         min_ratio = min(max(min_ratio, 0.0), 1.0)
@@ -148,6 +149,7 @@ CATEGORY_MAP: dict[str, str] = {
 # ---------------------------------------------------------------------------
 # SearchEngine
 # ---------------------------------------------------------------------------
+
 
 class SearchEngine:
     """High-level hybrid search engine.
@@ -264,8 +266,7 @@ class SearchEngine:
         """
         if not self._ensure_initialized():
             raise SearchEngineNotInitializedError(
-                "Search index could not be loaded; refusing to report this as "
-                "an empty result set."
+                "Search index could not be loaded; refusing to report this as an empty result set."
             )
 
         assert (
@@ -296,18 +297,20 @@ class SearchEngine:
 
             # 3. Embed the query
             query_embedding = self._query_processor.get_embedding(retrieval_query)
-            query_embedding_faiss = (
-                query_embedding.reshape(1, -1).astype("float32")
-            )
+            query_embedding_faiss = query_embedding.reshape(1, -1).astype("float32")
 
             # 4. Semantic search
             sem_results = self._semantic_searcher.search(
-                query_embedding_faiss, category=category, k=sem_k,
+                query_embedding_faiss,
+                category=category,
+                k=sem_k,
             )
 
             # 5. Lexical search
             lex_results = self._lexical_searcher.search(
-                lexical_query, category=category, k=lex_k,
+                lexical_query,
+                category=category,
+                k=lex_k,
             )
 
             # 6. Combine, score, rank
@@ -326,7 +329,9 @@ class SearchEngine:
             #    that fork keeps them aligned structurally rather than by
             #    remembering to do it twice.
             results = apply_relevance_floor(
-                combined, self._cfg.min_score, self._cfg.min_score_ratio,
+                combined,
+                self._cfg.min_score,
+                self._cfg.min_score_ratio,
             )
 
             if combined and not results:
@@ -335,7 +340,10 @@ class SearchEngine:
                     "%.4f < min_score %.4f). The model will be told no relevant "
                     "information was found and will refuse. If this fires on questions "
                     "the corpus can answer, min_score is too high.",
-                    len(combined), query[:60], combined[0].score, self._cfg.min_score,
+                    len(combined),
+                    query[:60],
+                    combined[0].score,
+                    self._cfg.min_score,
                 )
 
             logger.info("Search complete — %d results returned.", len(results))
@@ -402,7 +410,7 @@ class SearchEngine:
 
         try:
             self._index.load()
-        except (DataLoadError, SearchEngineError) as exc:
+        except (DataLoadError, SearchEngineError):
             logger.exception("Search index initialization failed")
             return False
 
@@ -469,7 +477,8 @@ class SearchEngine:
         try:
             client = get_embedding_client(self._cfg.embedding_type)
             logger.info(
-                "Embedding client: %s", type(client).__name__,
+                "Embedding client: %s",
+                type(client).__name__,
             )
             return client
         except Exception as exc:
@@ -477,8 +486,7 @@ class SearchEngine:
             # to build it. Silently switching providers can return plausible
             # but incorrect search results, so initialization must fail loud.
             raise SearchEngineError(
-                f"Failed to initialize '{self._cfg.embedding_type}' "
-                "embedding provider."
+                f"Failed to initialize '{self._cfg.embedding_type}' embedding provider."
             ) from exc
 
 

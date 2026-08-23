@@ -42,6 +42,9 @@ from typing import Any
 import faiss
 import pandas as pd
 
+# datetime.UTC is Python 3.11+; the VPS production floor is 3.10.
+UTC = timezone.utc
+
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -90,13 +93,14 @@ class BuildValidationError(Exception):
 # Build identity / paths
 # ---------------------------------------------------------------------------
 
+
 def new_build_id() -> str:
     """Return a sortable, unique, filesystem-safe build identifier.
 
     Uses a compact ISO-8601-like timestamp (UTC, microsecond precision,
     no ``:`` characters since those are illegal in Windows filenames).
     """
-    return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+    return datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
 
 
 def builds_root(processed_data_dir: Path) -> Path:
@@ -166,6 +170,7 @@ def list_build_ids(processed_data_dir: Path) -> list[str]:
 # Manifest I/O
 # ---------------------------------------------------------------------------
 
+
 def write_manifest(build_dir: Path, manifest: dict[str, Any]) -> Path:
     """Serialize *manifest* to ``manifest.json`` inside *build_dir*."""
     path = build_dir / MANIFEST_NAME
@@ -177,13 +182,14 @@ def write_manifest(build_dir: Path, manifest: dict[str, Any]) -> Path:
 def load_manifest(build_dir: Path) -> dict[str, Any]:
     """Read and parse ``manifest.json`` from *build_dir*."""
     path = build_dir / MANIFEST_NAME
-    with open(path, "r", encoding="utf-8") as fh:
+    with open(path, encoding="utf-8") as fh:
         return json.load(fh)
 
 
 # ---------------------------------------------------------------------------
 # Embedding client introspection
 # ---------------------------------------------------------------------------
+
 
 def extract_embedding_model_name(client: Any) -> str | None:
     """Best-effort extraction of a human-readable model name from *client*.
@@ -204,6 +210,7 @@ def extract_embedding_model_name(client: Any) -> str | None:
 # ---------------------------------------------------------------------------
 # Validation
 # ---------------------------------------------------------------------------
+
 
 def rows_consistent(df_rows: int, tfidf_rows: int, faiss_rows: int) -> bool:
     """Shared predicate for "do these three row counts agree".
@@ -324,6 +331,7 @@ def validate_build_dir(build_dir: Path) -> BuildValidationResult:
 # Activation (the only step that changes what's "live")
 # ---------------------------------------------------------------------------
 
+
 def activate_build(processed_data_dir: Path, build_id: str) -> None:
     """Atomically flip the active-build pointer to *build_id*.
 
@@ -340,8 +348,7 @@ def activate_build(processed_data_dir: Path, build_id: str) -> None:
     build_dir = build_dir_for(processed_data_dir, build_id)
     if not build_dir.is_dir():
         raise BuildValidationError(
-            f"Refusing to activate build '{build_id}': directory {build_dir} "
-            "does not exist."
+            f"Refusing to activate build '{build_id}': directory {build_dir} does not exist."
         )
 
     processed_data_dir.mkdir(parents=True, exist_ok=True)
@@ -355,6 +362,7 @@ def activate_build(processed_data_dir: Path, build_id: str) -> None:
 # ---------------------------------------------------------------------------
 # Operator CLI — inspect builds and roll back without hand-editing files
 # ---------------------------------------------------------------------------
+
 
 def _cli_list(processed_data_dir: Path) -> None:
     active = read_active_build_id(processed_data_dir)
@@ -374,7 +382,7 @@ def _cli_list(processed_data_dir: Path) -> None:
                 f"skipped={manifest.get('documents_skipped', '?')} "
                 f"model={manifest.get('embedding_model_name', '?')}"
             )
-        except Exception as exc:  # noqa: BLE001 - best-effort display only
+        except Exception as exc:
             summary = f"(manifest unreadable: {exc})"
         print(f"{build_id}{marker}  {summary}")
 
@@ -434,7 +442,7 @@ def _cli_diff(processed_data_dir: Path, build_id_a: str, build_id_b: str) -> int
     try:
         manifest_a = load_manifest(dir_a)
         manifest_b = load_manifest(dir_b)
-    except Exception as exc:  # noqa: BLE001 - surfaced directly to the operator
+    except Exception as exc:
         print(f"ERROR: could not read one of the manifests: {exc}")
         return 1
 
@@ -469,7 +477,7 @@ def _cli_diff(processed_data_dir: Path, build_id_a: str, build_id_b: str) -> int
     try:
         docs_a = _load_build_document_chunk_counts(dir_a)
         docs_b = _load_build_document_chunk_counts(dir_b)
-    except Exception as exc:  # noqa: BLE001 - surfaced directly to the operator
+    except Exception as exc:
         print(f"\nERROR: could not read chunk data for document-level diff: {exc}")
         return 1
 
@@ -554,7 +562,9 @@ def main() -> int:
         _cli_list(processed_data_dir)
         return 0
     if args.command == "activate":
-        return _cli_activate(processed_data_dir, args.build_id, skip_validation=args.skip_validation)
+        return _cli_activate(
+            processed_data_dir, args.build_id, skip_validation=args.skip_validation
+        )
     if args.command == "diff":
         return _cli_diff(processed_data_dir, args.build_a, args.build_b)
     return 1

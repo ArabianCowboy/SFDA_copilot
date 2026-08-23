@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 # Public data model
 # ---------------------------------------------------------------------------
 
+
 @dataclass(frozen=True)
 class SearchResult:
     """A single, final search result returned to the caller.
@@ -50,6 +51,7 @@ class SearchResult:
 # ---------------------------------------------------------------------------
 # ResultCombiner
 # ---------------------------------------------------------------------------
+
 
 class ResultCombiner:
     """Merge, score, and rank candidates from semantic and lexical search.
@@ -121,9 +123,7 @@ class ResultCombiner:
         Returns:
             A sorted list of :class:`SearchResult` objects.
         """
-        union_indices: set[int] = {
-            r["index"] for r in semantic_results
-        } | {
+        union_indices: set[int] = {r["index"] for r in semantic_results} | {
             r["index"] for r in lexical_results
         }
 
@@ -143,10 +143,7 @@ class ResultCombiner:
             try:
                 sem_score = self._compute_semantic_score(idx, q_emb)
                 lex_score = lexical_scores.get(idx, 0.0)
-                hybrid = (
-                    self._semantic_weight * sem_score
-                    + self._lexical_weight * lex_score
-                )
+                hybrid = self._semantic_weight * sem_score + self._lexical_weight * lex_score
 
                 # --- Build SearchResult ---
                 if idx < 0 or idx >= len(self._df):
@@ -158,7 +155,10 @@ class ResultCombiner:
                 # --- Heuristic penalty ---
                 doc_name: str = chunk.get("document", "")
                 boosted_score, penalty = self._apply_penalty_for_chunk(
-                    doc_name, hybrid, is_reg_query, asks_establishment,
+                    doc_name,
+                    hybrid,
+                    is_reg_query,
+                    asks_establishment,
                 )
 
                 page_val = chunk.get("page")
@@ -187,7 +187,9 @@ class ResultCombiner:
                 )
             except Exception as exc:
                 logger.exception(
-                    "Error combining result for index %d: %s", idx, exc,
+                    "Error combining result for index %d: %s",
+                    idx,
+                    exc,
                 )
 
         final_results.sort(key=lambda r: r.score, reverse=True)
@@ -203,7 +205,9 @@ class ResultCombiner:
     # ------------------------------------------------------------------
 
     def _compute_lexical_scores(
-        self, indices: set[int], lexical_query: str,
+        self,
+        indices: set[int],
+        lexical_query: str,
     ) -> dict[int, float]:
         """Compute exact TF-IDF cosine similarity for every index in *indices*."""
         idx_list = list(indices)
@@ -212,7 +216,7 @@ class ResultCombiner:
         query_vec = self._tfidf_vectorizer.transform([lexical_query])
         candidate_matrix = self._tfidf_matrix[idx_list]
         sims = cosine_similarity(query_vec, candidate_matrix).flatten()
-        return {idx: float(sim) for idx, sim in zip(idx_list, sims)}
+        return {idx: float(sim) for idx, sim in zip(idx_list, sims, strict=True)}
 
     def _compute_semantic_score(self, idx: int, query_vec: np.ndarray) -> float:
         """Reconstruct chunk vector from FAISS and compute cosine similarity."""
@@ -232,13 +236,24 @@ class ResultCombiner:
         low = query_text.lower()
         is_registration = any(
             w in low
-            for w in ("registration", "register", "submission", "dossier",
-                       "marketing authorization")
+            for w in (
+                "registration",
+                "register",
+                "submission",
+                "dossier",
+                "marketing authorization",
+            )
         )
         asks_establishment = any(
             w in low
-            for w in ("license", "licensing", "warehouse", "manufacturer",
-                       "establishment", "scientific office")
+            for w in (
+                "license",
+                "licensing",
+                "warehouse",
+                "manufacturer",
+                "establishment",
+                "scientific office",
+            )
         )
         return is_registration, asks_establishment
 
@@ -263,8 +278,7 @@ class ResultCombiner:
         is_license_doc = any(w in low_name for w in ("license", "licensing"))
         is_establishment_doc = any(
             w in low_name
-            for w in ("warehouse", "manufacturer", "clinical_trials_centers",
-                       "scientific_office")
+            for w in ("warehouse", "manufacturer", "clinical_trials_centers", "scientific_office")
         )
         if is_license_doc or is_establishment_doc:
             return hybrid_score * 0.80, "establishment_license_penalty"
@@ -274,6 +288,7 @@ class ResultCombiner:
 # ---------------------------------------------------------------------------
 # Relevance floor
 # ---------------------------------------------------------------------------
+
 
 def apply_relevance_floor(
     results: list[SearchResult],
@@ -323,7 +338,10 @@ def apply_relevance_floor(
     if len(kept) < len(results):
         logger.debug(
             "Relevance floor kept %d/%d results (cutoff %.4f, top %.4f).",
-            len(kept), len(results), cutoff, results[0].score,
+            len(kept),
+            len(results),
+            cutoff,
+            results[0].score,
         )
 
     return kept

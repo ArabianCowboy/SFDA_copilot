@@ -1,0 +1,6 @@
+data/
+web/processed_data/
+node_modules/
+.venv/
+web/api/.venv/
+.impeccable/

@@ -32,7 +32,7 @@ independently reviewed post-implementation (§14). See §14 for the one real dev
 
 **How this document was built — three rounds, each cross-checked and then folded in.**
 
-*Round 1 — functional plan.* Two independent planning passes were run cold against this repo —
+_Round 1 — functional plan._ Two independent planning passes were run cold against this repo —
 `opencode-delegate` (GPT-5.6 Luna, `xhigh`) for an implementation plan, `agy-delegate` (Gemini 3.7
 Flash, `high`) for community-practice research plus an independent codebase audit — alongside
 Context7 documentation lookups (`/alisaifee/flask-limiter`, `/postgrest/postgrest`). Both outputs
@@ -40,14 +40,14 @@ were reviewed against the actual source, reconciled, and merged with seven open 
 with the project owner. The two source documents this produced
 (`pagination-plan-opencode.md`, `pagination-research-agy.md`) were folded in here and removed.
 
-*Round 2 — visual/interaction design (§2).* `agy-delegate` researched how leading products style
+_Round 2 — visual/interaction design (§2)._ `agy-delegate` researched how leading products style
 dense-table pagers and produced a first concrete CSS/DOM spec grounded in this project's own
 design tokens; `opencode-delegate` (Luna) then critically re-audited that spec against the actual
 current source and corrected twelve issues (detailed in §2, summarized in §13). The two documents
 this produced (`pagination-ux-research-agy.md`, `pagination-ux-design-opencode.md`) were likewise
 folded in and removed.
 
-*Round 3 — audit.* `agy-delegate` audited the fully-merged document for internal consistency,
+_Round 3 — audit._ `agy-delegate` audited the fully-merged document for internal consistency,
 completeness, and continued technical accuracy, catching three real should-fix issues (a SQL
 escape-character gap, a live-backend `total` edge case in the boundary-drift logic, and a CSS
 auto-margin conflict introduced by Round 2's own DOM-order fix) plus stale cross-references —
@@ -69,17 +69,17 @@ truncation**, the actual severity, since a partial page looks identical to a com
 
 ## [HISTORICAL] 0. Verified against the current source (not taken on either report's word)
 
-| Claim | File:Line | Status |
-|---|---|---|
-| `ORDER BY m.created_at desc` has no tie-breaker | `supabase/migrations/20260814100500_user_management.sql:50` | ✅ confirmed |
-| `services.js`'s `users()` already defaults/serializes `limit=50, offset=0`; the frontend just never varies them | `static/js/admin/services.js` | ✅ confirmed (OpenCode's reading, more precise than the original TODO wording) |
-| Truncation notice is `${users.length} / ${total}` as a bare paragraph | `static/js/admin/ui.js:566-571` | ✅ confirmed |
-| Server clamps `limit ∈ [1,200]`, `offset ≥ 0` | `web/api/admin.py:246-247` | ✅ confirmed |
-| RPC signature is `p_limit int`, `p_offset int` (Postgres `int4`, 32-bit) | `supabase/migrations/20260814100500_user_management.sql:14-17` | ✅ confirmed |
-| CTE computes `count(*)` over the full matched set on every call | same file:35-52 | ✅ confirmed |
-| RPC execute revoked from `anon`/`authenticated`/`public` | same file:55-56 | ✅ confirmed |
-| `admin_bp` rate-limited at 60/min | `web/api/app.py:1104` | ✅ confirmed |
-| **The identical limit/offset clamping block is copy-pasted verbatim** in `/admin/api/users` (`admin.py:246-247`) **and** `/admin/api/audit` (`admin.py:747-748`) | `web/api/admin.py` | ✅ new finding — neither delegate was scoped to look at `/api/audit`; extract a shared helper while this is being touched (Decision #7) |
+| Claim                                                                                                                                                            | File:Line                                                      | Status                                                                                                                                  |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `ORDER BY m.created_at desc` has no tie-breaker                                                                                                                  | `supabase/migrations/20260814100500_user_management.sql:50`    | ✅ confirmed                                                                                                                            |
+| `services.js`'s `users()` already defaults/serializes `limit=50, offset=0`; the frontend just never varies them                                                  | `static/js/admin/services.js`                                  | ✅ confirmed (OpenCode's reading, more precise than the original TODO wording)                                                          |
+| Truncation notice is `${users.length} / ${total}` as a bare paragraph                                                                                            | `static/js/admin/ui.js:566-571`                                | ✅ confirmed                                                                                                                            |
+| Server clamps `limit ∈ [1,200]`, `offset ≥ 0`                                                                                                                    | `web/api/admin.py:246-247`                                     | ✅ confirmed                                                                                                                            |
+| RPC signature is `p_limit int`, `p_offset int` (Postgres `int4`, 32-bit)                                                                                         | `supabase/migrations/20260814100500_user_management.sql:14-17` | ✅ confirmed                                                                                                                            |
+| CTE computes `count(*)` over the full matched set on every call                                                                                                  | same file:35-52                                                | ✅ confirmed                                                                                                                            |
+| RPC execute revoked from `anon`/`authenticated`/`public`                                                                                                         | same file:55-56                                                | ✅ confirmed                                                                                                                            |
+| `admin_bp` rate-limited at 60/min                                                                                                                                | `web/api/app.py:1104`                                          | ✅ confirmed                                                                                                                            |
+| **The identical limit/offset clamping block is copy-pasted verbatim** in `/admin/api/users` (`admin.py:246-247`) **and** `/admin/api/audit` (`admin.py:747-748`) | `web/api/admin.py`                                             | ✅ new finding — neither delegate was scoped to look at `/api/audit`; extract a shared helper while this is being touched (Decision #7) |
 
 ---
 
@@ -92,12 +92,12 @@ offsets against the dataset's snapshot at query time. If a row is inserted while
 sits on page 1, the old 50th row shifts to position 51 and reappears on page 2 (duplicate). If a
 row is deleted, everything downstream shifts up and a row is skipped. This is mathematically
 inevitable with offset pagination and does not need to be "fixed" — it needs a tie-breaker so
-it's at least *deterministic* (see below), and to be named as a known, accepted characteristic
+it's at least _deterministic_ (see below), and to be named as a known, accepted characteristic
 rather than a bug.
 
 **OFFSET performance at scale.** Postgres doesn't jump to row N — it scans, sorts, and discards
 the first N tuples, cost `O(N+M)`. The current RPC's CTE already computes `count(*)` over the
-full matched set on *every* call regardless of `limit`/`offset`, so the count, not the offset
+full matched set on _every_ call regardless of `limit`/`offset`, so the count, not the offset
 walk, is the actual cost driver here.
 
 **Keyset/cursor pagination — considered and rejected for this surface.** Keyset pagination
@@ -116,13 +116,13 @@ existing code nor either plan started with:** `ORDER BY m.created_at DESC, m.id 
 non-deterministic ordering across page boundaries. One-line SQL change, ships in the same
 migration as the trigram index (§7).
 
-| Data volume | Query mode (current, no index) | Latency | Impact on debounced search |
-|---|---|---|---|
-| 1 – 1,000 rows | Seq scan (RAM cache) | < 2 ms | None |
-| 1,000 – 20,000 | Seq scan (disk/RAM) | 5 – 50 ms | Minor CPU increase |
-| 20,000 – 100,000 | Seq scan (heavy CPU) | 50 – 300 ms | Stall on fast typing |
-| 100,000+ | Seq scan (I/O bound) | > 500 ms – seconds | Connection exhaustion, 503s |
-| *Any volume, with `pg_trgm` GIN* | Bitmap index scan | < 5 ms | Stable, scalable |
+| Data volume                      | Query mode (current, no index) | Latency            | Impact on debounced search  |
+| -------------------------------- | ------------------------------ | ------------------ | --------------------------- |
+| 1 – 1,000 rows                   | Seq scan (RAM cache)           | < 2 ms             | None                        |
+| 1,000 – 20,000                   | Seq scan (disk/RAM)            | 5 – 50 ms          | Minor CPU increase          |
+| 20,000 – 100,000                 | Seq scan (heavy CPU)           | 50 – 300 ms        | Stall on fast typing        |
+| 100,000+                         | Seq scan (I/O bound)           | > 500 ms – seconds | Connection exhaustion, 503s |
+| _Any volume, with `pg_trgm` GIN_ | Bitmap index scan              | < 5 ms             | Stable, scalable            |
 
 ---
 
@@ -130,7 +130,7 @@ migration as the trigram index (§7).
 
 **How this section was built — a third independent pass, this time on the visual design itself.**
 After the functional plan (§0–§1, §3–§12) was locked, a further two-stage pipeline refined its
-*visual and interaction* design specifically: `agy-delegate` (Gemini 3.7 Flash, high) researched
+_visual and interaction_ design specifically: `agy-delegate` (Gemini 3.7 Flash, high) researched
 how dense-table pagers are styled in leading products (Linear, Stripe Dashboard, Supabase Studio,
 GitHub, Vercel) and produced a first concrete CSS + DOM-builder spec grounded in this project's
 own design tokens; `opencode-delegate` (GPT-5.6 Luna, xhigh) then critically re-audited that spec
@@ -142,6 +142,7 @@ the corrected, thrice-verified result.
 
 **What the second design pass caught that the first missed** (worth recording, same as the
 functional plan's own cross-check note in §13):
+
 1. **A real correctness bug.** The first draft's DOM builder assigned a translated string via
    `button.innerHTML = ...I18n.t(...)...` — piping translated text through `innerHTML`, directly
    contradicting this project's own established rule (translated values go through DOM nodes /
@@ -150,7 +151,7 @@ functional plan's own cross-check note in §13):
    `iconElement()` helper (which only ever parses static, translation-free icon markup) for the
    icon, and a separate `textContent`-only node for the label.
 2. **The first draft's own DOM order contradicted this document's already-locked order.** It
-   appended the page-size group *before* the previous/status/next group; this document specifies
+   appended the page-size group _before_ the previous/status/next group; this document specifies
    previous → status → next → page-size (§2 above, unchanged). Corrected to match.
 3. **Wrong `aria-controls` target** (`people-list` — doesn't exist; the real table id is
    `people-table`, confirmed against `static/js/admin/ui.js`).
@@ -165,11 +166,11 @@ functional plan's own cross-check note in §13):
    below) — a standard perceived-performance technique the first pass didn't include.
 6. **The page-size select was disabled while loading**, inconsistent with this document's own
    already-locked principle (§3–§5: the search input stays interactive during a request because
-   the sequence-token guard makes the *latest* intent authoritative). Corrected to leave it
+   the sequence-token guard makes the _latest_ intent authoritative). Corrected to leave it
    enabled — the same reasoning applies to page-size changes as to search edits.
 7. Five smaller corrections: missing `.form-select` class (breaks the existing RTL select-chevron
-   contract), the Next-button boundary check used the wrong variable (`count`, the *displayed* row
-   number, instead of `limit`, the *committed* page size — this document's §3 state model already
+   contract), the Next-button boundary check used the wrong variable (`count`, the _displayed_ row
+   number, instead of `limit`, the _committed_ page size — this document's §3 state model already
    specifies `limit` correctly; the first visual draft's JS didn't match it), the old row-locking
    during loading (`pointer-events: none`) contradicted §5's "old rows may remain openable during
    debounce," a `.admin-table-wrapper` element the CSS depends on doesn't exist yet in the current
@@ -195,14 +196,14 @@ table id), and `aria-busy` reflecting the in-flight state. Native `<button type=
 elements throughout (no implicit form submission), native `disabled` (not just `aria-disabled`).
 
 **Why Next/Previous over the alternatives** (unchanged from the original functional pass):
-*infinite scroll* hides the boundary and complicates keyboard/screen-reader navigation; *load
-more* keeps growing the DOM and gives no way back; *Next/Previous* keeps the table dense and
+_infinite scroll_ hides the boundary and complicates keyboard/screen-reader navigation; _load
+more_ keeps growing the DOM and gives no way back; _Next/Previous_ keeps the table dense and
 stable, makes "more records exist" explicit, and maps directly onto the server's `limit`/`offset`
 contract — matching PostgREST's own `Content-Range` convention (confirmed via Context7, see intro).
 
 **Range display.** Rendered for every non-empty result, including a complete one-page result
 (`Showing 1-4 of 4`, making completeness explicit). Empty result: keep `No accounts found.`,
-render no pager. Computed from the *committed* response: `start = offset + 1`,
+render no pager. Computed from the _committed_ response: `start = offset + 1`,
 `end = offset + count` (the actual row count returned), `total = response.total` — never
 `offset + limit`, which is an off-by-one bug on the final page.
 
@@ -276,7 +277,7 @@ work (§12 step 4), not a pre-existing element being reused.
 }
 
 .admin-table-wrapper.is-busy-visual::after {
-  content: "";
+  content: '';
   position: absolute;
   inset-block-start: 0;
   inset-inline: 0;
@@ -289,9 +290,18 @@ work (§12 step 4), not a pre-existing element being reused.
 }
 
 @keyframes adminPagerPulse {
-  0% { transform: scaleX(0.1); opacity: 0.4; }
-  50% { transform: scaleX(0.8); opacity: 1; }
-  100% { transform: scaleX(1); opacity: 0; }
+  0% {
+    transform: scaleX(0.1);
+    opacity: 0.4;
+  }
+  50% {
+    transform: scaleX(0.8);
+    opacity: 1;
+  }
+  100% {
+    transform: scaleX(1);
+    opacity: 0;
+  }
 }
 
 .admin-pager {
@@ -400,8 +410,9 @@ work (§12 step 4), not a pre-existing element being reused.
 
 .admin-pager-btn .icon {
   color: var(--fg-muted);
-  transition: color var(--duration-s) var(--ease-soft),
-              transform var(--duration-s) var(--ease-soft);
+  transition:
+    color var(--duration-s) var(--ease-soft),
+    transform var(--duration-s) var(--ease-soft);
 }
 
 .admin-pager-btn:hover:not(:disabled) {
@@ -618,7 +629,7 @@ Keep pager state in the closure of `initPeopleTab()`, beside the existing `searc
 `opening`, and view-generation variables — not in a module global, not in `ui.js` (which renders
 from an explicit result shape and neither fetches nor owns the current page).
 
-- `offset` — offset of the last *committed* page, initially `0`.
+- `offset` — offset of the last _committed_ page, initially `0`.
 - `limit` — the operator-selected page size, initially `50`, never above the server's 200 cap.
 - `total` — the filtered total from the last committed response; unknown while the first request
   is pending.
@@ -629,10 +640,11 @@ from an explicit result shape and neither fetches nor owns the current page).
 
 `loadPage()` captures `query`/`offset`/`limit` before calling `services.users({ q, limit,
 offset })`. On success, commit the response's own `offset`/`limit`/`total` together with the
-captured query, then render from *that* — never compute `total` from the number of rows the
+captured query, then render from _that_ — never compute `total` from the number of rows the
 browser happened to receive; the server's count is authoritative.
 
 **State transitions:**
+
 - Initial load: query empty, offset 0.
 - Next: `offset += limit`, only if `offset + limit < total`.
 - Previous: `offset -= limit`, only if `offset > 0`.
@@ -649,14 +661,14 @@ when only the offset is stale. If `total` is genuinely `0`, render the normal em
 
 **A gap an audit pass caught in this logic, verified against the real backend:** that clamp
 depends on the response still reporting an accurate `total > 0` even when the requested page comes
-back empty. It doesn't, against Supabase. `total` is carried as a column on each *row* the RPC
+back empty. It doesn't, against Supabase. `total` is carried as a column on each _row_ the RPC
 returns (`select m.*, (select count(*) from matched) as total from matched m limit ... offset
 ...`), so when `offset` lands past the end of the matched set, the RPC returns zero rows and
 `SupabaseAdminBackend.list_users` (`web/services/admin_store.py:279-288`) falls back to
 `total = rows[0]["total"] if rows else 0` — collapsing the real count to `0` alongside the empty
 row list. The client then sees `users: [], total: 0` and can't tell "genuinely no accounts" from
 "this offset ran off the end," so the `total > 0` condition above never fires and the clamp never
-runs. (The in-memory test double, `InMemoryAdminBackend.list_users`, does *not* have this gap — it
+runs. (The in-memory test double, `InMemoryAdminBackend.list_users`, does _not_ have this gap — it
 computes `total` from the full filtered set regardless of slice, so this asymmetry is invisible in
 backend unit tests and only shows up against the real database — flagged for §9.) **Client-side
 fix:** treat `users.length === 0 && offset > 0` as ambiguous regardless of what `total` says —
@@ -674,7 +686,7 @@ Two concrete failure classes, both real:
   resolves, a double-click can fire `offset=50` and `offset=100` simultaneously; if the second
   returns first, the operator sees a jarring jump or a page rendered out of order.
 - **Search/page-size edit racing an in-flight page fetch.** An in-flight page-2 request can
-  resolve *after* a newer search or page-size-change request, overwriting the newer view with
+  resolve _after_ a newer search or page-size-change request, overwriting the newer view with
   stale rows. This is not hypothetical — HTTP response order is not guaranteed to match request
   order, especially when queries have different costs (e.g. a short search term scanning slower
   than a longer, more selective one issued moments later).
@@ -715,13 +727,13 @@ query/offset.
 
 Keep the existing 300ms debounce, but **invalidate synchronously on keystroke, not only when the
 timer fires**: normalize the value, clear the existing timer, reset `offset` to 0 immediately, and
-mark the previously committed total stale — *then* start a new 300ms timer for the actual
+mark the previously committed total stale — _then_ start a new 300ms timer for the actual
 request. Without the synchronous reset, a narrow search typed while on page 2 can request
 `offset=50` against what turns out to be a 3-row result and render a false "no accounts found,"
 even though matches exist on page 1.
 
 Old rows may remain visible during the debounce window (so an operator can still open a
-currently-visible row mid-type) but must be marked busy and treated as belonging to the *previous*
+currently-visible row mid-type) but must be marked busy and treated as belonging to the _previous_
 committed view — never as results for the new query. Once the new response commits, replace the
 table and range atomically.
 
@@ -731,14 +743,14 @@ table and range atomically.
 
 Six new keys under `runtime.admin.people.*` in both `web/i18n/en.yaml` and `web/i18n/ar.yaml`:
 
-| Key | English | Arabic (draft) |
-|---|---|---|
-| `admin.people.pagerLabel` | People pages | صفحات المستخدمين |
-| `admin.people.previousPage` | Previous page | الصفحة السابقة |
-| `admin.people.nextPage` | Next page | الصفحة التالية |
-| `admin.people.showing` | Showing | عرض |
-| `admin.people.of` | of | من |
-| `admin.people.pageSize` | Rows per page | عدد الصفوف في الصفحة |
+| Key                         | English       | Arabic (draft)       |
+| --------------------------- | ------------- | -------------------- |
+| `admin.people.pagerLabel`   | People pages  | صفحات المستخدمين     |
+| `admin.people.previousPage` | Previous page | الصفحة السابقة       |
+| `admin.people.nextPage`     | Next page     | الصفحة التالية       |
+| `admin.people.showing`      | Showing       | عرض                  |
+| `admin.people.of`           | of            | من                   |
+| `admin.people.pageSize`     | Rows per page | عدد الصفوف في الصفحة |
 
 **Resolved (was open question #2): ship these Arabic strings now rather than blocking the
 feature on native review** — flag all six keys for a native-speaker pass before or shortly after
@@ -792,7 +804,7 @@ CTE recomputing the full-match `count(*)` on every call regardless of page.
    **not** a member of that role (confirmed via `pg_auth_members` — no grant exists, and nothing in
    this project's access grants one). This is Supabase's own auth-schema protection working as
    designed, not a bug to route around from a migration. Because `apply_migration` runs each
-   migration as a single transaction, the failed `CREATE INDEX` rolled back the *entire* migration
+   migration as a single transaction, the failed `CREATE INDEX` rolled back the _entire_ migration
    including the two items above — confirmed by re-checking `pg_extension` (no `pg_trgm`) and
    `pg_get_functiondef` (function unchanged) immediately after the failure, before re-running with
    the index statement removed. **Deferred, not shipped.** At today's row count (4 accounts) the
@@ -849,6 +861,7 @@ No new security work is required beyond what §7 already covers.
 Follow the existing split exactly.
 
 **Backend (`web/tests/test_admin_users.py`):**
+
 - A synthetic set larger than one page: passing `limit`/`offset` returns the expected ordered
   slice and still reports the full filtered `total` (not the page length).
 - A search whose matching set exceeds 50: page 1 and page 2 both honor the same `q`, and `total`
@@ -861,6 +874,7 @@ Follow the existing split exactly.
 
 **Browser (`web/tests/test_admin_browser.py`)**, extending the `_open_people` route stub to parse
 `q`/`limit`/`offset` and return only the requested slice:
+
 - One-page result: range shown, both pager buttons disabled.
 - Multi-page result: Next sends `limit`/`offset=<limit>`, preserves the query, replaces rows,
   shows the new range; Previous returns to offset 0.
@@ -931,15 +945,15 @@ Each decision is discussed in full in its thematic section (§1–§7); this tab
 not a second copy of record. §2 (CSS/DOM) and §7 (SQL) hold the authoritative, copy-from-here
 specifications referenced throughout §9–§12.
 
-| # | Decision | Resolution |
-|---|---|---|
-| 1 | Page size | **Operator-customizable**, default 50, via a `25/50/100/200` `<select>` (§2). Not persisted across reloads. |
-| 2 | Arabic pager copy | **Ship the draft now** (§6); flag all six keys for native-speaker review before/shortly after release. |
-| 3 | `pg_trgm` migration timing | **Ship now** attempted; blocked by `42501` (not owner of `auth.users`) and deferred — tie-breaker + escape fix shipped without it (§7). |
-| 4 | `offset` int4-overflow cap | **`min(offset, 1_000_000)`**, in the shared helper (§7). |
-| 5 | Escape literal `%`/`_` in `p_search` | **Yes** — `ESCAPE` fix, must also escape a literal backslash first or it 500s on one (§7). |
-| 6 | Focus-retention target on page change | **Re-focus the equivalent pager button**, falling back to the range label if disabled (§2). |
-| 7 | Extract shared `_parse_pagination_params()` | **Yes**, for `/api/users` + `/api/audit` in the same change (§7). |
+| #   | Decision                                    | Resolution                                                                                                                              |
+| --- | ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Page size                                   | **Operator-customizable**, default 50, via a `25/50/100/200` `<select>` (§2). Not persisted across reloads.                             |
+| 2   | Arabic pager copy                           | **Ship the draft now** (§6); flag all six keys for native-speaker review before/shortly after release.                                  |
+| 3   | `pg_trgm` migration timing                  | **Ship now** attempted; blocked by `42501` (not owner of `auth.users`) and deferred — tie-breaker + escape fix shipped without it (§7). |
+| 4   | `offset` int4-overflow cap                  | **`min(offset, 1_000_000)`**, in the shared helper (§7).                                                                                |
+| 5   | Escape literal `%`/`_` in `p_search`        | **Yes** — `ESCAPE` fix, must also escape a literal backslash first or it 500s on one (§7).                                              |
+| 6   | Focus-retention target on page change       | **Re-focus the equivalent pager button**, falling back to the range label if disabled (§2).                                             |
+| 7   | Extract shared `_parse_pagination_params()` | **Yes**, for `/api/users` + `/api/audit` in the same change (§7).                                                                       |
 
 No open decisions remain.
 

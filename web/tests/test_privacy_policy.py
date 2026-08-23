@@ -29,7 +29,10 @@ def test_theme_and_language_toggle_work_on_this_page(browser_page: Page):
 
     initial_theme = browser_page.evaluate("document.documentElement.getAttribute('data-bs-theme')")
     theme_button.click()
-    assert browser_page.evaluate("document.documentElement.getAttribute('data-bs-theme')") != initial_theme
+    assert (
+        browser_page.evaluate("document.documentElement.getAttribute('data-bs-theme')")
+        != initial_theme
+    )
 
     lang_button.click()
     browser_page.wait_for_url("**/privacy*")

@@ -96,7 +96,9 @@ def test_withdrawal_can_also_clear_age_when_offered(authenticated_page: Page):
     expect(page.locator("#consent-clear-age")).not_to_be_checked()
 
 
-def test_a_failed_save_reverts_the_toggle_rather_than_showing_a_false_state(authenticated_page: Page):
+def test_a_failed_save_reverts_the_toggle_rather_than_showing_a_false_state(
+    authenticated_page: Page,
+):
     page = authenticated_page
     page.goto("/account")
     page.evaluate("window.__supabaseState.profileUpdateError = 'network down'")

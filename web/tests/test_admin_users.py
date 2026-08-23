@@ -14,7 +14,6 @@ from web.api.app import create_app
 from web.services.admin_store import AdminActionRefused, InMemoryAdminBackend
 from web.services.audit import AuditActor
 
-
 ADMIN = {"Authorization": "Bearer fake_admin_token"}
 AUTH = {"Authorization": "Bearer fake_token"}
 ACTOR = AuditActor("test-admin-id", "admin@example.com", "127.0.0.1", "pytest")
@@ -45,7 +44,9 @@ def test_accounts_are_listed_with_their_standing(client):
     assert body["total"] == 4
     emails = {u["email"] for u in body["users"]}
     assert emails == {
-        "admin@example.com", "test@example.com", "disabled@example.com",
+        "admin@example.com",
+        "test@example.com",
+        "disabled@example.com",
         # An account with no profile row. It appears in the list looking
         # perfectly ordinary, which is the defect the detail view exists to
         # surface — `admin_list_users` coalesces the missing columns to healthy
@@ -92,9 +93,7 @@ def test_accounts_are_not_listed_to_a_reader(client):
 def test_an_administrator_cannot_demote_themselves(client):
     """The common accident: tidying up the account list and removing your own
     access on the way through."""
-    response = client.patch(
-        "/admin/api/users/test-admin-id", json={"role": "user"}, headers=ADMIN
-    )
+    response = client.patch("/admin/api/users/test-admin-id", json={"role": "user"}, headers=ADMIN)
     assert response.status_code == 409
     assert response.get_json() == {"error": "cannot_change_own_access"}
 
@@ -104,7 +103,8 @@ def test_an_administrator_cannot_disable_themselves(client):
     database applies the rule — and a console always sends one."""
     response = client.patch(
         "/admin/api/users/test-admin-id",
-        json={"is_disabled": True, "reason": "tidying up"}, headers=ADMIN,
+        json={"is_disabled": True, "reason": "tidying up"},
+        headers=ADMIN,
     )
     assert response.status_code == 409
     assert response.get_json() == {"error": "cannot_change_own_access"}
@@ -153,9 +153,7 @@ def test_a_disable_without_a_reason_is_refused(client):
     """Asking for a reason is not enforcing one. An empty prompt normalised to
     NULL, so the accountability it exists for was optional in practice."""
     for payload in ({"is_disabled": True}, {"is_disabled": True, "reason": "   "}):
-        response = client.patch(
-            "/admin/api/users/test-user-id", json=payload, headers=ADMIN
-        )
+        response = client.patch("/admin/api/users/test-user-id", json=payload, headers=ADMIN)
         assert response.status_code == 422
         assert response.get_json() == {"error": "reason_required"}
 
@@ -164,7 +162,8 @@ def test_restoring_access_needs_no_justification(client):
     """The burden belongs on the restrictive act, not on undoing it."""
     client.patch(
         "/admin/api/users/test-user-id",
-        json={"is_disabled": True, "reason": "spam"}, headers=ADMIN,
+        json={"is_disabled": True, "reason": "spam"},
+        headers=ADMIN,
     )
     response = client.patch(
         "/admin/api/users/test-user-id", json={"is_disabled": False}, headers=ADMIN
@@ -176,7 +175,8 @@ def test_a_non_string_reason_is_a_400_rather_than_a_crash(client):
     """`.strip()` on a number raised, and the client saw a 500."""
     response = client.patch(
         "/admin/api/users/test-user-id",
-        json={"is_disabled": True, "reason": 12}, headers=ADMIN,
+        json={"is_disabled": True, "reason": 12},
+        headers=ADMIN,
     )
     assert response.status_code == 400
 
@@ -190,7 +190,7 @@ def test_an_actor_who_lost_access_mid_request_cannot_act(backend):
     against the live project, where exactly this ordering now leaves one
     enabled administrator instead of none.
     """
-    other = AuditActor("test-user-id", "test@example.com")   # a reader, not an admin
+    other = AuditActor("test-user-id", "test@example.com")  # a reader, not an admin
 
     with pytest.raises(AdminActionRefused) as refused:
         backend.set_user_flags("test-disabled-id", role="admin", actor=other)
@@ -200,7 +200,8 @@ def test_an_actor_who_lost_access_mid_request_cannot_act(backend):
 def test_disabling_and_restoring_chat_access(client):
     off = client.patch(
         "/admin/api/users/test-user-id",
-        json={"is_disabled": True, "reason": "spam"}, headers=ADMIN,
+        json={"is_disabled": True, "reason": "spam"},
+        headers=ADMIN,
     ).get_json()
     assert off["user"]["is_disabled"] is True
 
@@ -213,7 +214,8 @@ def test_disabling_and_restoring_chat_access(client):
 def test_every_change_is_recorded_with_its_reason(client):
     client.patch(
         "/admin/api/users/test-user-id",
-        json={"is_disabled": True, "reason": "abusive questions"}, headers=ADMIN,
+        json={"is_disabled": True, "reason": "abusive questions"},
+        headers=ADMIN,
     )
 
     entry = client.get("/admin/api/audit", headers=ADMIN).get_json()["entries"][0]
@@ -335,9 +337,9 @@ def test_the_identity_cache_is_invalidated_so_the_change_takes_effect(client, ap
 @pytest.mark.parametrize(
     "payload,status",
     [
-        ({}, 400),                       # nothing to change
-        ({"role": "root"}, 422),         # not a role this app has
-        ({"is_disabled": "yes"}, 400),   # not a boolean
+        ({}, 400),  # nothing to change
+        ({"role": "root"}, 422),  # not a role this app has
+        ({"is_disabled": "yes"}, 400),  # not a boolean
         ("not a dict", 400),
     ],
 )
@@ -347,9 +349,7 @@ def test_bad_payloads_are_refused(client, payload, status):
 
 
 def test_a_change_by_a_reader_is_refused(client):
-    response = client.patch(
-        "/admin/api/users/test-user-id", json={"role": "admin"}, headers=AUTH
-    )
+    response = client.patch("/admin/api/users/test-user-id", json={"role": "admin"}, headers=AUTH)
     assert response.status_code == 403
 
 
@@ -427,12 +427,14 @@ def test_the_detail_is_gated_like_every_other_console_read(client):
 
 
 def test_the_activity_log_can_be_filtered_to_one_account(client):
-    """"What has happened to this person" had no surface at all before this —
+    """ "What has happened to this person" had no surface at all before this —
     /admin/api/audit is global and newest-first."""
-    client.patch("/admin/api/users/test-user-id", headers=ADMIN,
-                 json={"is_disabled": True, "reason": "for the record"})
-    client.patch("/admin/api/users/test-disabled-id", headers=ADMIN,
-                 json={"is_disabled": False})
+    client.patch(
+        "/admin/api/users/test-user-id",
+        headers=ADMIN,
+        json={"is_disabled": True, "reason": "for the record"},
+    )
+    client.patch("/admin/api/users/test-disabled-id", headers=ADMIN, json={"is_disabled": False})
 
     entries = client.get(
         "/admin/api/audit?target_type=user&target_id=test-user-id", headers=ADMIN
@@ -442,10 +444,13 @@ def test_the_activity_log_can_be_filtered_to_one_account(client):
     assert {e["target_id"] for e in entries} == {"test-user-id"}
 
 
-@pytest.mark.parametrize("query", [
-    "target_type=conversations",
-    "target_type=user&target_id=" + "x" * 65,
-])
+@pytest.mark.parametrize(
+    "query",
+    [
+        "target_type=conversations",
+        "target_type=user&target_id=" + "x" * 65,
+    ],
+)
 def test_a_target_the_log_does_not_recognise_is_refused(client, query):
     assert client.get(f"/admin/api/audit?{query}", headers=ADMIN).status_code == 422
 
@@ -457,9 +462,15 @@ def test_a_profile_edit_is_recorded_with_before_and_after(client):
     """A free-text overwrite is unrecoverable without the diff, which is the
     whole reason this is audited rather than just permitted."""
     response = client.patch(
-        "/admin/api/users/test-user-id/profile", headers=ADMIN,
-        json={"first_name": "New", "family_name": "Name", "age": 30,
-              "organization": "New Org", "specialization": "Regulatory"},
+        "/admin/api/users/test-user-id/profile",
+        headers=ADMIN,
+        json={
+            "first_name": "New",
+            "family_name": "Name",
+            "age": 30,
+            "organization": "New Org",
+            "specialization": "Regulatory",
+        },
     )
     assert response.status_code == 200
 
@@ -476,8 +487,13 @@ def test_a_no_op_profile_edit_records_nothing(client):
     """TODO.md files the opposite behaviour as a bug against the sibling RPC: a
     patch that sets a field to the value it already holds recording a change
     that did not occur. There is no reason to reproduce it here."""
-    payload = {"first_name": "Same", "family_name": "Same", "age": None,
-               "organization": "Same", "specialization": "Same"}
+    payload = {
+        "first_name": "Same",
+        "family_name": "Same",
+        "age": None,
+        "organization": "Same",
+        "specialization": "Same",
+    }
     client.patch("/admin/api/users/test-user-id/profile", headers=ADMIN, json=payload)
     before = len(client.get("/admin/api/audit", headers=ADMIN).get_json()["entries"])
 
@@ -491,10 +507,15 @@ def test_a_stale_edit_is_refused_rather_than_clobbering(client):
     """A row lock protects execution time, not the minutes an operator spends
     typing. Two people editing the same account otherwise last-write-wins."""
     response = client.patch(
-        "/admin/api/users/test-user-id/profile", headers=ADMIN,
-        json={"first_name": "A", "family_name": "B", "organization": "C",
-              "specialization": "D",
-              "expected_updated_at": "1999-01-01T00:00:00+00:00"},
+        "/admin/api/users/test-user-id/profile",
+        headers=ADMIN,
+        json={
+            "first_name": "A",
+            "family_name": "B",
+            "organization": "C",
+            "specialization": "D",
+            "expected_updated_at": "1999-01-01T00:00:00+00:00",
+        },
     )
     assert response.status_code == 409
     assert response.get_json() == {"error": "profile_changed_since_loaded"}
@@ -502,38 +523,46 @@ def test_a_stale_edit_is_refused_rather_than_clobbering(client):
 
 def test_an_account_with_no_profile_cannot_have_one_edited(client):
     response = client.patch(
-        "/admin/api/users/test-orphan-id/profile", headers=ADMIN,
+        "/admin/api/users/test-orphan-id/profile",
+        headers=ADMIN,
         json={"first_name": "X", "organization": "Y", "specialization": "Z"},
     )
     assert response.status_code == 409
     assert response.get_json() == {"error": "no_such_account"}
 
 
-@pytest.mark.parametrize("payload, status", [
-    ({"first_name": 12}, 400),
-    ({"first_name": "x" * 101}, 422),
-    ({"organization": "x" * 201}, 422),
-    ({"age": "30"}, 400),
-    ({"age": True}, 400),
-    ({"age": 12}, 422),
-    ({"age": 121}, 422),
-    ({"full_name": "New Name"}, 422),
-    ({"role": "admin"}, 422),
-    ({"is_disabled": True}, 422),
-    ({"password": "hunter2"}, 422),
-])
+@pytest.mark.parametrize(
+    "payload, status",
+    [
+        ({"first_name": 12}, 400),
+        ({"first_name": "x" * 101}, 422),
+        ({"organization": "x" * 201}, 422),
+        ({"age": "30"}, 400),
+        ({"age": True}, 400),
+        ({"age": 12}, 422),
+        ({"age": 121}, 422),
+        ({"full_name": "New Name"}, 422),
+        ({"role": "admin"}, 422),
+        ({"is_disabled": True}, 422),
+        ({"password": "hunter2"}, 422),
+    ],
+)
 def test_the_profile_route_accepts_only_the_fields_it_owns(client, payload, status):
-    assert client.patch(
-        "/admin/api/users/test-user-id/profile", headers=ADMIN, json=payload
-    ).status_code == status
+    assert (
+        client.patch(
+            "/admin/api/users/test-user-id/profile", headers=ADMIN, json=payload
+        ).status_code
+        == status
+    )
 
 
 def test_the_profile_route_is_gated_like_every_other_mutation(client):
     body = {"first_name": "X", "organization": "Y", "specialization": "Z"}
     assert client.patch("/admin/api/users/test-user-id/profile", json=body).status_code == 401
-    assert client.patch(
-        "/admin/api/users/test-user-id/profile", headers=AUTH, json=body
-    ).status_code == 403
+    assert (
+        client.patch("/admin/api/users/test-user-id/profile", headers=AUTH, json=body).status_code
+        == 403
+    )
 
 
 def test_no_console_route_accepts_a_password(client, app):
@@ -558,8 +587,7 @@ def test_no_console_route_accepts_a_password(client, app):
     assert mutations, "expected the console to have mutation routes to check"
 
     for path, method in mutations:
-        response = client.open(path, method=method, headers=ADMIN,
-                               json={"password": "hunter2"})
+        response = client.open(path, method=method, headers=ADMIN, json={"password": "hunter2"})
         assert response.status_code >= 400, (
             f"{method} {path} accepted a password field ({response.status_code})"
         )
@@ -572,9 +600,7 @@ def test_a_reset_records_intent_before_the_send_and_the_outcome_after(client, ap
     """Two rows, correlated. The failure this shape exists for is the process
     dying between the send and the record — which leaves a dangling `requested`
     rather than silence, and that is the point."""
-    response = client.post(
-        "/admin/api/users/test-user-id/reset-password", headers=ADMIN
-    )
+    response = client.post("/admin/api/users/test-user-id/reset-password", headers=ADMIN)
     assert response.status_code == 200
 
     entries = client.get(
@@ -594,8 +620,7 @@ def test_the_outcome_is_named_accepted_rather_than_sent(client):
     anything was delivered. Delivery lives in the provider's log."""
     client.post("/admin/api/users/test-user-id/reset-password", headers=ADMIN)
     actions = [
-        e["action"] for e in
-        client.get("/admin/api/audit", headers=ADMIN).get_json()["entries"]
+        e["action"] for e in client.get("/admin/api/audit", headers=ADMIN).get_json()["entries"]
     ]
     assert "user.password_reset_accepted" in actions
     assert "user.password_reset_sent" not in actions
@@ -604,15 +629,12 @@ def test_the_outcome_is_named_accepted_rather_than_sent(client):
 def test_a_failed_send_is_recorded_as_failed_not_accepted(client, app):
     app.config["_testing_recovery_dispatcher"].refuse_with = "reset_rate_limited"
 
-    response = client.post(
-        "/admin/api/users/test-user-id/reset-password", headers=ADMIN
-    )
+    response = client.post("/admin/api/users/test-user-id/reset-password", headers=ADMIN)
     assert response.status_code == 429
     assert response.get_json() == {"error": "reset_rate_limited"}
 
     actions = [
-        e["action"] for e in
-        client.get("/admin/api/audit", headers=ADMIN).get_json()["entries"]
+        e["action"] for e in client.get("/admin/api/audit", headers=ADMIN).get_json()["entries"]
     ]
     assert "user.password_reset_failed" in actions
     assert "user.password_reset_accepted" not in actions
@@ -623,34 +645,33 @@ def test_a_failed_send_is_recorded_as_failed_not_accepted(client, app):
 def test_the_console_never_returns_a_recovery_link(client):
     """The design position in one assertion. A body carrying the link would put
     a bearer credential on whatever screen called this."""
-    body = client.post(
-        "/admin/api/users/test-user-id/reset-password", headers=ADMIN
-    ).get_data(as_text=True)
+    body = client.post("/admin/api/users/test-user-id/reset-password", headers=ADMIN).get_data(
+        as_text=True
+    )
 
     assert "http" not in body
     assert "token" not in body.lower()
 
 
 def test_a_reset_for_an_unknown_account_is_refused(client):
-    assert client.post(
-        "/admin/api/users/test-nobody-id/reset-password", headers=ADMIN
-    ).status_code == 404
+    assert (
+        client.post("/admin/api/users/test-nobody-id/reset-password", headers=ADMIN).status_code
+        == 404
+    )
 
 
 def test_sending_a_reset_is_gated(client):
     assert client.post("/admin/api/users/test-user-id/reset-password").status_code == 401
-    assert client.post(
-        "/admin/api/users/test-user-id/reset-password", headers=AUTH
-    ).status_code == 403
+    assert (
+        client.post("/admin/api/users/test-user-id/reset-password", headers=AUTH).status_code == 403
+    )
 
 
 # ── Ending sessions ────────────────────────────────────────────────────────────
 
 
 def test_a_revoke_records_intent_before_the_call_and_the_outcome_after(client):
-    response = client.post(
-        "/admin/api/users/test-user-id/revoke-sessions", headers=ADMIN
-    )
+    response = client.post("/admin/api/users/test-user-id/revoke-sessions", headers=ADMIN)
     assert response.status_code == 200
 
     entries = client.get(
@@ -668,24 +689,22 @@ def test_a_revoke_records_intent_before_the_call_and_the_outcome_after(client):
 def test_the_console_never_returns_a_generated_password(client):
     """The design position this route exists to preserve: nobody, not even the
     operator, ever sees the value that actually ends the sessions."""
-    response = client.post(
-        "/admin/api/users/test-user-id/revoke-sessions", headers=ADMIN
-    )
+    response = client.post("/admin/api/users/test-user-id/revoke-sessions", headers=ADMIN)
     assert response.get_json() == {
-        "accepted": True, "operation_id": response.get_json()["operation_id"],
+        "accepted": True,
+        "operation_id": response.get_json()["operation_id"],
     }
 
 
 def test_a_failed_revoke_is_recorded_as_failed_not_accepted(app, client):
     app.config["_testing_auth_admin_dispatcher"].refuse_with = "auth_admin_failed"
-    response = client.post(
-        "/admin/api/users/test-user-id/revoke-sessions", headers=ADMIN
-    )
+    response = client.post("/admin/api/users/test-user-id/revoke-sessions", headers=ADMIN)
     assert response.status_code == 502
     assert response.get_json()["error"] == "auth_admin_failed"
 
-    actions = [e["action"] for e in
-               client.get("/admin/api/audit", headers=ADMIN).get_json()["entries"]]
+    actions = [
+        e["action"] for e in client.get("/admin/api/audit", headers=ADMIN).get_json()["entries"]
+    ]
     assert "user.sessions_revoke_failed" in actions
     assert "user.sessions_revoke_accepted" not in actions
 
@@ -698,13 +717,12 @@ def test_an_ambiguous_revoke_failure_is_recorded_as_outcome_unknown_not_failed(a
     app.config["_testing_auth_admin_dispatcher"].refuse_with = "auth_admin_unreachable"
     app.config["_testing_auth_admin_dispatcher"].refuse_ambiguous = True
 
-    response = client.post(
-        "/admin/api/users/test-user-id/revoke-sessions", headers=ADMIN
-    )
+    response = client.post("/admin/api/users/test-user-id/revoke-sessions", headers=ADMIN)
     assert response.get_json()["outcome_unknown"] is True
 
-    actions = [e["action"] for e in
-               client.get("/admin/api/audit", headers=ADMIN).get_json()["entries"]]
+    actions = [
+        e["action"] for e in client.get("/admin/api/audit", headers=ADMIN).get_json()["entries"]
+    ]
     assert "user.sessions_revoke_outcome_unknown" in actions
     assert "user.sessions_revoke_failed" not in actions
     assert "user.sessions_revoke_accepted" not in actions
@@ -718,9 +736,7 @@ def test_revoking_sessions_refuses_when_the_actor_is_no_longer_admin(app, client
     )
     admin_row["is_disabled"] = True
     try:
-        response = client.post(
-            "/admin/api/users/test-user-id/revoke-sessions", headers=ADMIN
-        )
+        response = client.post("/admin/api/users/test-user-id/revoke-sessions", headers=ADMIN)
         assert response.status_code == 409
         assert response.get_json()["error"] == "actor_no_longer_administrator"
     finally:
@@ -728,15 +744,17 @@ def test_revoking_sessions_refuses_when_the_actor_is_no_longer_admin(app, client
 
 
 def test_a_revoke_for_an_unknown_account_is_refused(client):
-    assert client.post(
-        "/admin/api/users/test-nobody-id/revoke-sessions", headers=ADMIN
-    ).status_code == 404
+    assert (
+        client.post("/admin/api/users/test-nobody-id/revoke-sessions", headers=ADMIN).status_code
+        == 404
+    )
 
 
 def test_revoking_sessions_rejects_a_nonempty_body(client):
     response = client.post(
         "/admin/api/users/test-user-id/revoke-sessions",
-        json={"password": "whatever"}, headers=ADMIN,
+        json={"password": "whatever"},
+        headers=ADMIN,
     )
     assert response.status_code == 422
     assert response.get_json()["error"] == "unknown_field"
@@ -744,9 +762,10 @@ def test_revoking_sessions_rejects_a_nonempty_body(client):
 
 def test_revoking_sessions_is_gated(client):
     assert client.post("/admin/api/users/test-user-id/revoke-sessions").status_code == 401
-    assert client.post(
-        "/admin/api/users/test-user-id/revoke-sessions", headers=AUTH
-    ).status_code == 403
+    assert (
+        client.post("/admin/api/users/test-user-id/revoke-sessions", headers=AUTH).status_code
+        == 403
+    )
 
 
 # ── Changing an email address ─────────────────────────────────────────────────
@@ -755,7 +774,8 @@ def test_revoking_sessions_is_gated(client):
 def test_an_email_change_records_intent_before_the_call_and_the_outcome_after(client):
     response = client.post(
         "/admin/api/users/test-user-id/change-email",
-        json={"email": "new-address@example.com"}, headers=ADMIN,
+        json={"email": "new-address@example.com"},
+        headers=ADMIN,
     )
     assert response.status_code == 200
 
@@ -783,11 +803,10 @@ def test_a_successful_email_change_is_visible_on_the_next_load(client):
     dispatcher recording a call without mutating the account it claims to."""
     client.post(
         "/admin/api/users/test-user-id/change-email",
-        json={"email": "new-address@example.com"}, headers=ADMIN,
+        json={"email": "new-address@example.com"},
+        headers=ADMIN,
     )
-    account = client.get(
-        "/admin/api/users/test-user-id", headers=ADMIN
-    ).get_json()["user"]
+    account = client.get("/admin/api/users/test-user-id", headers=ADMIN).get_json()["user"]
     assert account["email"] == "new-address@example.com"
     assert account["email_identity_verified"] is False
 
@@ -796,13 +815,15 @@ def test_a_failed_email_change_is_recorded_as_failed_not_accepted(app, client):
     app.config["_testing_auth_admin_dispatcher"].refuse_with = "email_already_registered"
     response = client.post(
         "/admin/api/users/test-user-id/change-email",
-        json={"email": "admin@example.com"}, headers=ADMIN,
+        json={"email": "admin@example.com"},
+        headers=ADMIN,
     )
     assert response.status_code == 409
     assert response.get_json()["error"] == "email_already_registered"
 
-    actions = [e["action"] for e in
-               client.get("/admin/api/audit", headers=ADMIN).get_json()["entries"]]
+    actions = [
+        e["action"] for e in client.get("/admin/api/audit", headers=ADMIN).get_json()["entries"]
+    ]
     assert "user.email_change_failed" in actions
     assert "user.email_change_accepted" not in actions
 
@@ -813,11 +834,13 @@ def test_an_ambiguous_email_change_failure_is_recorded_as_outcome_unknown(app, c
 
     response = client.post(
         "/admin/api/users/test-user-id/change-email",
-        json={"email": "new-address@example.com"}, headers=ADMIN,
+        json={"email": "new-address@example.com"},
+        headers=ADMIN,
     )
     assert response.get_json()["outcome_unknown"] is True
-    actions = [e["action"] for e in
-               client.get("/admin/api/audit", headers=ADMIN).get_json()["entries"]]
+    actions = [
+        e["action"] for e in client.get("/admin/api/audit", headers=ADMIN).get_json()["entries"]
+    ]
     assert "user.email_change_outcome_unknown" in actions
     assert "user.email_change_failed" not in actions
 
@@ -830,7 +853,8 @@ def test_changing_email_refuses_a_self_target(client):
     same risk."""
     response = client.post(
         "/admin/api/users/test-admin-id/change-email",
-        json={"email": "someone-else@example.com"}, headers=ADMIN,
+        json={"email": "someone-else@example.com"},
+        headers=ADMIN,
     )
     assert response.status_code == 409
     assert response.get_json()["error"] == "cannot_change_own_email"
@@ -839,7 +863,8 @@ def test_changing_email_refuses_a_self_target(client):
 def test_changing_email_to_the_current_address_is_refused_as_a_no_op(client):
     response = client.post(
         "/admin/api/users/test-user-id/change-email",
-        json={"email": "TEST@EXAMPLE.COM"}, headers=ADMIN,
+        json={"email": "TEST@EXAMPLE.COM"},
+        headers=ADMIN,
     )
     assert response.status_code == 400
     assert response.get_json()["error"] == "same_email"
@@ -848,45 +873,69 @@ def test_changing_email_to_the_current_address_is_refused_as_a_no_op(client):
 def test_changing_email_rejects_a_value_with_no_at_sign(client):
     response = client.post(
         "/admin/api/users/test-user-id/change-email",
-        json={"email": "not-an-email"}, headers=ADMIN,
+        json={"email": "not-an-email"},
+        headers=ADMIN,
     )
     assert response.status_code == 422
     assert response.get_json()["error"] == "invalid_email"
 
 
 def test_changing_email_rejects_a_non_string_or_missing_email(client):
-    assert client.post(
-        "/admin/api/users/test-user-id/change-email", json={}, headers=ADMIN,
-    ).status_code == 400
-    assert client.post(
-        "/admin/api/users/test-user-id/change-email", json={"email": 5}, headers=ADMIN,
-    ).status_code == 400
+    assert (
+        client.post(
+            "/admin/api/users/test-user-id/change-email",
+            json={},
+            headers=ADMIN,
+        ).status_code
+        == 400
+    )
+    assert (
+        client.post(
+            "/admin/api/users/test-user-id/change-email",
+            json={"email": 5},
+            headers=ADMIN,
+        ).status_code
+        == 400
+    )
 
 
 def test_changing_email_rejects_an_unknown_field(client):
     response = client.post(
         "/admin/api/users/test-user-id/change-email",
-        json={"email": "new@example.com", "password": "x"}, headers=ADMIN,
+        json={"email": "new@example.com", "password": "x"},
+        headers=ADMIN,
     )
     assert response.status_code == 422
     assert response.get_json()["error"] == "unknown_field"
 
 
 def test_an_email_change_for_an_unknown_account_is_refused(client):
-    assert client.post(
-        "/admin/api/users/test-nobody-id/change-email",
-        json={"email": "new@example.com"}, headers=ADMIN,
-    ).status_code == 404
+    assert (
+        client.post(
+            "/admin/api/users/test-nobody-id/change-email",
+            json={"email": "new@example.com"},
+            headers=ADMIN,
+        ).status_code
+        == 404
+    )
 
 
 def test_changing_email_is_gated(client):
-    assert client.post(
-        "/admin/api/users/test-user-id/change-email", json={"email": "new@example.com"},
-    ).status_code == 401
-    assert client.post(
-        "/admin/api/users/test-user-id/change-email",
-        json={"email": "new@example.com"}, headers=AUTH,
-    ).status_code == 403
+    assert (
+        client.post(
+            "/admin/api/users/test-user-id/change-email",
+            json={"email": "new@example.com"},
+        ).status_code
+        == 401
+    )
+    assert (
+        client.post(
+            "/admin/api/users/test-user-id/change-email",
+            json={"email": "new@example.com"},
+            headers=AUTH,
+        ).status_code
+        == 403
+    )
 
 
 # ── Pagination ────────────────────────────────────────────────────────────────
@@ -1046,8 +1095,14 @@ def test_audit_route_shares_identical_pagination_parsing_and_overflow_cap(client
 
     # Offset clamping & overflow cap
     assert client.get("/admin/api/audit?offset=-5", headers=ADMIN).get_json()["offset"] == 0
-    assert client.get("/admin/api/audit?offset=10000000", headers=ADMIN).get_json()["offset"] == 1_000_000
-    assert client.get("/admin/api/audit?offset=2147483648", headers=ADMIN).get_json()["offset"] == 1_000_000
+    assert (
+        client.get("/admin/api/audit?offset=10000000", headers=ADMIN).get_json()["offset"]
+        == 1_000_000
+    )
+    assert (
+        client.get("/admin/api/audit?offset=2147483648", headers=ADMIN).get_json()["offset"]
+        == 1_000_000
+    )
 
     # Malformed parameter rejection
     assert client.get("/admin/api/audit?limit=bad", headers=ADMIN).status_code == 400
@@ -1075,11 +1130,13 @@ def test_parse_pagination_params_helper_direct():
     # Clamping
     assert _parse_pagination_params(DummyRequest({"limit": "0", "offset": "-10"})) == (1, 0)
     assert _parse_pagination_params(DummyRequest({"limit": "500", "offset": "50"})) == (200, 50)
-    assert _parse_pagination_params(DummyRequest({"limit": "25", "offset": "10000000"})) == (25, 1_000_000)
+    assert _parse_pagination_params(DummyRequest({"limit": "25", "offset": "10000000"})) == (
+        25,
+        1_000_000,
+    )
 
     # Value errors
     with pytest.raises(ValueError):
         _parse_pagination_params(DummyRequest({"limit": "invalid"}))
     with pytest.raises(ValueError):
         _parse_pagination_params(DummyRequest({"offset": "invalid"}))
-

@@ -171,14 +171,14 @@ export const RobotStateManager = {
 
     const states = this.VALID_STATES;
 
-    this._getAvatars().forEach(avatar => {
-      states.forEach(s => avatar.classList.remove(`robot-${s}`));
+    this._getAvatars().forEach((avatar) => {
+      states.forEach((s) => avatar.classList.remove(`robot-${s}`));
       avatar.classList.add(`robot-${state}`);
     });
 
     const body = this._getCompanionBody();
     if (body) {
-      states.forEach(s => body.classList.remove(`robot-${s}`));
+      states.forEach((s) => body.classList.remove(`robot-${s}`));
       body.classList.add(`robot-${state}`);
     }
 
@@ -276,9 +276,9 @@ export const RobotStateManager = {
 
     for (let i = 0; i < flashes; i++) {
       setTimeout(() => {
-        balls.forEach(ball => {
+        balls.forEach((ball) => {
           ball.classList.remove('antenna-flash');
-          void ball.offsetWidth;      // restart the animation
+          void ball.offsetWidth; // restart the animation
           ball.classList.add('antenna-flash');
         });
       }, i * 70);
@@ -344,7 +344,8 @@ export const RobotStateManager = {
       if (companionBody) {
         companionBody.style.animation = 'none';
         companionBody.offsetHeight; /* force reflow */
-        companionBody.style.animation = 'robotCompanionEntrance 1.2s cubic-bezier(0.25, 0.46, 0.45, 0.94) both';
+        companionBody.style.animation =
+          'robotCompanionEntrance 1.2s cubic-bezier(0.25, 0.46, 0.45, 0.94) both';
         companionBody.classList.add('robot-entrance');
       }
       if (companion) companion.style.opacity = '1';
@@ -408,7 +409,7 @@ export const RobotStateManager = {
   },
 
   _spawnReactionParticles() {
-    this._getAvatars().forEach(avatar => this._spawnReactionAt(avatar));
+    this._getAvatars().forEach((avatar) => this._spawnReactionAt(avatar));
   },
 
   /** Burst of warm sparks emitted from an element. */
@@ -423,12 +424,14 @@ export const RobotStateManager = {
        from the mascot rather than into it. */
     const flip = getComputedStyle(document.documentElement).direction === 'rtl' ? -1 : 1;
     const dirs = [
-      { px: 22, py: -28 }, { px: -20, py: -22 },
-      { px: 18, py: 18 }, { px: -25, py: 12 },
+      { px: 22, py: -28 },
+      { px: -20, py: -22 },
+      { px: 18, py: 18 },
+      { px: -25, py: 12 },
       { px: 6, py: -32 },
     ];
 
-    dirs.forEach(dir => {
+    dirs.forEach((dir) => {
       const p = document.createElement('div');
       p.className = 'robot-reaction-particle';
       p.style.setProperty('--px', `${dir.px * flip}px`);
@@ -526,7 +529,9 @@ export function initLandingRobot() {
     clearTimeout(wiggleTimer);
     body.style.transition = 'transform 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94)';
     body.style.transform = 'scale(1.08) translateY(-5px) rotate(3deg)';
-    wiggleTimer = setTimeout(() => { body.style.transform = ''; }, 2000);
+    wiggleTimer = setTimeout(() => {
+      body.style.transform = '';
+    }, 2000);
   });
   body.addEventListener('mouseleave', () => {
     clearTimeout(wiggleTimer);
@@ -540,7 +545,9 @@ export function initLandingRobot() {
     setTimeout(() => {
       body.style.transition = 'transform 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94)';
       body.style.transform = 'scale(1.08) translateY(-8px)';
-      setTimeout(() => { body.style.transform = ''; }, 800);
+      setTimeout(() => {
+        body.style.transform = '';
+      }, 800);
     }, 150);
     RobotStateManager.celebrate(body);
   });
@@ -575,12 +582,16 @@ export const RobotCompanion = {
       () => {
         body.style.transition = 'transform 0.5s ease';
         body.style.transform = 'rotate(-3deg) translateY(-5px)';
-        setTimeout(() => { body.style.transform = ''; }, 1500);
+        setTimeout(() => {
+          body.style.transform = '';
+        }, 1500);
       },
       () => {
         body.style.transition = 'transform 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94)';
         body.style.transform = 'scale(1.05) translateY(-8px)';
-        setTimeout(() => { body.style.transform = ''; }, 800);
+        setTimeout(() => {
+          body.style.transform = '';
+        }, 800);
       },
     ];
 
@@ -617,7 +628,9 @@ export const RobotCompanion = {
       setTimeout(() => {
         body.style.transition = 'transform 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94)';
         body.style.transform = 'scale(1.05) translateY(-8px)';
-        setTimeout(() => { body.style.transform = ''; }, 500);
+        setTimeout(() => {
+          body.style.transform = '';
+        }, 500);
       }, 150);
       RobotStateManager.celebrate(body);
     });

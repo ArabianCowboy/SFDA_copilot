@@ -104,7 +104,13 @@ const FIELDS = [
   { key: 'reasoningEffort', name: 'reasoning_effort', kind: 'effort' },
   { key: 'temperature', kind: 'number', step: '0.1', numeric: true },
   { key: 'maxTokens', name: 'max_tokens', kind: 'number', step: '1', numeric: true },
-  { key: 'maxContextResults', name: 'max_context_results', kind: 'number', step: '1', numeric: true },
+  {
+    key: 'maxContextResults',
+    name: 'max_context_results',
+    kind: 'number',
+    step: '1',
+    numeric: true,
+  },
 ];
 
 /** The selected model's contract, from the allowlist the server sent. */
@@ -172,7 +178,11 @@ function buildControl(field, value, allowedModels, currentModel, ceiling) {
 
 /** Render the settings form. Returns nothing; read it back with readSettingsForm. */
 export function renderSettings({
-  settings, overrides, defaults, allowed_models: allowedModels, active,
+  settings,
+  overrides,
+  defaults,
+  allowed_models: allowedModels,
+  active,
 }) {
   const body = el('settings-body');
   if (!body) return;
@@ -224,7 +234,10 @@ export function renderSettings({
     // A reasoning model rejects `temperature` outright, and an ordinary one
     // rejects `reasoning_effort`. Showing a control the server would refuse is
     // an invitation to a 422 that nobody could have predicted from the form.
-    if (field.kind === 'effort' && !isReasoning) { inapplicable.push(name); return; }
+    if (field.kind === 'effort' && !isReasoning) {
+      inapplicable.push(name);
+      return;
+    }
     if (name === 'temperature' && spec.supports_temperature === false) {
       inapplicable.push(name);
       return;
@@ -240,7 +253,11 @@ export function renderSettings({
     label.textContent = I18n.t(`admin.settings.${field.key}`);
 
     const control = buildControl(
-      field, settings[name], allowedModels || [], settings.model, spec.max_output_tokens,
+      field,
+      settings[name],
+      allowedModels || [],
+      settings.model,
+      spec.max_output_tokens,
     );
     control.id = `setting-${name}`;
     control.name = name;
@@ -316,7 +333,9 @@ export function readSettingsForm() {
   // this form that could clear it, because the control it belongs to is the one
   // the new model caused to disappear.
   const inapplicable = (form.dataset.inapplicable || '').split(',').filter(Boolean);
-  inapplicable.forEach((name) => { patch[name] = null; });
+  inapplicable.forEach((name) => {
+    patch[name] = null;
+  });
 
   FIELDS.forEach((field) => {
     const name = fieldName(field);
@@ -624,13 +643,14 @@ export function renderUsers({
 
   const head = document.createElement('thead');
   const headRow = document.createElement('tr');
-  ['columnEmail', 'columnRole', 'columnAccess', 'columnLastSeen', 'columnActions']
-    .forEach((key) => {
+  ['columnEmail', 'columnRole', 'columnAccess', 'columnLastSeen', 'columnActions'].forEach(
+    (key) => {
       const th = document.createElement('th');
       th.scope = 'col';
       th.textContent = I18n.t(`admin.people.${key}`);
       headRow.appendChild(th);
-    });
+    },
+  );
   head.appendChild(headRow);
 
   const tbody = document.createElement('tbody');
@@ -782,7 +802,7 @@ const REASON_KEYS = {
 
 function describeReason(note) {
   const key = REASON_KEYS[note];
-  return key ? I18n.t(key) : (note || '');
+  return key ? I18n.t(key) : note || '';
 }
 
 /** The changed keys, as `key: from → to`. */
@@ -933,8 +953,12 @@ function machineValue(text) {
 }
 
 const RELATIVE_STEPS = [
-  ['year', 31536000], ['month', 2592000], ['week', 604800],
-  ['day', 86400], ['hour', 3600], ['minute', 60],
+  ['year', 31536000],
+  ['month', 2592000],
+  ['week', 604800],
+  ['day', 86400],
+  ['hour', 3600],
+  ['minute', 60],
 ];
 
 /**
@@ -974,8 +998,9 @@ function exactWhen(value) {
   const at = new Date(value);
   if (Number.isNaN(at.getTime())) return '';
   const pad = (part) => String(part).padStart(2, '0');
-  return `${dayStamp(value)} `
-    + `${pad(at.getHours())}:${pad(at.getMinutes())}:${pad(at.getSeconds())}`;
+  return (
+    `${dayStamp(value)} ` + `${pad(at.getHours())}:${pad(at.getMinutes())}:${pad(at.getSeconds())}`
+  );
 }
 
 /**
@@ -1084,7 +1109,10 @@ export function showAccountList() {
   const list = el('people-list');
   const detail = el('people-detail');
   if (list) list.hidden = false;
-  if (detail) { detail.hidden = true; detail.textContent = ''; }
+  if (detail) {
+    detail.hidden = true;
+    detail.textContent = '';
+  }
   const search = el('people-search-field');
   if (search) search.hidden = false;
 }
@@ -1119,9 +1147,24 @@ function openDetailPanel() {
     a string, and has its own bound (13-120, not a character length). */
 const PROFILE_FIELDS = [
   { name: 'first_name', id: 'account-first-name', key: 'admin.account.firstName', maxLength: 100 },
-  { name: 'family_name', id: 'account-family-name', key: 'admin.account.familyName', maxLength: 100 },
-  { name: 'organization', id: 'account-organization', key: 'admin.account.organization', maxLength: 200 },
-  { name: 'specialization', id: 'account-specialization', key: 'admin.account.specialization', maxLength: 200 },
+  {
+    name: 'family_name',
+    id: 'account-family-name',
+    key: 'admin.account.familyName',
+    maxLength: 100,
+  },
+  {
+    name: 'organization',
+    id: 'account-organization',
+    key: 'admin.account.organization',
+    maxLength: 200,
+  },
+  {
+    name: 'specialization',
+    id: 'account-specialization',
+    key: 'admin.account.specialization',
+    maxLength: 200,
+  },
 ];
 
 let currentSelfId = null;
@@ -1167,10 +1210,14 @@ export function renderAccountDetail(account, entries, selfId = null) {
   marks.className = 'admin-marks';
   if (account.has_profile) {
     marks.append(
-      mark(I18n.t(account.role === 'admin' ? 'admin.people.roleAdmin' : 'admin.people.roleUser'),
-        account.role === 'admin' ? 'is-signal' : ''),
-      mark(I18n.t(account.is_disabled ? 'admin.people.accessDisabled' : 'admin.people.accessAllowed'),
-        account.is_disabled ? 'is-off' : ''),
+      mark(
+        I18n.t(account.role === 'admin' ? 'admin.people.roleAdmin' : 'admin.people.roleUser'),
+        account.role === 'admin' ? 'is-signal' : '',
+      ),
+      mark(
+        I18n.t(account.is_disabled ? 'admin.people.accessDisabled' : 'admin.people.accessAllowed'),
+        account.is_disabled ? 'is-off' : '',
+      ),
     );
   } else {
     marks.appendChild(mark(I18n.t('admin.account.noProfileMark'), 'is-off'));
@@ -1216,37 +1263,60 @@ export function renderAccountDetail(account, entries, selfId = null) {
   const facts = document.createElement('dl');
   facts.className = 'admin-facts admin-card';
   fact(facts, I18n.t('admin.account.created'), { when: account.created_at });
-  fact(facts, I18n.t('admin.account.lastSignIn'), account.last_sign_in_at
-    ? { when: account.last_sign_in_at } : { text: I18n.t('admin.people.never') });
-  fact(facts, I18n.t('admin.account.confirmed'), account.email_confirmed_at
-    ? { when: account.email_confirmed_at } : { text: I18n.t('admin.account.notConfirmed') });
+  fact(
+    facts,
+    I18n.t('admin.account.lastSignIn'),
+    account.last_sign_in_at
+      ? { when: account.last_sign_in_at }
+      : { text: I18n.t('admin.people.never') },
+  );
+  fact(
+    facts,
+    I18n.t('admin.account.confirmed'),
+    account.email_confirmed_at
+      ? { when: account.email_confirmed_at }
+      : { text: I18n.t('admin.account.notConfirmed') },
+  );
   // Separate from the fact above on purpose: `email_confirmed_at` is when the
   // account was FIRST confirmed and is never cleared by an admin email
   // change (live-verified against the real project), so after one it would
   // otherwise show a "confirmed" date beside an address nobody verified.
   // This reads the email identity's own flag instead.
-  fact(facts, I18n.t('admin.account.currentEmailVerified'),
-    { text: I18n.t(emailVerifiedKey(account.email_identity_verified)) });
-  fact(facts, I18n.t('admin.account.lastSeen'), account.last_seen_at
-    ? { when: account.last_seen_at } : { text: I18n.t('admin.people.never') });
+  fact(facts, I18n.t('admin.account.currentEmailVerified'), {
+    text: I18n.t(emailVerifiedKey(account.email_identity_verified)),
+  });
+  fact(
+    facts,
+    I18n.t('admin.account.lastSeen'),
+    account.last_seen_at ? { when: account.last_seen_at } : { text: I18n.t('admin.people.never') },
+  );
   // Read-only consent record (docs/profile-refactor-plan.md Step 6): current
   // state, plus whichever of grant/withdrawal time is the current one —
   // never both, matching what the record itself actually represents.
   if (account.has_profile) {
     fact(facts, I18n.t('admin.account.marketingConsent'), {
-      text: I18n.t(account.marketing_consent
-        ? 'admin.account.consentGranted' : 'admin.account.consentNotGranted'),
+      text: I18n.t(
+        account.marketing_consent
+          ? 'admin.account.consentGranted'
+          : 'admin.account.consentNotGranted',
+      ),
     });
     if (account.marketing_consent && account.marketing_consent_granted_at) {
-      fact(facts, I18n.t('admin.account.consentGrantedAt'), { when: account.marketing_consent_granted_at });
+      fact(facts, I18n.t('admin.account.consentGrantedAt'), {
+        when: account.marketing_consent_granted_at,
+      });
     } else if (!account.marketing_consent && account.marketing_consent_withdrawn_at) {
-      fact(facts, I18n.t('admin.account.consentWithdrawnAt'), { when: account.marketing_consent_withdrawn_at });
+      fact(facts, I18n.t('admin.account.consentWithdrawnAt'), {
+        when: account.marketing_consent_withdrawn_at,
+      });
     }
   }
   if (account.is_disabled) {
     fact(facts, I18n.t('admin.account.disabledAt'), { when: account.disabled_at });
-    fact(facts, I18n.t('admin.account.disabledBy'),
-      { text: account.disabled_by_email, machine: true });
+    fact(facts, I18n.t('admin.account.disabledBy'), {
+      text: account.disabled_by_email,
+      machine: true,
+    });
   }
   identitySection.appendChild(facts);
   detail.appendChild(identitySection);
@@ -1269,13 +1339,18 @@ export function renderAccountDetail(account, entries, selfId = null) {
   actions.className = 'admin-row-actions';
   actions.id = 'account-actions';
 
-  const reset = actionButton(I18n.t('admin.account.sendReset'),
-    { action: 'send-reset', id: account.id });
+  const reset = actionButton(I18n.t('admin.account.sendReset'), {
+    action: 'send-reset',
+    id: account.id,
+  });
   reset.id = 'account-send-reset';
   actions.appendChild(reset);
 
-  const revoke = actionButton(I18n.t('admin.account.revokeSessions'),
-    { action: 'revoke-sessions', id: account.id, danger: true });
+  const revoke = actionButton(I18n.t('admin.account.revokeSessions'), {
+    action: 'revoke-sessions',
+    id: account.id,
+    danger: true,
+  });
   revoke.id = 'account-revoke-sessions';
   actions.appendChild(revoke);
 
@@ -1283,8 +1358,12 @@ export function renderAccountDetail(account, entries, selfId = null) {
   // email chained with the reset button above is a full impersonation
   // primitive, so the server refuses it — this only stops an operator
   // discovering that by being told no.
-  const emailChange = actionButton(I18n.t('admin.account.changeEmail'),
-    { action: 'change-email', id: account.id, danger: true, disabled: isSelf });
+  const emailChange = actionButton(I18n.t('admin.account.changeEmail'), {
+    action: 'change-email',
+    id: account.id,
+    danger: true,
+    disabled: isSelf,
+  });
   emailChange.id = 'account-change-email';
   actions.appendChild(emailChange);
 
@@ -1295,14 +1374,19 @@ export function renderAccountDetail(account, entries, selfId = null) {
     actions.append(
       actionButton(
         I18n.t(account.role === 'admin' ? 'admin.people.demote' : 'admin.people.promote'),
-        { action: account.role === 'admin' ? 'demote' : 'promote', id: account.id,
-          danger: account.role === 'admin', disabled: isSelf },
+        {
+          action: account.role === 'admin' ? 'demote' : 'promote',
+          id: account.id,
+          danger: account.role === 'admin',
+          disabled: isSelf,
+        },
       ),
-      actionButton(
-        I18n.t(account.is_disabled ? 'admin.people.enable' : 'admin.people.disable'),
-        { action: account.is_disabled ? 'enable' : 'disable', id: account.id,
-          danger: !account.is_disabled, disabled: isSelf },
-      ),
+      actionButton(I18n.t(account.is_disabled ? 'admin.people.enable' : 'admin.people.disable'), {
+        action: account.is_disabled ? 'enable' : 'disable',
+        id: account.id,
+        danger: !account.is_disabled,
+        disabled: isSelf,
+      }),
     );
   }
   card.appendChild(actions);
@@ -1514,10 +1598,7 @@ function renderAccountActivity(entries) {
   const tbody = document.createElement('tbody');
   entries.forEach((entry) => {
     const row = document.createElement('tr');
-    row.append(
-      machineCell(exactWhen(entry.occurred_at)),
-      machineCell(entry.actor_email || ''),
-    );
+    row.append(machineCell(exactWhen(entry.occurred_at)), machineCell(entry.actor_email || ''));
     const what = document.createElement('td');
     what.textContent = describeAction(entry.action);
     // Same treatment the global Activity tab already gives before/after —

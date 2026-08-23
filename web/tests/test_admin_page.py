@@ -16,7 +16,6 @@ import pytest
 
 from web.api.app import ADMIN_MODULE_FILENAMES, ASSET_VERSION, create_app
 
-
 AUTH = {"Authorization": "Bearer fake_token"}
 ADMIN = {"Authorization": "Bearer fake_admin_token"}
 DISABLED = {"Authorization": "Bearer fake_disabled_token"}
@@ -57,9 +56,7 @@ def test_the_shell_reveals_nothing_privileged(client):
     # The panels ship empty. A count, an email or a model name in the markup
     # would mean the server rendered privileged data for an unauthenticated GET.
     assert 'id="overview-body"' in html
-    assert re.search(r'id="overview-body"[^>]*>\s*</div>', html), (
-        "console panels must render empty"
-    )
+    assert re.search(r'id="overview-body"[^>]*>\s*</div>', html), "console panels must render empty"
 
 
 def test_the_service_key_value_is_absent_from_the_page(client, monkeypatch):
@@ -92,7 +89,7 @@ def test_the_console_has_exactly_one_theme_toggle(client):
 
 def test_every_static_url_carries_the_current_version(client):
     html = client.get("/admin").get_data(as_text=True)
-    urls = re.findall(r'/static/(?:css|js)/[\w./-]+\?v=([\w.]+)', html)
+    urls = re.findall(r"/static/(?:css|js)/[\w./-]+\?v=([\w.]+)", html)
     assert urls, "the page must reference versioned static assets"
     assert set(urls) == {ASSET_VERSION}
 
@@ -178,7 +175,8 @@ def test_every_admin_api_route_is_gated(app, client):
     invites, and it fails silently.
     """
     gated = [
-        rule for rule in app.url_map.iter_rules()
+        rule
+        for rule in app.url_map.iter_rules()
         if rule.endpoint.startswith("admin.") and rule.endpoint != "admin.console"
     ]
     assert gated, "expected at least one gated console route"
@@ -228,8 +226,16 @@ def test_page_strings_never_reach_the_browser(client):
 
     assert "page" not in config, "the server-only page block must not be inlined"
     assert set(config) <= {
-        "chat", "stage", "robot", "auth", "profile",
-        "faq", "theme", "cite", "lang", "admin",
+        "chat",
+        "stage",
+        "robot",
+        "auth",
+        "profile",
+        "faq",
+        "theme",
+        "cite",
+        "lang",
+        "admin",
         # The conversation sidebar (step 8). Like `chat`, `cite` and `faq`
         # above, the console does not use it — the whole `runtime:` subtree is
         # inlined on both pages, and this list is what that subtree contains
@@ -269,8 +275,10 @@ def test_every_icon_the_console_js_draws_is_in_the_runtime_subset():
     admin_js = Path("static/js/admin")
 
     drawn: set[str] = set()
-    for path in list(admin_js.glob("*.js")) + [Path("static/js/admin.js")]:
-        drawn |= set(re.findall(r"iconMarkup\(\s*['\"]([\w-]+)['\"]", path.read_text(encoding="utf-8")))
+    for path in [*admin_js.glob("*.js"), Path("static/js/admin.js")]:
+        drawn |= set(
+            re.findall(r"iconMarkup\(\s*['\"]([\w-]+)['\"]", path.read_text(encoding="utf-8"))
+        )
 
     missing = drawn - available
     assert not missing, (

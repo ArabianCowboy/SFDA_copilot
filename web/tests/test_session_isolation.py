@@ -34,7 +34,6 @@ import pytest
 from web.api.app import create_app
 from web.services.result_combiner import SearchResult
 
-
 AUTH = {"Authorization": "Bearer fake_token"}
 OWNER = "test-user-id"
 
@@ -112,15 +111,16 @@ def conversation_of_stream(response) -> str:
         event, data = "message", None
         for line in block.splitlines():
             if line.startswith("event:"):
-                event = line[len("event:"):].strip()
+                event = line[len("event:") :].strip()
             elif line.startswith("data:"):
-                data = json.loads(line[len("data:"):].strip())
+                data = json.loads(line[len("data:") :].strip())
         if event == "meta" and data is not None:
             return data["conversation_id"]
     raise AssertionError("no meta frame in the streamed response")
 
 
 # ── The cooperative path: logout ────────────────────────────────────────────
+
 
 def test_logout_purges_legacy_conversation_litter(client):
     """`chat_history`/`prev_chat_history` are the only conversation-shaped
@@ -156,6 +156,7 @@ def test_logout_succeeds_even_though_supabase_is_absent(client):
 
 # ── The defensive path: identity rotation ───────────────────────────────────
 
+
 def test_a_different_reader_does_not_inherit_the_streaming_conversation(app, client):
     """The leak this whole file exists to close, reproduced with no cookie
     left to carry it: B's request explicitly names A's conversation id — the
@@ -172,20 +173,26 @@ def test_a_different_reader_does_not_inherit_the_streaming_conversation(app, cli
     happen is B's bucket ever containing A's "first", or the model seeing it
     as prior context.
     """
-    response = drain(client.post(
-        "/api/chat/stream", json={"query": "first"}, headers=AUTH,
-    ))
+    response = drain(
+        client.post(
+            "/api/chat/stream",
+            json={"query": "first"},
+            headers=AUTH,
+        )
+    )
     conversation_id = conversation_of_stream(response)
 
     store = app.config["conversations"]
     assert store.get(conversation_id, owner_id=OWNER), "precondition: history was recorded"
 
     # A different ACCOUNT, naming A's conversation id on the same browser.
-    drain(client.post(
-        "/api/chat/stream",
-        json={"query": "second", "conversation_id": conversation_id},
-        headers=AUTH_B,
-    ))
+    drain(
+        client.post(
+            "/api/chat/stream",
+            json={"query": "second", "conversation_id": conversation_id},
+            headers=AUTH_B,
+        )
+    )
 
     b_saw = [m["content"] for m in store.get(conversation_id, owner_id=OWNER_B)]
     assert "first" not in b_saw, "B's window contains A's question"
@@ -214,21 +221,26 @@ def test_the_same_reader_keeps_their_conversation(app, client):
     """Naming the same id on both turns must behave exactly as a real client's
     would: the second turn sees the first."""
     conversation_id = "aaaaaaaa-2222-3333-4444-555555555555"
-    drain(client.post(
-        "/api/chat/stream",
-        json={"query": "first", "conversation_id": conversation_id},
-        headers=AUTH,
-    ))
-    drain(client.post(
-        "/api/chat/stream",
-        json={"query": "second", "conversation_id": conversation_id, "allow_create": False},
-        headers=AUTH,
-    ))
+    drain(
+        client.post(
+            "/api/chat/stream",
+            json={"query": "first", "conversation_id": conversation_id},
+            headers=AUTH,
+        )
+    )
+    drain(
+        client.post(
+            "/api/chat/stream",
+            json={"query": "second", "conversation_id": conversation_id, "allow_create": False},
+            headers=AUTH,
+        )
+    )
 
     assert len(app.config["conversations"].get(conversation_id, owner_id=OWNER)) == 4
 
 
 # ── The durable path: ownership is a column, not a cookie ───────────────────
+
 
 def test_the_streaming_route_keys_history_by_owner(app, client):
     """The window must not be reachable by presenting the id alone.
@@ -259,9 +271,7 @@ def test_a_second_reader_cannot_load_the_first_readers_session(app, client):
 
     backend = app.config["_testing_chat_backend"]
     assert backend.load_session(OWNER, conversation_id), "A can read their own session"
-    assert backend.load_session(OWNER_B, conversation_id) == [], (
-        "B read a session they do not own"
-    )
+    assert backend.load_session(OWNER_B, conversation_id) == [], "B read a session they do not own"
 
 
 # NO MORE "resume" TESTS HERE. `_resolve_conversation_id`'s resume branch and

@@ -79,12 +79,12 @@ export function groupByDocument(sources) {
  * survives in the passage card and the title attribute).
  */
 export function documentLabel(name) {
-  const cleaned = String(name || "")
-    .replace(/\.pdf$/i, "")
-    .replace(/^\d{4}-\d{2}-\d{2}[_-]/, "")
-    .replace(/_+/g, " ")
+  const cleaned = String(name || '')
+    .replace(/\.pdf$/i, '')
+    .replace(/^\d{4}-\d{2}-\d{2}[_-]/, '')
+    .replace(/_+/g, ' ')
     .trim();
-  return cleaned || I18n.t("cite.unknownDocument");
+  return cleaned || I18n.t('cite.unknownDocument');
 }
 
 /**
@@ -312,11 +312,13 @@ export const SourcePanel = {
     // than merely lighting a card the reader would still have to find.
     if (this._panel.querySelector('.spine-tab')) {
       this._openPassage(index);
-      this._panel.querySelector(`.spine-tab[data-index="${index}"]`)
+      this._panel
+        .querySelector(`.spine-tab[data-index="${index}"]`)
         ?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
       return;
     }
-    this._panel.querySelectorAll('.source-card.is-lit')
+    this._panel
+      .querySelectorAll('.source-card.is-lit')
       .forEach((el) => el.classList.remove('is-lit'));
     const card = this._panel.querySelector(`[data-index="${index}"]`);
     if (!card) return;
@@ -327,7 +329,8 @@ export const SourcePanel = {
   /** Transient highlight while a marker is hovered or focused. */
   highlight(msgId, index) {
     if (!this.isOpenFor(msgId)) return;
-    this._panel.querySelectorAll('.source-card.is-lit')
+    this._panel
+      .querySelectorAll('.source-card.is-lit')
       .forEach((el) => el.classList.remove('is-lit'));
     if (index != null) {
       this._panel.querySelector(`[data-index="${index}"]`)?.classList.add('is-lit');
@@ -367,8 +370,9 @@ export const SourcePanel = {
   },
 
   _containFocus(event) {
-    const items = [...this._panel.querySelectorAll(FOCUSABLE)]
-      .filter((el) => el.offsetParent !== null);
+    const items = [...this._panel.querySelectorAll(FOCUSABLE)].filter(
+      (el) => el.offsetParent !== null,
+    );
     if (!items.length) return;
 
     const first = items[0];
@@ -397,9 +401,9 @@ export const SourcePanel = {
   },
 
   _render(state) {
-    this._panel.querySelector('.source-panel-title').textContent =
-      I18n.t('cite.panelTitle');
-    this._panel.querySelector('.source-panel-close')
+    this._panel.querySelector('.source-panel-title').textContent = I18n.t('cite.panelTitle');
+    this._panel
+      .querySelector('.source-panel-close')
       .setAttribute('aria-label', I18n.t('cite.close'));
 
     /* Said once, at the top, where a reader decides how much weight to put on
@@ -505,7 +509,7 @@ export const SourcePanel = {
       const face = DOMCache.createElement('div', 'spine-face');
 
       const ordered = [...group.sources].sort(
-        (a, b) => (a.page ?? Number.MAX_SAFE_INTEGER) - (b.page ?? Number.MAX_SAFE_INTEGER)
+        (a, b) => (a.page ?? Number.MAX_SAFE_INTEGER) - (b.page ?? Number.MAX_SAFE_INTEGER),
       );
 
       ordered.forEach((source, i) => {
@@ -529,12 +533,13 @@ export const SourcePanel = {
         // Arabic-Indic digits beside a Latin marker on the same tab is
         // incoherent, and Azeret Mono has no tabular figures for them.
         page.setAttribute('dir', 'ltr');
-        page.textContent = source.page != null
-          ? I18n.t('cite.pageShort', { n: source.page })
-          : '';
-        tab.setAttribute('aria-label', source.page != null
-          ? I18n.t('cite.tabAria', { n: source.index, page: source.page })
-          : I18n.t('cite.tabAriaNoPage', { n: source.index }));
+        page.textContent = source.page != null ? I18n.t('cite.pageShort', { n: source.page }) : '';
+        tab.setAttribute(
+          'aria-label',
+          source.page != null
+            ? I18n.t('cite.tabAria', { n: source.index, page: source.page })
+            : I18n.t('cite.tabAriaNoPage', { n: source.index }),
+        );
 
         tab.append(num, page);
         face.appendChild(tab);
@@ -559,7 +564,7 @@ export const SourcePanel = {
 
   /** The passage behind a tab, over the shelf, with its spine still visible. */
   _openPassage(index) {
-    const source = (this._state?.sources || []).find(s => s.index === index);
+    const source = (this._state?.sources || []).find((s) => s.index === index);
     if (!source) return;
 
     this._panel.querySelectorAll('.spine-tab').forEach((t) => {
@@ -571,14 +576,12 @@ export const SourcePanel = {
     card.hidden = false;
     card.querySelector('.passage-doc').textContent =
       source.document || I18n.t('cite.unknownDocument');
-    card.querySelector('.passage-page').textContent = source.page != null
-      ? I18n.t('cite.page', { n: source.page })
-      : I18n.t('cite.pageUnknown');
+    card.querySelector('.passage-page').textContent =
+      source.page != null ? I18n.t('cite.page', { n: source.page }) : I18n.t('cite.pageUnknown');
     card.querySelector('.passage-snippet').textContent = source.snippet || '';
     card.querySelector('.passage-cat').textContent = source.category || '';
     card.querySelector('.passage-index').textContent = String(source.index);
-    card.querySelector('.passage-close')
-      .setAttribute('aria-label', I18n.t('cite.closePassage'));
+    card.querySelector('.passage-close').setAttribute('aria-label', I18n.t('cite.closePassage'));
   },
 
   _closePassage() {
@@ -609,8 +612,7 @@ export const SourcePanel = {
     toggle.setAttribute('aria-expanded', 'false');
     toggle.setAttribute('aria-controls', listId);
     toggle.innerHTML =
-      iconMarkup('chevron-right', 12, 'chev') +
-      `<span>${I18n.t('cite.diagnostics')}</span>`;
+      iconMarkup('chevron-right', 12, 'chev') + `<span>${I18n.t('cite.diagnostics')}</span>`;
 
     const list = DOMCache.createElement('div', 'source-diag-list');
     list.id = listId;

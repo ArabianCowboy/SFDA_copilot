@@ -24,8 +24,9 @@ from __future__ import annotations
 import logging
 import math
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Any, Iterable
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -203,7 +204,6 @@ def normalize_legacy_citations(text: str, sources: list[dict[str, Any]]) -> str:
     return result
 
 
-
 # Regions where a "[1]" is not a citation. `bindCitations` in citations.js
 # refuses to linkify inside `pre, code, a`, so a marker counted here that the
 # browser will not turn into a button is a source the reader cannot reach.
@@ -233,9 +233,9 @@ def normalize_legacy_citations(text: str, sources: list[dict[str, Any]]) -> str:
 # with "[1][2]", the multi-citation form BASE_SYSTEM_MESSAGE explicitly asks
 # for, silently dropping both markers.
 _UNCITABLE = re.compile(
-    r"```.*?```"           # fenced code block
-    r"|~~~.*?~~~"          # the other fence
-    r"|`[^`\n]*`"          # inline code span
+    r"```.*?```"  # fenced code block
+    r"|~~~.*?~~~"  # the other fence
+    r"|`[^`\n]*`"  # inline code span
     r"|!?\[[^\]\n]*\]\([^)\n]*\)",  # [text](url) / ![alt](src)
     re.S,
 )
@@ -362,7 +362,9 @@ def extract_citation_diagnostics(text: str, sources: list[dict[str, Any]]) -> Ci
         # candidates when an answer cites nothing.
         logger.info(
             "Ignored %d citation marker(s) outside the source set %s: %s",
-            len(invalid), sorted(valid), sorted(set(invalid)),
+            len(invalid),
+            sorted(valid),
+            sorted(set(invalid)),
         )
 
     return CitationDiagnostics(cited=sorted(cited), invalid=invalid, total_markers=total)

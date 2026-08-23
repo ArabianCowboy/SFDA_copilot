@@ -1,9 +1,12 @@
 import logging
+from typing import Any
+
 from flask import Blueprint, current_app, jsonify, request, session
+
 from web.services.account_recovery import RecoveryRefused, recovery_redirect_url
 from web.utils.supabase_client import get_supabase
 
-auth_bp = Blueprint('auth', __name__)
+auth_bp = Blueprint("auth", __name__)
 
 # Its own blueprint purely so it can carry its own rate limit.
 #
@@ -17,7 +20,7 @@ auth_bp = Blueprint('auth', __name__)
 #
 # Scoped to this one route rather than all of `auth_bp` because a 5/minute
 # ceiling on logout would be wrong.
-recover_bp = Blueprint('recover', __name__)
+recover_bp = Blueprint("recover", __name__)
 logger = logging.getLogger(__name__)
 
 
@@ -84,141 +87,133 @@ def rotate_session_for_new_identity() -> None:
         session.pop(key, None)
 
 
-@auth_bp.route('/signup', methods=['POST'])
+@auth_bp.route("/signup", methods=["POST"])
 def signup():
     data = request.get_json()
-    email = data.get('email')
-    password = data.get('password')
-    
+    email = data.get("email")
+    password = data.get("password")
+
     if not email or not password:
-        return jsonify({'error': 'Email and password are required'}), 400
-    
+        return jsonify({"error": "Email and password are required"}), 400
+
     try:
         supabase = get_supabase()
         if not supabase:
-            return jsonify({'error': 'Supabase client not available'}), 500
-        
+            return jsonify({"error": "Supabase client not available"}), 500
+
         # Create user in Supabase Auth
-        response = supabase.auth.sign_up({
-            'email': email,
-            'password': password,
-        })
-        
+        response = supabase.auth.sign_up(
+            {
+                "email": email,
+                "password": password,
+            }
+        )
+
         # Handle response structure - check for error attribute first
-        if hasattr(response, 'error') and response.error:
-            error_msg = getattr(response.error, 'message', str(response.error))
+        if hasattr(response, "error") and response.error:
+            error_msg = getattr(response.error, "message", str(response.error))
             logger.warning(f"Signup error: {error_msg}")
-            return jsonify({'error': error_msg}), 400
-        
+            return jsonify({"error": error_msg}), 400
+
         # Access user data from the response
         # Try different possible response structures
         user = None
-        if hasattr(response, 'user') and response.user:
+        if hasattr(response, "user") and response.user:
             user = response.user
-        elif hasattr(response, 'data') and hasattr(response.data, 'user'):
+        elif hasattr(response, "data") and hasattr(response.data, "user"):
             user = response.data.user
-        elif hasattr(response, 'user'):
+        elif hasattr(response, "user"):
             user = response.user
-        
+
         if not user:
             logger.error(f"Signup response structure unexpected: {dir(response)}")
-            return jsonify({'error': 'Unexpected response from authentication service'}), 500
-        
+            return jsonify({"error": "Unexpected response from authentication service"}), 500
+
         # Return success response
-        return jsonify({
-            'message': 'User created successfully',
-            'user': {
-                'id': user.id,
-                'email': user.email
-            }
-        }), 201
-        
+        return jsonify(
+            {"message": "User created successfully", "user": {"id": user.id, "email": user.email}}
+        ), 201
+
     except Exception as e:
-        logger.error(f"Signup exception: {str(e)}", exc_info=True)
+        logger.error(f"Signup exception: {e!s}", exc_info=True)
         error_msg = str(e)
         # Extract more meaningful error messages from common exceptions
-        if 'Invalid login credentials' in error_msg or 'invalid_credentials' in error_msg.lower():
-            error_msg = 'Invalid email or password'
-        elif 'User already registered' in error_msg or 'already_registered' in error_msg.lower():
-            error_msg = 'This email is already registered'
-        return jsonify({'error': error_msg}), 400
+        if "Invalid login credentials" in error_msg or "invalid_credentials" in error_msg.lower():
+            error_msg = "Invalid email or password"
+        elif "User already registered" in error_msg or "already_registered" in error_msg.lower():
+            error_msg = "This email is already registered"
+        return jsonify({"error": error_msg}), 400
 
-@auth_bp.route('/login', methods=['POST'])
+
+@auth_bp.route("/login", methods=["POST"])
 def login():
     data = request.get_json()
-    email = data.get('email')
-    password = data.get('password')
-    
+    email = data.get("email")
+    password = data.get("password")
+
     if not email or not password:
-        return jsonify({'error': 'Email and password are required'}), 400
-    
+        return jsonify({"error": "Email and password are required"}), 400
+
     try:
         supabase = get_supabase()
         if not supabase:
-            return jsonify({'error': 'Supabase client not available'}), 500
-        
-        response = supabase.auth.sign_in_with_password({
-            'email': email,
-            'password': password
-        })
-        
+            return jsonify({"error": "Supabase client not available"}), 500
+
+        response = supabase.auth.sign_in_with_password({"email": email, "password": password})
+
         # Handle response structure - check for error attribute first
-        if hasattr(response, 'error') and response.error:
-            error_msg = getattr(response.error, 'message', str(response.error))
+        if hasattr(response, "error") and response.error:
+            error_msg = getattr(response.error, "message", str(response.error))
             logger.warning(f"Login error: {error_msg}")
-            return jsonify({'error': error_msg}), 401
-        
+            return jsonify({"error": error_msg}), 401
+
         # Access user and session data from the response
         # Try different possible response structures
         user = None
         session_obj = None
-        
-        if hasattr(response, 'user') and response.user:
+
+        if hasattr(response, "user") and response.user:
             user = response.user
-        elif hasattr(response, 'data') and hasattr(response.data, 'user'):
+        elif hasattr(response, "data") and hasattr(response.data, "user"):
             user = response.data.user
-        
-        if hasattr(response, 'session') and response.session:
+
+        if hasattr(response, "session") and response.session:
             session_obj = response.session
-        elif hasattr(response, 'data') and hasattr(response.data, 'session'):
+        elif hasattr(response, "data") and hasattr(response.data, "session"):
             session_obj = response.data.session
-        
+
         if not user:
-            logger.error(f"Login response structure unexpected. Response attributes: {dir(response)}")
-            return jsonify({'error': 'Unexpected response from authentication service'}), 500
-        
+            logger.error(
+                f"Login response structure unexpected. Response attributes: {dir(response)}"
+            )
+            return jsonify({"error": "Unexpected response from authentication service"}), 500
+
         if not session_obj:
             logger.warning("Login successful but no session returned")
-            return jsonify({
-                'user': {
-                    'id': user.id,
-                    'email': user.email
+            return jsonify({"user": {"id": user.id, "email": user.email}, "session": None}), 200
+
+        return jsonify(
+            {
+                "user": {"id": user.id, "email": user.email},
+                "session": {
+                    "access_token": session_obj.access_token,
+                    "refresh_token": session_obj.refresh_token,
                 },
-                'session': None
-            }), 200
-        
-        return jsonify({
-            'user': {
-                'id': user.id,
-                'email': user.email
-            },
-            'session': {
-                'access_token': session_obj.access_token,
-                'refresh_token': session_obj.refresh_token
             }
-        })
-        
+        )
+
     except Exception as e:
-        logger.error(f"Login exception: {str(e)}", exc_info=True)
+        logger.error(f"Login exception: {e!s}", exc_info=True)
         error_msg = str(e)
         # Extract more meaningful error messages from common exceptions
-        if 'Invalid login credentials' in error_msg or 'invalid_credentials' in error_msg.lower():
-            error_msg = 'Invalid email or password'
-        elif 'Email not confirmed' in error_msg or 'email_not_confirmed' in error_msg.lower():
-            error_msg = 'Please confirm your email address before logging in'
-        return jsonify({'error': error_msg}), 401
+        if "Invalid login credentials" in error_msg or "invalid_credentials" in error_msg.lower():
+            error_msg = "Invalid email or password"
+        elif "Email not confirmed" in error_msg or "email_not_confirmed" in error_msg.lower():
+            error_msg = "Please confirm your email address before logging in"
+        return jsonify({"error": error_msg}), 401
 
-@recover_bp.route('/recover', methods=['POST'])
+
+@recover_bp.route("/recover", methods=["POST"])
 def recover():
     """Send a password-recovery link. Unauthenticated, by necessity.
 
@@ -243,13 +238,13 @@ def recover():
     identity-free question log exists to avoid.
     """
     data = request.get_json(silent=True) or {}
-    email = data.get('email')
-    lang = data.get('lang')
+    email = data.get("email")
+    lang = data.get("lang")
 
     if not isinstance(email, str) or not email.strip():
-        return jsonify({'error': 'invalid_payload'}), 400
+        return jsonify({"error": "invalid_payload"}), 400
     if not isinstance(lang, (str, type(None))):
-        return jsonify({'error': 'invalid_payload'}), 400
+        return jsonify({"error": "invalid_payload"}), 400
 
     try:
         # Resolved inside the try, not above it. `get_recovery_dispatcher()`
@@ -257,29 +252,29 @@ def recover():
         # raise — which outside this block became a 500 carrying whatever the
         # error handler chose to say. A misconfigured deployment must be
         # indistinguishable from an unknown address, or it is an oracle.
-        dispatcher = current_app.config.get('recovery_dispatcher')
+        dispatcher = current_app.config.get("recovery_dispatcher")
         dispatcher = dispatcher() if callable(dispatcher) else dispatcher
 
         if dispatcher is None:
-            raise RecoveryRefused('reset_not_configured', 'no dispatcher available')
+            raise RecoveryRefused("reset_not_configured", "no dispatcher available")
         dispatcher.send_recovery(email.strip(), recovery_redirect_url(lang or None))
     except RecoveryRefused as refusal:
         # Rate limits are the reader's own doing and are worth saying out loud.
         # Everything else collapses into the generic success below: a
         # misconfigured project must not be distinguishable from an unknown
         # address by anyone probing this endpoint.
-        if refusal.code in ('reset_rate_limited', 'reset_quota_exhausted'):
-            return jsonify({'error': refusal.code}), 429
+        if refusal.code in ("reset_rate_limited", "reset_quota_exhausted"):
+            return jsonify({"error": refusal.code}), 429
         logging.getLogger(__name__).error("recovery unavailable (%s)", refusal.code)
-        return jsonify({'sent': True}), 202
-    except Exception:  # noqa: BLE001 - provider surface is untyped
+        return jsonify({"sent": True}), 202
+    except Exception:
         logging.getLogger(__name__).exception("recovery send failed")
-        return jsonify({'sent': True}), 202
+        return jsonify({"sent": True}), 202
 
-    return jsonify({'sent': True}), 202
+    return jsonify({"sent": True}), 202
 
 
-@auth_bp.route('/logout', methods=['POST'])
+@auth_bp.route("/logout", methods=["POST"])
 def logout():
     # Before anything that can fail. Whether Supabase is reachable, whether the
     # token was already expired, whether sign_out raises — none of it may leave
@@ -288,7 +283,7 @@ def logout():
     session.clear()
 
     if current_app.config.get("TESTING"):
-        return jsonify({'message': 'Logged out successfully'})
+        return jsonify({"message": "Logged out successfully"})
 
     try:
         supabase = get_supabase()
@@ -296,17 +291,20 @@ def logout():
             # The server-side state is already gone, which is the part that
             # matters; the client drops its own token regardless.
             logger.warning("Logout: Supabase unavailable, session cleared anyway.")
-            return jsonify({'message': 'Logged out (session cleared)'})
+            return jsonify({"message": "Logged out (session cleared)"})
 
-        response = supabase.auth.sign_out()
-        
+        # Typed loosely: sign_out() returns None on the currently installed
+        # GoTrue client, but this guards defensively against a version that
+        # returns an error-carrying response object instead.
+        response: Any = supabase.auth.sign_out()  # type: ignore[func-returns-value]
+
         # Check for error in response
-        if hasattr(response, 'error') and response.error:
-            error_msg = getattr(response.error, 'message', str(response.error))
+        if hasattr(response, "error") and response.error:
+            error_msg = getattr(response.error, "message", str(response.error))
             logger.warning(f"Logout error: {error_msg}")
-            return jsonify({'error': error_msg}), 400
-        
-        return jsonify({'message': 'Logged out successfully'})
+            return jsonify({"error": error_msg}), 400
+
+        return jsonify({"message": "Logged out successfully"})
     except Exception as e:
-        logger.error(f"Logout exception: {str(e)}", exc_info=True)
-        return jsonify({'error': str(e)}), 400
+        logger.error(f"Logout exception: {e!s}", exc_info=True)
+        return jsonify({"error": str(e)}), 400

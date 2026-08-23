@@ -32,13 +32,16 @@ import logging
 import os
 import threading
 import uuid
-from datetime import datetime, timezone
 from dataclasses import dataclass, field, replace
-from typing import Any, Dict, List, Optional, Protocol, Tuple
+from datetime import datetime, timezone
+from typing import Any, Protocol
 
 from web.utils.supabase_client import get_supabase_admin
 
 logger = logging.getLogger(__name__)
+
+# datetime.UTC is Python 3.11+; the VPS production floor is 3.10.
+UTC = timezone.utc
 
 # The same bound the People pager clamps to (web/api/admin.py). Shared rather
 # than re-picked so two paginated surfaces cannot disagree about what "too much"
@@ -77,8 +80,8 @@ class AppendResult:
     """
 
     session_id: str
-    user_message_id: Optional[str]
-    assistant_message_id: Optional[str]
+    user_message_id: str | None
+    assistant_message_id: str | None
     replayed: bool
 
 
@@ -98,9 +101,9 @@ class SessionSummary:
     """
 
     session_id: str
-    title: Optional[str]
-    created_at: Optional[str]
-    updated_at: Optional[str]
+    title: str | None
+    created_at: str | None
+    updated_at: str | None
     message_count: int
 
 
@@ -114,8 +117,8 @@ class SessionPage:
     every page to save one read at the end.
     """
 
-    sessions: List[SessionSummary]
-    next_cursor: Optional[Tuple[str, str]]
+    sessions: list[SessionSummary]
+    next_cursor: tuple[str, str] | None
 
 
 @dataclass(frozen=True)
@@ -126,12 +129,12 @@ class StoredMessage:
     seq: int
     role: str
     content: str
-    created_at: Optional[str] = None
-    corpus_revision: Optional[str] = None
-    model: Optional[str] = None
-    lang: Optional[str] = None
-    category: Optional[str] = None
-    sources: List[Dict[str, Any]] = field(default_factory=list)
+    created_at: str | None = None
+    corpus_revision: str | None = None
+    model: str | None = None
+    lang: str | None = None
+    category: str | None = None
+    sources: list[dict[str, Any]] = field(default_factory=list)
 
 
 # ── uuid canonicalisation ───────────────────────────────────────────────────
@@ -145,7 +148,8 @@ class StoredMessage:
 # cast that normalises inside the database fixes the column and leaves every
 # comparison on this side still wrong.
 
-def canonical_uuid(value: Any) -> Optional[str]:
+
+def canonical_uuid(value: Any) -> str | None:
     """Return the dashed canonical form, or None when this is not a uuid.
 
     Returns None rather than raising because the inputs are a cookie the reader
@@ -169,7 +173,8 @@ def new_conversation_id() -> str:
 
 # ── archive keys ────────────────────────────────────────────────────────────
 
-def _salt(name: str) -> Optional[bytes]:
+
+def _salt(name: str) -> bytes | None:
     raw = os.getenv(name) or ""
     return raw.encode("utf-8") if raw else None
 
@@ -183,7 +188,7 @@ def _salt(name: str) -> Optional[bytes]:
 _salt_missing_warned = False
 
 
-def archive_keys(owner_id: str, session_id: str) -> Tuple[Optional[str], Optional[str]]:
+def archive_keys(owner_id: str, session_id: str) -> tuple[str | None, str | None]:
     """Pseudonymous digests for the archive, or ``(None, None)``.
 
     Computed HERE, from ids the server has already verified, and never read from
@@ -234,7 +239,7 @@ def clamp_list_limit(value: Any) -> int:
     return max(MIN_LIST_LIMIT, min(limit, MAX_LIST_LIMIT))
 
 
-def clamp_title(value: Any) -> Optional[str]:
+def clamp_title(value: Any) -> str | None:
     """A title the ``chat_sessions.title`` CHECK will accept, or None.
 
     Three things happen here and each closes a specific hole.
@@ -280,6 +285,7 @@ def clamp_title(value: Any) -> Optional[str]:
 
 # ── the backend contract ────────────────────────────────────────────────────
 
+
 class ChatBackend(Protocol):
     """Durable conversation storage. Implementations must not raise for "empty"."""
 
@@ -291,15 +297,15 @@ class ChatBackend(Protocol):
         client_request_id: str,
         question: str,
         answer: str,
-        sources: List[Dict[str, Any]],
-        lang: Optional[str],
-        category: Optional[str],
-        model: Optional[str],
-        corpus_revision: Optional[str],
-        owner_key: Optional[str],
-        session_key: Optional[str],
+        sources: list[dict[str, Any]],
+        lang: str | None,
+        category: str | None,
+        model: str | None,
+        corpus_revision: str | None,
+        owner_key: str | None,
+        session_key: str | None,
         archive_opted_out: bool,
-        title: Optional[str] = None,
+        title: str | None = None,
         allow_create: bool = True,
     ) -> AppendResult:
         """Record one exchange, creating the session if it does not exist.
@@ -334,9 +340,13 @@ class ChatBackend(Protocol):
         ...
 
     def load_session(
-        self, owner_id: str, session_id: str, *, limit: int = DEFAULT_LOAD_LIMIT,
-        before_seq: Optional[int] = None,
-    ) -> List[StoredMessage]:
+        self,
+        owner_id: str,
+        session_id: str,
+        *,
+        limit: int = DEFAULT_LOAD_LIMIT,
+        before_seq: int | None = None,
+    ) -> list[StoredMessage]:
         """The newest ``limit`` messages of one owned session, oldest first.
 
         An unowned or unknown session id returns ``[]`` — the same answer an
@@ -350,12 +360,12 @@ class ChatBackend(Protocol):
         owner_id: str,
         *,
         limit: int = DEFAULT_LIST_LIMIT,
-        cursor: Optional[Tuple[str, str]] = None,
+        cursor: tuple[str, str] | None = None,
     ) -> SessionPage:
         """One page of the owner's conversations, newest activity first."""
         ...
 
-    def rename_session(self, owner_id: str, session_id: str, title: Optional[str]) -> bool:
+    def rename_session(self, owner_id: str, session_id: str, title: str | None) -> bool:
         """Set one owned session's title. False when it is not theirs.
 
         Does not touch ``updated_at``: that column means "last spoken in", and a
@@ -367,7 +377,7 @@ class ChatBackend(Protocol):
         """Delete one owned session and its messages. False when not theirs."""
         ...
 
-    def delete_all_sessions(self, owner_id: str) -> List[str]:
+    def delete_all_sessions(self, owner_id: str) -> list[str]:
         """Delete every owned session and their messages. Returns their ids.
 
         Bulk conversation deletion (docs/profile-refactor-plan.md Step 7),
@@ -388,9 +398,22 @@ class SupabaseChatBackend:
         self._client = client
 
     def append_turn(
-        self, *, owner_id, session_id, client_request_id, question, answer,
-        sources, lang, category, model, corpus_revision,
-        owner_key, session_key, archive_opted_out, title=None,
+        self,
+        *,
+        owner_id,
+        session_id,
+        client_request_id,
+        question,
+        answer,
+        sources,
+        lang,
+        category,
+        model,
+        corpus_revision,
+        owner_key,
+        session_key,
+        archive_opted_out,
+        title=None,
         allow_create=True,
     ) -> AppendResult:
         try:
@@ -422,7 +445,9 @@ class SupabaseChatBackend:
             raise PersistenceUnavailable(str(exception)) from exception
 
         rows = getattr(response, "data", None) or []
-        row = rows[0] if isinstance(rows, list) and rows else (rows if isinstance(rows, dict) else {})
+        row = (
+            rows[0] if isinstance(rows, list) and rows else (rows if isinstance(rows, dict) else {})
+        )
         return AppendResult(
             session_id=str(row.get("session_id") or session_id),
             user_message_id=row.get("user_message_id"),
@@ -442,7 +467,7 @@ class SupabaseChatBackend:
 
     def load_session(
         self, owner_id, session_id, *, limit=DEFAULT_LOAD_LIMIT, before_seq=None
-    ) -> List[StoredMessage]:
+    ) -> list[StoredMessage]:
         try:
             response = self._client.rpc(
                 "chat_load_session",
@@ -458,9 +483,7 @@ class SupabaseChatBackend:
 
         return [_row_to_message(row) for row in (getattr(response, "data", None) or [])]
 
-    def list_sessions(
-        self, owner_id, *, limit=DEFAULT_LIST_LIMIT, cursor=None
-    ) -> SessionPage:
+    def list_sessions(self, owner_id, *, limit=DEFAULT_LIST_LIMIT, cursor=None) -> SessionPage:
         limit = clamp_list_limit(limit)
         cursor_updated_at, cursor_id = cursor if cursor else (None, None)
         try:
@@ -507,7 +530,7 @@ class SupabaseChatBackend:
             raise PersistenceUnavailable(str(exception)) from exception
         return bool(_scalar(response, "chat_delete_session"))
 
-    def delete_all_sessions(self, owner_id) -> List[str]:
+    def delete_all_sessions(self, owner_id) -> list[str]:
         try:
             response = self._client.rpc(
                 "chat_delete_all_sessions",
@@ -535,9 +558,7 @@ def _scalar(response: Any, key: str) -> Any:
     return data
 
 
-def _cursor_after(
-    sessions: List[SessionSummary], limit: int
-) -> Optional[Tuple[str, str]]:
+def _cursor_after(sessions: list[SessionSummary], limit: int) -> tuple[str, str] | None:
     """The keyset cursor that continues this page, or None at the end.
 
     A short page is the end of the list. A FULL page is not proof there is more
@@ -556,7 +577,7 @@ def _cursor_after(
     return (last.updated_at, last.session_id)
 
 
-def _row_to_summary(row: Dict[str, Any]) -> SessionSummary:
+def _row_to_summary(row: dict[str, Any]) -> SessionSummary:
     title = row.get("title")
     return SessionSummary(
         session_id=str(row.get("id") or ""),
@@ -571,7 +592,7 @@ def _row_to_summary(row: Dict[str, Any]) -> SessionSummary:
     )
 
 
-def _row_to_message(row: Dict[str, Any]) -> StoredMessage:
+def _row_to_message(row: dict[str, Any]) -> StoredMessage:
     return StoredMessage(
         message_id=str(row.get("message_id") or ""),
         seq=int(row.get("seq") or 0),
@@ -586,7 +607,7 @@ def _row_to_message(row: Dict[str, Any]) -> StoredMessage:
     )
 
 
-def export_all_sessions(backend: "ChatBackend", owner_id: str):
+def export_all_sessions(backend: ChatBackend, owner_id: str):
     """Every owned session, in full — one dict per session, newest activity
     first, nothing left behind by a UI page size.
 
@@ -615,7 +636,7 @@ def export_all_sessions(backend: "ChatBackend", owner_id: str):
         cursor = page.next_cursor
 
 
-def _export_session_messages(backend: "ChatBackend", owner_id: str, session_id: str):
+def _export_session_messages(backend: ChatBackend, owner_id: str, session_id: str):
     """Every message of one session, oldest first, exhaustively paginated.
 
     `chat_load_session` takes the newest `p_limit` messages older than
@@ -628,10 +649,12 @@ def _export_session_messages(backend: "ChatBackend", owner_id: str, session_id: 
     prepended one at a time, since prepending to a list is O(n) per call and
     reversing the batch order is O(1).
     """
-    batches: List[List[StoredMessage]] = []
+    batches: list[list[StoredMessage]] = []
     before_seq = None
     while True:
-        batch = backend.load_session(owner_id, session_id, limit=MAX_LOAD_LIMIT, before_seq=before_seq)
+        batch = backend.load_session(
+            owner_id, session_id, limit=MAX_LOAD_LIMIT, before_seq=before_seq
+        )
         if not batch:
             break
         batches.append(batch)
@@ -686,14 +709,14 @@ class InMemoryChatBackend:
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
-        self._sessions: Dict[str, Dict[str, Any]] = {}
-        self._messages: Dict[str, List[StoredMessage]] = {}
+        self._sessions: dict[str, dict[str, Any]] = {}
+        self._messages: dict[str, list[StoredMessage]] = {}
         # (session_id, client_request_id) -> AppendResult, for replay.
-        self._turns: Dict[Tuple[str, str], AppendResult] = {}
+        self._turns: dict[tuple[str, str], AppendResult] = {}
         # Mirrors public.chat_archive so a test can assert one row per turn.
-        self.archive: List[Dict[str, Any]] = []
+        self.archive: list[dict[str, Any]] = []
 
-    def _validate_sources(self, sources: Any) -> List[Dict[str, Any]]:
+    def _validate_sources(self, sources: Any) -> list[dict[str, Any]]:
         """Reject exactly what `chat_message_sources` would reject.
 
         Raises :class:`PersistenceUnavailable` because that is what a constraint
@@ -708,7 +731,7 @@ class InMemoryChatBackend:
             return []
 
         seen: set = set()
-        validated: List[Dict[str, Any]] = []
+        validated: list[dict[str, Any]] = []
         for source in sources:
             if not isinstance(source, dict):
                 raise PersistenceUnavailable(f"source is not an object: {source!r}")
@@ -717,7 +740,9 @@ class InMemoryChatBackend:
             if not isinstance(index, int) or isinstance(index, bool):
                 raise PersistenceUnavailable(f"source_index is not an integer: {index!r}")
             if not 1 <= index <= self._MAX_SOURCE_INDEX:
-                raise PersistenceUnavailable(f"source_index {index} outside 1..{self._MAX_SOURCE_INDEX}")
+                raise PersistenceUnavailable(
+                    f"source_index {index} outside 1..{self._MAX_SOURCE_INDEX}"
+                )
             if index in seen:
                 raise PersistenceUnavailable(f"duplicate source_index {index}")
             seen.add(index)
@@ -731,19 +756,34 @@ class InMemoryChatBackend:
             # `document` and `category` are NOT NULL in the schema, but the RPC
             # coalesces a missing key to ''. Mirror the coalesce, not the
             # constraint — the constraint is unreachable through that path.
-            validated.append({
-                **source,
-                "document": source.get("document") or "",
-                "category": source.get("category") or "",
-                "snippet": snippet,
-                "cited": bool(source.get("cited")),
-            })
+            validated.append(
+                {
+                    **source,
+                    "document": source.get("document") or "",
+                    "category": source.get("category") or "",
+                    "snippet": snippet,
+                    "cited": bool(source.get("cited")),
+                }
+            )
         return validated
 
     def append_turn(
-        self, *, owner_id, session_id, client_request_id, question, answer,
-        sources, lang, category, model, corpus_revision,
-        owner_key, session_key, archive_opted_out, title=None,
+        self,
+        *,
+        owner_id,
+        session_id,
+        client_request_id,
+        question,
+        answer,
+        sources,
+        lang,
+        category,
+        model,
+        corpus_revision,
+        owner_key,
+        session_key,
+        archive_opted_out,
+        title=None,
         allow_create=True,
     ) -> AppendResult:
         owner_id, session_id = str(owner_id), str(session_id)
@@ -780,8 +820,10 @@ class InMemoryChatBackend:
                 # this the flag is False forever and _persist_turn's replay branch
                 # is dead code under test.
                 return AppendResult(
-                    replay.session_id, replay.user_message_id,
-                    replay.assistant_message_id, True,
+                    replay.session_id,
+                    replay.user_message_id,
+                    replay.assistant_message_id,
+                    True,
                 )
 
             # Only a genuinely new turn is validated, and it is validated before
@@ -795,7 +837,7 @@ class InMemoryChatBackend:
                     "owner_id": owner_id,
                     "next_seq": 1,
                     "title": None,
-                    "created_at": datetime.now(timezone.utc).isoformat(),
+                    "created_at": datetime.now(UTC).isoformat(),
                 }
                 self._sessions[session_id] = session
                 self._messages[session_id] = []
@@ -820,7 +862,7 @@ class InMemoryChatBackend:
             # class was already corrected for once: a double laxer than the
             # schema lets a test claim a guarantee Postgres makes and the double
             # does not.
-            occurred_at = datetime.now(timezone.utc).isoformat()
+            occurred_at = datetime.now(UTC).isoformat()
             # Mirrors `updated_at = now()` on the seq-claiming UPDATE. Read by
             # the client, grouped into Today / Yesterday / Older, and used as
             # half the keyset cursor — a double that fabricated this would let
@@ -831,40 +873,50 @@ class InMemoryChatBackend:
                 [
                     StoredMessage(user_id, seq, "user", question, created_at=occurred_at),
                     StoredMessage(
-                        assistant_id, seq + 1, "assistant", answer,
+                        assistant_id,
+                        seq + 1,
+                        "assistant",
+                        answer,
                         created_at=occurred_at,
-                        corpus_revision=corpus_revision, model=model,
-                        lang=lang, category=category, sources=list(sources or []),
+                        corpus_revision=corpus_revision,
+                        model=model,
+                        lang=lang,
+                        category=category,
+                        sources=list(sources or []),
                     ),
                 ]
             )
 
-            if not archive_opted_out and owner_key and session_key:
-                # (owner_key, session_key, turn_key), matching the SQL unique
-                # constraint. Omitting session_key made the double drop a second
-                # turn that Postgres would archive — one request id reused across
-                # two conversations — so a test could "prove" one archive row
-                # where production writes two.
-                if not any(
+            # (owner_key, session_key, turn_key), matching the SQL unique
+            # constraint. Omitting session_key made the double drop a second
+            # turn that Postgres would archive — one request id reused across
+            # two conversations — so a test could "prove" one archive row
+            # where production writes two.
+            if (
+                not archive_opted_out
+                and owner_key
+                and session_key
+                and not any(
                     row["owner_key"] == owner_key
                     and row["session_key"] == session_key
                     and row["turn_key"] == str(client_request_id)
                     for row in self.archive
-                ):
-                    self.archive.append(
-                        {
-                            "owner_key": owner_key,
-                            "session_key": session_key,
-                            "turn_key": str(client_request_id),
-                            "question": question,
-                            "answer": answer,
-                            "sources": list(sources or []),
-                            "lang": lang,
-                            "category": category,
-                            "model": model,
-                            "corpus_revision": corpus_revision,
-                        }
-                    )
+                )
+            ):
+                self.archive.append(
+                    {
+                        "owner_key": owner_key,
+                        "session_key": session_key,
+                        "turn_key": str(client_request_id),
+                        "question": question,
+                        "answer": answer,
+                        "sources": list(sources or []),
+                        "lang": lang,
+                        "category": category,
+                        "model": model,
+                        "corpus_revision": corpus_revision,
+                    }
+                )
 
             result = AppendResult(session_id, user_id, assistant_id, False)
             self._turns[(session_id, str(client_request_id))] = result
@@ -877,16 +929,17 @@ class InMemoryChatBackend:
 
     def load_session(
         self, owner_id, session_id, *, limit=DEFAULT_LOAD_LIMIT, before_seq=None
-    ) -> List[StoredMessage]:
+    ) -> list[StoredMessage]:
         with self._lock:
             session = self._sessions.get(str(session_id))
             if session is None or session["owner_id"] != str(owner_id):
                 return []
             rows = [
-                m for m in self._messages[str(session_id)]
+                m
+                for m in self._messages[str(session_id)]
                 if before_seq is None or m.seq < before_seq
             ]
-            window = rows[-clamp_load_limit(limit):]
+            window = rows[-clamp_load_limit(limit) :]
             # chat_load_session orders each message's sources by source_index
             # on READ (`jsonb_agg(... order by src.source_index)`) — storage
             # order is not part of the RPC's contract. Sorting here, not at
@@ -897,13 +950,12 @@ class InMemoryChatBackend:
             # returned as-is; `replace()` on an empty list is a needless copy.
             return [
                 replace(m, sources=sorted(m.sources, key=lambda s: s.get("source_index", 0)))
-                if m.sources else m
+                if m.sources
+                else m
                 for m in window
             ]
 
-    def list_sessions(
-        self, owner_id, *, limit=DEFAULT_LIST_LIMIT, cursor=None
-    ) -> SessionPage:
+    def list_sessions(self, owner_id, *, limit=DEFAULT_LIST_LIMIT, cursor=None) -> SessionPage:
         limit = clamp_list_limit(limit)
         with self._lock:
             rows = [
@@ -930,8 +982,7 @@ class InMemoryChatBackend:
 
             if cursor and cursor[0] and cursor[1]:
                 rows = [
-                    s for s in rows
-                    if (s.updated_at or "", s.session_id) < (cursor[0], cursor[1])
+                    s for s in rows if (s.updated_at or "", s.session_id) < (cursor[0], cursor[1])
                 ]
 
             page = rows[:limit]
@@ -968,10 +1019,11 @@ class InMemoryChatBackend:
                 del self._turns[turn_key]
             return True
 
-    def delete_all_sessions(self, owner_id) -> List[str]:
+    def delete_all_sessions(self, owner_id) -> list[str]:
         with self._lock:
             owned = [
-                session_id for session_id, session in self._sessions.items()
+                session_id
+                for session_id, session in self._sessions.items()
                 if session["owner_id"] == str(owner_id)
             ]
             for key in owned:
@@ -982,15 +1034,16 @@ class InMemoryChatBackend:
             return owned
 
     # Test affordance, not part of the Protocol.
-    def sessions_for(self, owner_id: str) -> List[str]:
+    def sessions_for(self, owner_id: str) -> list[str]:
         with self._lock:
             return [
-                session_id for session_id, session in self._sessions.items()
+                session_id
+                for session_id, session in self._sessions.items()
                 if session["owner_id"] == str(owner_id)
             ]
 
 
-def get_chat_backend() -> Optional[ChatBackend]:
+def get_chat_backend() -> ChatBackend | None:
     """The real backend, or None when this deployment has no database.
 
     None means "no durable history available" and is not an error: the same

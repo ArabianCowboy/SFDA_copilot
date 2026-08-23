@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Protocol
+from typing import Any, Protocol, cast
 
 import numpy as np
 
@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Embedding client protocol
 # ---------------------------------------------------------------------------
+
 
 class EmbeddingClientProtocol(Protocol):
     """Structural type for any embedding client.
@@ -41,6 +42,7 @@ class EmbeddingClientProtocol(Protocol):
 # ---------------------------------------------------------------------------
 # Helper functions
 # ---------------------------------------------------------------------------
+
 
 def expand_query(query: str) -> str:
     """Expand *query* with pharmaceutical synonyms based on exact word-boundary matches.
@@ -76,6 +78,7 @@ def contains_arabic(text: str) -> bool:
 # ---------------------------------------------------------------------------
 # QueryProcessor
 # ---------------------------------------------------------------------------
+
 
 class QueryProcessor:
     """Pre-processes user queries for hybrid search.
@@ -131,7 +134,11 @@ class QueryProcessor:
             return query
 
         try:
-            response = self._translation_client.chat.completions.create(
+            # `_translation_client` is typed loosely (object | None) so this
+            # class doesn't need a hard dependency on openai.OpenAI's type —
+            # duck-typed at the call site instead.
+            client = cast(Any, self._translation_client)
+            response = client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[
                     {"role": "system", "content": self._TRANSLATION_SYSTEM_PROMPT},
@@ -140,7 +147,7 @@ class QueryProcessor:
                 max_tokens=100,
                 temperature=0.0,
             )
-            translated: str = response.choices[0].message.content.strip()  # type: ignore[union-attr]
+            translated: str = response.choices[0].message.content.strip()
             logger.info("Translated query: '%s' → '%s'", query, translated)
             return translated
         except Exception as exc:
@@ -151,9 +158,7 @@ class QueryProcessor:
             # then told the corpus has no guidance on their question, when
             # what actually happened is that the translation service was down.
             logger.error("Translation failed for query '%s': %s", query, exc)
-            raise QueryTranslationError(
-                f"Could not translate the query: {exc}"
-            ) from exc
+            raise QueryTranslationError(f"Could not translate the query: {exc}") from exc
 
     # ------------------------------------------------------------------
     # Expansion
@@ -216,7 +221,8 @@ class QueryProcessor:
         norm = float(np.linalg.norm(embedding))
         if norm == 0.0:
             logger.warning(
-                "Embedding for '%s…' has zero norm; returning as-is.", text[:50],
+                "Embedding for '%s…' has zero norm; returning as-is.",
+                text[:50],
             )
             return embedding
 

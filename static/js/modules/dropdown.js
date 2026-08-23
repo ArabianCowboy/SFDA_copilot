@@ -97,7 +97,7 @@ export const CustomDropdown = {
            selected, and Enter re-picked the current value. Reading a layout
            property forces the flush. */
         void menu.offsetHeight;
-        (items.find(i => i.classList.contains('active')) || items[0]).focus();
+        (items.find((i) => i.classList.contains('active')) || items[0]).focus();
         return;
       }
       /* Closing hides the menu with `visibility: hidden`, which does NOT move
@@ -126,7 +126,7 @@ export const CustomDropdown = {
         hiddenSelect.dispatchEvent(new Event('change'));
       }
 
-      items.forEach(i => {
+      items.forEach((i) => {
         const on = i === item;
         i.classList.toggle('active', on);
         i.setAttribute('aria-selected', String(on));
@@ -139,7 +139,7 @@ export const CustomDropdown = {
        staying on whatever is already selected (which starts as "All
        Categories") rather than guessing. */
     this._selectItem = (value, { persist }) => {
-      const item = items.find(i => i.dataset.value === value);
+      const item = items.find((i) => i.dataset.value === value);
       if (!item) return;
       select(item);
       if (persist) saveScope(value);
@@ -150,7 +150,7 @@ export const CustomDropdown = {
       setOpen(!isOpen());
     });
 
-    items.forEach(item => {
+    items.forEach((item) => {
       item.addEventListener('click', (e) => {
         e.stopPropagation();
         this._readerChose = true;
@@ -164,13 +164,21 @@ export const CustomDropdown = {
        operable without a pointer like the native <select> it replaces. */
     menu.addEventListener('keydown', (e) => {
       const current = items.indexOf(document.activeElement);
-      let next = null;
+      let next;
 
       switch (e.key) {
-        case 'ArrowDown': next = Math.min(items.length - 1, current + 1); break;
-        case 'ArrowUp':   next = Math.max(0, current - 1); break;
-        case 'Home':      next = 0; break;
-        case 'End':       next = items.length - 1; break;
+        case 'ArrowDown':
+          next = Math.min(items.length - 1, current + 1);
+          break;
+        case 'ArrowUp':
+          next = Math.max(0, current - 1);
+          break;
+        case 'Home':
+          next = 0;
+          break;
+        case 'End':
+          next = items.length - 1;
+          break;
         case 'Enter':
         case ' ':
           if (current > -1) {

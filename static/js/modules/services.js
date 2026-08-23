@@ -52,7 +52,7 @@ export function parseSseFrame(raw) {
   const dataLines = [];
 
   for (const line of raw.split(/\r?\n/)) {
-    if (!line || line.startsWith(':')) continue;   // blank or comment
+    if (!line || line.startsWith(':')) continue; // blank or comment
     const colon = line.indexOf(':');
     const field = colon === -1 ? line : line.slice(0, colon);
     let value = colon === -1 ? '' : line.slice(colon + 1);
@@ -125,8 +125,7 @@ export const Services = {
     }
 
     const isDebugMode =
-      window.location.hostname === 'localhost' ||
-      window.location.hostname === '127.0.0.1';
+      window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 
     /* A recovery session is kept in per-tab sessionStorage under its own key,
        not in the shared localStorage the signed-in reader uses.
@@ -172,7 +171,14 @@ export const Services = {
    *  browser that lands on this path. The server accepting `lang` is only half
    *  the fix — nothing was sending it.
    */
-  async sendChatRequest(query, category, token, lang = 'en', requestId = null, conversation = null) {
+  async sendChatRequest(
+    query,
+    category,
+    token,
+    lang = 'en',
+    requestId = null,
+    conversation = null,
+  ) {
     this.cancelChatRequest();
     this.chatAbortController = new AbortController();
 
@@ -184,15 +190,19 @@ export const Services = {
       headers,
       signal: this.chatAbortController.signal,
       body: JSON.stringify({
-        query, category, lang,
+        query,
+        category,
+        lang,
         client_request_id: requestId || newRequestId(),
         // `conversation` carries {id, allowCreate} — the URL-as-pointer
         // contract (Decision 4). Omitted entirely when null, which is the
         // absent-not-malformed signal the server's §8 cookie fallback needs.
-        ...(conversation ? {
-          conversation_id: conversation.id,
-          allow_create: conversation.allowCreate,
-        } : {}),
+        ...(conversation
+          ? {
+              conversation_id: conversation.id,
+              allow_create: conversation.allowCreate,
+            }
+          : {}),
       }),
     });
 
@@ -221,11 +231,19 @@ export const Services = {
    * `on` is a map of event name -> handler, keeping this module free of any
    * dom/state/ui import (enforced by test_frontend_architecture.py).
    */
-  async streamChatRequest(query, category, token, lang, on = {}, requestId = null, conversation = null) {
+  async streamChatRequest(
+    query,
+    category,
+    token,
+    lang,
+    on = {},
+    requestId = null,
+    conversation = null,
+  ) {
     this.cancelChatRequest();
     this.chatAbortController = new AbortController();
 
-    const headers = { 'Content-Type': 'application/json', 'Accept': 'text/event-stream' };
+    const headers = { 'Content-Type': 'application/json', Accept: 'text/event-stream' };
     if (token) headers['Authorization'] = `Bearer ${token}`;
 
     const response = await fetch('/api/chat/stream', {
@@ -234,13 +252,17 @@ export const Services = {
       cache: 'no-store',
       signal: this.chatAbortController.signal,
       body: JSON.stringify({
-        query, category, lang,
+        query,
+        category,
+        lang,
         client_request_id: requestId || newRequestId(),
         // See sendChatRequest's comment — same contract, same reason.
-        ...(conversation ? {
-          conversation_id: conversation.id,
-          allow_create: conversation.allowCreate,
-        } : {}),
+        ...(conversation
+          ? {
+              conversation_id: conversation.id,
+              allow_create: conversation.allowCreate,
+            }
+          : {}),
       }),
     });
 
@@ -285,10 +307,14 @@ export const Services = {
         buffer += decoder.decode(value, { stream: true });
         drain();
       }
-      buffer += decoder.decode();  // flush any trailing multi-byte sequence
+      buffer += decoder.decode(); // flush any trailing multi-byte sequence
       drain();
     } finally {
-      try { reader.releaseLock(); } catch { /* already released */ }
+      try {
+        reader.releaseLock();
+      } catch {
+        /* already released */
+      }
     }
 
     /* A closed socket is not a finished answer. A proxy timeout, a dropped
@@ -338,7 +364,9 @@ export const Services = {
   async signup(email, password, metadata = {}) {
     if (!this.supabase) throw new Error('Supabase client not initialized.');
     const { data, error } = await this.supabase.auth.signUp({
-      email, password, options: { data: metadata },
+      email,
+      password,
+      options: { data: metadata },
     });
     if (error) throw error;
     return data;
@@ -427,7 +455,10 @@ export const Services = {
     if (window.location.search.includes('testing=true')) return { testing: true };
     if (!this.supabase) throw new Error('Authentication service not available.');
 
-    const { data: { session }, error: sessionError } = await this.supabase.auth.getSession();
+    const {
+      data: { session },
+      error: sessionError,
+    } = await this.supabase.auth.getSession();
     if (sessionError) throw sessionError;
     if (!session) return { signedOut: false, sessionMissing: true };
 
@@ -778,7 +809,9 @@ export const Services = {
     if (!this.supabase) throw new Error('Supabase client not initialized.');
     const { data, error } = await this.supabase
       .from('profiles')
-      .select('id, first_name, family_name, age, full_name, organization, specialization, preferences, marketing_consent')
+      .select(
+        'id, first_name, family_name, age, full_name, organization, specialization, preferences, marketing_consent',
+      )
       .eq('id', userId)
       .single();
 

@@ -37,10 +37,12 @@ def test_a_reset_request_sends_a_link_to_the_recovery_landing(client, dispatcher
     response = client.post("/auth/recover", json={"email": "reader@example.com"})
 
     assert response.status_code == 202
-    assert dispatcher.sent == [{
-        "email": "reader@example.com",
-        "redirect_to": "https://sfda-copilot.example/?recovery=1",
-    }]
+    assert dispatcher.sent == [
+        {
+            "email": "reader@example.com",
+            "redirect_to": "https://sfda-copilot.example/?recovery=1",
+        }
+    ]
 
 
 def test_the_readers_language_rides_along_on_the_link(client, dispatcher):
@@ -75,6 +77,7 @@ def test_a_send_failure_is_indistinguishable_from_a_send(client, dispatcher):
 def test_a_broken_dispatcher_does_not_answer_differently(app):
     """A misconfigured deployment must look like every other outcome. This is the
     path that used to raise before the dispatcher was resolved inside the try."""
+
     def explode():
         raise ValueError("malformed SUPABASE_URL")
 
@@ -85,14 +88,17 @@ def test_a_broken_dispatcher_does_not_answer_differently(app):
     assert response.get_json() == {"sent": True}
 
 
-@pytest.mark.parametrize("base, ok", [
-    ("https://sfda-copilot.example", True),
-    ("http://127.0.0.1:5000", True),          # local development must stay usable
-    ("javascript:alert(1)", False),
-    ("not-a-url", False),
-    ("https://user:pw@evil.example", False),
-    ("https://example.com/?next=x", False),
-])
+@pytest.mark.parametrize(
+    "base, ok",
+    [
+        ("https://sfda-copilot.example", True),
+        ("http://127.0.0.1:5000", True),  # local development must stay usable
+        ("javascript:alert(1)", False),
+        ("not-a-url", False),
+        ("https://user:pw@evil.example", False),
+        ("https://example.com/?next=x", False),
+    ],
+)
 def test_the_base_url_is_validated_not_merely_present(monkeypatch, base, ok):
     """This value becomes a link in an email that people are told to click, so a
     typo is not a 404 — it is a recovery link pointing somewhere else."""
@@ -136,13 +142,16 @@ def test_a_missing_dispatcher_is_never_reported_as_a_send(app):
     assert response.get_json() == {"sent": True}
 
 
-@pytest.mark.parametrize("payload", [
-    {},
-    {"email": ""},
-    {"email": "   "},
-    {"email": 42},
-    {"email": "a@example.com", "lang": 7},
-])
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {},
+        {"email": ""},
+        {"email": "   "},
+        {"email": 42},
+        {"email": "a@example.com", "lang": 7},
+    ],
+)
 def test_a_malformed_request_is_refused_before_anything_is_sent(client, dispatcher, payload):
     response = client.post("/auth/recover", json=payload)
 
@@ -238,12 +247,15 @@ def test_every_recovery_string_is_actually_drawn_somewhere():
     )
 
 
-@pytest.mark.parametrize("message, expected", [
-    ("For security purposes, you can only request this after 47 seconds", "reset_rate_limited"),
-    ("Email rate limit exceeded", "reset_quota_exhausted"),
-    ("over_email_send_rate_limit", "reset_quota_exhausted"),
-    ("something nobody has seen before", "reset_send_failed"),
-])
+@pytest.mark.parametrize(
+    "message, expected",
+    [
+        ("For security purposes, you can only request this after 47 seconds", "reset_rate_limited"),
+        ("Email rate limit exceeded", "reset_quota_exhausted"),
+        ("over_email_send_rate_limit", "reset_quota_exhausted"),
+        ("something nobody has seen before", "reset_send_failed"),
+    ],
+)
 def test_provider_messages_are_mapped_to_codes_not_shown_to_readers(message, expected):
     """GoTrue's text is English-only and phrased as though the reader had
     exceeded a limit rather than the service being busy. It never reaches a

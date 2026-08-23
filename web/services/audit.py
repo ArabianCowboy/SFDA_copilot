@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from flask import request
 
@@ -37,10 +37,10 @@ class AuditActor:
     has lost the thing it exists to record.
     """
 
-    user_id: Optional[str]
-    email: Optional[str]
-    request_ip: Optional[str] = None
-    user_agent: Optional[str] = None
+    user_id: str | None
+    email: str | None
+    request_ip: str | None = None
+    user_agent: str | None = None
 
 
 def actor_from_request(identity) -> AuditActor:
@@ -61,7 +61,7 @@ def actor_from_request(identity) -> AuditActor:
     )
 
 
-def changed_keys(before: Dict[str, Any], after: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+def changed_keys(before: dict[str, Any], after: dict[str, Any]) -> dict[str, dict[str, Any]]:
     """The diff, as ``{key: {"from": x, "to": y}}`` — changed keys only.
 
     Storing whole documents makes the one field that actually moved impossible
@@ -81,17 +81,17 @@ class AuditEntry:
 
     id: int
     occurred_at: str
-    actor_email: Optional[str]
+    actor_email: str | None
     action: str
-    target_type: Optional[str]
-    target_id: Optional[str]
-    before: Optional[dict]
-    after: Optional[dict]
-    request_ip: Optional[str]
-    note: Optional[str]
+    target_type: str | None
+    target_id: str | None
+    before: dict | None
+    after: dict | None
+    request_ip: str | None
+    note: str | None
 
     @classmethod
-    def from_row(cls, row: Dict[str, Any]) -> "AuditEntry":
+    def from_row(cls, row: dict[str, Any]) -> AuditEntry:
         return cls(
             id=row["id"],
             occurred_at=row["occurred_at"],
@@ -105,7 +105,7 @@ class AuditEntry:
             note=row.get("note"),
         )
 
-    def as_dict(self) -> Dict[str, Any]:
+    def as_dict(self) -> dict[str, Any]:
         return {
             "id": self.id,
             "occurred_at": self.occurred_at,
@@ -121,9 +121,13 @@ class AuditEntry:
 
 
 def list_entries(
-    backend, *, limit: int = 50, offset: int = 0,
-    target_type: Optional[str] = None, target_id: Optional[str] = None,
-) -> List[AuditEntry]:
+    backend,
+    *,
+    limit: int = 50,
+    offset: int = 0,
+    target_type: str | None = None,
+    target_id: str | None = None,
+) -> list[AuditEntry]:
     """Most recent first. Paginated server-side.
 
     No client-side sorting: this is a window onto a larger table, and letting
@@ -133,7 +137,9 @@ def list_entries(
     if backend is None:
         return []
     rows = backend.list_audit(
-        limit=min(limit, 200), offset=max(offset, 0),
-        target_type=target_type, target_id=target_id,
+        limit=min(limit, 200),
+        offset=max(offset, 0),
+        target_type=target_type,
+        target_id=target_id,
     )
     return [AuditEntry.from_row(row) for row in rows]

@@ -1,0 +1,20 @@
+config:
+  default: true
+  MD013: false # line-length — off; prose wrapping is a style choice this repo already made, not a bug
+  MD033: false # inline HTML — off; used deliberately in README/TODO/CLAUDE.md/docs
+  MD041: false # first-line-heading — off; archive/index files don't all start with an H1
+  MD024:
+    siblings_only: true # allow duplicate headings across different sections (changelog-style docs like TODO.md)
+  MD060: false # table-column-style — pedantic pipe-spacing; not worth reflowing every existing table for
+  MD040: false # fenced-code-language — many fences here are directory trees / terminal output, not code in a language
+  MD036: false # no-emphasis-as-heading — long narrative docs use bold/italic runs as prose sub-markers, not a real heading outline
+  MD025:
+    front_matter_title: "" # off: DESIGN.md's YAML frontmatter has a nested `typography.title` key that MD025's default title regex mistakes for a document title
+globs:
+  - "**/*.md"
+ignores:
+  - "node_modules/**"
+  - ".venv/**"
+  - "web/api/.venv/**"
+  - "data/**"
+  - ".impeccable/**" # agent-tool critique output, not authored project documentation

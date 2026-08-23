@@ -12,9 +12,9 @@ from __future__ import annotations
 import pytest
 
 from web.services.citation_eval_metrics import (
-    GateReport,
     HALLUCINATED_MARKER_RATE_FLOOR,
     MIN_SAMPLE_FOR_RELATIVE_COMPARISON,
+    GateReport,
     LeakageResult,
     MetricSummary,
     UsageEstimate,
@@ -33,12 +33,13 @@ from web.services.result_combiner import SearchResult
 
 
 def source(**overrides):
-    defaults = dict(text="x", score=0.7, document="A.pdf", category="regulatory", page=1)
+    defaults = {"text": "x", "score": 0.7, "document": "A.pdf", "category": "regulatory", "page": 1}
     defaults.update(overrides)
     return SearchResult(**defaults)
 
 
 # ── split_sentences ─────────────────────────────────────────────────────────
+
 
 def test_splits_on_terminal_punctuation():
     assert split_sentences("First. Second! Third?") == ["First.", "Second!", "Third?"]
@@ -55,6 +56,7 @@ def test_empty_text_has_no_sentences():
 
 # ── marker_coverage ──────────────────────────────────────────────────────────
 
+
 def test_coverage_counts_sentences_with_a_marker():
     sources = build_source_payload([source(), source()])
     assert marker_coverage("Claim one [1]. Claim two [2]. Claim three.", sources) == 2 / 3
@@ -70,6 +72,7 @@ def test_coverage_is_none_for_an_empty_answer():
 
 
 # ── hallucinated_marker_rate ─────────────────────────────────────────────────
+
 
 def test_hallucination_rate_from_diagnostics():
     diagnostics = CitationDiagnostics(cited=[1], invalid=[9], total_markers=2)
@@ -89,6 +92,7 @@ def test_hallucination_rate_is_zero_when_every_marker_is_valid():
 
 # ── refusal_is_clean ─────────────────────────────────────────────────────────
 
+
 def test_refusal_with_no_markers_is_clean():
     sources = build_source_payload([source()])
     assert refusal_is_clean("I cannot answer based on the given information.", sources) is True
@@ -101,6 +105,7 @@ def test_refusal_with_a_marker_is_not_clean():
 
 # ── legacy_intervention_occurred ─────────────────────────────────────────────
 
+
 def test_intervention_detected_when_text_changed():
     assert legacy_intervention_occurred("Claim [Source: A.pdf].", "Claim [1].") is True
 
@@ -110,6 +115,7 @@ def test_no_intervention_when_text_is_unchanged():
 
 
 # ── leakage_check ─────────────────────────────────────────────────────────
+
 
 def test_leakage_detected_in_replayed_assistant_turn():
     messages = [
@@ -163,12 +169,17 @@ def test_cost_falls_back_to_tokenizer_estimate_when_usage_is_missing():
 def test_cost_is_none_for_an_unpriced_model_not_zero():
     """Silently pricing an unknown model at $0 would make a genuinely free
     model and a not-yet-catalogued one indistinguishable in a report."""
-    estimate = estimate_cost({"prompt_tokens": 100, "completion_tokens": 50}, PRICING, "unknown-model")
+    estimate = estimate_cost(
+        {"prompt_tokens": 100, "completion_tokens": 50}, PRICING, "unknown-model"
+    )
     assert estimate.cost_usd is None
-    assert estimate == UsageEstimate(prompt_tokens=100, completion_tokens=50, cost_usd=None, exact=True)
+    assert estimate == UsageEstimate(
+        prompt_tokens=100, completion_tokens=50, cost_usd=None, exact=True
+    )
 
 
 # ── compare_to_baseline — the gate ──────────────────────────────────────────
+
 
 def summary(value, n=MIN_SAMPLE_FOR_RELATIVE_COMPARISON):
     return MetricSummary(value=value, n=n)
@@ -269,6 +280,7 @@ def test_gate_report_passes_only_when_every_verdict_passes():
 
 
 # ── language_parity_gap ─────────────────────────────────────────────────────
+
 
 def test_parity_gap_is_positive_when_english_scores_higher():
     en = MetricSummary(value=0.9, n=50)

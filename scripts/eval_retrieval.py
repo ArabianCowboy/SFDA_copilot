@@ -48,14 +48,17 @@ from web.services.search_engine import ImprovedSearchEngine
 
 PROBES = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "web", "tests", "data", "retrieval_eval.yaml",
+    "web",
+    "tests",
+    "data",
+    "retrieval_eval.yaml",
 )
 
 # Every group except in_domain asserts "nothing here is relevant", so a floor
 # is doing its job when it empties them.
 SHOULD_BE_EMPTY = ("out_of_domain", "conversational", "near_miss")
 
-THRESHOLDS = [round(0.05 + 0.025 * i, 3) for i in range(19)]   # 0.050 … 0.500
+THRESHOLDS = [round(0.05 + 0.025 * i, 3) for i in range(19)]  # 0.050 … 0.500
 
 
 def load_probes(args):
@@ -78,7 +81,7 @@ def run(engine, probes):
     for probe in probes:
         try:
             results = engine.search(probe["query"], probe.get("category", "all"))
-        except Exception as exc:                      # noqa: BLE001 - report, don't abort
+        except Exception as exc:
             print(f"  !! {probe['query'][:50]!r} failed: {exc}")
             probe["results"] = []
             probe["error"] = str(exc)
@@ -133,8 +136,7 @@ def sweep(probes):
     print("\n" + "=" * 72)
     print("THRESHOLD SWEEP")
     if errored:
-        print(f"  ** {len(errored)} probe(s) failed to retrieve — this run is "
-              f"inconclusive **")
+        print(f"  ** {len(errored)} probe(s) failed to retrieve — this run is inconclusive **")
     print(f"  {'min_score':>9}  {'false refusals':>14}  {'OOD accepted':>13}  {'doc recall':>10}")
 
     # Recall is only meaningful over the WHOLE in-domain set. Measuring it on
@@ -142,9 +144,7 @@ def sweep(probes):
     # while the other seven were never checked — the sweep would report
     # "1/1 recall" and mark a value safe on the strength of a single question.
     labelled = [p for p in in_domain if p.get("expected_documents")]
-    fully_labelled = (
-        bool(in_domain) and not errored and len(labelled) == len(in_domain)
-    )
+    fully_labelled = bool(in_domain) and not errored and len(labelled) == len(in_domain)
     safe = []
     # Thresholds that pass the two label-free checks. Reportable as context
     # even without labels, but never as a recommendation.
@@ -206,9 +206,11 @@ def sweep(probes):
         print("  is the right one.\n")
         print("  Label every in_domain probe, then re-run. Keep min_score at 0.00.")
         if separating:
-            print(f"\n  (For reference only, NOT a recommendation: {len(separating)} value(s) "
-                  f"refused no in-domain probe and emptied every out-of-domain one, "
-                  f"the largest being {max(separating):.3f}.)")
+            print(
+                f"\n  (For reference only, NOT a recommendation: {len(separating)} value(s) "
+                f"refused no in-domain probe and emptied every out-of-domain one, "
+                f"the largest being {max(separating):.3f}.)"
+            )
         return
 
     if safe:
@@ -217,7 +219,7 @@ def sweep(probes):
         recommended = safe[max(0, len(safe) - 2)] if len(safe) > 1 else safe[0]
         print("RECOMMENDATION — paste into web/config.yaml under search_engine:\n")
         print(f"  min_score: {recommended:.3f}")
-        print(f"  min_score_ratio: 0.00\n")
+        print("  min_score_ratio: 0.00\n")
         print(f"  (largest safe value was {max(safe):.3f}; backed off one step for margin)")
     else:
         print("RECOMMENDATION\n")
@@ -232,7 +234,9 @@ def sweep(probes):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--no-ar", action="store_true", help="skip Arabic probes (no translation calls)")
+    parser.add_argument(
+        "--no-ar", action="store_true", help="skip Arabic probes (no translation calls)"
+    )
     parser.add_argument("--category", help="restrict to one category")
     args = parser.parse_args()
 
@@ -243,7 +247,7 @@ def main():
     if not engine.is_initialized():
         engine.initialize()
 
-    if engine._translation_client is None:                     # noqa: SLF001
+    if engine._translation_client is None:
         print("!! No translation client (OPENAI_API_KEY unset).")
         print("!! Arabic queries embed untranslated and score low across the board,")
         print("!! so any threshold derived from this run would nuke Arabic retrieval.\n")

@@ -8,21 +8,21 @@ These were applied directly to the project and exist only in
 than reconstructed as `.sql`, because a reconstruction would be a file that was never run —
 which is exactly the drift this directory exists to prevent.
 
-| version | name |
-|---|---|
-| 20250427073035 | create_profiles_table |
-| 20250629083241 | add_profile_customization |
-| 20250630111737 | add_profiles_rls_policy |
-| 20250630114337 | add_profiles_insert_policy |
-| 20251207173359 | fix_auth_triggers_and_policies |
+| version        | name                                    |
+| -------------- | --------------------------------------- |
+| 20250427073035 | create_profiles_table                   |
+| 20250629083241 | add_profile_customization               |
+| 20250630111737 | add_profiles_rls_policy                 |
+| 20250630114337 | add_profiles_insert_policy              |
+| 20251207173359 | fix_auth_triggers_and_policies          |
 | 20260813101747 | harden_security_definer_and_search_path |
-| 20260813101816 | optimize_rls_auth_uid_calls |
+| 20260813101816 | optimize_rls_auth_uid_calls             |
 
 Everything from `20260814005509` onward is a `.sql` file in this directory.
 
 ## State at the point this directory was created (2026-08-14)
 
-*(Historical. For the current shape of `public`, see `../README.md`.)*
+_(Historical. For the current shape of `public`, see `../README.md`.)_
 
 Three tables in `public`, all with RLS enabled:
 
@@ -38,7 +38,7 @@ Three tables in `public`, all with RLS enabled:
 **Why `users` was empty.** `fix_auth_triggers_and_policies` (2025-12-07) is what introduced
 the `insert into public.users` in `handle_new_user`. The most recent signup was 2025-11-16 —
 three weeks earlier. The trigger has therefore never fired for any existing account, which
-is also why the 2025-11-16 account has no `profiles` row: it was created under the *previous*
+is also why the 2025-11-16 account has no `profiles` row: it was created under the _previous_
 trigger, the one that migration was written to fix.
 
 `TODO.md` stated that `public.users` was "populated by the signup trigger on every new

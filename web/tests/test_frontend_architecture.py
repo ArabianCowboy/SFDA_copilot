@@ -2,7 +2,6 @@
 
 from pathlib import Path
 
-
 MODULES = Path("static/js/modules")
 ADMIN = Path("static/js/admin")
 ACCOUNT = Path("static/js/account")
@@ -132,10 +131,15 @@ def test_the_console_does_not_import_the_chat_shell():
     only for whoever opened the page — which is one administrator, possibly in
     production.
     """
-    forbidden = ("modules/ui.js", "modules/handlers.js", "modules/app.js",
-                 "modules/robot.js", "modules/source-panel.js")
+    forbidden = (
+        "modules/ui.js",
+        "modules/handlers.js",
+        "modules/app.js",
+        "modules/robot.js",
+        "modules/source-panel.js",
+    )
 
-    sources = list(ADMIN.glob("*.js")) + [Path("static/js/admin.js")]
+    sources = [*ADMIN.glob("*.js"), Path("static/js/admin.js")]
     assert sources, "expected console modules to exist"
 
     for path in sources:
@@ -161,7 +165,9 @@ def test_english_catalogue_preserves_test_asserted_strings():
     assert runtime["chat"]["sendFailed"] == "Failed to send message."
     assert runtime["chat"]["cancelled"] == "Chat request cancelled."
     assert runtime["chat"]["loginRequired"] == "Please log in to chat with the AI."
-    assert runtime["chat"]["sessionUnverified"] == "Unable to verify your session. Please try again."
+    assert (
+        runtime["chat"]["sessionUnverified"] == "Unable to verify your session. Please try again."
+    )
     assert runtime["chat"]["genericError"].startswith(
         "Sorry, I encountered an error while processing your request."
     )

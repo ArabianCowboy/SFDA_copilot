@@ -30,6 +30,7 @@ def stub_scorer(table):
 
 # ── score() ──────────────────────────────────────────────────────────────
 
+
 def test_score_calls_the_injected_scorer_directly():
     scorer = HHEMScorer(scorer=lambda p, h: 0.87)
     assert scorer.score("premise", "hypothesis") == 0.87
@@ -49,6 +50,7 @@ def test_the_real_hhem_model_is_never_touched_by_a_stubbed_instance():
 
 
 # ── citation_recall ──────────────────────────────────────────────────────
+
 
 def test_recall_concatenates_all_cited_passages_as_one_premise():
     seen = {}
@@ -80,6 +82,7 @@ def test_recall_defaults_to_validated_confidence_for_unspecified_language():
 
 
 # ── citation_precision ───────────────────────────────────────────────────
+
 
 def test_precision_scores_each_citation_against_the_others():
     table = {

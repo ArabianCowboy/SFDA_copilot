@@ -6,8 +6,13 @@ STATUS: CURRENT AUTHORITY — working agreement for agents and new contributors.
 Last verified against code 2026-08-23.
 
 SFDA Copilot: a bilingual (EN/AR, RTL) Flask + Supabase + LLM app that answers questions
-from the official SFDA guideline corpus and cites its sources. Python 3.12. No bundler, no
-`node_modules`, no linter.
+from the official SFDA guideline corpus and cites its sources. **Python 3.10 is the real
+floor** — the VPS production server runs 3.10.12; dev machines and CI may run newer, but
+every commit must stay 3.10-compatible (`ruff`'s `target-version` and `mypy`'s
+`python_version` are both pinned to it in `pyproject.toml` for exactly this reason — do not
+bump them to "match" a newer local interpreter). No bundler, no runtime `node_modules` — the
+frontend is still plain JS loaded from CDNs — but `node_modules/` now exists as local/CI-only
+dev tooling; see _Linting and formatting_ below.
 
 This file is short on purpose. It orients you and tells you where the rules live; it does
 not restate them, because a rule written in two places is a rule that will disagree with
@@ -48,11 +53,26 @@ python scripts/smoke_real.py "ما هي متطلبات تسجيل الأدوية
 python scripts/eval_citations.py --judge --model <id> --out judge_packet.jsonl
 ```
 
-**There is no build step and no lint step.** `package.json` has no scripts — it exists so
-`npm audit` covers the four CDN libraries the browser loads. `pytest.ini` is the only Python
-tool config; there is no ruff, eslint, mypy or pre-commit anywhere.
-
 `integration`-marked tests are selected by neither CI job. Run them by hand.
+
+**Linting and formatting.** There is still no build step, but there is now a lint step:
+`pyproject.toml` holds `ruff`/`mypy` config, `eslint.config.js`/`.prettierrc` cover
+`static/js/`, and `.markdownlint-cli2.yaml` covers every `.md` file. All four run through
+`pre-commit` (`.pre-commit-config.yaml`) on every commit — install it once with
+`pip install -r requirements-dev.txt && pre-commit install`. mypy runs as a `local` hook
+against this project's own venv, not an isolated one, so it goes through
+`scripts/pre_commit_mypy.py` — a small shim that locates `venv/`/`.venv/` itself rather than
+requiring it to be activated on PATH (so a commit from a GUI client or an unactivated shell
+still runs the right mypy). The eslint/prettier/markdownlint-cli2 hooks still shell out via
+`npx`, so they do need `npm install` to have been run at least once.
+
+```bash
+ruff check . --fix && ruff format .                 # Python: lint-fix, then format
+mypy web                                            # Python: type-check (lenient — see pyproject.toml)
+npm run lint:fix && npm run format                  # JS: static/js/ only
+npm run lint:md && npm run format:md                # Markdown: every .md file
+pre-commit run --all-files                          # everything above, in one pass
+```
 
 ---
 
@@ -63,30 +83,30 @@ The parts that take several files to piece together.
 **One Flask app, four blueprints, three frontends.** `create_app()` in `web/api/app.py` (~2,900
 lines) is a factory built from staged private helpers — `_configure_app`, `_init_extensions`,
 `_register_testing_doubles`, `_initialize_services`, `_register_routes`. Chat routes are
-closures defined *inside* `_register_routes`; `admin.py` and `account.py` are imported inside
+closures defined _inside_ `_register_routes`; `admin.py` and `account.py` are imported inside
 it too, deliberately, to break an import cycle (both import back for `_authenticate_request`).
 
-| Blueprint | File | Serves |
-|---|---|---|
-| `auth_bp`, `recover_bp` | `web/api/auth.py` | signup, login, logout, password recovery |
-| `admin_bp` | `web/api/admin.py` | `/admin` console: people, account detail, audit, settings |
-| `account_bp` | `web/api/account.py` | `/account` page, NDJSON export, bulk conversation delete |
+| Blueprint               | File                 | Serves                                                    |
+| ----------------------- | -------------------- | --------------------------------------------------------- |
+| `auth_bp`, `recover_bp` | `web/api/auth.py`    | signup, login, logout, password recovery                  |
+| `admin_bp`              | `web/api/admin.py`   | `/admin` console: people, account detail, audit, settings |
+| `account_bp`            | `web/api/account.py` | `/account` page, NDJSON export, bulk conversation delete  |
 
-**The path a question takes.** `POST /api/chat/stream` → auth → validate → *ownership preflight
-in the view body, before any retrieval or response frame* → `SearchEngine` (FAISS semantic +
+**The path a question takes.** `POST /api/chat/stream` → auth → validate → _ownership preflight
+in the view body, before any retrieval or response frame_ → `SearchEngine` (FAISS semantic +
 TF-IDF lexical, fused 0.5/0.5 by `ResultCombiner`, then a relevance floor) → `OpenAIHandler`
 (the only place an LLM is called) → SSE frames → durable write → Supabase RPC. Frame order is
 fixed and tested: `final` → durable write → `suggestions` → `done`.
 
 **Frontend layering, enforced by `test_frontend_architecture.py`.** `services.js` is transport
 only — it may not import view or state, or name `ErrorHandler`/`DOMCache`. `dom.js` and
-`state.js` own view and runtime state. `handlers.js` is orchestration and the *only* place a
+`state.js` own view and runtime state. `handlers.js` is orchestration and the _only_ place a
 user-facing failure surfaces. `auth-view.js` owns authenticated/unauthenticated transitions.
 Three separate module directories (`modules/`, `admin/`, `account/`) with three import maps —
 that separation is a security boundary, since a page inlines an import-map entry per filename
 in its own directory.
 
-**Two database access patterns.** Chat tables are Flask-mediated: RLS on, *no write policies*,
+**Two database access patterns.** Chat tables are Flask-mediated: RLS on, _no write policies_,
 all writes through `security definer` RPCs filtered on `p_owner_id`. Do not "fix" that by
 adding a policy. `profiles` is the one browser-direct table, and its column protection is a
 `REVOKE` plus a trigger because RLS restricts rows, not columns.
@@ -106,13 +126,13 @@ single-worker: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ## Read before you start
 
-| If you are about to… | Read first |
-|---|---|
-| Anything non-trivial | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — the live system contract, and **which document wins** when two disagree |
-| Write a migration | [`supabase/README.md`](supabase/README.md), then [*Rules that collide*](docs/ARCHITECTURE.md#rules-that-collide) |
-| Touch CSS, or build any UI | [`DESIGN.md`](DESIGN.md) — every rule tagged `[GATE]`, `[CORRECTNESS]` or `[TASTE]` |
-| Write or change reader-facing copy | [`docs/PRODUCT.md`](docs/PRODUCT.md) |
-| Add or close a `TODO.md` entry | [`TODO.md` → How this file works](TODO.md#how-this-file-works) |
+| If you are about to…               | Read first                                                                                                               |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Anything non-trivial               | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — the live system contract, and **which document wins** when two disagree |
+| Write a migration                  | [`supabase/README.md`](supabase/README.md), then [_Rules that collide_](docs/ARCHITECTURE.md#rules-that-collide)         |
+| Touch CSS, or build any UI         | [`DESIGN.md`](DESIGN.md) — every rule tagged `[GATE]`, `[CORRECTNESS]` or `[TASTE]`                                      |
+| Write or change reader-facing copy | [`docs/PRODUCT.md`](docs/PRODUCT.md)                                                                                     |
+| Add or close a `TODO.md` entry     | [`TODO.md` → How this file works](TODO.md#how-this-file-works)                                                           |
 
 **`docs/archive/` is history, not instructions — and it is 78% of all documentation by
 volume.** It is excluded from search by `/.ignore`, so you should rarely see it. If a hit
@@ -129,16 +149,17 @@ auto-loaded file, and every other rule lives in the document that owns it.
 
 ## The rules you will actually trip over
 
-There is no linter, so every enforced rule is a pytest assertion. These bite most often:
+Most of these are still pytest assertions, not lint rules — the linter catches style and type
+issues, not this repo's specific product/architecture contracts. These bite most often:
 
 1. **Bump `ASSET_VERSION` in `web/api/app.py`** in any commit touching CSS or JS. Never write
-   the current value into a document — the durable instruction is *bump it*.
+   the current value into a document — the durable instruction is _bump it_.
 2. **Every new UI string ships in both `web/i18n/en.yaml` and `ar.yaml`.** The parity test
    covers `runtime.*` **and** `page.*` and fails if Arabic lags by one key.
 3. **You cannot add a new top-level `runtime.*` namespace.** `test_admin_page.py` pins the list
    to eleven names. Nest under an existing one.
 4. **Logical CSS properties only.** `test_css_contract.py` bans 16 physical properties. It
-   scans *this repo's* CSS only — the templates load the **LTR** Bootstrap build, so a green
+   scans _this repo's_ CSS only — the templates load the **LTR** Bootstrap build, so a green
    suite is not evidence that a Bootstrap component mirrors.
 5. **Twelve English strings are frozen verbatim.** Changing their wording is a test change.
 6. **Migrations:** one concern each, `security definer` + `search_path = ''` + owner-filtered,
@@ -170,7 +191,7 @@ replaced, and the cleanup that followed had to archive 8,000 lines to undo it.
 - **Do not state a corpus count** — not in copy, not in the README. It goes stale on the next
   ingest.
 - **Found two rules that collide?** Add a row to
-  [*Rules that collide*](docs/ARCHITECTURE.md#rules-that-collide). There are eight; each cost
+  [_Rules that collide_](docs/ARCHITECTURE.md#rules-that-collide). There are eight; each cost
   somebody a working session before it was written down.
 
 ---

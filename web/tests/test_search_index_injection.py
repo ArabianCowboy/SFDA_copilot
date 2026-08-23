@@ -62,6 +62,7 @@ def build_dir_with_manifest(tmp_path: Path) -> Path:
 # FIX 4a: SearchIndex embedding_client injection
 # ──────────────────────────────────────────────────────────────────────────
 
+
 def test_search_index_uses_injected_client_without_calling_factory(
     index_config: SearchIndexConfig,
     build_dir_with_manifest: Path,
@@ -83,7 +84,9 @@ def test_search_index_falls_back_to_factory_when_no_client_injected(
     index = SearchIndex(index_config, embedding_client=None)
     index._active_build_dir = build_dir_with_manifest
 
-    with patch("web.services.search_index.get_embedding_client", return_value=stub_client) as mock_get_client:
+    with patch(
+        "web.services.search_index.get_embedding_client", return_value=stub_client
+    ) as mock_get_client:
         index._validate_manifest()
         mock_get_client.assert_called_once_with("local")
 
@@ -112,6 +115,7 @@ def test_search_engine_wires_embedding_client_to_search_index():
 # ──────────────────────────────────────────────────────────────────────────
 # FIX 4b: Manifest mismatch detection with injected client
 # ──────────────────────────────────────────────────────────────────────────
+
 
 def test_manifest_dimension_mismatch_raises_validation_error(
     index_config: SearchIndexConfig,
@@ -175,13 +179,16 @@ def test_missing_dimension_on_injected_client_raises_validation_error(
     index = SearchIndex(index_config, embedding_client=broken_client)
     index._active_build_dir = build_dir_with_manifest
 
-    with pytest.raises(ManifestValidationError, match="does not expose a usable embedding_dimension"):
+    with pytest.raises(
+        ManifestValidationError, match="does not expose a usable embedding_dimension"
+    ):
         index._validate_manifest()
 
 
 # ──────────────────────────────────────────────────────────────────────────
 # FIX 4c: LocalEmbeddingClient caching & fallback
 # ──────────────────────────────────────────────────────────────────────────
+
 
 def test_local_embedding_client_cached_model_loads_successfully():
     with patch("web.utils.local_embedding_client.SentenceTransformer") as mock_st:
@@ -220,7 +227,9 @@ def test_local_embedding_client_corrupted_cache_does_not_silently_retry_online()
     with patch("web.utils.local_embedding_client.SentenceTransformer") as mock_st:
         mock_st.side_effect = OSError("Corrupted checkpoint or disk error")
 
-        with pytest.raises(ValueError, match="Failed to load sentence-transformers model") as exc_info:
+        with pytest.raises(
+            ValueError, match="Failed to load sentence-transformers model"
+        ) as exc_info:
             LocalEmbeddingClient()
 
         # SentenceTransformer must be called ONLY once; no second/online attempt should occur
@@ -253,8 +262,6 @@ def test_search_index_load_uses_injected_client_without_calling_factory(
 
 def test_noisy_third_party_loggers_configured_to_warning():
     import logging
-    import web.api.app  # triggers module-level logger setup
 
     for name in ("httpx", "httpcore", "huggingface_hub"):
         assert logging.getLogger(name).level == logging.WARNING
-

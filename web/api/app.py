@@ -17,32 +17,44 @@ import hashlib
 import logging
 import sys
 import threading
-import uuid
+from collections.abc import Callable, Sequence
 from contextlib import contextmanager
 from functools import wraps
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union, Tuple, cast, Sequence, Callable # Added Callable
+from typing import (  # Added Callable
+    Any,
+    cast,
+)
 from urllib.parse import urlparse
-from logging.handlers import RotatingFileHandler # New import for logging
-from werkzeug.middleware.proxy_fix import ProxyFix  # For reverse proxy support
 
 import httpx
 import yaml
 from dotenv import load_dotenv
+from werkzeug.middleware.proxy_fix import ProxyFix  # For reverse proxy support
+from werkzeug.wrappers import Response as WerkzeugResponse
 
 # GoTrue's own "this one is worth retrying" signal. Imported defensively and
 # behind two names because the package was renamed from `gotrue` to
 # `supabase_auth` mid-2.x: a hard import would turn a dependency bump into a
 # boot failure, and the classifier below degrades to the httpx check alone.
+# Declared up front so mypy treats every branch below as assigning to one
+# variable rather than redefining a name each import rebinds.
+AuthError: type[Exception] | None
+AuthRetryableError: type[Exception] | None
+AuthUnknownError: type[Exception] | None
 try:
     from supabase_auth.errors import AuthError, AuthRetryableError, AuthUnknownError
 except ImportError:  # pragma: no cover - exercised only on older/newer pins
     try:
-        from gotrue.errors import AuthError, AuthRetryableError, AuthUnknownError
+        from gotrue.errors import (  # type: ignore[no-redef]
+            AuthError,
+            AuthRetryableError,
+            AuthUnknownError,
+        )
     except ImportError:
-        AuthError = None  # type: ignore[assignment]
-        AuthRetryableError = None  # type: ignore[assignment]
-        AuthUnknownError = None  # type: ignore[assignment]
+        AuthError = None
+        AuthRetryableError = None
+        AuthUnknownError = None
 
 from flask import (
     Flask,
@@ -97,11 +109,12 @@ LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 # Configure a root logger if not already configured
 # This ensures all logs, including those from openai_app, are handled
 if not logging.getLogger().handlers:
-    logging.basicConfig(level=LOG_LEVEL,
-                        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    logging.basicConfig(
+        level=LOG_LEVEL, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    )
 
 # Explicitly set the level for the openai_app logger to INFO
-logging.getLogger('web.services.openai_app').setLevel(logging.INFO)
+logging.getLogger("web.services.openai_app").setLevel(logging.INFO)
 
 # Optional: Add a file handler for persistent logs
 # handler = RotatingFileHandler('app.log', maxBytes=10000, backupCount=3)
@@ -129,14 +142,8 @@ for _name in ("httpx", "httpcore", "huggingface_hub"):
 from web.api.auth import (
     IDENTITY_MARKER_KEYS,
     auth_bp,
-    purge_conversation_state,
     recover_bp,
     rotate_session_for_new_identity,
-)
-from web.services.admin_store import (
-    InMemoryAdminBackend,
-    get_admin_backend,
-    resolve_identity_flags,
 )
 from web.services.account_recovery import (
     InMemoryRecoveryDispatcher,
@@ -144,18 +151,15 @@ from web.services.account_recovery import (
     get_recovery_dispatcher,
     recovery_redirect_url,
 )
+from web.services.admin_store import (
+    InMemoryAdminBackend,
+    get_admin_backend,
+    resolve_identity_flags,
+)
 from web.services.auth_admin import (
     InMemoryAuthAdminDispatcher,
     get_auth_admin_dispatcher,
 )
-from web.services.identity_cache import IdentityFlags, IdentityFlagsCache
-from web.services.settings_service import SettingsService
-from web.services.citations import (
-    build_source_payload,
-    extract_cited_indices,
-    normalize_legacy_citations,
-)
-from web.services.build_registry import read_active_build_id
 from web.services.chat_store import (
     InMemoryChatBackend,
     PersistenceUnavailable,
@@ -168,13 +172,19 @@ from web.services.chat_store import (
     get_chat_backend,
     new_conversation_id,
 )
+from web.services.citations import (
+    build_source_payload,
+    extract_cited_indices,
+    normalize_legacy_citations,
+)
 from web.services.conversation_store import ConversationStore
+from web.services.identity_cache import IdentityFlags, IdentityFlagsCache
 from web.services.openai_app import OpenAIHandler
-from web.services.sse import sse, sse_headers
 from web.services.search_engine import ImprovedSearchEngine, SearchResult
 from web.services.search_exceptions import ManifestValidationError, SearchEngineError
+from web.services.settings_service import SettingsService
+from web.services.sse import sse, sse_headers
 from web.utils.config_loader import config
-from web.utils.icons import CATEGORY_ICONS, icon, runtime_icons
 from web.utils.i18n import (
     load_catalog,
     make_translator,
@@ -183,6 +193,7 @@ from web.utils.i18n import (
     runtime_subset,
     text_direction,
 )
+from web.utils.icons import CATEGORY_ICONS, icon, runtime_icons
 from web.utils.supabase_client import get_supabase
 
 # ──────────────────────────────────────────────────────────
@@ -229,7 +240,7 @@ SUPPORTED_FAQ_LANGS = ("en", "ar")
 # that mixes a fresh template with a stale module is worse than a stale page —
 # post-icon-migration it would render an <i class="bi"> with no icon font behind
 # it, or print a glyph NAME as text. MODULE_IMPORT_MAP below closes that.
-ASSET_VERSION = "warm45"
+ASSET_VERSION = "warm46"
 
 # Product release, rendered in the landing footer. Kept as one constant so
 # the number cannot drift between the page and the module headers.
@@ -258,7 +269,7 @@ PRIVACY_POLICY_VERSION = "2026-08-23-draft-1"
 #
 # A browser without import-map support simply loads the unversioned URLs — the
 # behaviour before this existed — so this degrades rather than breaks.
-MODULE_FILENAMES: Tuple[str, ...] = tuple(
+MODULE_FILENAMES: tuple[str, ...] = tuple(
     sorted(p.name for p in (PROJECT_ROOT / "static" / "js" / "modules").glob("*.js"))
 )
 
@@ -269,14 +280,14 @@ MODULE_FILENAMES: Tuple[str, ...] = tuple(
 # inventory of the operator surface, rendered for people who cannot reach it.
 # A second directory and a second map keeps each page declaring only what it
 # can actually load.
-ADMIN_MODULE_FILENAMES: Tuple[str, ...] = tuple(
+ADMIN_MODULE_FILENAMES: tuple[str, ...] = tuple(
     sorted(p.name for p in (PROJECT_ROOT / "static" / "js" / "admin").glob("*.js"))
 )
 
 # The account page's own modules, for the same reason ADMIN_MODULE_FILENAMES
 # is separate from MODULE_FILENAMES: a module dropped in beside the others
 # would publish its filename in the anonymous landing page's import map.
-ACCOUNT_MODULE_FILENAMES: Tuple[str, ...] = tuple(
+ACCOUNT_MODULE_FILENAMES: tuple[str, ...] = tuple(
     sorted(p.name for p in (PROJECT_ROOT / "static" / "js" / "account").glob("*.js"))
 )
 
@@ -285,14 +296,16 @@ ACCOUNT_MODULE_FILENAMES: Tuple[str, ...] = tuple(
 # ──────────────────────────────────────────────────────────
 
 
-def _get_token_from_request() -> Optional[str]:
+def _get_token_from_request() -> str | None:
     """Return a Supabase JWT from Bearer header, cookie, or session."""
     if auth_header := request.headers.get("Authorization"):
-        return auth_header.split("Bearer ")[-1] if auth_header.startswith("Bearer ") else auth_header
+        return (
+            auth_header.split("Bearer ")[-1] if auth_header.startswith("Bearer ") else auth_header
+        )
     return request.cookies.get("sb-access-token") or session.get("supabase_access_token")
 
 
-def _handle_unauthorized(is_page_request: bool) -> Union[Response, Tuple[Response, int]]:
+def _handle_unauthorized(is_page_request: bool) -> Response | tuple[Response, int]:
     """Redirect for page requests or return a JSON error for API requests."""
     clear_auth_session()
     if is_page_request:
@@ -343,7 +356,7 @@ def _bind_session_to_identity(identity: str) -> None:
 # The plain `fake_token` row is the literal five server test files send, and its
 # resolution must not change: `user_email` stays "test@example.com" because that
 # is what existing assertions read.
-_TESTING_IDENTITIES: Tuple[Tuple[str, IdentityFlags], ...] = (
+_TESTING_IDENTITIES: tuple[tuple[str, IdentityFlags], ...] = (
     (
         "fake_admin_token",
         IdentityFlags("test-admin-id", "admin@example.com", "admin", "internal", False),
@@ -376,7 +389,7 @@ _TESTING_IDENTITIES: Tuple[Tuple[str, IdentityFlags], ...] = (
 )
 
 
-def _testing_identity() -> Optional[IdentityFlags]:
+def _testing_identity() -> IdentityFlags | None:
     """Resolve the TESTING bypass token to an identity, or None if absent."""
     header = request.headers.get("Authorization", "")
     return next((flags for marker, flags in _TESTING_IDENTITIES if marker in header), None)
@@ -400,7 +413,7 @@ def _is_page_request() -> bool:
     return request.endpoint in ("index", "admin.console")
 
 
-def _account_disabled_response() -> Tuple[Response, int]:
+def _account_disabled_response() -> tuple[Response, int]:
     """403, deliberately, rather than 401.
 
     401 means "your credentials are missing or invalid", and `_handle_unauthorized`
@@ -417,7 +430,7 @@ def _account_disabled_response() -> Tuple[Response, int]:
     return jsonify({"error": "account_disabled"}), 403
 
 
-def _identity_unavailable_response() -> Tuple[Response, int]:
+def _identity_unavailable_response() -> tuple[Response, int]:
     """503, and — critically — the session is left alone.
 
     The counterpart to `_account_disabled_response`, for the opposite failure.
@@ -435,7 +448,7 @@ def _identity_unavailable_response() -> Tuple[Response, int]:
 
 
 def _is_upstream_outage(exception: BaseException) -> bool:
-    """"We could not reach the thing that knows" — as opposed to a bad token.
+    """ "We could not reach the thing that knows" — as opposed to a bad token.
 
     The distinction was missing entirely: one bare `except Exception` answered
     both with 401, so a read timeout to GoTrue told a signed-in administrator
@@ -508,7 +521,7 @@ def _is_auth_refusal(exception: BaseException) -> bool:
     return isinstance(getattr(exception, "status", None), int)
 
 
-def _authenticate_request() -> Tuple[Optional[IdentityFlags], Optional[Any]]:
+def _authenticate_request() -> tuple[IdentityFlags | None, Any | None]:
     """Resolve the caller. Returns (flags, early_response); exactly one is None.
 
     Extracted from `auth_required` so the admin blueprint's `before_request` can
@@ -528,7 +541,9 @@ def _authenticate_request() -> Tuple[Optional[IdentityFlags], Optional[Any]]:
             supabase = get_supabase()
             response = supabase.auth.get_user(token)
             # Robustly get the user object, which might be nested differently
-            user = getattr(response, "user", None) or getattr(getattr(response, "data", None), "user", None)
+            user = getattr(response, "user", None) or getattr(
+                getattr(response, "data", None), "user", None
+            )
 
             if not user:
                 logger.warning("Token validation failed for %s – no user found.", request.endpoint)
@@ -554,7 +569,9 @@ def _authenticate_request() -> Tuple[Optional[IdentityFlags], Optional[Any]]:
                 # reader's hands is still perfectly good.
                 logger.error(
                     "Identity provider unreachable at endpoint %s: %s",
-                    request.endpoint, exception, exc_info=True,
+                    request.endpoint,
+                    exception,
+                    exc_info=True,
                 )
                 return None, _identity_unavailable_response()
 
@@ -569,7 +586,12 @@ def _authenticate_request() -> Tuple[Optional[IdentityFlags], Optional[Any]]:
                 )
                 return None, (jsonify({"error": "identity_check_failed"}), 500)
 
-            logger.error("Authentication error at endpoint %s: %s", request.endpoint, exception, exc_info=True)
+            logger.error(
+                "Authentication error at endpoint %s: %s",
+                request.endpoint,
+                exception,
+                exc_info=True,
+            )
             return None, _handle_unauthorized(_is_page_request())
 
     _bind_session_to_identity(identity.user_id)
@@ -603,7 +625,8 @@ def auth_required(view_func):
 # Durable history
 # ──────────────────────────────────────────────────────────
 
-def _durable_owner() -> Optional[str]:
+
+def _durable_owner() -> str | None:
     """The verified owner id in a form the backend will accept, or None.
 
     None means "file nothing durably, answer anyway". Two ways to get there,
@@ -628,11 +651,13 @@ def _durable_owner() -> Optional[str]:
 
     owner = canonical_uuid(identity.user_id)
     if owner is None:
-        logger.warning("Reader id is not a uuid; durable chat history is disabled for this request.")
+        logger.warning(
+            "Reader id is not a uuid; durable chat history is disabled for this request."
+        )
     return owner
 
 
-def _chat_persistence() -> Optional[Any]:
+def _chat_persistence() -> Any | None:
     """The durable backend for this request, or None when there is none."""
     factory = current_app.config.get("chat_backend")
     return factory() if factory else None
@@ -656,7 +681,7 @@ def _account_rate_key() -> str:
     header = request.headers.get("Authorization", "")
     if not header.startswith("Bearer "):
         return get_remote_address()
-    token = header[len("Bearer "):].strip()
+    token = header[len("Bearer ") :].strip()
     if not token:
         return get_remote_address()
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
@@ -664,12 +689,12 @@ def _account_rate_key() -> str:
 
 def _load_history(
     store: ConversationStore,
-    backend: Optional[Any],
-    owner_id: Optional[str],
+    backend: Any | None,
+    owner_id: str | None,
     conversation_id: str,
     max_pairs: int,
     max_chars: int,
-) -> List[Dict[str, str]]:
+) -> list[dict[str, str]]:
     """The prompt window, hydrated from durable rows only when RAM is cold.
 
     The plan priced persistence at one Postgres round trip per turn. It is
@@ -705,9 +730,7 @@ def _load_history(
     )
 
 
-def _persistable_sources(
-    retrieved: List[Dict[str, Any]], cited: List[int]
-) -> List[Dict[str, Any]]:
+def _persistable_sources(retrieved: list[dict[str, Any]], cited: list[int]) -> list[dict[str, Any]]:
     """Every RETRIEVED passage, flagged with whether the answer cited it.
 
     Two things are happening here and both are deliberate.
@@ -755,7 +778,7 @@ EVIDENCE_STALE = "stale"
 EVIDENCE_UNVERIFIABLE = "unverifiable"
 
 
-def _evidence_state(corpus_revision: Optional[str]) -> str:
+def _evidence_state(corpus_revision: str | None) -> str:
     """What a stored answer's citations can still claim about the live corpus.
 
     One string comparison, deliberately. The plan for this once required a
@@ -779,7 +802,7 @@ def _evidence_state(corpus_revision: Optional[str]) -> str:
     return EVIDENCE_VERIFIED if corpus_revision == active else EVIDENCE_STALE
 
 
-def _hydration_sources(stored: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def _hydration_sources(stored: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """The exact inverse of `_persistable_sources`, and it must stay that way.
 
     The live wire ships `index` (`citations.py`), the client reads `s.index` in
@@ -810,7 +833,7 @@ def _hydration_sources(stored: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     ]
 
 
-def _hydration_payload(rows: List[StoredMessage]) -> List[Dict[str, Any]]:
+def _hydration_payload(rows: list[StoredMessage]) -> list[dict[str, Any]]:
     """Stored rows as the transcript, in the shape a live answer already has.
 
     ONLY THE CITED PASSAGES SHIP. `_persistable_sources` stores every retrieved
@@ -835,14 +858,14 @@ def _hydration_payload(rows: List[StoredMessage]) -> List[Dict[str, Any]]:
     if rows and rows[0].role == "assistant":
         rows = rows[1:]
 
-    payload: List[Dict[str, Any]] = []
+    payload: list[dict[str, Any]] = []
     for row in rows:
         # Only what the transcript actually renders. `message_id` and `seq` are
         # on the row and are deliberately NOT shipped: nothing on the client
         # reads them, and an unused field on a wire contract is surface that
         # drifts before it is ever tested. Phase 2's paging will want `seq` and
         # can add it with the code that uses it.
-        message: Dict[str, Any] = {
+        message: dict[str, Any] = {
             "role": row.role,
             "content": row.content,
             "created_at": row.created_at,
@@ -899,10 +922,10 @@ class _InFlightGenerations:
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
-        self._counts: Dict[Tuple[str, str], int] = {}
+        self._counts: dict[tuple[str, str], int] = {}
 
     @contextmanager
-    def hold(self, owner_id: Optional[str], conversation_id: Optional[str]):
+    def hold(self, owner_id: str | None, conversation_id: str | None):
         """Mark a generation live for as long as the block runs.
 
         A missing owner or conversation is not an error and takes no lock: an
@@ -928,13 +951,13 @@ class _InFlightGenerations:
                     else:
                         self._counts.pop(key, None)
 
-    def is_live(self, owner_id: Optional[str], conversation_id: Optional[str]) -> bool:
+    def is_live(self, owner_id: str | None, conversation_id: str | None) -> bool:
         if not owner_id or not conversation_id:
             return False
         with self._lock:
             return (str(owner_id), str(conversation_id)) in self._counts
 
-    def is_live_for_owner(self, owner_id: Optional[str]) -> bool:
+    def is_live_for_owner(self, owner_id: str | None) -> bool:
         """Is ANY of this owner's conversations mid-generation?
 
         Bulk conversation deletion (docs/profile-refactor-plan.md Step 7)
@@ -971,18 +994,18 @@ def _no_store(response: Response) -> Response:
 
 
 def _persist_turn(
-    backend: Optional[Any],
+    backend: Any | None,
     *,
-    owner_id: Optional[str],
+    owner_id: str | None,
     conversation_id: str,
     client_request_id: str,
     question: str,
     answer: str,
-    sources: List[Dict[str, Any]],
+    sources: list[dict[str, Any]],
     lang: str,
     category: str,
     model: str,
-    title: Optional[str] = None,
+    title: str | None = None,
     allow_create: bool = True,
 ) -> bool:
     """File one exchange durably. Returns False when it could not be filed.
@@ -1018,7 +1041,8 @@ def _persist_turn(
         if current_app.config.get("CHAT_PERSISTENCE_ENABLED", False):
             logger.error(
                 "chat_persistence is enabled but no chat backend is available "
-                "(conv=%s); this turn was NOT durably recorded.", conversation_id,
+                "(conv=%s); this turn was NOT durably recorded.",
+                conversation_id,
             )
             return False
         return True
@@ -1079,13 +1103,14 @@ def _persist_turn(
         # browser mints a fresh id per submission, so today it should not.
         logger.warning(
             "Replayed client_request_id on conv=%s: the stored answer is the "
-            "original, not the one just streamed.", conversation_id,
+            "original, not the one just streamed.",
+            conversation_id,
         )
     return True
 
 
 def _preflight_conversation(
-    persistence: Optional[Any], owner_id: Optional[str], conversation_id: str
+    persistence: Any | None, owner_id: str | None, conversation_id: str
 ) -> bool:
     """May this owner write into `conversation_id` right now?
 
@@ -1114,7 +1139,8 @@ def _preflight_conversation(
     except PersistenceUnavailable:
         logger.warning(
             "Could not preflight conversation %s; proceeding without the check.",
-            conversation_id, exc_info=True,
+            conversation_id,
+            exc_info=True,
         )
         return True
 
@@ -1124,7 +1150,7 @@ def _retrieve_for_prompt(
     query: str,
     category: str,
     handler: OpenAIHandler,
-) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Search once, and return the two shapes a chat request needs from it.
 
     `llm_context` is what the model is shown; `retrieved` is what the API can
@@ -1143,8 +1169,8 @@ def _retrieve_for_prompt(
 
 
 def _finalize_answer(
-    answer: str, retrieved: List[Dict[str, Any]]
-) -> Tuple[str, List[int], List[Dict[str, Any]]]:
+    answer: str, retrieved: list[dict[str, Any]]
+) -> tuple[str, list[int], list[dict[str, Any]]]:
     """Normalize the answer's citations, then keep only the passages it cited.
 
     `sources` is strictly what the answer cited and nothing else, so an answer
@@ -1212,7 +1238,9 @@ def _configure_app(app: Flask, testing: bool) -> None:
     app.config.update(
         TESTING=testing,
         RATELIMIT_ENABLED=not testing,
-        MAX_CHAT_HISTORY_MESSAGE_PAIRS=config.get("server", "chat_history_length", DEFAULT_MAX_CHAT_MESSAGES_COUNT),
+        MAX_CHAT_HISTORY_MESSAGE_PAIRS=config.get(
+            "server", "chat_history_length", DEFAULT_MAX_CHAT_MESSAGES_COUNT
+        ),
         # Configurable because the constant it replaced was the one history
         # bound config.yaml could not see, and it silently overrode the one it
         # could: `chat_history_length: 10` never took effect, because a budget
@@ -1259,19 +1287,22 @@ def _init_extensions(app: Flask, testing: bool) -> Limiter:
     """Initialize all Flask extensions."""
     # Check if running behind a reverse proxy (e.g., Nginx with SSL termination)
     is_behind_proxy = config.is_behind_proxy()
-    
+
     # Apply ProxyFix middleware when behind a reverse proxy
     # This trusts X-Forwarded-* headers from Nginx
     if is_behind_proxy:
-        app.wsgi_app = ProxyFix(
+        # Flask/Werkzeug's own documented way to install WSGI middleware — mypy
+        # sees `wsgi_app` as a bound method, not the instance attribute Flask
+        # actually treats it as.
+        app.wsgi_app = ProxyFix(  # type: ignore[method-assign]
             app.wsgi_app,
-            x_for=1,       # Trust X-Forwarded-For (1 proxy hop)
-            x_proto=1,     # Trust X-Forwarded-Proto
-            x_host=1,      # Trust X-Forwarded-Host
-            x_prefix=1     # Trust X-Forwarded-Prefix
+            x_for=1,  # Trust X-Forwarded-For (1 proxy hop)
+            x_proto=1,  # Trust X-Forwarded-Proto
+            x_host=1,  # Trust X-Forwarded-Host
+            x_prefix=1,  # Trust X-Forwarded-Prefix
         )
         logger.info("ProxyFix middleware enabled for reverse proxy deployment.")
-    
+
     # CORS
     is_debug_mode = config.is_debug() or testing
     if is_debug_mode:
@@ -1284,13 +1315,18 @@ def _init_extensions(app: Flask, testing: bool) -> Limiter:
 
     # Talisman (Security Headers)
     # Build connect-src list for Supabase
-    connect_src = ["'self'", "https://*.supabase.co", "https://cdn.lordicon.com", "https://cdn.jsdelivr.net"]
-    
+    connect_src = [
+        "'self'",
+        "https://*.supabase.co",
+        "https://cdn.lordicon.com",
+        "https://cdn.jsdelivr.net",
+    ]
+
     # Add WebSocket support for Supabase Realtime
     if project_ref := config.get_secret("SUPABASE_PROJECT_REF"):
         connect_src.append(f"wss://{project_ref}.supabase.co")
     connect_src.append("wss://*.supabase.co")  # Allow all Supabase WebSocket connections
-    
+
     # Dev-only allowance for the Impeccable live-mode helper, which serves its
     # picker script and an SSE channel from http://localhost:8400. It needs both
     # script-src (to load) and connect-src (to poll).
@@ -1304,27 +1340,47 @@ def _init_extensions(app: Flask, testing: bool) -> Limiter:
 
     csp = {
         "default-src": ["'self'"],
-        "script-src": ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net", "https://cdn.lordicon.com", "https://cdnjs.cloudflare.com"] + impeccable_live_dev,
-        "style-src": ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net", "https://cdnjs.cloudflare.com", "https://fonts.googleapis.com"],
+        "script-src": [
+            "'self'",
+            "'unsafe-inline'",
+            "https://cdn.jsdelivr.net",
+            "https://cdn.lordicon.com",
+            "https://cdnjs.cloudflare.com",
+            *impeccable_live_dev,
+        ],
+        "style-src": [
+            "'self'",
+            "'unsafe-inline'",
+            "https://cdn.jsdelivr.net",
+            "https://cdnjs.cloudflare.com",
+            "https://fonts.googleapis.com",
+        ],
         "img-src": ["'self'", "data:", "https:"],
-        "font-src": ["'self'", "https://cdn.jsdelivr.net", "https://cdnjs.cloudflare.com", "data:", "https://fonts.gstatic.com", "https://r2cdn.perplexity.ai"],
+        "font-src": [
+            "'self'",
+            "https://cdn.jsdelivr.net",
+            "https://cdnjs.cloudflare.com",
+            "data:",
+            "https://fonts.gstatic.com",
+            "https://r2cdn.perplexity.ai",
+        ],
         "connect-src": connect_src + impeccable_live_dev,
     }
-    
+
     # In debug mode, be more permissive for development (allows browser extensions)
     if is_debug_mode:
         # Allow fonts from any HTTPS source (for browser extensions like Perplexity)
         csp["font-src"] = ["'self'", "https:", "data:"]
         # Allow connections to any HTTPS/WSS (for development and browser extensions)
-        csp["connect-src"] = ["'self'", "https:", "wss:"] + impeccable_live_dev
+        csp["connect-src"] = ["'self'", "https:", "wss:", *impeccable_live_dev]
         logger.info("CSP configured in permissive debug mode for development")
-    
+
     # Disable force_https when:
     # 1. Debug mode (local development)
     # 2. Testing mode
     # 3. Behind a reverse proxy (Nginx handles SSL termination)
     should_force_https = not (is_debug_mode or testing or is_behind_proxy)
-    
+
     Talisman(
         app,
         force_https=should_force_https,
@@ -1340,17 +1396,28 @@ def _init_extensions(app: Flask, testing: bool) -> Limiter:
     )
     logger.info(
         "Talisman initialized. force_https=%s (debug=%s, testing=%s, behind_proxy=%s)",
-        should_force_https, is_debug_mode, testing, is_behind_proxy
+        should_force_https,
+        is_debug_mode,
+        testing,
+        is_behind_proxy,
     )
 
     # Rate Limiter
     rate_limit_config = config.get("server", "rate_limit", {})
-    default_limits: List[Union[str, Callable[[], str]]] = [
+    default_limits: list[str | Callable[[], str]] = [
         f"{rate_limit_config.get('per_day', 200)} per day",
         f"{rate_limit_config.get('per_hour', 50)} per hour",
         f"{rate_limit_config.get('per_minute', 10)} per minute",
     ]
-    limiter = Limiter(get_remote_address, app=app, default_limits=default_limits, storage_uri="memory://")
+    limiter = Limiter(
+        get_remote_address,
+        app=app,
+        # flask_limiter's own stub types default_limits as list[... | Limit] —
+        # a plain list of our str/Callable entries is a valid runtime value,
+        # just not a subtype of that under list's invariance.
+        default_limits=cast("list[Any]", default_limits),
+        storage_uri="memory://",
+    )
     logger.info("Flask-Limiter initialized with limits: %s", default_limits)
     return limiter
 
@@ -1413,8 +1480,8 @@ def _register_testing_doubles(app: Flask) -> None:
         # Chunked on word boundaries to exercise the incremental renderer the
         # way a real model would.
         import re as _re
-        for token in _re.findall(r"\S+\s*", demo_answer):
-            yield token
+
+        yield from _re.findall(r"\S+\s*", demo_answer)
 
     demo_suggestions = ["What documents are required?", "How long does review take?"]
 
@@ -1443,7 +1510,10 @@ def _register_testing_doubles(app: Flask) -> None:
                 f"Extract from {name}: registration dossiers shall be submitted electronically "
                 "and reviewed against the applicable SFDA guidance in force at the time of filing."
             ),
-            score=score, document=name, category=category, page=page,
+            score=score,
+            document=name,
+            category=category,
+            page=page,
             chunk_id=f"{name}_p{page}_1",
             metadata={"semantic_score": semantic, "lexical_score": lexical},
         )
@@ -1496,7 +1566,8 @@ def _initialize_services(app: Flask, testing: bool) -> None:
         # being caught by the broad `except Exception` below.
         logger.critical(
             "FATAL: search index manifest validation failed — refusing to "
-            "start with a mismatched index. %s", exc,
+            "start with a mismatched index. %s",
+            exc,
         )
         raise
     except Exception as e:
@@ -1504,7 +1575,7 @@ def _initialize_services(app: Flask, testing: bool) -> None:
         logger.error("Search engine initialization failed: %s", e, exc_info=True)
 
 
-def _load_faq_data() -> Dict[str, Any]:
+def _load_faq_data() -> dict[str, Any]:
     """Load FAQ data from YAML, keyed by language.
 
     Accepts both the language-keyed shape ({en: {...}, ar: {...}}) and the
@@ -1526,9 +1597,7 @@ def _load_faq_data() -> Dict[str, Any]:
         logger.info("faq.yaml is in the legacy flat shape; treating it as English.")
         faq_data = {"en": faq_data}
 
-    logger.info(
-        "FAQ data loaded for %s.", ", ".join(sorted(faq_data)) or "no languages"
-    )
+    logger.info("FAQ data loaded for %s.", ", ".join(sorted(faq_data)) or "no languages")
     return faq_data
 
 
@@ -1715,8 +1784,10 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
         app.config["openai_handler"] = replacement
         logger.info(
             "Generation settings applied: model=%s max_tokens=%s temperature=%s passages=%s",
-            settings.get("model"), settings.get("max_tokens"),
-            settings.get("temperature"), settings.get("max_context_results"),
+            settings.get("model"),
+            settings.get("max_tokens"),
+            settings.get("temperature"),
+            settings.get("max_context_results"),
         )
         return True
 
@@ -1772,6 +1843,7 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
     # Imported here rather than at module scope: admin.py imports back into this
     # module for `_authenticate_request`, and a top-level import would be a cycle.
     from web.api.admin import admin_bp
+
     app.register_blueprint(admin_bp)
     # The console is chrome and a handful of JSON reads, but the global default
     # of 200/day would lock an operator out of their own instance after an
@@ -1791,6 +1863,7 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
     # into this module for _authenticate_request, and a top-level import
     # would be a cycle.
     from web.api.account import account_bp
+
     app.register_blueprint(account_bp)
     # Chrome and a profile read today; Step 5/7 add mutating routes here
     # later, each rate-limited on its own terms per docs/profile-refactor-
@@ -1828,7 +1901,7 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
         )
 
     @app.context_processor
-    def inject_template_globals() -> Dict[str, Any]:
+    def inject_template_globals() -> dict[str, Any]:
         # `icon` and `category_icon` are globals rather than a Jinja import so
         # partials get them without every caller remembering `with context`.
         return {
@@ -1838,19 +1911,20 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
             "category_icon": lambda key: CATEGORY_ICONS.get(key, "globe"),
         }
 
-    def _import_map(subdir: str, filenames: Sequence[str]) -> Dict[str, Any]:
+    def _import_map(subdir: str, filenames: Sequence[str]) -> dict[str, Any]:
         """Map each module's bare URL to its versioned one."""
         return {
             "imports": {
-                url_for("static", filename=f"js/{subdir}/{name}"):
-                url_for("static", filename=f"js/{subdir}/{name}", v=ASSET_VERSION)
+                url_for("static", filename=f"js/{subdir}/{name}"): url_for(
+                    "static", filename=f"js/{subdir}/{name}", v=ASSET_VERSION
+                )
                 for name in filenames
             }
         }
 
     app.jinja_env.globals["_import_map"] = _import_map
 
-    def base_render_context(lang: Optional[str] = None, *, admin: bool = False) -> Dict[str, Any]:
+    def base_render_context(lang: str | None = None, *, admin: bool = False) -> dict[str, Any]:
         """Everything any full page render needs, shared by / and /admin.
 
         Deliberately a function rather than a context processor. ``t`` and
@@ -1870,7 +1944,7 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
             logger.warning(
                 "Supabase configuration missing: URL=%s, Key=%s",
                 "present" if supabase_url else "missing",
-                "present" if supabase_anon_key else "missing"
+                "present" if supabase_anon_key else "missing",
             )
 
         # Rendering the page strings server-side means an Arabic reader never
@@ -1904,13 +1978,15 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
         is the security property, not an oversight.
         """
         context = base_render_context()
-        response = make_response(render_template(
-            "index.html",
-            **context,
-            is_authenticated=bool(session.get("user_email")),
-            user_email=session.get("user_email"),
-            module_import_map=_import_map("modules", MODULE_FILENAMES),
-        ))
+        response = make_response(
+            render_template(
+                "index.html",
+                **context,
+                is_authenticated=bool(session.get("user_email")),
+                user_email=session.get("user_email"),
+                module_import_map=_import_map("modules", MODULE_FILENAMES),
+            )
+        )
         # Persist an explicit ?lang= so the choice survives the next visit.
         if request.args.get("lang"):
             response.set_cookie(
@@ -1946,16 +2022,18 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
         the page itself. Do not treat this as final copy.
         """
         context = current_app.config["base_render_context"]()
-        response = make_response(render_template(
-            "privacy.html",
-            **context,
-            module_import_map=_import_map("modules", MODULE_FILENAMES),
-        ))
+        response = make_response(
+            render_template(
+                "privacy.html",
+                **context,
+                module_import_map=_import_map("modules", MODULE_FILENAMES),
+            )
+        )
         response.headers["Cache-Control"] = "no-cache"
         return response
 
     @app.route("/c/<uuid:conversation_id>")
-    def deep_link(conversation_id) -> Response:
+    def deep_link(conversation_id) -> Response | WerkzeugResponse:
         """A conversation's URL. Renders exactly what `/` renders.
 
         Three properties, each a decision — see
@@ -1984,7 +2062,7 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
         dash-normalisation.
         """
         canonical = str(conversation_id)
-        raw = request.path[len("/c/"):]
+        raw = request.path[len("/c/") :]
         if raw != canonical:
             target = f"/c/{canonical}"
             if request.query_string:
@@ -1999,7 +2077,10 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
 
     @app.route("/favicon.ico")
     def favicon() -> Response:
-        return send_from_directory(app.static_folder, "favicon.ico", mimetype="image/vnd.microsoft.icon")
+        assert app.static_folder is not None  # this app always configures one
+        return send_from_directory(
+            app.static_folder, "favicon.ico", mimetype="image/vnd.microsoft.icon"
+        )
 
     @app.route("/api/frequent-questions")
     def get_frequent_questions() -> Response:
@@ -2068,16 +2149,18 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
                 created_at = facts.get("created_at")
                 conversation_count = facts.get("conversation_count")
 
-        return jsonify({
-            "user_id": flags.user_id,
-            "email": flags.email,
-            "role": flags.role,
-            "tier": flags.tier,
-            "is_admin": flags.is_admin,
-            "is_disabled": flags.is_disabled,
-            "created_at": created_at,
-            "conversation_count": conversation_count,
-        })
+        return jsonify(
+            {
+                "user_id": flags.user_id,
+                "email": flags.email,
+                "role": flags.role,
+                "tier": flags.tier,
+                "is_admin": flags.is_admin,
+                "is_disabled": flags.is_disabled,
+                "created_at": created_at,
+                "conversation_count": conversation_count,
+            }
+        )
 
     # Shared across both chat routes so a client cannot double its allowance by
     # alternating between the streaming and blocking endpoints.
@@ -2086,7 +2169,7 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
         scope="chat",
     )
 
-    def _validate_chat_request() -> Tuple[Optional[Dict[str, Any]], Optional[Tuple[Response, int]]]:
+    def _validate_chat_request() -> tuple[dict[str, Any] | None, tuple[Response, int] | None]:
         """Parse and validate a chat payload. Returns (payload, error_response)."""
         # NOT `force=True`. That parsed the body regardless of Content-Type,
         # which made both chat POSTs reachable by a cross-site auto-submitting
@@ -2132,9 +2215,7 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
         # conversation, exactly as if the client had minted one itself and
         # not yet told the server. §8's rollout window, during which "absent"
         # had to be told apart from "reset" and "resume" by a cookie, is over.
-        conversation_id = (
-            canonical_uuid(body.get("conversation_id")) or new_conversation_id()
-        )
+        conversation_id = canonical_uuid(body.get("conversation_id")) or new_conversation_id()
 
         return {
             "query": query,
@@ -2176,7 +2257,7 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
     @limiter.limit(
         lambda: config.get("server", "rate_limit", {}).get("history_api", "30 per minute")
     )
-    def handle_chat_history() -> Union[Response, Tuple[Response, int]]:
+    def handle_chat_history() -> Response | tuple[Response, int]:
         """One conversation's durable rows, named by `?c=<uuid>`.
 
         THE URL IS THE POINTER (§1 of
@@ -2294,9 +2375,7 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
     # leaked anon key, not the coordinator of a workflow spanning a cookie, a
     # process-local cache and three tables.
 
-    def _sidebar_preconditions() -> Tuple[
-        Optional[str], Optional[Any], Optional[Tuple[Response, int]]
-    ]:
+    def _sidebar_preconditions() -> tuple[str | None, Any | None, tuple[Response, int] | None]:
         """(owner, backend, error) for every session route.
 
         Factored out because the four routes below must agree about what
@@ -2318,18 +2397,22 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
                     "Chat persistence is enabled but no backend is configured; "
                     "the conversation list cannot be served."
                 )
-                return None, None, (
-                    jsonify(
-                        error="Your conversations could not be loaded.",
-                        code="history_unavailable",
+                return (
+                    None,
+                    None,
+                    (
+                        jsonify(
+                            error="Your conversations could not be loaded.",
+                            code="history_unavailable",
+                        ),
+                        503,
                     ),
-                    503,
                 )
             return owner_id, None, None
 
         return owner_id, persistence, None
 
-    def _owned_session_id(raw: str) -> Optional[str]:
+    def _owned_session_id(raw: str) -> str | None:
         """A canonical uuid, or None when this cannot name a session.
 
         Canonicalised for the same reason `canonical_uuid` exists at all:
@@ -2348,7 +2431,7 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
     @app.route("/api/chat/sessions", methods=["GET"])
     @auth_required
     @limiter.limit(_session_limit)
-    def handle_chat_sessions() -> Union[Response, Tuple[Response, int]]:
+    def handle_chat_sessions() -> Response | tuple[Response, int]:
         """One page of the reader's conversations, newest activity first.
 
         No `active` field. The client knows exactly which conversation is
@@ -2393,25 +2476,28 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
                 503,
             )
 
-        return _no_store(jsonify(
-            sessions=[
-                {
-                    "id": s.session_id,
-                    # Null travels as null. The client renders a localised
-                    # "Untitled conversation"; inventing one here would put
-                    # English in an Arabic sidebar.
-                    "title": s.title,
-                    "created_at": s.created_at,
-                    "updated_at": s.updated_at,
-                    "message_count": s.message_count,
-                }
-                for s in page.sessions
-            ],
-            next_cursor=(
-                {"updated_at": page.next_cursor[0], "id": page.next_cursor[1]}
-                if page.next_cursor else None
-            ),
-        ))
+        return _no_store(
+            jsonify(
+                sessions=[
+                    {
+                        "id": s.session_id,
+                        # Null travels as null. The client renders a localised
+                        # "Untitled conversation"; inventing one here would put
+                        # English in an Arabic sidebar.
+                        "title": s.title,
+                        "created_at": s.created_at,
+                        "updated_at": s.updated_at,
+                        "message_count": s.message_count,
+                    }
+                    for s in page.sessions
+                ],
+                next_cursor=(
+                    {"updated_at": page.next_cursor[0], "id": page.next_cursor[1]}
+                    if page.next_cursor
+                    else None
+                ),
+            )
+        )
 
     # NO /select ROUTE. Its entire job was moving the cookie that named the
     # current conversation (docs/per-tab-conversation-deep-linking-plan.md
@@ -2425,7 +2511,7 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
     @app.route("/api/chat/sessions/<session_id>", methods=["PATCH"])
     @auth_required
     @limiter.limit(_session_limit)
-    def handle_chat_session_rename(session_id: str) -> Union[Response, Tuple[Response, int]]:
+    def handle_chat_session_rename(session_id: str) -> Response | tuple[Response, int]:
         """Rename one owned conversation.
 
         The title is clamped HERE, above the database, so an over-long or
@@ -2474,7 +2560,7 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
     @app.route("/api/chat/sessions/<session_id>", methods=["DELETE"])
     @auth_required
     @limiter.limit(_session_limit)
-    def handle_chat_session_delete(session_id: str) -> Union[Response, Tuple[Response, int]]:
+    def handle_chat_session_delete(session_id: str) -> Response | tuple[Response, int]:
         """Delete one owned conversation, and everything pointing at it.
 
         THE DELETE IS THE EASY HALF. The row goes and the cascade takes its
@@ -2504,7 +2590,8 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
 
         if _generations().is_live(owner_id, canonical):
             return jsonify(
-                error="An answer is still being generated.", code="generation_in_flight",
+                error="An answer is still being generated.",
+                code="generation_in_flight",
             ), 409
 
         try:
@@ -2527,10 +2614,11 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
     @app.route("/api/chat/stream", methods=["POST"])
     @auth_required
     @chat_limit
-    def handle_chat_stream() -> Union[Response, Tuple[Response, int]]:
+    def handle_chat_stream() -> Response | tuple[Response, int]:
         payload, error = _validate_chat_request()
         if error:
             return error
+        assert payload is not None  # _validate_chat_request's contract: exactly one is None
 
         query, category, lang = payload["query"], payload["category"], payload["lang"]
         engine = payload["engine"]
@@ -2564,17 +2652,14 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
         # generated, before any response frame — rather than discovered after
         # the answer has already streamed. See `_preflight_conversation` and
         # docs/per-tab-conversation-deep-linking-plan.md §3.4.
-        if not allow_create:
-            if not _preflight_conversation(persistence, owner_id, conversation_id):
-                hold.__exit__(None, None, None)
-                return jsonify(error="Unknown conversation.", code="not_found"), 404
+        if not allow_create and not _preflight_conversation(persistence, owner_id, conversation_id):
+            hold.__exit__(None, None, None)
+            return jsonify(error="Unknown conversation.", code="not_found"), 404
 
         store.adopt_cookie_history(
             conversation_id, session.pop("chat_history", None), owner_id=owner_id
         )
-        history = _load_history(
-            store, persistence, owner_id, conversation_id, max_pairs, max_chars
-        )
+        history = _load_history(store, persistence, owner_id, conversation_id, max_pairs, max_chars)
 
         def generate():
             try:
@@ -2582,18 +2667,19 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
                 # delta frame is {"t": token}; a uuid on each one adds ~29KB to
                 # an 800-token answer, and the client already discards a stale
                 # stream with an AbortController and a generation stamp.
-                yield sse("meta", {
-                    "conversation_id": conversation_id,
-                    "client_request_id": client_request_id,
-                    "category": category,
-                    "lang": lang,
-                    "model": getattr(handler, "model", "unknown"),
-                })
+                yield sse(
+                    "meta",
+                    {
+                        "conversation_id": conversation_id,
+                        "client_request_id": client_request_id,
+                        "category": category,
+                        "lang": lang,
+                        "model": getattr(handler, "model", "unknown"),
+                    },
+                )
                 yield sse("stage", {"stage": "searching"})
 
-                llm_context, retrieved = _retrieve_for_prompt(
-                    engine, query, category, handler
-                )
+                llm_context, retrieved = _retrieve_for_prompt(engine, query, category, handler)
                 yield sse("stage", {"stage": "retrieved", "count": len(retrieved)})
 
                 # No "sources" frame here any more. It used to be emitted at
@@ -2605,8 +2691,10 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
                 # them against.
 
                 yield sse("stage", {"stage": "drafting"})
-                parts: List[str] = []
-                for token in handler.stream_response(query, llm_context, category, history, lang=lang):
+                parts: list[str] = []
+                for token in handler.stream_response(
+                    query, llm_context, category, history, lang=lang
+                ):
                     parts.append(token)
                     yield sse("delta", {"t": token})
 
@@ -2634,23 +2722,26 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
                 # Page: 14]" leaves the browser rendering prose while the
                 # server holds "[1]". The client re-renders from this string,
                 # so the marker the reader sees is the marker `cited` counted.
-                yield sse("final", {
-                    "response": answer,
-                    "sources": sources,
-                    "cited": cited,
-                    "retrieved": len(retrieved),
-                    "conversation_id": conversation_id,
-                    # Asserted, not computed, and the distinction matters. A
-                    # live answer was just drawn from the active index, so its
-                    # evidence is current by construction — there is nothing to
-                    # infer. Computing it here would instead make every FRESH
-                    # answer `unverifiable` on any deployment where
-                    # `read_active_build_id` finds no pointer (the legacy flat
-                    # layout), badging the one case that is beyond doubt. It
-                    # ships on the wire so hydration and streaming hand the
-                    # client one shape and it never grows two renderers.
-                    "evidence_state": EVIDENCE_VERIFIED,
-                })
+                yield sse(
+                    "final",
+                    {
+                        "response": answer,
+                        "sources": sources,
+                        "cited": cited,
+                        "retrieved": len(retrieved),
+                        "conversation_id": conversation_id,
+                        # Asserted, not computed, and the distinction matters. A
+                        # live answer was just drawn from the active index, so its
+                        # evidence is current by construction — there is nothing to
+                        # infer. Computing it here would instead make every FRESH
+                        # answer `unverifiable` on any deployment where
+                        # `read_active_build_id` finds no pointer (the legacy flat
+                        # layout), badging the one case that is beyond doubt. It
+                        # ships on the wire so hydration and streaming hand the
+                        # client one shape and it never grows two renderers.
+                        "evidence_state": EVIDENCE_VERIFIED,
+                    },
+                )
 
                 # Recorded HERE, before suggestions, and the order is the
                 # point. `generate_suggestions` is a second blocking call to
@@ -2708,20 +2799,31 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
                     # existing handler picks it up, and its own comment already
                     # names "history persistence" as an auxiliary failure that
                     # must still render the answer.
-                    yield sse("error", {
-                        "error": "This answer could not be saved to your history.",
-                        "code": "persistence_unavailable",
-                    })
+                    yield sse(
+                        "error",
+                        {
+                            "error": "This answer could not be saved to your history.",
+                            "code": "persistence_unavailable",
+                        },
+                    )
 
-                yield sse("suggestions", {
-                    "suggested_questions": handler.generate_suggestions(query, answer, lang=lang),
-                })
+                yield sse(
+                    "suggestions",
+                    {
+                        "suggested_questions": handler.generate_suggestions(
+                            query, answer, lang=lang
+                        ),
+                    },
+                )
 
-                yield sse("done", {
-                    "finish_reason": "stop",
-                    "chars": len(answer),
-                    "conversation_id": conversation_id,
-                })
+                yield sse(
+                    "done",
+                    {
+                        "finish_reason": "stop",
+                        "chars": len(answer),
+                        "conversation_id": conversation_id,
+                    },
+                )
 
             except GeneratorExit:
                 # Client disconnected (cancelled or navigated away). Re-raising
@@ -2760,15 +2862,20 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
                 # into "internal", because the alternative — treating it as an
                 # empty result set — would render as a confident refusal.
                 logger.error("Retrieval failed (conv=%s)", conversation_id, exc_info=True)
-                yield sse("error", {
-                    "error": "Search service is currently unavailable.",
-                    "code": "search_unavailable",
-                })
+                yield sse(
+                    "error",
+                    {
+                        "error": "Search service is currently unavailable.",
+                        "code": "search_unavailable",
+                    },
+                )
             except Exception:
                 logger.error("Streaming chat failed (conv=%s)", conversation_id, exc_info=True)
                 # The 200 status line is already sent, so failures after the
                 # first yield can only be reported in-band.
-                yield sse("error", {"error": "An internal server error occurred.", "code": "internal"})
+                yield sse(
+                    "error", {"error": "An internal server error occurred.", "code": "internal"}
+                )
             finally:
                 # Runs on every exit, GeneratorExit included — which is the one
                 # that matters, because a client cancelling mid-stream is the
@@ -2792,7 +2899,7 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
     @app.route("/api/chat", methods=["POST"])
     @auth_required
     @chat_limit
-    def handle_chat() -> Union[Response, Tuple[Response, int]]:
+    def handle_chat() -> Response | tuple[Response, int]:
         try:
             # The same validator the streaming route uses. This route used to
             # carry its own copy — same three rules, independently written, and
@@ -2805,6 +2912,7 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
             payload, error = _validate_chat_request()
             if error:
                 return error
+            assert payload is not None  # _validate_chat_request's contract: exactly one is None
 
             query, category, lang = payload["query"], payload["category"], payload["lang"]
             search_engine: ImprovedSearchEngine = payload["engine"]
@@ -2859,7 +2967,11 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
                 )
 
                 answer, suggested_questions = openai_handler.generate_response(
-                    query, llm_context, category, chat_history, lang=lang,
+                    query,
+                    llm_context,
+                    category,
+                    chat_history,
+                    lang=lang,
                 )
                 # Same contract as the streaming path's "final" frame — both
                 # routes go through `_finalize_answer`, so they cannot drift.

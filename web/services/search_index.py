@@ -8,15 +8,14 @@ typed accessors for downstream search components.
 
 from __future__ import annotations
 
+import logging
 import os
 import pickle
-import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 import faiss
-import numpy as np
 import pandas as pd
 from scipy.sparse import csr_matrix
 
@@ -36,6 +35,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Configuration dataclass
 # ---------------------------------------------------------------------------
+
 
 @dataclass(frozen=True)
 class SearchIndexConfig:
@@ -65,6 +65,7 @@ class SearchIndexConfig:
 # ---------------------------------------------------------------------------
 # SearchIndex
 # ---------------------------------------------------------------------------
+
 
 class SearchIndex:
     """Loads, validates, and provides access to search data assets.
@@ -207,8 +208,7 @@ class SearchIndex:
         missing = [p for p in paths if not os.path.exists(p)]
         if missing:
             raise DataLoadError(
-                f"Processed data files missing: {missing}. "
-                "Please run data processing first.",
+                f"Processed data files missing: {missing}. Please run data processing first.",
                 missing_files=missing,
             )
 
@@ -219,9 +219,7 @@ class SearchIndex:
             self.faiss_index = faiss.read_index(self._paths["faiss"])
             logger.info("FAISS index loaded (%d vectors).", self.faiss_index.ntotal)
         except Exception as exc:
-            raise DataLoadError(
-                f"Failed to load FAISS index: {exc}"
-            ) from exc
+            raise DataLoadError(f"Failed to load FAISS index: {exc}") from exc
 
     def _load_dataframe(self) -> None:
         """Load the chunk-metadata CSV and sanitize critical columns."""
@@ -230,18 +228,12 @@ class SearchIndex:
             self.dataframe = pd.read_csv(self._paths["dataframe"])
             logger.info("DataFrame loaded (%d rows).", len(self.dataframe))
         except Exception as exc:
-            raise DataLoadError(
-                f"Failed to load DataFrame: {exc}"
-            ) from exc
+            raise DataLoadError(f"Failed to load DataFrame: {exc}") from exc
 
         # Validate required columns
-        missing_cols = [
-            c for c in self._config.REQUIRED_COLUMNS if c not in self.dataframe.columns
-        ]
+        missing_cols = [c for c in self._config.REQUIRED_COLUMNS if c not in self.dataframe.columns]
         if missing_cols:
-            raise DataLoadError(
-                f"DataFrame missing required columns: {missing_cols}"
-            )
+            raise DataLoadError(f"DataFrame missing required columns: {missing_cols}")
 
         # Fill NaN in text to avoid downstream errors
         self.dataframe["text"] = self.dataframe["text"].fillna("")
@@ -251,26 +243,23 @@ class SearchIndex:
         assert self._paths is not None
         try:
             with open(self._paths["tfidf_vectorizer"], "rb") as fh:
-                self.tfidf_vectorizer = pickle.load(fh)  # noqa: S301
+                self.tfidf_vectorizer = pickle.load(fh)
             logger.info("TF-IDF vectorizer loaded.")
         except Exception as exc:
-            raise DataLoadError(
-                f"Failed to load TF-IDF vectorizer: {exc}"
-            ) from exc
+            raise DataLoadError(f"Failed to load TF-IDF vectorizer: {exc}") from exc
 
     def _load_tfidf_matrix(self) -> None:
         """Unpickle the TF-IDF document-term matrix."""
         assert self._paths is not None
         try:
             with open(self._paths["tfidf_matrix"], "rb") as fh:
-                self.tfidf_matrix = pickle.load(fh)  # noqa: S301
+                self.tfidf_matrix = pickle.load(fh)
             logger.info(
-                "TF-IDF matrix loaded (shape=%s).", self.tfidf_matrix.shape,
+                "TF-IDF matrix loaded (shape=%s).",
+                self.tfidf_matrix.shape,
             )
         except Exception as exc:
-            raise DataLoadError(
-                f"Failed to load TF-IDF matrix: {exc}"
-            ) from exc
+            raise DataLoadError(f"Failed to load TF-IDF matrix: {exc}") from exc
 
     # ------------------------------------------------------------------
     # Validation
@@ -397,8 +386,7 @@ class SearchIndex:
             )
 
         logger.info(
-            "Build manifest verified: model=%r, dimension=%d, "
-            "extraction_chunking_version=%r.",
+            "Build manifest verified: model=%r, dimension=%d, extraction_chunking_version=%r.",
             manifest_model_name,
             manifest_dimension,
             manifest.get("extraction_chunking_version"),

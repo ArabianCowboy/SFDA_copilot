@@ -12,7 +12,6 @@ import { AppState } from './state.js';
 import { Utils } from './utils.js';
 import { RobotStateManager } from './robot.js';
 import { bindCitations, renderSourceTrigger, nextMessageId } from './citations.js';
-import { SourcePanel } from './source-panel.js';
 import { MarkdownStream } from './stream-render.js';
 import { I18n } from './i18n.js';
 import { iconMarkup } from './icons.js';
@@ -30,7 +29,10 @@ function createMessageContent(text, isBot) {
 function createMessageElement(text, sender, msgId, occurredAt = null) {
   const isBot = sender === 'bot';
   const messageWrapper = DOMCache.createElement(
-    'div', 'message', isBot ? 'chatbot-message' : 'user-message', 'mb-3'
+    'div',
+    'message',
+    isBot ? 'chatbot-message' : 'user-message',
+    'mb-3',
   );
   if (msgId) messageWrapper.dataset.msgId = msgId;
 
@@ -79,9 +81,13 @@ function createMessageElement(text, sender, msgId, occurredAt = null) {
 function decorateMarkdown(scope) {
   /* No .source-deck exclusion any more: the sources are a panel outside the
      message subtree now, so the only lists in `scope` are the answer's own. */
-  scope.querySelectorAll('ul, ol').forEach(el => el.classList.add(CONFIG.CLASSES.MESSAGE_LIST));
-  scope.querySelectorAll('pre code').forEach(el => el.parentElement?.classList.add(CONFIG.CLASSES.MESSAGE_CODE_BLOCK));
-  scope.querySelectorAll(':not(pre) > code').forEach(el => el.classList.add(CONFIG.CLASSES.MESSAGE_INLINE_CODE));
+  scope.querySelectorAll('ul, ol').forEach((el) => el.classList.add(CONFIG.CLASSES.MESSAGE_LIST));
+  scope
+    .querySelectorAll('pre code')
+    .forEach((el) => el.parentElement?.classList.add(CONFIG.CLASSES.MESSAGE_CODE_BLOCK));
+  scope
+    .querySelectorAll(':not(pre) > code')
+    .forEach((el) => el.classList.add(CONFIG.CLASSES.MESSAGE_INLINE_CODE));
 }
 
 const HISTORY_NOTICE_ID = 'history-notice';
@@ -195,10 +201,7 @@ const NoticeCoordinator = {
  * covered, with no third id to add here when a fourth notice ships.
  */
 function isTranscriptTurn(el) {
-  return (
-    !el.hasAttribute('data-chat-intro')
-    && !el.hasAttribute('data-non-turn')
-  );
+  return !el.hasAttribute('data-chat-intro') && !el.hasAttribute('data-non-turn');
 }
 
 export const UI = {
@@ -226,7 +229,7 @@ export const UI = {
    */
   hydrateTimestamps() {
     const now = new Date();
-    document.querySelectorAll('[data-ts-now]').forEach(el => {
+    document.querySelectorAll('[data-ts-now]').forEach((el) => {
       el.textContent = now.toLocaleTimeString(I18n.lang);
       el.dateTime = now.toISOString();
       el.setAttribute('dir', 'auto');
@@ -269,26 +272,31 @@ export const UI = {
         // Only passages whose marker the reader can actually click. See the
         // note on bindCitations: this is what keeps the panel from offering a
         // source that markdown swallowed into a link or a code span.
-        const reachable = sources.filter(s => bound.has(s.index));
+        const reachable = sources.filter((s) => bound.has(s.index));
 
-        const trigger = renderSourceTrigger({
-          sources: reachable,
-          cited: meta?.cited ?? null,
-          retrieved: meta?.retrieved ?? sources.length,
-          /* Undefined for a caller that does not set it, and that is the
+        const trigger = renderSourceTrigger(
+          {
+            sources: reachable,
+            cited: meta?.cited ?? null,
+            retrieved: meta?.retrieved ?? sources.length,
+            /* Undefined for a caller that does not set it, and that is the
              correct default — `isDatedEvidence` treats missing as "say
              nothing" rather than "warn", so an answer rendered by a path that
              knows nothing about corpus builds is left alone. */
-          evidenceState: meta?.evidenceState,
-        }, msgId);
+            evidenceState: meta?.evidenceState,
+          },
+          msgId,
+        );
         if (trigger) {
           messageEl.insertBefore(
             trigger,
-            messageEl.querySelector(`.${CONFIG.CLASSES.SUGGESTED_CONTAINER}`)
+            messageEl.querySelector(`.${CONFIG.CLASSES.SUGGESTED_CONTAINER}`),
           );
         }
 
-        const suggestionsContainer = messageEl.querySelector(`.${CONFIG.CLASSES.SUGGESTED_CONTAINER}`);
+        const suggestionsContainer = messageEl.querySelector(
+          `.${CONFIG.CLASSES.SUGGESTED_CONTAINER}`,
+        );
         Utils.renderSuggestedQuestions(suggestionsContainer, suggestedQuestions);
       }
       this.scrollMessagesToBottom();
@@ -372,7 +380,7 @@ export const UI = {
 
     if (unread) pill.querySelector('.jump-dot')?.removeAttribute('hidden');
 
-    if (show === !pill.hidden) return;   // already in the requested state
+    if (show === !pill.hidden) return; // already in the requested state
 
     pill.hidden = !show;
     // The entrance is a CSS animation keyed off :not([hidden]), so nothing
@@ -404,8 +412,10 @@ export const UI = {
       this.setJumpToLatest(!this._follow);
     };
 
-    container.addEventListener('scroll', () => {
-      /* Intent is recorded HERE, synchronously, not in the coalesced frame.
+    container.addEventListener(
+      'scroll',
+      () => {
+        /* Intent is recorded HERE, synchronously, not in the coalesced frame.
          A token arriving inside the ~16ms rAF window would otherwise call
          followStream() against stale intent, scroll to the bottom, and leave
          _lastScrollTop at the bottom — so the frame that finally ran saw no
@@ -416,15 +426,17 @@ export const UI = {
          Content growth moves scrollHeight, never scrollTop, so inserting a
          source deck still cannot be mistaken for the reader walking away. The
          1px slack absorbs sub-pixel jitter on fractional-DPI displays. */
-      const top = container.scrollTop;
-      if (top < this._lastScrollTop - 1) this._follow = false;
-      this._lastScrollTop = top;
+        const top = container.scrollTop;
+        if (top < this._lastScrollTop - 1) this._follow = false;
+        this._lastScrollTop = top;
 
-      // rAF-coalesced: scroll fires far more often than once per frame.
-      if (queued) return;
-      queued = true;
-      requestAnimationFrame(sync);
-    }, { passive: true });
+        // rAF-coalesced: scroll fires far more often than once per frame.
+        if (queued) return;
+        queued = true;
+        requestAnimationFrame(sync);
+      },
+      { passive: true },
+    );
 
     /* rAF is throttled while the tab is hidden, so a scroll that happened just
        before backgrounding may not have synced. Re-check on return. */
@@ -474,22 +486,25 @@ export const UI = {
        `bound` means no parse recorded a result, in which case trust the
        server's set rather than silently dropping everything. */
     const reachable = handle.state.bound
-      ? sources.filter(s => handle.state.bound.has(s.index))
+      ? sources.filter((s) => handle.state.bound.has(s.index))
       : sources;
 
-    const trigger = renderSourceTrigger({
-      sources: reachable,
-      cited,
-      retrieved: final?.retrieved ?? sources.length,
-      // Always 'verified' from the server on a live answer — it was just drawn
-      // from the active index. Read from the frame rather than hardcoded here
-      // so the streaming and hydrated paths share one field name.
-      evidenceState: final?.evidence_state,
-    }, handle.msgId);
+    const trigger = renderSourceTrigger(
+      {
+        sources: reachable,
+        cited,
+        retrieved: final?.retrieved ?? sources.length,
+        // Always 'verified' from the server on a live answer — it was just drawn
+        // from the active index. Read from the frame rather than hardcoded here
+        // so the streaming and hydrated paths share one field name.
+        evidenceState: final?.evidence_state,
+      },
+      handle.msgId,
+    );
     if (trigger) {
       handle.messageEl.insertBefore(
         trigger,
-        handle.messageEl.querySelector(`.${CONFIG.CLASSES.SUGGESTED_CONTAINER}`)
+        handle.messageEl.querySelector(`.${CONFIG.CLASSES.SUGGESTED_CONTAINER}`),
       );
     }
 
@@ -502,9 +517,11 @@ export const UI = {
        declined to use. Counted off `reachable`, the same set the trigger and
        the panel show, so what a screen reader is told and what a sighted
        reader can open cannot disagree. */
-    this.announce(reachable.length
-      ? I18n.t('cite.answerCompleteWithSources', { n: reachable.length })
-      : I18n.t('cite.answerComplete'));
+    this.announce(
+      reachable.length
+        ? I18n.t('cite.answerCompleteWithSources', { n: reachable.length })
+        : I18n.t('cite.answerComplete'),
+    );
 
     /* Only if they were still following. A reader who scrolled up mid-answer
        has taken control, and reaching the end of the stream is not a reason to
@@ -568,9 +585,7 @@ export const UI = {
     const fragment = document.createDocumentFragment();
     const container = DOMCache.get(CONFIG.SELECTORS.MESSAGES);
     if (container) {
-      [...container.children]
-        .filter(isTranscriptTurn)
-        .forEach(el => fragment.appendChild(el));
+      [...container.children].filter(isTranscriptTurn).forEach((el) => fragment.appendChild(el));
     }
     this.updateNewChatAvailability();
     return fragment;
@@ -588,9 +603,7 @@ export const UI = {
    */
   async playTranscriptExit() {
     const container = DOMCache.get(CONFIG.SELECTORS.MESSAGES);
-    const turns = container
-      ? [...container.children].filter(isTranscriptTurn)
-      : [];
+    const turns = container ? [...container.children].filter(isTranscriptTurn) : [];
 
     if (!turns.length || prefersReducedMotion()) return this.detachTranscript();
 
@@ -607,14 +620,19 @@ export const UI = {
        a frame early. */
     await new Promise((resolve) => {
       let settled = false;
-      const finish = () => { if (!settled) { settled = true; resolve(); } };
+      const finish = () => {
+        if (!settled) {
+          settled = true;
+          resolve();
+        }
+      };
       turns[0].addEventListener('animationend', finish, { once: true });
       setTimeout(finish, 400);
     });
 
     const fragment = this.detachTranscript();
     // The turns come back clean; an undo must not restore a half-played exit.
-    [...fragment.children].forEach(el => {
+    [...fragment.children].forEach((el) => {
       el.classList.remove(CONFIG.CLASSES.IS_CLEARING);
       el.style.removeProperty('animation-delay');
     });
@@ -631,8 +649,7 @@ export const UI = {
        it. Same reason as the aria-busy below, in the other channel: an undo
        should reach both a reader watching and a reader listening as the clear
        never having happened. See effects.css. */
-    [...fragment.children].forEach(el =>
-      el.classList.add(CONFIG.CLASSES.ANIM_SUPPRESSED));
+    [...fragment.children].forEach((el) => el.classList.add(CONFIG.CLASSES.ANIM_SUPPRESSED));
 
     /* #messages is role="log" aria-live="polite", so re-appending a whole
        conversation would have a screen reader read every turn back. aria-busy
@@ -656,11 +673,10 @@ export const UI = {
    */
   updateNewChatAvailability({ animate = true } = {}) {
     const container = DOMCache.get(CONFIG.SELECTORS.MESSAGES);
-    const hasTurns = !!container && [...container.children]
-      .some(isTranscriptTurn);
+    const hasTurns = !!container && [...container.children].some(isTranscriptTurn);
     const available = hasTurns || AppState.isRequestInProgress();
 
-    DOMCache.getAll(`.${CONFIG.CLASSES.NEW_CHAT_BTN}`).forEach(btn => {
+    DOMCache.getAll(`.${CONFIG.CLASSES.NEW_CHAT_BTN}`).forEach((btn) => {
       /* Only the hidden→visible transition animates, and only when the caller
          allows it. Every route that touches the transcript lands here — a sent
          message, a stream starting or ending, a clear, an undo — so keying off
@@ -677,11 +693,9 @@ export const UI = {
       btn.classList.add(CONFIG.CLASSES.IS_ARRIVING);
       // Cleared once it has played, so the class means "arriving" rather than
       // "arrived once, some time ago".
-      btn.addEventListener(
-        'animationend',
-        () => btn.classList.remove(CONFIG.CLASSES.IS_ARRIVING),
-        { once: true }
-      );
+      btn.addEventListener('animationend', () => btn.classList.remove(CONFIG.CLASSES.IS_ARRIVING), {
+        once: true,
+      });
     });
   },
 
@@ -737,8 +751,8 @@ export const UI = {
        them one at a time before the same anchor preserves their order. */
     if (anchor) {
       [...container.children]
-        .filter(el => !existing.includes(el))
-        .forEach(el => container.insertBefore(el, anchor));
+        .filter((el) => !existing.includes(el))
+        .forEach((el) => container.insertBefore(el, anchor));
     }
 
     requestAnimationFrame(() => container.removeAttribute('aria-busy'));
@@ -899,7 +913,10 @@ export const UI = {
   setStage(handle, text) {
     if (!handle) return;
     let line = handle.messageEl.querySelector('.stage-line');
-    if (!text) { line?.remove(); return; }
+    if (!text) {
+      line?.remove();
+      return;
+    }
     if (!line) {
       line = DOMCache.createElement('div', 'stage-line');
       line.innerHTML = '<span class="stage-dot"></span><span class="stage-text"></span>';
@@ -972,7 +989,9 @@ export const UI = {
       ...DOMCache.getAll(`.${CONFIG.CLASSES.SUGGESTED_BUTTON}`),
     ].filter(Boolean);
 
-    elementsToToggle.forEach(el => { el.disabled = isSending; });
+    elementsToToggle.forEach((el) => {
+      el.disabled = isSending;
+    });
 
     const sendBtn = DOMCache.get(CONFIG.SELECTORS.SEND_BTN);
     if (sendBtn) {
@@ -982,7 +1001,7 @@ export const UI = {
         : `${iconMarkup('send', 16)}<span>${originalText}</span>`;
       sendBtn.setAttribute(
         'aria-label',
-        isSending ? I18n.t('chat.cancelAria') : I18n.t('chat.sendAria')
+        isSending ? I18n.t('chat.cancelAria') : I18n.t('chat.sendAria'),
       );
     }
 
@@ -1016,7 +1035,10 @@ export const UI = {
 
     renderButtons(faqData) {
       this._data = faqData || {};
-      const faqSections = [DOMCache.get(CONFIG.SELECTORS.FAQ_SIDEBAR), DOMCache.get(CONFIG.SELECTORS.FAQ_OFFCANVAS)].filter(Boolean);
+      const faqSections = [
+        DOMCache.get(CONFIG.SELECTORS.FAQ_SIDEBAR),
+        DOMCache.get(CONFIG.SELECTORS.FAQ_OFFCANVAS),
+      ].filter(Boolean);
       if (!faqSections.length) return;
 
       const createFaqContent = () => {
@@ -1043,7 +1065,9 @@ export const UI = {
           const visibleCount = Math.min(data.questions.length, this.VISIBLE_PER_GROUP);
           data.questions.slice(0, visibleCount).forEach(({ short, text }) => {
             if (!short || !text) return;
-            nav.appendChild(this._makeQuestionButton(category, short, text, { animate: true, itemIndex }));
+            nav.appendChild(
+              this._makeQuestionButton(category, short, text, { animate: true, itemIndex }),
+            );
             itemIndex++;
           });
 
@@ -1098,9 +1122,11 @@ export const UI = {
 
     clearButtons() {
       this._data = null;
-      DOMCache.getAll(`${CONFIG.SELECTORS.FAQ_SIDEBAR}, ${CONFIG.SELECTORS.FAQ_OFFCANVAS}`).forEach(section => {
-        section.innerHTML = '';
-      });
+      DOMCache.getAll(`${CONFIG.SELECTORS.FAQ_SIDEBAR}, ${CONFIG.SELECTORS.FAQ_OFFCANVAS}`).forEach(
+        (section) => {
+          section.innerHTML = '';
+        },
+      );
     },
   },
 
@@ -1170,11 +1196,11 @@ export const UI = {
          keyset cursor pointing past its OLD position will hand it back a second
          time. Without this the reader sees the same conversation twice and a
          later rename updates only one of them. */
-      const seen = new Set(this._state.sessions.map(s => s.id));
+      const seen = new Set(this._state.sessions.map((s) => s.id));
       this._state = {
         ...this._state,
         status: 'ready',
-        sessions: this._state.sessions.concat(sessions.filter(s => !seen.has(s.id))),
+        sessions: this._state.sessions.concat(sessions.filter((s) => !seen.has(s.id))),
         cursor: cursor || null,
         loadingMore: false,
       };
@@ -1216,9 +1242,7 @@ export const UI = {
     applyRename(sessionId, title) {
       this._state = {
         ...this._state,
-        sessions: this._state.sessions.map(s => (
-          s.id === sessionId ? { ...s, title } : s
-        )),
+        sessions: this._state.sessions.map((s) => (s.id === sessionId ? { ...s, title } : s)),
         pending: null,
       };
       this._paint();
@@ -1227,7 +1251,7 @@ export const UI = {
     removeSession(sessionId) {
       this._state = {
         ...this._state,
-        sessions: this._state.sessions.filter(s => s.id !== sessionId),
+        sessions: this._state.sessions.filter((s) => s.id !== sessionId),
         active: this._state.active === sessionId ? null : this._state.active,
         pending: null,
       };
@@ -1243,15 +1267,19 @@ export const UI = {
      */
     clear() {
       this._state = {
-        status: 'idle', sessions: [], cursor: null, active: null,
-        loadingMore: false, pending: null,
+        status: 'idle',
+        sessions: [],
+        cursor: null,
+        active: null,
+        loadingMore: false,
+        pending: null,
       };
       this._paint();
     },
 
     /** Mark the Chats tab as still fetching, in both sidebar copies. */
     setTabLoading(loading) {
-      document.querySelectorAll('.sidebar-tabs').forEach(tabs => {
+      document.querySelectorAll('.sidebar-tabs').forEach((tabs) => {
         if (loading) tabs.setAttribute('data-loading', 'chats');
         else tabs.removeAttribute('data-loading');
       });
@@ -1283,9 +1311,7 @@ export const UI = {
       if (!when || Number.isNaN(when.getTime())) return 'older';
 
       const startOfDay = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
-      const days = Math.round(
-        (startOfDay(new Date()) - startOfDay(when)) / 86400000
-      );
+      const days = Math.round((startOfDay(new Date()) - startOfDay(when)) / 86400000);
 
       // Negative means a clock skew put the row in the future. Treated as today
       // rather than dropped into "older", where a conversation the reader just
@@ -1333,7 +1359,9 @@ export const UI = {
      */
     _actionButton({ action, sessionId, label, icon, size = 14, className = '' }) {
       const button = DOMCache.createElement(
-        'button', CONFIG.CLASSES.HISTORY_ACTION, ...(className ? [className] : [])
+        'button',
+        CONFIG.CLASSES.HISTORY_ACTION,
+        ...(className ? [className] : []),
       );
       DOMCache.setAttributes(button, {
         type: 'button',
@@ -1391,14 +1419,22 @@ export const UI = {
         item.appendChild(input);
 
         const actions = DOMCache.createElement('div', 'history-item-actions');
-        actions.appendChild(this._actionButton({
-          action: 'rename-save', sessionId: session.id,
-          label: I18n.t('sessions.renameSave'), icon: 'check',
-        }));
-        actions.appendChild(this._actionButton({
-          action: 'rename-cancel', sessionId: session.id,
-          label: I18n.t('sessions.renameCancel'), icon: 'close',
-        }));
+        actions.appendChild(
+          this._actionButton({
+            action: 'rename-save',
+            sessionId: session.id,
+            label: I18n.t('sessions.renameSave'),
+            icon: 'check',
+          }),
+        );
+        actions.appendChild(
+          this._actionButton({
+            action: 'rename-cancel',
+            sessionId: session.id,
+            label: I18n.t('sessions.renameCancel'),
+            icon: 'close',
+          }),
+        );
         item.appendChild(actions);
         return item;
       }
@@ -1417,10 +1453,9 @@ export const UI = {
            alone cannot tell a conversation abandoned after one question from
            one worked in all afternoon — and a screen-reader user cannot see the
            row's density. */
-        'aria-label': `${I18n.t('sessions.openAria', { title: name })} — ` +
-          I18n.plural(
-            session.message_count || 0, 'sessions.turnsOne', 'sessions.turns'
-          ),
+        'aria-label':
+          `${I18n.t('sessions.openAria', { title: name })} — ` +
+          I18n.plural(session.message_count || 0, 'sessions.turnsOne', 'sessions.turns'),
         ...(session.id === this._state.active ? { 'aria-current': 'true' } : {}),
       });
       open.innerHTML = iconMarkup('chat-bubble', 15, 'history-item-icon');
@@ -1437,15 +1472,23 @@ export const UI = {
       item.appendChild(open);
 
       const actions = DOMCache.createElement('div', 'history-item-actions');
-      actions.appendChild(this._actionButton({
-        action: 'rename', sessionId: session.id,
-        label: I18n.t('sessions.renameAria', { title: name }), icon: 'pencil',
-      }));
-      actions.appendChild(this._actionButton({
-        action: 'delete', sessionId: session.id,
-        label: I18n.t('sessions.deleteAria', { title: name }), icon: 'trash',
-        className: 'is-destructive',
-      }));
+      actions.appendChild(
+        this._actionButton({
+          action: 'rename',
+          sessionId: session.id,
+          label: I18n.t('sessions.renameAria', { title: name }),
+          icon: 'pencil',
+        }),
+      );
+      actions.appendChild(
+        this._actionButton({
+          action: 'delete',
+          sessionId: session.id,
+          label: I18n.t('sessions.deleteAria', { title: name }),
+          icon: 'trash',
+          className: 'is-destructive',
+        }),
+      );
       item.appendChild(actions);
 
       if (confirming) {
@@ -1457,14 +1500,22 @@ export const UI = {
         const text = DOMCache.createElement('span', 'history-confirm-text');
         text.textContent = I18n.t('sessions.deleteConfirm');
         confirm.appendChild(text);
-        confirm.appendChild(this._confirmButton({
-          action: 'delete-confirm', sessionId: session.id,
-          label: I18n.t('sessions.deleteConfirmYes'), className: 'is-destructive',
-        }));
-        confirm.appendChild(this._confirmButton({
-          action: 'delete-cancel', sessionId: session.id,
-          label: I18n.t('sessions.deleteConfirmNo'), className: 'is-keep',
-        }));
+        confirm.appendChild(
+          this._confirmButton({
+            action: 'delete-confirm',
+            sessionId: session.id,
+            label: I18n.t('sessions.deleteConfirmYes'),
+            className: 'is-destructive',
+          }),
+        );
+        confirm.appendChild(
+          this._confirmButton({
+            action: 'delete-cancel',
+            sessionId: session.id,
+            label: I18n.t('sessions.deleteConfirmNo'),
+            className: 'is-keep',
+          }),
+        );
         item.appendChild(confirm);
       }
 
@@ -1541,9 +1592,7 @@ export const UI = {
         const more = DOMCache.createElement('button', 'history-more');
         DOMCache.setAttributes(more, { type: 'button', 'data-history-action': 'more' });
         if (loadingMore) more.setAttribute('disabled', 'disabled');
-        more.textContent = loadingMore
-          ? I18n.t('sessions.loading')
-          : I18n.t('sessions.loadMore');
+        more.textContent = loadingMore ? I18n.t('sessions.loading') : I18n.t('sessions.loadMore');
         fragment.appendChild(more);
       }
 
@@ -1582,7 +1631,7 @@ export const UI = {
            caret somewhere the reader cannot see it. `offsetParent` is null for
            a display:none subtree, which is exactly the test wanted here. */
         const inputs = [...document.querySelectorAll(`[data-rename-input="${pending.id}"]`)];
-        const visible = inputs.find(el => el.offsetParent !== null) || inputs[0];
+        const visible = inputs.find((el) => el.offsetParent !== null) || inputs[0];
         visible?.focus();
         visible?.select();
       }

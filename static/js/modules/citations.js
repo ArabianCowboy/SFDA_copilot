@@ -112,7 +112,7 @@ function makeMarker(index, msgId) {
 export function bindCitations(scope, sources, msgId) {
   const bound = new Set();
   if (!scope || !Array.isArray(sources) || !sources.length) return bound;
-  const valid = new Set(sources.map(s => s.index));
+  const valid = new Set(sources.map((s) => s.index));
 
   const walker = document.createTreeWalker(scope, NodeFilter.SHOW_TEXT, {
     acceptNode(node) {
@@ -188,7 +188,8 @@ export function renderSourceTrigger(state, msgId) {
 
   // Both numbers count the same (cited) set, so they cannot contradict.
   const documents = groupByDocument(sources).length;
-  const label = `${I18n.t('cite.sourcesLabel')} · ` +
+  const label =
+    `${I18n.t('cite.sourcesLabel')} · ` +
     `${I18n.plural(documents, 'cite.docsOne', 'cite.docsMany')} · ` +
     `${I18n.plural(sources.length, 'cite.passagesOne', 'cite.passagesMany')}`;
 
@@ -218,7 +219,6 @@ export function renderSourceTrigger(state, msgId) {
   button.insertAdjacentHTML('beforeend', iconMarkup('chevron-right', 12, 'chev'));
   return button;
 }
-
 
 /** Forget every answer's sources, e.g. on logout. */
 export function resetCitationState() {

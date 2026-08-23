@@ -16,15 +16,15 @@ always for.
 
 When two documents disagree, this is the order. It is short on purpose.
 
-| Subject | Authority |
-|---|---|
-| Conversations, chat, persistence | This file. Then `docs/archive/2026-08-22_per-tab-deep-linking.md`, then `2026-08-20_chat-persistence.md`, then `TODO.md`. Newest wins. |
-| Copy, product claims, terminology | `docs/PRODUCT.md` |
-| Design, tokens, RTL presentation | `DESIGN.md` |
-| Database, migrations, RLS | `supabase/README.md` — it sits beside the migrations, which is where you are when you need it |
-| Deployment, DNS, mail, anything outside the repo | `docs/OPERATIONS.md` |
-| A document's index vs. its own body | The body. |
-| **Anything vs. a passing test** | **The test.** It is the only artifact here that cannot silently drift. |
+| Subject                                          | Authority                                                                                                                              |
+| ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
+| Conversations, chat, persistence                 | This file. Then `docs/archive/2026-08-22_per-tab-deep-linking.md`, then `2026-08-20_chat-persistence.md`, then `TODO.md`. Newest wins. |
+| Copy, product claims, terminology                | `docs/PRODUCT.md`                                                                                                                      |
+| Design, tokens, RTL presentation                 | `DESIGN.md`                                                                                                                            |
+| Database, migrations, RLS                        | `supabase/README.md` — it sits beside the migrations, which is where you are when you need it                                          |
+| Deployment, DNS, mail, anything outside the repo | `docs/OPERATIONS.md`                                                                                                                   |
+| A document's index vs. its own body              | The body.                                                                                                                              |
+| **Anything vs. a passing test**                  | **The test.** It is the only artifact here that cannot silently drift.                                                                 |
 
 Every document in this repository opens with a `STATUS:` line and a date. A file
 without one is not finished. A file whose date is old is a file to check before you
@@ -55,7 +55,7 @@ It also throws in some private windows and WebViews, and is empty in a new tab.
 `POST /api/conversation/reset` were **deleted**, not deprecated. `web/api/app.py`
 keeps tombstone comments where the two routes were. `CHAT_RESUME_LATEST_SESSION` and
 the whole resume-fallback subsystem are gone; `web/tests/test_session_isolation.py`
-carries the note *"NO MORE 'resume' TESTS HERE"* so the mechanism cannot quietly
+carries the note _"NO MORE 'resume' TESTS HERE"_ so the mechanism cannot quietly
 return.
 
 **Undo is the Back button.** New chat is a navigation from `/c/<id>` to `/`. There is
@@ -76,7 +76,7 @@ Pinned by `web/tests/test_deep_link_contract.py`. All four properties are load-b
    `robots.txt`** — `Disallow` and `noindex` defeat each other, and that combination is
    the documented root cause of several public AI-chat indexing incidents.
 
-Enforcement lives entirely in `GET /api/chat/history`, which *is* authenticated.
+Enforcement lives entirely in `GET /api/chat/history`, which _is_ authenticated.
 
 **If sharing is ever built** it must be a separate, revocable object with its own id —
 never a visibility flag on the conversation. Unfurling is acceptable today only
@@ -176,10 +176,10 @@ Filenames are enumerated once at import time — **adding a module needs a resta
 There are three separate directories, and the separation is a security boundary, not
 tidiness:
 
-| Entry point | Modules | Template |
-|---|---|---|
-| `static/js/app.js` | `static/js/modules/` | `index.html` |
-| `static/js/admin.js` | `static/js/admin/` | `admin.html` |
+| Entry point            | Modules              | Template       |
+| ---------------------- | -------------------- | -------------- |
+| `static/js/app.js`     | `static/js/modules/` | `index.html`   |
+| `static/js/admin.js`   | `static/js/admin/`   | `admin.html`   |
 | `static/js/account.js` | `static/js/account/` | `account.html` |
 
 The landing page inlines an import-map entry for every name in its own directory. A
@@ -190,7 +190,7 @@ cannot reach it.
 `test_frontend_architecture.py` enforces that the console never imports the chat shell.
 
 **Bump `ASSET_VERSION` in `web/api/app.py` in any commit touching CSS or JS.** Do not
-write the current value into any document; the durable instruction is *bump it*.
+write the current value into any document; the durable instruction is _bump it_.
 
 ---
 
@@ -263,7 +263,7 @@ cookie or session auth on those routes would be CSRF-shaped, and this app has no
 protection. A decorator can be forgotten on route nine, and that failure is silent.
 
 Limits on `/account/api/*` key on the **authenticated user id**, not the IP
-(`_account_rate_key`) — otherwise it is "two exports per ten minutes *per building*".
+(`_account_rate_key`) — otherwise it is "two exports per ten minutes _per building_".
 
 ---
 
@@ -271,17 +271,17 @@ Limits on `/account/api/*` key on the **authenticated user id**, not the IP
 
 Flask-Limiter, `memory://` storage, keyed on the remote address unless noted.
 
-| Scope | Limit |
-|---|---|
-| Global default | 200/day, 50/hour, 10/minute |
-| Chat (`/api/chat` and `/api/chat/stream`, shared) | 15/minute |
-| `GET /api/chat/history` | 30/minute |
-| `/api/chat/sessions` (list, select, rename, delete) | 60/minute |
-| `POST /auth/recover` | 5/minute |
-| `GET /account/api/export` | 2 per 10 minutes, **keyed per reader** |
-| `DELETE /account/api/conversations` | 10/hour, **keyed per reader** |
-| `admin_bp` (whole blueprint) | 60/minute |
-| `admin.revoke_sessions`, `admin.change_email` | 10/minute |
+| Scope                                               | Limit                                  |
+| --------------------------------------------------- | -------------------------------------- |
+| Global default                                      | 200/day, 50/hour, 10/minute            |
+| Chat (`/api/chat` and `/api/chat/stream`, shared)   | 15/minute                              |
+| `GET /api/chat/history`                             | 30/minute                              |
+| `/api/chat/sessions` (list, select, rename, delete) | 60/minute                              |
+| `POST /auth/recover`                                | 5/minute                               |
+| `GET /account/api/export`                           | 2 per 10 minutes, **keyed per reader** |
+| `DELETE /account/api/conversations`                 | 10/hour, **keyed per reader**          |
+| `admin_bp` (whole blueprint)                        | 60/minute                              |
+| `admin.revoke_sessions`, `admin.change_email`       | 10/minute                              |
 
 `history_api` and `sessions_api` carry their own limits **specifically so that
 ordinary navigation cannot spend the 200/day budget an office behind one NAT shares
@@ -302,15 +302,15 @@ There is **no linting in this project** — no ruff, no eslint, no `pyproject.to
 pre-commit. Every enforced rule is a pytest assertion. This list is the real contract;
 everything else in these documents is convention.
 
-| Where | What it enforces |
-|---|---|
-| `test_css_contract.py` | 16 banned physical CSS properties across every `static/css/*.css`. Escape hatch: a trailing `/* physical-ok: <reason> */`. `width`/`height` are tracked but not gated. |
+| Where                           | What it enforces                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `test_css_contract.py`          | 16 banned physical CSS properties across every `static/css/*.css`. Escape hatch: a trailing `/* physical-ok: <reason> */`. `width`/`height` are tracked but not gated.                                                                                                                                                                                                                                                                                                                          |
 | `test_frontend_architecture.py` | `static/js/modules/services.js` and `static/js/admin/services.js` import no view or state module and name neither `ErrorHandler` nor `DOMCache`; handlers own every user-facing failure; the console never imports the chat shell (5 forbidden names × 4 files); auth and account flows read the catalogue instead of literals, with the old literals banned by name so a revert fails loudly; 12 English strings frozen verbatim; Arabic covers every key under **both** `runtime` and `page`. |
-| `test_composer.py` | Zero icon-webfont markup; more than 10 inline SVGs actually rendered; **every** module URL carries the current `ASSET_VERSION`. |
-| `test_deep_link_contract.py` | No LLM call before the ownership check (`call_count == 0`); foreign ≡ nonexistent, byte-identical; no `Set-Cookie` on `/c/<id>`; uppercase id 301s to canonical; `X-Robots-Tag`. |
-| `test_rtl.py` | Direction resolution and language selection; `page.*` never reaches the browser. |
-| `test_admin_page.py` | The closed 11-key `runtime.*` top-level list; the console catalogue never ships to the landing page. |
-| `test_source_panel.py` | A real bounding box for a passage at 1600px — the shrink-to-fit flex bug that once resolved the source deck to zero by zero. |
+| `test_composer.py`              | Zero icon-webfont markup; more than 10 inline SVGs actually rendered; **every** module URL carries the current `ASSET_VERSION`.                                                                                                                                                                                                                                                                                                                                                                 |
+| `test_deep_link_contract.py`    | No LLM call before the ownership check (`call_count == 0`); foreign ≡ nonexistent, byte-identical; no `Set-Cookie` on `/c/<id>`; uppercase id 301s to canonical; `X-Robots-Tag`.                                                                                                                                                                                                                                                                                                                |
+| `test_rtl.py`                   | Direction resolution and language selection; `page.*` never reaches the browser.                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `test_admin_page.py`            | The closed 11-key `runtime.*` top-level list; the console catalogue never ships to the landing page.                                                                                                                                                                                                                                                                                                                                                                                            |
+| `test_source_panel.py`          | A real bounding box for a passage at 1600px — the shrink-to-fit flex bug that once resolved the source deck to zero by zero.                                                                                                                                                                                                                                                                                                                                                                    |
 
 CI runs two jobs: `-m "not browser and not integration"` with `--cov=web` but **no
 coverage threshold**, and `-m browser --browser chromium`. Note that
@@ -324,16 +324,16 @@ Two rules can both be correct, both be well written, and still meet badly at one
 specific point. These are found by hitting them, because nothing else says they will
 meet. **Append to this table when you find a ninth.**
 
-| # | The collision | What to do |
-|---|---|---|
-| 1 | *One concern per migration* — except the identity cutover had to be **one** migration (column conversion + `handle_new_user` + `admin_update_profile` + grants), because splitting it breaks signup for the length of the deploy | Trace every writer of a column before converting it. If they cannot be sequenced, one migration is correct and the file header must say why. Precedent: `20260822225415`. |
-| 2 | Migration filenames must match what was applied — but the applied name only exists **after** applying | Renaming is a mandatory fourth step of every migration: write, apply, read the timestamp back, rename. Six files drifted before this was written down. |
-| 3 | Every page inlines the whole `runtime.*` tree — but its top-level key list is pinned to eleven names | A new feature nests under an existing namespace, or changes the test deliberately. See the section above. |
-| 4 | RLS restricts rows, not columns | "Own profile but not own role" needs a column `REVOKE` **plus** a trigger. One policy cannot do it. `supabase/README.md` Rule 6. |
-| 5 | The product is RTL-first, but all three templates load the **LTR** Bootstrap build (`bootstrap.min.css`, not `bootstrap.rtl.min.css`) | Some Bootstrap components mirror wrong and must be rebuilt by hand — `.form-check` is the known one. `test_css_contract.py` scans **repository CSS only** and validates nothing about the CDN stylesheet, so it will not catch this. |
-| 6 | The sidebar macro renders **twice** per page (desktop aside + mobile offcanvas) | Nothing needing a unique id can live in it unsuffixed — including ids that `aria-controls` and `aria-labelledby` point at, which resolve against the whole document. It is also why the monogram `view-transition-name` transition was not shipped. |
-| 7 | Identity is cached 30s for chat speed; the account page needs fresher and richer data | Both are correct and one path cannot serve both. `get_identity_flags` is a second, uncached RPC, deliberately kept off the hot path. |
-| 8 | Saving one preference can silently delete the others | `Services.updateProfile` upserts the **whole row**. The safe path for `preferences` is a different method calling `update_own_preferences`, which merges. Never pass `preferences` to `updateProfile`. |
+| #   | The collision                                                                                                                                                                                                                    | What to do                                                                                                                                                                                                                                          |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | _One concern per migration_ — except the identity cutover had to be **one** migration (column conversion + `handle_new_user` + `admin_update_profile` + grants), because splitting it breaks signup for the length of the deploy | Trace every writer of a column before converting it. If they cannot be sequenced, one migration is correct and the file header must say why. Precedent: `20260822225415`.                                                                           |
+| 2   | Migration filenames must match what was applied — but the applied name only exists **after** applying                                                                                                                            | Renaming is a mandatory fourth step of every migration: write, apply, read the timestamp back, rename. Six files drifted before this was written down.                                                                                              |
+| 3   | Every page inlines the whole `runtime.*` tree — but its top-level key list is pinned to eleven names                                                                                                                             | A new feature nests under an existing namespace, or changes the test deliberately. See the section above.                                                                                                                                           |
+| 4   | RLS restricts rows, not columns                                                                                                                                                                                                  | "Own profile but not own role" needs a column `REVOKE` **plus** a trigger. One policy cannot do it. `supabase/README.md` Rule 6.                                                                                                                    |
+| 5   | The product is RTL-first, but all three templates load the **LTR** Bootstrap build (`bootstrap.min.css`, not `bootstrap.rtl.min.css`)                                                                                            | Some Bootstrap components mirror wrong and must be rebuilt by hand — `.form-check` is the known one. `test_css_contract.py` scans **repository CSS only** and validates nothing about the CDN stylesheet, so it will not catch this.                |
+| 6   | The sidebar macro renders **twice** per page (desktop aside + mobile offcanvas)                                                                                                                                                  | Nothing needing a unique id can live in it unsuffixed — including ids that `aria-controls` and `aria-labelledby` point at, which resolve against the whole document. It is also why the monogram `view-transition-name` transition was not shipped. |
+| 7   | Identity is cached 30s for chat speed; the account page needs fresher and richer data                                                                                                                                            | Both are correct and one path cannot serve both. `get_identity_flags` is a second, uncached RPC, deliberately kept off the hot path.                                                                                                                |
+| 8   | Saving one preference can silently delete the others                                                                                                                                                                             | `Services.updateProfile` upserts the **whole row**. The safe path for `preferences` is a different method calling `update_own_preferences`, which merges. Never pass `preferences` to `updateProfile`.                                              |
 
 ---
 

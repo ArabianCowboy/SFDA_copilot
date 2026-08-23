@@ -25,8 +25,9 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Callable, Sequence
 from datetime import datetime, timezone
-from typing import Optional, Tuple, Union
+from typing import Any, cast
 
 from flask import (
     Blueprint,
@@ -39,8 +40,11 @@ from flask import (
     stream_with_context,
 )
 
-from web.services.chat_store import PersistenceUnavailable, export_all_sessions
+from web.services.chat_store import ChatBackend, PersistenceUnavailable, export_all_sessions
 from web.services.conversation_store import ConversationStore
+
+# datetime.UTC is Python 3.11+; the VPS production floor is 3.10.
+UTC = timezone.utc
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +57,7 @@ account_bp = Blueprint("account", __name__, url_prefix="/account")
 _UNGATED_ENDPOINTS = frozenset({"account.page"})
 
 
-def _bearer_token() -> Optional[str]:
+def _bearer_token() -> str | None:
     """The token from an explicit Authorization header, or None.
 
     Deliberately not ``_get_token_from_request``: that one falls back to a
@@ -64,12 +68,12 @@ def _bearer_token() -> Optional[str]:
     header = request.headers.get("Authorization", "")
     if not header.startswith("Bearer "):
         return None
-    token = header[len("Bearer "):].strip()
+    token = header[len("Bearer ") :].strip()
     return token or None
 
 
 @account_bp.before_request
-def _gate() -> Optional[Response]:
+def _gate() -> Response | tuple[Response, int] | None:
     """Admit any signed-in, non-disabled reader presenting a bearer token."""
     if request.endpoint in _UNGATED_ENDPOINTS:
         return None
@@ -82,7 +86,7 @@ def _gate() -> Optional[Response]:
     # be a cycle — the same reason admin.py does this.
     from web.api.app import _authenticate_request
 
-    identity, early_response = _authenticate_request()
+    _identity, early_response = _authenticate_request()
     if early_response is not None:
         return early_response
 
@@ -98,7 +102,10 @@ def page() -> Response:
     module docstring."""
     from web.api.app import ACCOUNT_MODULE_FILENAMES, MODULE_FILENAMES
 
-    build_map = current_app.jinja_env.globals["_import_map"]
+    build_map = cast(
+        "Callable[[str, Sequence[str]], dict[str, Any]]",
+        current_app.jinja_env.globals["_import_map"],
+    )
 
     # Both directories: the account modules import the shared ones — i18n,
     # theme, the icon helper, the Supabase transport, exactly like the
@@ -117,8 +124,8 @@ def page() -> Response:
     return response
 
 
-def _persistence_precondition() -> Tuple[
-    Optional[str], Optional[object], Optional[Tuple[Response, int]]
+def _persistence_precondition() -> tuple[
+    str | None, ChatBackend | None, tuple[Response, int] | None
 ]:
     """(owner_id, persistence, error) for both Data-rights routes below.
 
@@ -134,15 +141,19 @@ def _persistence_precondition() -> Tuple[
     persistence = _chat_persistence()
 
     if persistence is None and current_app.config.get("CHAT_PERSISTENCE_ENABLED", False):
-        return None, None, (
-            jsonify(error="Your data could not be reached.", code="history_unavailable"),
-            503,
+        return (
+            None,
+            None,
+            (
+                jsonify(error="Your data could not be reached.", code="history_unavailable"),
+                503,
+            ),
         )
     return owner_id, persistence, None
 
 
 @account_bp.route("/api/export", methods=["GET"], endpoint="export")
-def export() -> Union[Response, Tuple[Response, int]]:
+def export() -> Response | tuple[Response, int]:
     """Every owned conversation, streamed as NDJSON — one line of metadata,
     then one line per session with its full message history.
 
@@ -172,13 +183,16 @@ def export() -> Union[Response, Tuple[Response, int]]:
     if error:
         return error
 
-    generated_at = datetime.now(timezone.utc).isoformat()
+    generated_at = datetime.now(UTC).isoformat()
 
     def generate():
-        yield json.dumps(
-            {"export_version": 1, "generated_at": generated_at, "user_id": owner_id},
-            ensure_ascii=False,
-        ) + "\n"
+        yield (
+            json.dumps(
+                {"export_version": 1, "generated_at": generated_at, "user_id": owner_id},
+                ensure_ascii=False,
+            )
+            + "\n"
+        )
         if not owner_id or persistence is None:
             return
         try:
@@ -187,18 +201,22 @@ def export() -> Union[Response, Tuple[Response, int]]:
         except PersistenceUnavailable:
             logger.warning(
                 "Export for %s was truncated: history became unreachable mid-stream.",
-                owner_id, exc_info=True,
+                owner_id,
+                exc_info=True,
             )
-            yield json.dumps(
-                {
-                    "error": "history_unavailable",
-                    "message": "Some conversations could not be read; this export is incomplete.",
-                },
-                ensure_ascii=False,
-            ) + "\n"
+            yield (
+                json.dumps(
+                    {
+                        "error": "history_unavailable",
+                        "message": "Some conversations could not be read; this export is incomplete.",
+                    },
+                    ensure_ascii=False,
+                )
+                + "\n"
+            )
 
     response = Response(stream_with_context(generate()), mimetype="application/x-ndjson")
-    filename = f"sfda-copilot-conversations-{datetime.now(timezone.utc):%Y%m%d}.ndjson"
+    filename = f"sfda-copilot-conversations-{datetime.now(UTC):%Y%m%d}.ndjson"
     response.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
     # This body is every conversation a reader has ever had. Never cached,
     # same reasoning `_no_store` (app.py) applies to a single transcript.
@@ -207,7 +225,7 @@ def export() -> Union[Response, Tuple[Response, int]]:
 
 
 @account_bp.route("/api/conversations", methods=["DELETE"], endpoint="delete_all_conversations")
-def delete_all_conversations() -> Union[Response, Tuple[Response, int]]:
+def delete_all_conversations() -> Response | tuple[Response, int]:
     """Delete every owned conversation. `/account/api/conversations` — see
     `export`'s docstring for the path convention. Named distinctly from
     account deletion (Spec 4 of docs/profile-refactor-plan.md, not built
@@ -231,7 +249,8 @@ def delete_all_conversations() -> Union[Response, Tuple[Response, int]]:
 
     if _generations().is_live_for_owner(owner_id):
         return jsonify(
-            error="An answer is still being generated.", code="generation_in_flight",
+            error="An answer is still being generated.",
+            code="generation_in_flight",
         ), 409
 
     try:

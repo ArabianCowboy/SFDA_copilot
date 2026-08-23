@@ -12,8 +12,8 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-from sklearn.metrics.pairwise import cosine_similarity
 from scipy.sparse import csr_matrix
+from sklearn.metrics.pairwise import cosine_similarity
 
 from web.services.search_exceptions import SearchEngineError
 
@@ -69,9 +69,7 @@ class LexicalSearcher:
 
         try:
             query_vec = self._vectorizer.transform([query])
-            similarities: np.ndarray = cosine_similarity(
-                query_vec, self._matrix
-            ).flatten()
+            similarities: np.ndarray = cosine_similarity(query_vec, self._matrix).flatten()
         except Exception as exc:
             # Raised rather than returned as an empty candidate list — see the
             # matching note in semantic_searcher. Note the difference from the

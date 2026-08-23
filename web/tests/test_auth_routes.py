@@ -137,9 +137,7 @@ def test_chat_returns_503_when_search_engine_is_unavailable(client, app):
     )
 
     assert response.status_code == 503
-    assert response.get_json() == {
-        "error": "Search service is currently unavailable."
-    }
+    assert response.get_json() == {"error": "Search service is currently unavailable."}
 
 
 def test_search_engine_construction_failure_keeps_app_available():

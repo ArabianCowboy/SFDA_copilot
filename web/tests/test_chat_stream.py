@@ -8,6 +8,7 @@ terminal `final` frame carrying the canonical, normalized answer.
 
 from __future__ import annotations
 
+import contextlib
 import json
 
 import pytest
@@ -16,7 +17,6 @@ from web.api.app import create_app
 from web.services.conversation_store import ELISION_NOTICE, ConversationStore
 from web.services.result_combiner import SearchResult
 from web.services.search_exceptions import SearchEngineError
-
 
 AUTH = {"Authorization": "Bearer fake_token"}
 ANSWER_TOKENS = ["Applications ", "must be ", "submitted [1]."]
@@ -59,9 +59,9 @@ def read_frames(response) -> list[tuple[str, dict]]:
         event, data = "message", None
         for line in block.splitlines():
             if line.startswith("event:"):
-                event = line[len("event:"):].strip()
+                event = line[len("event:") :].strip()
             elif line.startswith("data:"):
-                data = json.loads(line[len("data:"):].strip())
+                data = json.loads(line[len("data:") :].strip())
         if data is not None:
             frames.append((event, data))
     return frames
@@ -82,6 +82,7 @@ def post(client, **body):
 
 # ── Transport ───────────────────────────────────────────────────────────────
 
+
 def test_response_declares_a_non_buffering_event_stream(client):
     response = post(client)
     assert response.status_code == 200
@@ -97,6 +98,7 @@ def test_frames_are_bytes():
     headers and an EMPTY body — and the Flask test client does not reproduce it,
     because it encodes on the way out. Only a real server catches this."""
     from web.services.sse import ping, sse
+
     assert isinstance(sse("stage", {"stage": "searching"}), bytes)
     assert isinstance(ping(), bytes)
 
@@ -150,15 +152,16 @@ def test_a_retrieval_failure_is_reported_as_an_error_not_a_refusal(app, client):
 
 # ── Frame ordering ──────────────────────────────────────────────────────────
 
+
 def test_frame_sequence(client):
     events = [event for event, _ in read_frames(post(client))]
     assert events == [
         "meta",
-        "stage",        # searching
-        "stage",        # retrieved
-        "stage",        # drafting
+        "stage",  # searching
+        "stage",  # retrieved
+        "stage",  # drafting
         *["delta"] * len(ANSWER_TOKENS),
-        "stage",        # finalizing
+        "stage",  # finalizing
         "final",
         "suggestions",
         "done",
@@ -209,8 +212,8 @@ def test_final_reports_only_the_cited_passages(client):
 
 def test_an_answer_citing_nothing_reports_an_empty_cited(app, client):
     """The reported bug: a refusal must not arrive looking sourced."""
-    app.config["openai_handler"].stream_response.side_effect = (
-        lambda *a, **k: iter(["I cannot answer ", "based on the given information."])
+    app.config["openai_handler"].stream_response.side_effect = lambda *a, **k: iter(
+        ["I cannot answer ", "based on the given information."]
     )
     final = dict(read_frames(post(client)))["final"]
     assert final["cited"] == []
@@ -221,8 +224,8 @@ def test_an_answer_citing_nothing_reports_an_empty_cited(app, client):
 
 
 def test_out_of_range_citations_are_not_reported(app, client):
-    app.config["openai_handler"].stream_response.side_effect = (
-        lambda *a, **k: iter(["Supported ", "[9]."])
+    app.config["openai_handler"].stream_response.side_effect = lambda *a, **k: iter(
+        ["Supported ", "[9]."]
     )
     assert dict(read_frames(post(client)))["final"]["cited"] == []
 
@@ -236,8 +239,8 @@ def test_final_response_is_normalized_not_the_raw_deltas(app, client):
     the API reported a citation of source 1 — a marker the reader is told
     exists and cannot click. `final.response` is what the client re-renders.
     """
-    app.config["openai_handler"].stream_response.side_effect = (
-        lambda *a, **k: iter(["Submit within 15 days ", "[Source: Doc_1.pdf, Page: 1]."])
+    app.config["openai_handler"].stream_response.side_effect = lambda *a, **k: iter(
+        ["Submit within 15 days ", "[Source: Doc_1.pdf, Page: 1]."]
     )
     frames = read_frames(post(client))
     deltas = "".join(d["t"] for e, d in frames if e == "delta")
@@ -261,6 +264,7 @@ def test_lang_is_forwarded_to_the_model(app, client):
 
 # ── Failure mid-stream ──────────────────────────────────────────────────────
 
+
 def test_model_failure_after_streaming_starts_is_reported_in_band(app, client):
     def explode(*args, **kwargs):
         yield "partial "
@@ -279,6 +283,7 @@ def test_model_failure_after_streaming_starts_is_reported_in_band(app, client):
 
 
 # ── History persistence across a streaming response ─────────────────────────
+
 
 def test_history_survives_the_streaming_response(app, client):
     """The Flask-session trap: a session write inside the generator would be
@@ -305,14 +310,13 @@ def test_cancelled_turn_is_not_recorded(app, client):
         raise GeneratorExit
 
     app.config["openai_handler"].stream_response.side_effect = stall
-    try:
+    with contextlib.suppress(GeneratorExit):
         post(client)
-    except GeneratorExit:
-        pass
     assert len(store) == 0
 
 
 # ── ConversationStore ───────────────────────────────────────────────────────
+
 
 def test_store_round_trips_a_turn():
     store = ConversationStore()
@@ -334,7 +338,7 @@ def test_store_caps_by_pair_count():
 
 def test_store_caps_by_serialized_size():
     store = ConversationStore()
-    for i in range(6):
+    for _ in range(6):
         store.append_turn("c1", "q" * 200, "a" * 200, max_pairs=50, max_chars=1_000)
     # ensure_ascii=False to measure the way _truncate does. The fixture is pure
     # ASCII so both settings agree on it, which is exactly why the default was

@@ -23,7 +23,13 @@ const CATEGORY = window.__CATEGORY_ICONS || {};
  * not in the browser is the drift this indirection exists to prevent.
  */
 export function categoryIcon(category) {
-  return CATEGORY[String(category || '').trim().toLowerCase()] || '';
+  return (
+    CATEGORY[
+      String(category || '')
+        .trim()
+        .toLowerCase()
+    ] || ''
+  );
 }
 
 /**
@@ -35,8 +41,10 @@ export function iconMarkup(name, size = 16, cls = '') {
   const paths = REGISTRY[name];
   if (!paths) return '';
   const classes = `icon ${cls}`.trim();
-  return `<svg class="${classes}" width="${size}" height="${size}" viewBox="0 0 16 16"` +
-    ` fill="currentColor" aria-hidden="true" focusable="false">${paths}</svg>`;
+  return (
+    `<svg class="${classes}" width="${size}" height="${size}" viewBox="0 0 16 16"` +
+    ` fill="currentColor" aria-hidden="true" focusable="false">${paths}</svg>`
+  );
 }
 
 /**

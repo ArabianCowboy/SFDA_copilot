@@ -17,7 +17,9 @@ function updateStatusAndActions(user) {
     ? I18n.t('auth.loggedInAs', { email: user.email })
     : I18n.t('auth.notLoggedIn');
 
-  DOMCache.getAll(`${CONFIG.SELECTORS.USER_STATUS}, ${CONFIG.SELECTORS.USER_STATUS_OFFCANVAS}`).forEach(el => {
+  DOMCache.getAll(
+    `${CONFIG.SELECTORS.USER_STATUS}, ${CONFIG.SELECTORS.USER_STATUS_OFFCANVAS}`,
+  ).forEach((el) => {
     if (el) el.textContent = statusText;
   });
 
@@ -33,9 +35,9 @@ function updateStatusAndActions(user) {
     CONFIG.SELECTORS.PROFILE_BTN_OFFCANVAS,
   ];
 
-  DOMCache.getAll([...authSelectors, ...userSelectors].join(', ')).forEach(btn => {
+  DOMCache.getAll([...authSelectors, ...userSelectors].join(', ')).forEach((btn) => {
     if (!btn) return;
-    const isAuthButton = authSelectors.some(selector => btn.matches(selector));
+    const isAuthButton = authSelectors.some((selector) => btn.matches(selector));
     btn.classList.toggle(CONFIG.CLASSES.D_NONE, isAuthButton ? isLoggedIn : !isLoggedIn);
   });
 }
@@ -144,12 +146,9 @@ function showRecoveryView() {
  * a reader who unhides this link reaches a page that tells them nothing.
  */
 function renderAdminAffordance(isAdmin) {
-  const selectors = [
-    CONFIG.SELECTORS.ADMIN_BTN,
-    CONFIG.SELECTORS.ADMIN_BTN_OFFCANVAS,
-  ].join(', ');
+  const selectors = [CONFIG.SELECTORS.ADMIN_BTN, CONFIG.SELECTORS.ADMIN_BTN_OFFCANVAS].join(', ');
 
-  DOMCache.getAll(selectors).forEach(link => {
+  DOMCache.getAll(selectors).forEach((link) => {
     if (link) link.classList.toggle(CONFIG.CLASSES.D_NONE, !isAdmin);
   });
 }
