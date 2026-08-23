@@ -59,12 +59,12 @@ python scripts/eval_citations.py --judge --model <id> --out judge_packet.jsonl
 `pyproject.toml` holds `ruff`/`mypy` config, `eslint.config.js`/`.prettierrc` cover
 `static/js/`, and `.markdownlint-cli2.yaml` covers every `.md` file. All four run through
 `pre-commit` (`.pre-commit-config.yaml`) on every commit — install it once with
-`pip install -r requirements-dev.txt && pre-commit install`. mypy runs as a `local` hook
-against this project's own venv, not an isolated one, so it goes through
-`scripts/pre_commit_mypy.py` — a small shim that locates `venv/`/`.venv/` itself rather than
-requiring it to be activated on PATH (so a commit from a GUI client or an unactivated shell
-still runs the right mypy). The eslint/prettier/markdownlint-cli2 hooks still shell out via
-`npx`, so they do need `npm install` to have been run at least once.
+`pip install -r requirements-dev.txt && pre-commit install`. mypy is deliberately **not** one
+of the pre-commit hooks: it needs either the venv activated or `mypy` resolvable on PATH,
+which a GUI git client (VS Code's Source Control panel included) does not reliably give it —
+it gates the `lint` CI job instead (`.github/workflows/tests.yml`), and running it locally
+before committing is on you. The eslint/prettier/markdownlint-cli2 hooks shell out via `npx`,
+so they need `npm install` to have been run at least once.
 
 ```bash
 ruff check . --fix && ruff format .                 # Python: lint-fix, then format

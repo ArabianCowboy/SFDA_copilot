@@ -12,20 +12,15 @@ repos:
         args: [--fix]
       - id: ruff-format
 
+  # mypy is deliberately NOT a local commit hook: `language: system` needs
+  # either the project's venv activated or a bare `python`/`mypy` resolvable
+  # on PATH, and a GUI client (VS Code's Source Control panel included) does
+  # not reliably see either — this broke real commits. mypy still gates every
+  # push/PR via the `lint` job in .github/workflows/tests.yml; run it by hand
+  # locally with `mypy web` before committing if you want the check sooner.
+
   - repo: local
     hooks:
-      - id: mypy
-        name: mypy
-        # `mypy` resolves to the project venv via scripts/pre_commit_mypy.py,
-        # which prefers the repo's own .venv (so it sees the installed packages
-        # the app uses: faiss, sentence-transformers, supabase, ...); otherwise
-        # it falls back to a PATH-resolvable `mypy` (CI installs straight into
-        # the runner's Python).
-        entry: python scripts/pre_commit_mypy.py web
-        language: system
-        pass_filenames: false
-        files: \.py$
-
       - id: eslint
         name: eslint
         # npx, not a direct node_modules/.bin path, so this resolves the

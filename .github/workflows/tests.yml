@@ -22,6 +22,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: pre-commit run --all-files
+      # Not a pre-commit hook (see .pre-commit-config.yaml) — runs here instead.
+      - run: mypy web
 
   backend:
     runs-on: ubuntu-latest
