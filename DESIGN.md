@@ -146,7 +146,24 @@ components:
     rounded: "{rounded.sm}"
 ---
 
+STATUS: CURRENT AUTHORITY — the design system. Wins over every other document on
+design, tokens and RTL presentation. Last verified against code 2026-08-23.
+(The banner sits below the frontmatter, not above it: the YAML block has to be the
+first thing in this file for the design tooling to parse it.)
+
 # Design System: SFDA Copilot
+
+## How to read a rule in this file
+
+Every named rule below carries one of three tags. They exist because this file used to
+state a build-breaking constraint and a matter of taste in the same voice, which made
+the whole document read as a gate.
+
+- **[GATE]** — a test fails. You cannot merge past it.
+- **[CORRECTNESS]** — no test catches it, but breaking it breaks the product, usually
+  for Arabic readers. Treat it as a gate that happens to be unautomated.
+- **[TASTE]** — a considered judgement that gives the product its character. Depart from
+  it deliberately and say why; nothing will stop you.
 
 ## Overview
 
@@ -202,13 +219,13 @@ A warm porcelain-and-aubergine field holding two saturated voices — a deep tea
 - **Alert** (`alert-600`) and **Warn** (`warn-600`): Error text, the error toast rule, and Sunny's error face. Nothing else.
 
 ### Named Rules
-**The Two Jobs Rule.** Teal is the brand's action colour on the landing (CTA and card icons) and is rationed to retrieval and citation state inside the chat transcript. A decorative teal in the transcript dilutes the one cue that says "this sentence came from a document"; a rationed teal on the landing leaves the page with no action colour. Which job applies is decided by surface, never by taste.
+**The Two Jobs Rule.** `[TASTE]` Teal is the brand's action colour on the landing (CTA and card icons) and is rationed to retrieval and citation state inside the chat transcript. A decorative teal in the transcript dilutes the one cue that says "this sentence came from a document"; a rationed teal on the landing leaves the page with no action colour. Which job applies is decided by surface, never by taste.
 
-**The Primitives-Only Dark Rule.** Dark mode overrides Layer 1 primitives and nothing else. A `[data-bs-theme="dark"]` branch inside a component means the primitive ramp is wrong — fix the ramp. The teal ramp lifts to `#4FC2C8` in dark because `#0F5E63` on `#191420` is roughly 2.1:1 and unreadable; that is a ramp decision, not a component decision.
+**The Primitives-Only Dark Rule.** `[CORRECTNESS]` Dark mode overrides Layer 1 primitives and nothing else. A `[data-bs-theme="dark"]` branch inside a component means the primitive ramp is wrong — fix the ramp. The teal ramp lifts to `#4FC2C8` in dark because `#0F5E63` on `#191420` is roughly 2.1:1 and unreadable; that is a ramp decision, not a component decision.
 
-**The Semantic-Names-Only Rule.** Components reference Layer 3 names (`--bg-surface`, `--fg-muted`, `--signal`, `--confidence`, `--hairline`). Reaching for a primitive in a component file means the semantic layer is missing a name; add the name.
+**The Semantic-Names-Only Rule.** `[TASTE]` Components reference Layer 3 names (`--bg-surface`, `--fg-muted`, `--signal`, `--confidence`, `--hairline`). Reaching for a primitive in a component file means the semantic layer is missing a name; add the name.
 
-**The Warm Shadow Rule.** Shadows are tinted with the ink hue (`rgb(36 31 43 / …)`), never neutral grey. A grey shadow on a warm ground reads as dirt.
+**The Warm Shadow Rule.** `[TASTE]` Shadows are tinted with the ink hue (`rgb(36 31 43 / …)`), never neutral grey. A grey shadow on a warm ground reads as dirt.
 
 ## Typography
 
@@ -227,11 +244,11 @@ A warm porcelain-and-aubergine field holding two saturated voices — a deep tea
 - **Mono** (400, 0.75rem, tabular figures): Machine-reported facts only — page numbers, retrieval diagnostics, timestamps, citation indices, stream notes.
 
 ### Named Rules
-**The Joined-Script Rule.** Negative letter-spacing shatters Arabic glyph joining. Every tracking token zeroes under `[dir="rtl"]`, a blanket `letter-spacing: normal` catches any hardcoded value, and the leading opens up (body 1.65 → 1.85, tight 1.08 → 1.25, snug 1.3 → 1.45). Uppercasing is also switched off in RTL: Arabic has no case, so the transform does nothing while the tracking that accompanies it breaks joins. Small labels keep their role through weight and colour instead.
+**The Joined-Script Rule.** `[CORRECTNESS]` Negative letter-spacing shatters Arabic glyph joining. Every tracking token zeroes under `[dir="rtl"]`, a blanket `letter-spacing: normal` catches any hardcoded value, and the leading opens up (body 1.65 → 1.85, tight 1.08 → 1.25, snug 1.3 → 1.45). Uppercasing is also switched off in RTL: Arabic has no case, so the transform does nothing while the tracking that accompanies it breaks joins. Small labels keep their role through weight and colour instead.
 
-**The Interpolate-Between-Tokens Rule.** Fluid type clamps interpolate between ramp tokens (`clamp(var(--fs-400), 1.5vw, var(--fs-500))`), never between literals. A clamp written with raw rem values is off the scale by construction.
+**The Interpolate-Between-Tokens Rule.** `[TASTE]` Fluid type clamps interpolate between ramp tokens (`clamp(var(--fs-400), 1.5vw, var(--fs-500))`), never between literals. A clamp written with raw rem values is off the scale by construction.
 
-**The Mono-Means-Measured Rule.** Azeret Mono marks a value a machine produced. Numbers that carry meaning also get `font-variant-numeric: tabular-nums` so digits do not jitter between streaming frames, and page numbers and scores are held `direction: ltr; unicode-bidi: isolate` so bidi cannot reorder them inside an Arabic answer.
+**The Mono-Means-Measured Rule.** `[CORRECTNESS]` Azeret Mono marks a value a machine produced. Numbers that carry meaning also get `font-variant-numeric: tabular-nums` so digits do not jitter between streaming frames, and page numbers and scores are held `direction: ltr; unicode-bidi: isolate` so bidi cannot reorder them inside an Arabic answer.
 
 ## Layout
 
@@ -241,7 +258,20 @@ Spacing is a 4px base scale (4/8/12/16/24/32/48/64/96). No raw pixel margins are
 
 The feature grid is one column by default, two at 640px, three at 1000px — and at three columns the coverage card spans two, because it carries the corpus claim and a row of five identical boxes says nothing about which one matters. The chat shell adds a 240–320px rail as a real grid column at 1200px. The rail carries the mascot until an answer's sources are opened, then the source panel takes the column and the mascot steps aside; below 1200px the same panel becomes a modal bottom sheet, because there is no second column to put it in and it would otherwise cover the answer without saying so. Breakpoints are content-driven values, not a framework's named tiers.
 
-**The Logical-Properties Rule.** Physical properties that cannot mirror (`margin-left`, `padding-right`, `left`, `text-align: left`, `border-left`) are banned and `web/tests/test_css_contract.py` fails the build on them; the five shipped stylesheets currently carry zero violations. Where CSS has no logical equivalent — `translateX` inside a keyframe — the direction multiplier `--flip` (1 in LTR, −1 in RTL) goes inside the transform: `translateX(calc(-12px * var(--flip)))`. Overlays are placed in a shared grid cell with `align-self`, not with absolute offsets, so they mirror for free.
+**The Logical-Properties Rule.** `[GATE]` Physical properties that cannot mirror (`margin-left`, `padding-right`, `left`, `text-align: left`, `border-left`) are banned and `web/tests/test_css_contract.py` fails the build on them; the five shipped stylesheets currently carry zero violations. Where CSS has no logical equivalent — `translateX` inside a keyframe — the direction multiplier `--flip` (1 in LTR, −1 in RTL) goes inside the transform: `translateX(calc(-12px * var(--flip)))`. Overlays are placed in a shared grid cell with `align-self`, not with absolute offsets, so they mirror for free.
+
+**The test does not cover everything that mirrors, and the gap has a name.** `test_css_contract.py`
+scans **this repository's CSS only**. All three templates load the **LTR** Bootstrap build
+(`bootstrap.min.css`, not `bootstrap.rtl.min.css`), so any Bootstrap component whose own stylesheet
+uses physical properties is outside the gate entirely — the suite will be green and the Arabic
+layout will still be wrong. `.form-check` is the known case, and the reason `/account` uses a
+bespoke `.account-choice` class instead. **When you reach for a Bootstrap component, check it in
+Arabic at a mobile width before you trust it.** A green build is evidence about our stylesheets, not
+about the page. (Switching to the RTL build is not a one-line change — the repository's overrides
+were written against the LTR cascade — and is tracked as a follow-up rather than assumed.)
+This is collision #5 in
+[`docs/ARCHITECTURE.md` → *Rules that collide*](docs/ARCHITECTURE.md#rules-that-collide),
+which lists the other seven.
 
 ## Elevation & Depth
 
@@ -258,7 +288,7 @@ Hybrid, and deliberately so. Structure at rest is carried by hairlines and tonal
 - **Dark mode** replaces the ink tint with black at much higher alpha (.40 / .45 / .50 / .60), because a tinted shadow disappears on a dark ground.
 
 ### Named Rules
-**The Earned-Shadow Rule.** Surfaces are flat at rest and lift on state. A shadow on a static element that is not floating over content is decoration; use a hairline and a tonal step instead.
+**The Earned-Shadow Rule.** `[TASTE]` Surfaces are flat at rest and lift on state. A shadow on a static element that is not floating over content is decoration; use a hairline and a tonal step instead.
 
 ## Shapes
 
@@ -266,7 +296,7 @@ Radii are soft and stepped: 3px on inline chips and dropdown items, 6px on input
 
 Two silhouettes recur. The **pill** marks anything actionable or status-bearing. The **flagged corner** marks speech: a message bubble is 14px on three corners and 6px on the corner that points back at its speaker, expressed logically (`border-start-start-radius` for the assistant, `border-start-end-radius` for the user) so it follows writing direction instead of a fixed side.
 
-Borders are 1px hairlines by default. 2px is the system's one *meaningful* rule weight — the active tab indicator, blockquote rules, the cutoff notice, the toast's status edge — and it never appears as decoration. A **meter** is not a rule and is not held to that weight: a rule marks a boundary, a meter reports a quantity that is changing while you look at it, so it is sized to be legible instead. The undo countdown is the one meter in the system, at 4px.
+Borders are 1px hairlines by default. 2px is the system's one *meaningful* rule weight — the active tab indicator, blockquote rules, the cutoff notice, the toast's status edge — and it never appears as decoration. A **meter** is not a rule and is not held to that weight: a rule marks a boundary, a meter reports a quantity that is changing while you look at it, so it is sized to be legible instead. The meter is 4px. **It currently has no instance:** the undo countdown that defined it was retired when Back became undo, so the weight is reserved rather than in use. It stays in the vocabulary because the vocabulary is what stops the next coloured edge being invented at 3px.
 
 ## Components
 
@@ -276,7 +306,6 @@ Borders are 1px hairlines by default. 2px is the system's one *meaningful* rule 
 - **Ghost:** Transparent with a `rule-300` hairline; fills to sunken porcelain and darkens its text on hover.
 - **Icon controls:** 38×38 circles, white fill, `rule-200` hairline, muted glyph; the border and glyph both go teal on hover. Language and theme toggles share this base.
 - **New chat (`.new-chat-btn`):** A 38px pill with a plus glyph and a label, at the head of the sidebar body. It carries the **citation marker's resting treatment at control size** — `signal-tint` fill, `signal` hairline, `signal` label — because white-on-white in a column of white-on-white left the one actionable control indistinguishable from the labels around it. Not a destructive red: the system has no danger variant, and logout, the one genuinely irreversible control in the app, is a quiet ghost. **Its hover deepens to `signal-hover`; it does not invert to a solid fill the way `.cite-marker` does,** because `#send-button` is already solid teal at the same size and weight, and inverting would put a visual twin of Send in the sidebar — one that clears your work. Solid teal stays the primary action's alone. It is *labelled* because it sits among interchangeable 38px circles. **Hidden, not disabled, until there is a conversation to end:** on a first visit the FAQ rail is what the column is for. Server-rendered `hidden`, revealed by `ui.js` — a dead module leaves no button, which is honest, because a dead module leaves no chat either. It animates in on the hidden→visible transition only, and explicitly **not** on an undo, which should read as the clear never having happened.
-- **Undo countdown (`.toast-notification.has-action::before` / `::after`):** How long an undo has left, along the toast's block-end edge: a track at 26% confidence and a fill that shrinks its `inline-size` from an inline-start anchor, so it mirrors under RTL with no `--flip`. The track is load-bearing — without a reference, a short bar is just a short line. **It is a *meter*, not a rule, which is why it is 4px and not the system's 2px.** A rule marks a boundary and is held to one weight so the weight itself carries meaning; a meter reports a quantity changing while you watch it, and is sized to be read at a glance. At 2px it was technically present and practically invisible. Two pseudo-elements and no child nodes: nothing to insert, nothing to mark `aria-hidden`, nothing focusable, and nothing that can alter the toast text the Playwright suite asserts verbatim. Reading the toast or reaching into it pauses the animation *and* the JS timeout together. **The hide is a JS timeout and never the animation's `animationend`** — driving it from the animation would let the global reduced-motion switch collapse the undo window to nothing.
 - **Focus:** Global — `2px solid var(--focus-ring)` at 2px offset. Fields instead take a teal border plus a 3px `rgb(15 94 99 / .28)` ring.
 
 ### Chips
@@ -299,10 +328,10 @@ Borders are 1px hairlines by default. 2px is the system's one *meaningful* rule 
 ### Navigation
 - **Landing chrome:** A static end-aligned utility row (language toggle, theme toggle) inside the same 1180px measure as the content — deliberately in flow rather than absolutely positioned, because the page scrolls.
 - **Tabs (auth modal):** Borderless links in muted ink; the active tab takes primary ink and a 2px teal underline.
-- **Sidebar tabs (`.sidebar-tabs`):** A two-segment pill — Chats | Explore — sharing the sidebar column between the conversation list and the FAQ rail. A track at sunken porcelain with the selected segment lifted out of it in surface white, **not** an underline and **not** a teal fill. An underline reads as navigation to another page, and this switches what a panel contains without leaving anything; teal in this app means retrieval, so spending it on a view switch would put the loudest colour in the system on the least consequential control in the column, beside a New chat button that has earned a tint and a citation badge that has earned the solid fill. **The selected segment carries an inset 1px hairline ring alongside its shadow, and that ring is not decoration:** in light mode surface sits above sunken and the segment reads as raised, but the ramp inverts in dark — sunken becomes the lighter of the two and `--shadow-sm` is a 5%-opacity warm shadow that is invisible against a dark ground — which would leave text colour as the only cue. An inset ring defines the chip's edge in both directions and costs no layout, which a real border would. One tab stop for the pair (`tabindex="-1"` on the unselected one), arrow keys move between them, and ArrowRight advances to the *previous* tab under `[dir="rtl"]` because the segments are laid out from the other end.
+- **Sidebar tabs (`.sidebar-tabs`):** A two-segment pill — Chats | FAQ — sharing the sidebar column between the conversation list and the FAQ rail. A track at sunken porcelain with the selected segment lifted out of it in surface white, **not** an underline and **not** a teal fill. An underline reads as navigation to another page, and this switches what a panel contains without leaving anything; teal in this app means retrieval, so spending it on a view switch would put the loudest colour in the system on the least consequential control in the column, beside a New chat button that has earned a tint and a citation badge that has earned the solid fill. **The selected segment carries an inset 1px hairline ring alongside its shadow, and that ring is not decoration:** in light mode surface sits above sunken and the segment reads as raised, but the ramp inverts in dark — sunken becomes the lighter of the two and `--shadow-sm` is a 5%-opacity warm shadow that is invisible against a dark ground — which would leave text colour as the only cue. An inset ring defines the chip's edge in both directions and costs no layout, which a real border would. One tab stop for the pair (`tabindex="-1"` on the unselected one), arrow keys move between them, and ArrowRight advances to the *previous* tab under `[dir="rtl"]` because the segments are laid out from the other end.
 - **Footer:** A top hairline, the independence notice on a sunken fill at 70ch, then the builder's colophon links in secondary ink going teal on hover.
 
-**The One Drawer Rule.** Navigation never spawns a second drawer. Below 992px the whole sidebar is one Bootstrap offcanvas, and switching between the conversation list and the FAQ rail swaps the panel's contents **in place** rather than sliding a second surface over it. Two offcanvases on a phone means two backdrops, two focus traps, and an Escape key whose meaning depends on which one won — a reader's only way out is a reload. Selecting a conversation dismisses the drawer rather than layering anything on top of it.
+**The One Drawer Rule.** `[CORRECTNESS]` Navigation never spawns a second drawer. Below 992px the whole sidebar is one Bootstrap offcanvas, and switching between the conversation list and the FAQ rail swaps the panel's contents **in place** rather than sliding a second surface over it. Two offcanvases on a phone means two backdrops, two focus traps, and an Escape key whose meaning depends on which one won — a reader's only way out is a reload. Selecting a conversation dismisses the drawer rather than layering anything on top of it.
 
 ### Notices
 
@@ -330,7 +359,7 @@ The reader's own work, listed in the column the FAQ rail used to own alone. It s
 - **The open control is `display: contents`,** so the row's icon and title read as one target while the two action buttons stay outside it — nesting a button inside a button is invalid and leaves the inner one unreachable by keyboard. That removes the box the global focus ring would draw on, so the ring moves to the row via `:has(.history-open:focus-visible)`.
 - **Not virtualised, deliberately.** A bounded 30-row page with an explicit "Load more" and a keyset cursor. The rows are short titles, and this panel is already a scroll port inside the offcanvas body, which is another one; a virtual window would unmount rows while focus and `aria-labelledby` still point at them and would fight the drawer's focus trap. `overscroll-behavior: contain` stops the wheel chaining into the drawer and then the page behind it.
 
-**The Untitled-Is-A-State Rule.** A conversation with no name renders a localised fallback, never a blank line and never a title invented on the client. Clearing a name is a reachable action that returns the row to that state, so "untitled" has to look deliberate rather than broken.
+**The Untitled-Is-A-State Rule.** `[CORRECTNESS]` A conversation with no name renders a localised fallback, never a blank line and never a title invented on the client. Clearing a name is a reachable action that returns the row to that state, so "untitled" has to look deliberate rather than broken.
 
 ### Source shelf (signature component)
 
@@ -351,7 +380,7 @@ The mascot is a generated SVG, not an asset. Every fill in it references a `--su
 
 On the landing Sunny is the page's only image, sized `clamp(150px, 24vw, 232px)`, floating on a 6s loop above a **warm** blurred glow (marigold, not teal — the glow is atmosphere around a character, and teal is spoken for). He mirrors under RTL (`scaleX(-1)`) so he still faces into the text; he carries no glyph children, so nothing needs un-mirroring. Motion is CSS keyframes rather than SVG SMIL, specifically so the global `prefers-reduced-motion` rule can reach it.
 
-**The JS-Arms-The-Hidden-State Rule.** The card reveal's hidden state (`.animate-card.is-armed`) is applied by `effects.js` at runtime and is never authored in the HTML or triggered by CSS alone. If the module fails to load or the observer never attaches, the cards are simply visible. Verified with JS disabled and with the app module aborted. Any future scroll-reveal follows the same shape: no content is hidden by a stylesheet on the promise that a script will unhide it.
+**The JS-Arms-The-Hidden-State Rule.** `[CORRECTNESS]` The card reveal's hidden state (`.animate-card.is-armed`) is applied by `effects.js` at runtime and is never authored in the HTML or triggered by CSS alone. If the module fails to load or the observer never attaches, the cards are simply visible. Verified with JS disabled and with the app module aborted. Any future scroll-reveal follows the same shape: no content is hidden by a stylesheet on the promise that a script will unhide it.
 
 ## Do's and Don'ts
 
@@ -368,7 +397,7 @@ On the landing Sunny is the page's only image, sized `clamp(150px, 24vw, 232px)`
 - **Do** stagger a multi-element exit newest-first and cap the total delay — the transcript clear caps at 140ms — so motion marks the state change without metering it. Wait on the *last* element to finish, and keep a timeout backstop: `animationend` never fires for an interrupted animation, and a transcript that fails to detach is worse than one that detaches a frame early.
 - **Do** bump `ASSET_VERSION` in `web/api/app.py` in any commit touching CSS or JS.
 - **Do** suppress an entrance *permanently* on an element that is being put back rather than added, and put the suppression **on the entrance declaration** — `.chatbot-message:where(:not(.anim-suppressed))`, not a blanket `animation: none` elsewhere. A re-appended node replays its entrance from the start, and lifting the suppression after a frame is not a fix: an entrance restarts whenever `animation-name` goes from `none` back to a name, so a suppression you let go of is only a delay. Scoping it to the declaration means it can only ever prevent an entrance — a restored turn a later feature wants to pulse or flag still animates — and `:where()` contributes no specificity, so the exit rule still wins on specificity rather than on source order.
-- **Do** answer `prefers-reduced-motion` by making a *time-carrying* animation discrete rather than deleting it. The undo countdown keeps its full duration under the query and takes `steps(10)`: the reader still learns how long is left, and there is no continuous travel to track. Deleting it would have removed information; exempting it outright would have overridden a stated preference. Neither is the answer.
+- **Do** answer `prefers-reduced-motion` by making a *time-carrying* animation discrete rather than deleting it — full duration, `steps(n)`. The reader still learns how long is left, and there is no continuous travel to track. Deleting it removes information; exempting it outright overrides a stated preference. Neither is the answer. (The undo countdown was the one worked example and has been retired; the principle is kept because the next timed affordance will need it.)
 - **Do** add a new glyph to `web/utils/icons.py` once, and to `RUNTIME_ICON_NAMES` as well if a browser module draws it.
 - **Do** carry the independence notice on every surface; the landing footer holds it.
 - **Do** give a hover-revealed control a `:focus-within` sibling and a `@media (hover: none)` resting opacity in the same rule. A control that only appears under a cursor does not exist for a touch device or a keyboard reader.

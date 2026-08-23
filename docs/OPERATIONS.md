@@ -1,3 +1,19 @@
+STATUS: CURRENT AUTHORITY — state this repository cannot hold. Last verified 2026-08-23.
+
+This file records configuration that lives in the Supabase dashboard, in DNS, and in a
+third-party mail provider — none of it in version control, some of it write-only once saved.
+That is why it is written down at all: six months from now the only other way to recover any
+of it is to go and look.
+
+Two things belong here and are not yet written up, both filed as open entries in `TODO.md`:
+**bilingual GoTrue email templates**, and **whether this deployment's access logs retain full
+`/c/<uuid>` paths**. When either is settled, the answer goes in this file.
+
+Everything below concerns transactional email. As other out-of-repo state gets documented,
+add it as a sibling section rather than a new file.
+
+---
+
 # Transactional email: custom SMTP through Resend
 
 **Status:** configured 2026-08-14, **delivery proven the same day.** See

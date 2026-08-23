@@ -1,3 +1,6 @@
+STATUS: CURRENT AUTHORITY — product purpose, terminology and brand commitments.
+Wins over every other document on copy and product claims. Last verified 2026-08-23.
+
 # Product
 
 <!-- impeccable:product-schema 1 -->
@@ -53,6 +56,9 @@ Supporting mechanisms, all confirmed in the shipped product:
 
 - **Hybrid retrieval** — FAISS semantic search fused with TF-IDF lexical search,
   weighted 0.5/0.5, over the SFDA corpus. Neither method alone.
+- **Query expansion against pharmaceutical terminology** before retrieval runs, so a
+  question asked in a practitioner's words still reaches a document written in a
+  regulator's. `web/services/query_processor.py`, `pharma_constants.py`.
 - **Local embeddings** (`all-mpnet-base-v2`, 768d) rather than a hosted embedding
   API — a deliberate cost, domain-specificity, and privacy decision.
 - **Genuinely bilingual** — EN/AR with full RTL, including Arabic queries answered
@@ -72,8 +78,10 @@ Supporting mechanisms, all confirmed in the shipped product:
 - Answers stream token-by-token over SSE. Reading happens *while* the answer is
   still being written, and users scroll back mid-stream to re-read.
 - Users check citations. Provenance is used, not decorative.
-- Profiles carry full name, organization, specialization, and a theme preference —
-  the product knows something about who is asking.
+- Profiles carry a first name, family name, optional age, organization,
+  specialization and stored preferences (theme, language, default search scope) —
+  the product knows something about who is asking. Readers manage this at
+  `/account`, a server-rendered page; there is no profile modal.
 - Desktop and mobile are both real. The sidebar becomes an offcanvas drawer below
   the `lg` breakpoint; the mascot rail is hidden below `xl`.
 
@@ -96,9 +104,12 @@ OpenAI key or a built index.
   `web/utils/icons.py`, so there is no icon webfont to download or to fail.
   Because static imports cannot carry a cache-buster, the page emits an
   `importmap` that versions every module URL from the same `ASSET_VERSION`.
-- **Single worker in production.** Conversation history lives in a process-local
-  store because Flask writes `Set-Cookie` before a streaming body iterates. More
-  than one worker splits conversations.
+- **Single worker in production.** The in-RAM FAISS index and the
+  sentence-transformers model require it, and the prompt-window cache and the
+  in-flight-generation lock are both process-local. (Older documents give the reason
+  as a Flask `Set-Cookie` streaming bug; history is durable in Postgres now, so that
+  justification is retired even though the constraint is not. See
+  `docs/ARCHITECTURE.md`.)
 - **The stream must not be buffered.** Any proxy in front of the app has to disable
   response buffering or streaming is defeated entirely.
 - **CSS must mirror.** A test fails the build on physical properties that cannot
@@ -106,9 +117,15 @@ OpenAI key or a built index.
 - **Frozen strings.** Several UI strings are asserted verbatim by the Playwright
   suite and marked `# frozen` in `web/i18n/en.yaml`. Changing their wording is a
   test change, not just a copy change.
-- **Asset versioning.** `asset_version` in `app.py` must be bumped in any commit
+- **Asset versioning.** `ASSET_VERSION` in `web/api/app.py` must be bumped in any commit
   touching CSS or JS, or returning users get mismatched stylesheets.
-- Rate limits: 15 chat requests per minute; 200/day, 50/hour, 10/minute globally.
+- Rate limits are per endpoint, not one global quota: 15 chat requests per minute,
+  30/minute for the transcript read, 60/minute for the sidebar, 5/minute for password
+  recovery, and 200/day + 50/hour + 10/minute as the default for everything else.
+  Navigation reads carry their own limits deliberately, so ordinary browsing cannot
+  spend the daily budget an office behind one NAT shares with chat. Account export and
+  bulk deletion are keyed per reader rather than per IP. Full table in
+  `docs/ARCHITECTURE.md`.
 - Model: `gpt-4o-mini`, temperature 0.1, up to 8 retrieved passages as context.
 
 **Terminology:** the four corpus categories are named exactly as above.
@@ -160,11 +177,14 @@ no benchmarks, no accuracy figures, no case studies, no press, and no pricing. N
 of these may be invented, implied, or illustrated with placeholders that read as
 real.
 
-**Corrected claim — the guideline count.** The landing page currently claims "over
-99 SFDA guidelines" while the corpus holds 112. **Future copy must not state a
-number at all**: the corpus changes and any hard figure goes stale on the next
-update. Describe coverage without a count. The existing "over 99" string is stale
-and should be replaced when that surface is next touched.
+**The corpus count is never stated in copy.** Not "112", not "over 99", not "dozens".
+The corpus changes on every ingest and any hard figure goes stale at the next one.
+Describe coverage by what it covers — the four categories — never by how many
+documents it holds. The count above is evidence for us, not a claim for a reader.
+
+*(The landing page did once say "over 99 SFDA guidelines". It was corrected; the
+catalogue now carries a comment at that string saying the omission is deliberate, so
+the next person to write that section does not helpfully add a number back.)*
 
 ## Product Principles
 

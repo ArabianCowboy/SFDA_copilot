@@ -1,3 +1,8 @@
+STATUS: CURRENT AUTHORITY — protocol defined, never run. Last verified 2026-08-23.
+The Layer 1 and Layer 2 harness exists and is unit-tested; the Layer 3 pilot this file
+describes has not been run against a real model. Gating a second provider on it is an open
+entry in `TODO.md`.
+
 # Layer 3: the human-judge adjudication protocol
 
 **Status:** protocol defined, not yet run against a real pilot. This file is

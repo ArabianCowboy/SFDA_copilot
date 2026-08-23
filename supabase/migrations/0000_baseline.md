@@ -1,3 +1,6 @@
+STATUS: HISTORICAL RECORD — the schema as it stood on 2026-08-14. Not current state.
+For the current shape of `public`, see `supabase/README.md`.
+
 # Baseline — migrations applied before this directory existed
 
 These were applied directly to the project and exist only in
