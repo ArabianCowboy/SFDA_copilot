@@ -1229,6 +1229,20 @@ export function renderAccountDetail(account, entries, selfId = null) {
     { text: I18n.t(emailVerifiedKey(account.email_identity_verified)) });
   fact(facts, I18n.t('admin.account.lastSeen'), account.last_seen_at
     ? { when: account.last_seen_at } : { text: I18n.t('admin.people.never') });
+  // Read-only consent record (docs/profile-refactor-plan.md Step 6): current
+  // state, plus whichever of grant/withdrawal time is the current one —
+  // never both, matching what the record itself actually represents.
+  if (account.has_profile) {
+    fact(facts, I18n.t('admin.account.marketingConsent'), {
+      text: I18n.t(account.marketing_consent
+        ? 'admin.account.consentGranted' : 'admin.account.consentNotGranted'),
+    });
+    if (account.marketing_consent && account.marketing_consent_granted_at) {
+      fact(facts, I18n.t('admin.account.consentGrantedAt'), { when: account.marketing_consent_granted_at });
+    } else if (!account.marketing_consent && account.marketing_consent_withdrawn_at) {
+      fact(facts, I18n.t('admin.account.consentWithdrawnAt'), { when: account.marketing_consent_withdrawn_at });
+    }
+  }
   if (account.is_disabled) {
     fact(facts, I18n.t('admin.account.disabledAt'), { when: account.disabled_at });
     fact(facts, I18n.t('admin.account.disabledBy'),

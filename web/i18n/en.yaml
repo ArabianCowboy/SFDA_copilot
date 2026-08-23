@@ -230,6 +230,10 @@ runtime:
       signOutOthersSaving: "Signing out other sessions…"
       signOutOthersSaved: "Done. Other devices will be signed out as their sessions expire."
       signOutOthersFailed: "Could not sign out other sessions. Please try again."
+      consentGranted: "Granted."
+      consentNotGranted: "Not granted."
+      consentSaved: "Saved."
+      consentFailed: "Could not save. Please try again."
       exportPreparing: "Preparing your export…"
       exportStarted: "Your download has started."
       exportFailed: "Could not export your conversations. Please try again."
@@ -407,6 +411,11 @@ runtime:
       organization: "Organization"
       specialization: "Specialization"
       notSet: "Not set"
+      marketingConsent: "Marketing consent"
+      consentGranted: "Granted"
+      consentNotGranted: "Not granted"
+      consentGrantedAt: "Consent given"
+      consentWithdrawnAt: "Consent withdrawn"
       noActivity: "Nothing has been done to this account yet."
       loadFailed: "Could not load this account."
       activityFailed: "Could not load this account's activity."
@@ -580,6 +589,14 @@ page:
     passwordInvalid: "Password must meet the requirements."
     loginSignup: "Login / Signup"
     logout: "Logout"
+    # Signup consent (docs/profile-refactor-plan.md §12.3, §12.4). Two
+    # SEPARATE checkboxes, never bundled: marketing is opt-in and gates the
+    # age field; terms is a required acceptance of /privacy.
+    consent:
+      marketing: "Use my profile information to improve SFDA Copilot and to tell me about it."
+      ageHint: "Used for audience segmentation — optional, and only asked because you agreed above."
+      terms: 'I agree to the <a href="/privacy" target="_blank" rel="noopener">Usage &amp; Privacy Policy</a>.'
+      termsRequired: "You must agree to the Usage & Privacy Policy to create an account."
     reset:
       link: "Forgot your password?"
       heading: "Reset your password"
@@ -653,10 +670,52 @@ page:
     # not-yet-built feature (see web/api/account.py's own docstring), and
     # this copy is deliberately careful not to promise it.
     dataHeading: "Your data"
+    consentClearAge: "Also clear the age you gave us"
     exportConversations: "Export my conversations"
     exportHint: "Download every conversation you've had, as a file (NDJSON — one line per conversation, readable by any text editor)."
     deleteAllConversations: "Delete all conversations"
     deleteAllHint: "Permanently deletes every conversation. Your account, profile and sign-in stay untouched."
+
+  # سياسة الاستخدام والخصوصية / Usage and Privacy Policy (/privacy).
+  # DRAFT CONTENT — written to unblock Step 6 of docs/profile-refactor-
+  # plan.md per the product owner's own instruction (2026-08-23): generic,
+  # not reviewed as a legal document. page.policy.draftNotice says so on the
+  # page itself. Bump app.py's PRIVACY_POLICY_VERSION whenever this changes.
+  policy:
+    title: "Privacy Policy · SFDA Copilot"
+    skipToContent: "Skip to policy"
+    pageTitle: "Usage & Privacy Policy"
+    version: "Version"
+    draftHeading: "Draft — under review"
+    draftNotice: "This policy is a first draft, written to describe the product honestly while the final version is reviewed. It is not yet approved as the product's binding legal text. If anything here seems inconsistent with how the product actually behaves, that is a defect in this draft, not in the product."
+    scopeHeading: "What this policy covers"
+    scopeBody: "This policy describes what SFDA Copilot collects about you, why, and what control you have over it. It covers your account, your profile, and the questions you ask — not the regulatory documents themselves, which are public source material."
+    collectHeading: "What we collect"
+    collectIntro: "Depending on how you use the product, we collect:"
+    collectAccount: "Your email address and password, used to sign you in. Your password is never stored in a form we can read — GoTrue, our authentication provider, stores only a salted hash."
+    collectProfile: "The profile details you choose to add — first name, family name, organization, specialization — and, only if you opt in separately, your age."
+    collectQuestions: "The questions you ask and the answers you receive, stored so you can return to a conversation later. Do not enter patient identifiers, clinical-trial subject data, or other confidential material into the chat box — see the notice shown in the app itself."
+    collectTechnical: "Ordinary technical data every web service collects — request logs, error reports — used only to keep the product running and secure."
+    useHeading: "How we use it"
+    useIntro: "We use what we collect to:"
+    useOperate: "Operate the product: authenticate you, answer your questions, show you your own conversation history."
+    useImprove: "Understand and improve the product, in aggregate — never to single out one person's activity for a purpose you have not agreed to."
+    useMarketing: "Contact you about the product or tell you how your information helps us understand who uses it — only if you have separately opted in."
+    useMarketingConsent: "Marketing use of your profile information and your age, specifically, requires your explicit, separate consent — an unticked checkbox at signup or on your account page. Declining it does not affect your ability to use the product."
+    shareHeading: "Sharing"
+    shareBody: "We do not sell your personal data. We use infrastructure providers (Supabase for authentication and storage, an AI model provider to generate answers) who process data on our behalf, under their own security commitments, and never for their own purposes."
+    retentionHeading: "How long we keep it"
+    retentionBody: "Your account and conversations are kept for as long as your account exists. You can delete individual conversations or all of them at any time from your account page; deleting your account entirely is not yet self-service — contact us if you need it."
+    rightsHeading: "Your rights"
+    rightsIntro: "From your account page, you can:"
+    rightsAccess: "See and correct your own profile information at any time."
+    rightsExport: "Download a complete copy of your conversation history as a file."
+    rightsDelete: "Delete individual conversations, or all of them at once."
+    rightsWithdraw: "Withdraw marketing consent as easily as you gave it — never rate-limited, never asked to justify it."
+    securityHeading: "Security"
+    securityBody: "We use encryption in transit, hashed passwords, and role-based access controls that limit who inside the organization can see what. No system is perfectly secure; if you believe your account has been compromised, change your password and sign out of every other session from your account page."
+    contactHeading: "Contact"
+    contactBody: "Questions about this policy, or a request to exercise a right not yet self-service, can be sent through the product's usual support channel."
 
   chat:
     welcomeLead: "Welcome to"

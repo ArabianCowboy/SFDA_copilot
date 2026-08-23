@@ -627,6 +627,20 @@ class InMemoryAdminBackend:
             "specialization": row.get("specialization"),
             "last_seen_at": row.get("last_seen_at"),
             "updated_at": row.get("updated_at", row["created_at"]),
+            # Read-only consent record (docs/profile-refactor-plan.md Step 6
+            # checklist item "admin visibility ... of the consent record").
+            # Mirrors admin_get_user's own field set exactly; false/None
+            # defaults for a seeded row that never set them, matching a real
+            # profile that has never granted consent.
+            "marketing_consent": row.get("marketing_consent", False),
+            "marketing_consent_granted_at": row.get("marketing_consent_granted_at"),
+            "marketing_consent_withdrawn_at": row.get("marketing_consent_withdrawn_at"),
+            "marketing_consent_policy_version": row.get("marketing_consent_policy_version"),
+            "marketing_consent_language": row.get("marketing_consent_language"),
+            "marketing_consent_surface": row.get("marketing_consent_surface"),
+            "marketing_consent_granted_while_unconfirmed": row.get(
+                "marketing_consent_granted_while_unconfirmed"
+            ),
         }
         # Null, not a default, when there is no profile — the whole point of the
         # detail view is that it does not paint a healthy face on a broken row.

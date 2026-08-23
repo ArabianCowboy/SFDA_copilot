@@ -32,6 +32,9 @@ import {
   setDeleteAllSaving,
   showDeleteAllSaved,
   showDeleteAllError,
+  showConsentState,
+  showConsentSaved,
+  showConsentError,
 } from './ui.js';
 
 const el = (id) => document.getElementById(id);
@@ -247,6 +250,60 @@ export function bindSignOutOthers() {
       showSignOutOthersError();
     } finally {
       setSignOutOthersSaving(false);
+    }
+  });
+}
+
+/**
+ * Wire the marketing-consent toggle — instant-apply, like theme/language,
+ * matching docs/profile-refactor-plan.md §12.3's "withdrawal must be as
+ * easy as granting". A direct browser->Postgres write under RLS
+ * (Services.updateProfile, the same path the Identity form uses for its
+ * own top-level columns), never a Flask route — which is also why this is
+ * never rate-limited: there is no route in front of it to limit.
+ *
+ * Granting sends the policy version/language/surface the guard trigger
+ * requires (profiles_set_marketing_consent_record); withdrawing sends only
+ * `marketing_consent: false` and, if the reader also ticked "also clear my
+ * age", `age: null` in the same write — never a mandate, per T9.
+ */
+export function bindConsentToggle(getUserId) {
+  const toggle = el('consent-marketing-toggle');
+  if (!toggle) return;
+
+  toggle.addEventListener('change', async () => {
+    const userId = getUserId();
+    if (!userId) return;
+
+    const granted = toggle.checked;
+    showConsentState(granted);
+    el('consent-saved-note')?.setAttribute('hidden', '');
+    el('consent-error')?.setAttribute('hidden', '');
+
+    const updates = granted
+      ? {
+          marketing_consent: true,
+          marketing_consent_policy_version: window.__POLICY_VERSION,
+          marketing_consent_language: I18n.lang,
+          marketing_consent_surface: 'account',
+        }
+      : {
+          marketing_consent: false,
+          ...(el('consent-clear-age')?.checked ? { age: null } : {}),
+        };
+
+    try {
+      await Services.updateProfile(userId, updates);
+      if (!granted && el('consent-clear-age')) el('consent-clear-age').checked = false;
+      showConsentSaved();
+    } catch (error) {
+      console.error('[SFDA Copilot account] consent save failed', error);
+      // Revert the control to the state it actually holds server-side —
+      // an unreverted checkbox after a failed write would show a consent
+      // that was never recorded.
+      toggle.checked = !granted;
+      showConsentState(!granted);
+      showConsentError();
     }
   });
 }

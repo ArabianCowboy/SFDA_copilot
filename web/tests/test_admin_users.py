@@ -371,6 +371,26 @@ def test_an_account_detail_shows_identity_standing_and_profile(client):
     assert body["self_id"] == "test-admin-id"
 
 
+def test_account_detail_carries_the_consent_record(client):
+    """docs/profile-refactor-plan.md Step 6 checklist item: admin visibility
+    of the consent record. Read-only — no route here writes any of these
+    fields; the guard trigger refuses that regardless of what a route sent."""
+    account = client.get("/admin/api/users/test-user-id", headers=ADMIN).get_json()["user"]
+
+    for field in (
+        "marketing_consent",
+        "marketing_consent_granted_at",
+        "marketing_consent_withdrawn_at",
+        "marketing_consent_policy_version",
+        "marketing_consent_language",
+        "marketing_consent_surface",
+        "marketing_consent_granted_while_unconfirmed",
+    ):
+        assert field in account
+    # The seeded test identity has never consented.
+    assert account["marketing_consent"] is False
+
+
 def test_a_profile_less_account_is_shown_as_broken_rather_than_ordinary(client):
     """The whole reason the detail view reads from a left join without coalescing.
 

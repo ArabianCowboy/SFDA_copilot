@@ -2624,6 +2624,27 @@ Operators need a direct mechanism to send real-time or persistent notifications 
 
 ---
 
+### The privacy policy (/privacy) is a draft, not reviewed legal text
+
+**Where:** `web/i18n/en.yaml`/`ar.yaml` (`page.policy.*`), `web/templates/privacy.html`,
+`web/api/app.py`'s `PRIVACY_POLICY_VERSION` constant.
+
+**What happened:** Step 6 of `docs/profile-refactor-plan.md` (consent) was blocked on §12.4's own
+rule — no marketing collection until a bilingual policy is approved and published. Written and
+published 2026-08-23 by explicit product-owner instruction: a generic, honest draft, specifically
+to unblock the engineering, with content review deferred. `page.policy.draftHeading`/`draftNotice`
+say so on the page itself, in both languages — this is not a silent placeholder.
+
+**What's still owed:** legal/product review of the actual policy text (accuracy of the
+data-sharing claims, retention statement, and rights list; a real "last reviewed" date; whether
+the generic infrastructure-provider language needs to name Supabase and the model provider
+explicitly for the jurisdictions this product serves). When that review lands, bump
+`PRIVACY_POLICY_VERSION` in `app.py` — every consent record on `profiles` stores the exact version
+string it was granted under, specifically so a reviewed policy replacing the draft does not
+silently reinterpret consent nobody actually gave to the new text.
+
+---
+
 ### Account deletion (Spec 4) — blocked on a product decision, not on engineering
 
 **Where:** `docs/profile-refactor-plan.md` §16·4 has the full design (Migration A — FK-action

@@ -287,6 +287,42 @@ export function showSignOutOthersError() {
   }
 }
 
+/* ── Consent (docs/profile-refactor-plan.md §12.3, Step 6) ─────────────── */
+
+export function populateConsent(profile) {
+  const toggle = el('consent-marketing-toggle');
+  if (toggle) toggle.checked = Boolean(profile?.marketing_consent);
+  const clearAgeRow = el('consent-clear-age-row');
+  if (clearAgeRow) clearAgeRow.hidden = !profile?.marketing_consent;
+  showConsentState(Boolean(profile?.marketing_consent));
+}
+
+export function showConsentState(granted) {
+  const note = el('consent-state-note');
+  if (note) note.textContent = I18n.t(granted ? 'profile.account.consentGranted' : 'profile.account.consentNotGranted');
+  const clearAgeRow = el('consent-clear-age-row');
+  if (clearAgeRow) clearAgeRow.hidden = !granted;
+}
+
+export function showConsentSaved() {
+  const note = el('consent-saved-note');
+  if (note) {
+    note.textContent = I18n.t('profile.account.consentSaved');
+    note.hidden = false;
+  }
+  el('consent-error')?.setAttribute('hidden', '');
+  clearTimeout(showConsentSaved._timer);
+  showConsentSaved._timer = setTimeout(() => { if (note) note.hidden = true; }, 4000);
+}
+
+export function showConsentError() {
+  const error = el('consent-error');
+  if (error) {
+    error.textContent = I18n.t('profile.account.consentFailed');
+    error.hidden = false;
+  }
+}
+
 /* ── Your data: export & bulk delete ────────────────────────────────────── */
 
 export function setExportSaving(isSaving) {

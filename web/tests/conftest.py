@@ -57,6 +57,7 @@ export function createClient() {
       organization: 'Test Organization',
       specialization: 'Regulatory Affairs',
       preferences: { theme: 'light' },
+      marketing_consent: false,
     },
     authCallback: null,
     lastProfileUpdate: null,
@@ -696,6 +697,9 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
                 # this allowlist — it ran in the FAST, non-browser pass instead
                 # of the dedicated one, and never under `-m browser` at all.
                 "test_account_browser.py",
+                # Same gap, same fix, found the same way (Step 4): every test
+                # here takes `browser_page` too.
+                "test_signup_identity_capture.py",
             )
         ):
             item.add_marker(pytest.mark.browser)

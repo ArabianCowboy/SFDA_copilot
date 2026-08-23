@@ -2337,3 +2337,59 @@
 .recovery-notice {
   margin-block-start: var(--space-6);
 }
+
+/* Signup consent checkboxes (docs/profile-refactor-plan.md §12.3, §12.4).
+   Bespoke, never bare .form-check — same RTL reasoning account.css's own
+   .account-choice documents: Bootstrap's LTR build positions .form-check
+   with physical padding-left/float, which does not mirror. Logical
+   properties only, and the row is a real click target rather than a small
+   input beside its label. */
+.consent-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  min-block-size: 1.5rem;
+}
+
+.consent-row input[type="checkbox"] {
+  flex-shrink: 0;
+  inline-size: 1.25rem;
+  block-size: 1.25rem;
+  margin-block-start: .15rem;
+  accent-color: var(--signal);
+}
+
+.consent-row label {
+  margin: 0;
+  cursor: pointer;
+}
+
+.consent-row a {
+  color: var(--signal);
+}
+
+/* Height reveal via grid-template-rows, not JS measurement (§9.5) — the age
+   field appears the instant consent is ticked, with no layout jump under a
+   mid-tap finger on mobile. min-block-size: 0 on the inner wrapper is
+   load-bearing: without it the grid row cannot collapse below its content's
+   intrinsic height. */
+.consent-reveal {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--duration-s) var(--ease-out);
+}
+
+.consent-reveal.is-open {
+  grid-template-rows: 1fr;
+}
+
+.consent-reveal > div {
+  overflow: hidden;
+  min-block-size: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .consent-reveal {
+    transition: none;
+  }
+}

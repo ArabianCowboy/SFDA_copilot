@@ -778,7 +778,7 @@ export const Services = {
     if (!this.supabase) throw new Error('Supabase client not initialized.');
     const { data, error } = await this.supabase
       .from('profiles')
-      .select('id, first_name, family_name, age, full_name, organization, specialization, preferences')
+      .select('id, first_name, family_name, age, full_name, organization, specialization, preferences, marketing_consent')
       .eq('id', userId)
       .single();
 

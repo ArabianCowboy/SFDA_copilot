@@ -23,6 +23,7 @@ import {
   renderStanding,
   populateIdentityForm,
   populatePreferences,
+  populateConsent,
 } from './account/ui.js';
 import {
   bindIdentityForm,
@@ -32,6 +33,7 @@ import {
   bindSignOutOthers,
   bindExportConversations,
   bindDeleteAllConversations,
+  bindConsentToggle,
 } from './account/handlers.js';
 
 const Account = {
@@ -85,9 +87,11 @@ const Account = {
       });
       populateIdentityForm(profile || {});
       populatePreferences(profile || {});
+      populateConsent(profile || {});
       bindIdentityForm(() => user.id);
       bindPasswordForm();
       bindSignOutOthers();
+      bindConsentToggle(() => user.id);
       bindExportConversations();
       bindDeleteAllConversations();
 

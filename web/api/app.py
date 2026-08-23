@@ -229,11 +229,22 @@ SUPPORTED_FAQ_LANGS = ("en", "ar")
 # that mixes a fresh template with a stale module is worse than a stale page —
 # post-icon-migration it would render an <i class="bi"> with no icon font behind
 # it, or print a glyph NAME as text. MODULE_IMPORT_MAP below closes that.
-ASSET_VERSION = "warm44"
+ASSET_VERSION = "warm45"
 
 # Product release, rendered in the landing footer. Kept as one constant so
 # the number cannot drift between the page and the module headers.
 APP_VERSION = "0.5.0 (Beta)"
+
+# The privacy policy's own version, recorded on every consent grant
+# (docs/profile-refactor-plan.md §16·3, Spec 3) so a consent record stays
+# attributable to the actual text it was given under. One constant, read by
+# the signup form, the /account consent toggle and /privacy itself, so the
+# three cannot drift the way three separately-typed literals would.
+#
+# DRAFT: written to unblock Step 6's engineering per the product owner's own
+# instruction (2026-08-23) -- bump this string whenever /privacy's substance
+# changes, including when the draft is replaced with reviewed content.
+PRIVACY_POLICY_VERSION = "2026-08-23-draft-1"
 
 # Every ES module under static/js/modules, mapped to its versioned URL. A
 # browser-native import map is the only way to version static imports without a
@@ -1879,6 +1890,7 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
             # than restated there. DESIGN.md: the same mapping written down
             # twice is the same mapping drifting eventually.
             "category_icons": CATEGORY_ICONS,
+            "policy_version": PRIVACY_POLICY_VERSION,
         }
 
     app.config["base_render_context"] = base_render_context
@@ -1914,6 +1926,33 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
     @app.route("/")
     def index():
         return _render_shell()
+
+    @app.route("/privacy")
+    def privacy_policy() -> Response:
+        """سياسة الاستخدام والخصوصية / Usage and Privacy Policy.
+
+        Public, ungated, no session or identity touched — the same reasoning
+        `deep_link` gives for why a public page must be safe to open blind.
+
+        Its `page.policy.version` string is the value the signup form and
+        `handle_new_user` record as `marketing_consent_policy_version`
+        (docs/profile-refactor-plan.md §16·3, Spec 3). Bump it whenever the
+        policy's substance changes, so an old consent record stays
+        attributable to the text it was actually given under.
+
+        DRAFT CONTENT: written to unblock Step 6's engineering per the
+        product owner's own instruction (2026-08-23) — generic, not
+        reviewed as a legal document. `page.policy.draftNotice` says so on
+        the page itself. Do not treat this as final copy.
+        """
+        context = current_app.config["base_render_context"]()
+        response = make_response(render_template(
+            "privacy.html",
+            **context,
+            module_import_map=_import_map("modules", MODULE_FILENAMES),
+        ))
+        response.headers["Cache-Control"] = "no-cache"
+        return response
 
     @app.route("/c/<uuid:conversation_id>")
     def deep_link(conversation_id) -> Response:
