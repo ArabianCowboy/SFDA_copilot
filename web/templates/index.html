@@ -227,6 +227,32 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
                         <!-- Signup pane -->
                         <div class="tab-pane fade" id="signup-pane" role="tabpanel" aria-labelledby="signup-tab">
                             <form id="signup-form" novalidate>
+                                <!-- Required by THIS FORM only — the column stays
+                                     nullable, and a raw GoTrue caller can omit the
+                                     metadata entirely (§14·D4 /
+                                     docs/profile-refactor-plan.md §12.2). family_name
+                                     is optional: requiring it forces a mononym
+                                     reader to invent a second name. Two fields is
+                                     the ceiling — the modal has no
+                                     modal-fullscreen-sm-down, so a longer form is
+                                     the cramped-phone-keyboard failure. -->
+                                <div class="form-floating mb-3">
+                                    <input type="text" class="form-control" id="signup-first-name" placeholder=" "
+                                        required dir="auto" maxlength="100" autocomplete="given-name">
+                                    <label for="signup-first-name">
+                                        {{ icon('user', 15) }}<span>{{ t('page.auth.firstName') }}</span>
+                                    </label>
+                                    <div class="invalid-feedback">{{ t('page.auth.firstNameRequired') }}</div>
+                                </div>
+
+                                <div class="form-floating mb-3">
+                                    <input type="text" class="form-control" id="signup-family-name" placeholder=" "
+                                        dir="auto" maxlength="100" autocomplete="family-name">
+                                    <label for="signup-family-name">
+                                        {{ icon('user', 15) }}<span>{{ t('page.auth.familyName') }}</span>
+                                    </label>
+                                </div>
+
                                 <div class="form-floating mb-3">
                                     <input type="email" class="form-control" id="signup-email" placeholder=" " required
                                         autocomplete="username">
@@ -255,6 +281,17 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
                                     <span class="spinner-border spinner-border-sm d-none me-2" role="status"
                                         aria-hidden="true"></span>{{ t('page.auth.signup') }}</button>
                             </form>
+
+                            <!-- Replaces the form outright on success — there is
+                                 nothing left to do in this modal. Content is
+                                 written by Handlers.showSignupSent from
+                                 runtime.auth.signupSent.*, because it must name
+                                 the address back to the reader. -->
+                            <div id="signup-sent" class="alert alert-info d-none" role="status" aria-live="polite">
+                                <span id="signup-sent-heading" class="d-block fw-semibold"></span>
+                                <span id="signup-sent-lead" class="d-block mt-1"></span>
+                                <span id="signup-sent-spam" class="d-block mt-1 small"></span>
+                            </div>
                         </div>
                     </div>
 
@@ -265,60 +302,9 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
         </div>
     </div>
 
-    <!-- ═══════════════════════════════════════════
-         PROFILE MODAL
-         ═══════════════════════════════════════════ -->
-    <div class="modal fade" id="profileModal" tabindex="-1" role="dialog" aria-modal="true" aria-labelledby="profileModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h2 class="modal-title h5" id="profileModalLabel">
-                        {{ icon('user-circle', 18) }}<span>{{ t('page.profile.heading') }}</span>
-                    </h2>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"
-                        aria-label="{{ t('page.nav.close') }}"></button>
-                </div>
-                <div class="modal-body p-4">
-                    <form id="profile-form" novalidate>
-                        <div class="form-floating mb-3">
-                            <input type="text" class="form-control" id="profile-full-name" name="full_name"
-                                placeholder=" ">
-                            <label for="profile-full-name">{{ icon('user', 15) }}<span>{{ t('page.profile.fullName') }}</span></label>
-                        </div>
-                        <div class="form-floating mb-3">
-                            <input type="text" class="form-control" id="profile-organization" name="organization"
-                                placeholder=" ">
-                            <label for="profile-organization">{{ icon('building', 15) }}<span>{{ t('page.profile.organization') }}</span></label>
-                        </div>
-                        <div class="form-floating mb-3">
-                            <input type="text" class="form-control" id="profile-specialization" name="specialization"
-                                placeholder=" ">
-                            <label for="profile-specialization">{{ icon('briefcase', 15) }}<span>{{ t('page.profile.specialization') }}</span></label>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label">{{ icon('palette', 15) }}<span>{{ t('page.profile.themePreference') }}</span></label>
-                            <div class="form-check">
-                                <input class="form-check-input" type="radio" name="theme-preference" id="theme-light"
-                                    value="light">
-                                <label class="form-check-label" for="theme-light">{{ t('page.profile.light') }}</label>
-                            </div>
-                            <div class="form-check">
-                                <input class="form-check-input" type="radio" name="theme-preference" id="theme-dark"
-                                    value="dark">
-                                <label class="form-check-label" for="theme-dark">{{ t('page.profile.dark') }}</label>
-                            </div>
-                        </div>
-                        <button type="submit" class="btn btn-primary w-100 btn-lg py-2 fw-bold">
-                            <span class="spinner-border spinner-border-sm d-none me-2" role="status"
-                                aria-hidden="true"></span>
-                            {{ t('page.profile.save') }}
-                        </button>
-                    </form>
-                    <div id="profile-error" class="alert alert-danger mt-3 d-none" role="alert"></div>
-                </div>
-            </div>
-        </div>
-    </div>
+    <!-- No PROFILE MODAL here any more: /account replaces it
+         (docs/profile-refactor-plan.md §5). The sidebar's profile button is
+         now a plain link to that page. -->
 
     <!-- ═══════════════════════════════════════════
          UNAUTHENTICATED VIEW — Landing Page

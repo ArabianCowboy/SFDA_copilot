@@ -8,7 +8,7 @@ Append-only is enforced in the database by REVOKE plus a trigger, which cannot
 be exercised against the in-memory backend these tests use. It was verified
 directly against the live project — UPDATE and DELETE both return 42501 — and
 the enforcement lives in
-`supabase/migrations/20260814032447_audit_log.sql`. What is testable here is
+`supabase/migrations/20260814032139_audit_log.sql`. What is testable here is
 that the application never tries.
 """
 

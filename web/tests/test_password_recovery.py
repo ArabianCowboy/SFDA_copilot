@@ -212,6 +212,7 @@ def test_a_rate_limited_signup_is_not_shown_in_raw_english(browser_page: Page):
     browser_page.evaluate(
         "window.__supabaseState.signUpError = 'Email rate limit exceeded'"
     )
+    browser_page.locator("#signup-first-name").fill("New")
     browser_page.locator("#signup-email").fill("new@example.com")
     browser_page.locator("#signup-password").fill("ValidPass1")
     browser_page.locator("#signup-form").evaluate("(f) => f.requestSubmit()")

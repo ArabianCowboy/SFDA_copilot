@@ -234,14 +234,6 @@ export const ErrorHandler = {
     errorEl.classList.remove(CONFIG.CLASSES.D_NONE);
   },
 
-  showProfileError(message) {
-    const errorEl = DOMCache.get(CONFIG.SELECTORS.PROFILE_ERROR);
-    if (!errorEl) return;
-
-    errorEl.textContent = message;
-    errorEl.classList.remove(CONFIG.CLASSES.D_NONE);
-  },
-
   /* The recovery view sits outside the auth modal, so `#auth-error` is not on
      screen when it needs to say something. Same treatment, its own element. */
   showRecoveryError(message) {
@@ -254,17 +246,11 @@ export const ErrorHandler = {
 
   clearErrors() {
     const authError = DOMCache.get(CONFIG.SELECTORS.AUTH_ERROR);
-    const profileError = DOMCache.get(CONFIG.SELECTORS.PROFILE_ERROR);
     const recoveryError = DOMCache.get(CONFIG.SELECTORS.RECOVERY_ERROR);
 
     if (authError) {
       authError.classList.add(CONFIG.CLASSES.D_NONE);
       authError.innerHTML = '';
-    }
-
-    if (profileError) {
-      profileError.classList.add(CONFIG.CLASSES.D_NONE);
-      profileError.textContent = '';
     }
 
     if (recoveryError) {

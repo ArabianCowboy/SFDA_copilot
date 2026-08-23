@@ -61,6 +61,23 @@ _REFUSAL_CODES = {
 _IDENTITY_COLUMNS = "id, role, tier, is_disabled"
 
 
+def _generated_full_name(first_name: Optional[str], family_name: Optional[str]) -> Optional[str]:
+    """Mirror `profiles.full_name`'s generated-column expression exactly.
+
+    Used only by the in-memory test double — the real backend reads
+    `full_name` straight from the database, where it is a stored generated
+    column (supabase/migrations/20260822225415_profile_identity_atomic_cutover.sql).
+    Kept as one function so the two definitions cannot drift.
+    """
+    if first_name is None and family_name is None:
+        return None
+    if first_name is None:
+        return family_name
+    if family_name is None:
+        return first_name
+    return f"{first_name} {family_name}"
+
+
 def _refusal_from(exception: Exception) -> Exception:
     """Turn a PostgREST error carrying one of our SQLSTATEs into a refusal.
 
@@ -95,6 +112,17 @@ class AdminBackend(Protocol):
 
     def fetch_identity(self, user_id: str, email: Optional[str]) -> Optional[IdentityFlags]:
         """Return the reader's flags, or None when they have no profile row."""
+        ...
+
+    def get_standing_line_facts(self, user_id: str) -> Optional[dict]:
+        """``{"created_at": ..., "conversation_count": ...}`` for /account.
+
+        Separate from `fetch_identity` deliberately: those flags are cached
+        and re-read on the hot chat-request path
+        (web/services/identity_cache.py), and a conversation-count subquery
+        has no business running on every cached identity refresh. This is
+        called once, only from GET /api/identity.
+        """
         ...
 
     def get_settings(self) -> dict:
@@ -146,13 +174,15 @@ class AdminBackend(Protocol):
         ...
 
     def update_profile(
-        self, user_id: str, *, full_name, organization, specialization,
-        expected_updated_at, actor,
+        self, user_id: str, *, first_name, family_name, age, organization,
+        specialization, expected_updated_at, actor,
     ) -> dict:
-        """Rewrite a reader's profile text, recording the diff.
+        """Rewrite a reader's identity and profile text, recording the diff.
 
         Records nothing when nothing changed, and refuses rather than clobbers
-        when the row has moved since the operator loaded it.
+        when the row has moved since the operator loaded it. full_name is not
+        a parameter here — it is a generated column since the identity
+        cutover and can never be written.
         """
         ...
 
@@ -212,6 +242,19 @@ class SupabaseAdminBackend:
             is_disabled=bool(row.get("is_disabled")),
         )
 
+    def get_standing_line_facts(self, user_id: str) -> Optional[dict]:
+        response = self._client.rpc(
+            "get_identity_flags", {"p_user_id": user_id}
+        ).execute()
+        rows = getattr(response, "data", None) or []
+        if not rows:
+            return None
+        row = rows[0]
+        return {
+            "created_at": row.get("created_at"),
+            "conversation_count": row.get("conversation_count") or 0,
+        }
+
 
     # ── Settings ──────────────────────────────────────────────────────────────
 
@@ -261,7 +304,7 @@ class SupabaseAdminBackend:
         query = self._client.table("audit_log").select("*")
         # `audit_log_target_idx (target_type, target_id, occurred_at desc)`
         # already exists for exactly this, so the per-account history needs no
-        # new index — see 20260814032447_audit_log.sql.
+        # new index — see 20260814032139_audit_log.sql.
         if target_type is not None:
             query = query.eq("target_type", target_type)
         if target_id is not None:
@@ -288,8 +331,8 @@ class SupabaseAdminBackend:
         return [{k: v for k, v in row.items() if k != "total"} for row in rows], total
 
     def update_profile(
-        self, user_id: str, *, full_name, organization, specialization,
-        expected_updated_at, actor,
+        self, user_id: str, *, first_name, family_name, age, organization,
+        specialization, expected_updated_at, actor,
     ) -> dict:
         try:
             uuid.UUID(str(user_id))
@@ -301,7 +344,9 @@ class SupabaseAdminBackend:
                 "admin_update_profile",
                 {
                     "p_user_id": user_id,
-                    "p_full_name": full_name,
+                    "p_first_name": first_name,
+                    "p_family_name": family_name,
+                    "p_age": age,
                     "p_organization": organization,
                     "p_specialization": specialization,
                     "p_expected_updated_at": expected_updated_at,
@@ -323,7 +368,7 @@ class SupabaseAdminBackend:
     ) -> None:
         # A direct insert rather than an RPC: there is no accompanying mutation
         # to share a transaction with, which is the entire reason this exists.
-        # `service_role` already holds insert on audit_log (20260814032447), so
+        # `service_role` already holds insert on audit_log (20260814032139), so
         # this needs no new privilege.
         self._client.table("audit_log").insert({
             "actor_id": actor.user_id,
@@ -412,6 +457,15 @@ class InMemoryAdminBackend:
         # is consulted, so this is only reached by a caller that bypassed the
         # bypass. Unprivileged is the right answer for that.
         return None
+
+    def get_standing_line_facts(self, user_id: str) -> Optional[dict]:
+        row = next((r for r in self._users if r["id"] == user_id), None)
+        if row is None:
+            return None
+        return {
+            "created_at": row.get("created_at"),
+            "conversation_count": row.get("conversation_count", 0),
+        }
 
     def get_settings(self) -> dict:
         return dict(self._settings)
@@ -510,8 +564,8 @@ class InMemoryAdminBackend:
                      actor=actor, before=before, after=after, note=note)
 
     def update_profile(
-        self, user_id: str, *, full_name, organization, specialization,
-        expected_updated_at, actor,
+        self, user_id: str, *, first_name, family_name, age, organization,
+        specialization, expected_updated_at, actor,
     ) -> dict:
         # Mirrors admin_update_profile, including the parts that are easy to
         # leave out of a double and then never test: the actor revalidation, the
@@ -529,9 +583,10 @@ class InMemoryAdminBackend:
                 and expected_updated_at != row.get("updated_at", row["created_at"])):
             raise AdminActionRefused("profile_changed_since_loaded")
 
-        before = {k: row.get(k) for k in ("full_name", "organization", "specialization")}
-        after = {"full_name": full_name, "organization": organization,
-                 "specialization": specialization}
+        before = {k: row.get(k) for k in
+                  ("first_name", "family_name", "age", "organization", "specialization")}
+        after = {"first_name": first_name, "family_name": family_name, "age": age,
+                 "organization": organization, "specialization": specialization}
         if before == after:
             return after
 
@@ -549,6 +604,8 @@ class InMemoryAdminBackend:
             return None
 
         has_profile = row.get("has_profile", True)
+        first_name = row.get("first_name")
+        family_name = row.get("family_name")
         detail = {
             "id": row["id"],
             "email": row["email"],
@@ -559,7 +616,13 @@ class InMemoryAdminBackend:
             "banned_until": None,
             "has_profile": has_profile,
             "disabled_by_email": None,
-            "full_name": row.get("full_name"),
+            "first_name": first_name,
+            "family_name": family_name,
+            "age": row.get("age"),
+            # Mirrors the real generated column (profiles.full_name), not a
+            # stored field — first_name/family_name are the source of truth
+            # here too, matching production after the identity cutover.
+            "full_name": _generated_full_name(first_name, family_name),
             "organization": row.get("organization"),
             "specialization": row.get("specialization"),
             "last_seen_at": row.get("last_seen_at"),

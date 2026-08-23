@@ -348,4 +348,12 @@ def test_a_missing_profile_row_is_cached_because_it_is_a_stable_fact(monkeypatch
 
 def test_identity_says_nothing_about_anyone_else(client):
     body = client.get("/api/identity", headers=ADMIN).get_json()
-    assert set(body) == {"user_id", "email", "role", "tier", "is_admin"}
+    assert set(body) == {
+        "user_id", "email", "role", "tier", "is_admin", "is_disabled",
+        # Both back the /account standing line. Null under TESTING — no
+        # service-role key means get_admin_backend() returns None — which is
+        # the honest answer, not an omission of the key.
+        "created_at", "conversation_count",
+    }
+    assert body["created_at"] is None
+    assert body["conversation_count"] is None

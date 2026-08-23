@@ -11,7 +11,6 @@ export const AppState = {
     isRequestInProgress: false,
     originalSendButtonText: 'Send',
     authModal: null,
-    profileModal: null,
     userProfile: null,
     // Bumped by auth-view.js whenever a view stops being "this signed-in
     // reader" (sign-out, entering recovery). app.js captures the value

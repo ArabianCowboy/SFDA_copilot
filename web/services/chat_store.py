@@ -367,6 +367,19 @@ class ChatBackend(Protocol):
         """Delete one owned session and its messages. False when not theirs."""
         ...
 
+    def delete_all_sessions(self, owner_id: str) -> List[str]:
+        """Delete every owned session and their messages. Returns their ids.
+
+        Bulk conversation deletion (docs/profile-refactor-plan.md Step 7),
+        named distinctly from account deletion — this clears history, not
+        the account. The ids let the caller clear its own per-conversation
+        `ConversationStore` windows (the same reason `delete_session`'s own
+        route does), which a bare count could not. An empty list is a
+        legitimate answer (nothing to delete), not a failure; only
+        :class:`PersistenceUnavailable` signals one.
+        """
+        ...
+
 
 class SupabaseChatBackend:
     """The real one: the three RPCs, through the service-role client."""
@@ -494,6 +507,17 @@ class SupabaseChatBackend:
             raise PersistenceUnavailable(str(exception)) from exception
         return bool(_scalar(response, "chat_delete_session"))
 
+    def delete_all_sessions(self, owner_id) -> List[str]:
+        try:
+            response = self._client.rpc(
+                "chat_delete_all_sessions",
+                {"p_owner_id": owner_id},
+            ).execute()
+        except Exception as exception:
+            raise PersistenceUnavailable(str(exception)) from exception
+        rows = getattr(response, "data", None) or []
+        return [str(row["session_id"]) for row in rows if row.get("session_id")]
+
 
 def _scalar(response: Any, key: str) -> Any:
     """Unwrap a scalar-returning RPC, whichever shape PostgREST chose.
@@ -560,6 +584,75 @@ def _row_to_message(row: Dict[str, Any]) -> StoredMessage:
         category=row.get("category"),
         sources=list(row.get("sources") or []),
     )
+
+
+def export_all_sessions(backend: "ChatBackend", owner_id: str):
+    """Every owned session, in full — one dict per session, newest activity
+    first, nothing left behind by a UI page size.
+
+    Both `list_sessions` and `load_session` are bounded for a screen — a
+    sidebar page and a hydration window — and an export must not silently
+    inherit either cap. This walks both cursors to exhaustion: the session
+    list via `next_cursor`, and each session's own messages via
+    `_export_one_session` below. A generator, not a list, so the Flask route
+    can stream one session at a time rather than holding the whole export in
+    RAM.
+    """
+    cursor = None
+    while True:
+        page = backend.list_sessions(owner_id, limit=MAX_LIST_LIMIT, cursor=cursor)
+        for summary in page.sessions:
+            yield {
+                "session_id": summary.session_id,
+                "title": summary.title,
+                "created_at": summary.created_at,
+                "updated_at": summary.updated_at,
+                "message_count": summary.message_count,
+                "messages": list(_export_session_messages(backend, owner_id, summary.session_id)),
+            }
+        if page.next_cursor is None:
+            return
+        cursor = page.next_cursor
+
+
+def _export_session_messages(backend: "ChatBackend", owner_id: str, session_id: str):
+    """Every message of one session, oldest first, exhaustively paginated.
+
+    `chat_load_session` takes the newest `p_limit` messages older than
+    `p_before_seq` (exclusive), returned oldest-first within that page — see
+    that RPC's migration. So walking backward means re-anchoring on the
+    OLDEST seq of the just-fetched page, not the newest, and a short page
+    (fewer than the limit) is the only honest "nothing older" signal, the
+    same convention `_cursor_after` uses for the session list. Batches are
+    collected newest-page-first and reversed once at the end, rather than
+    prepended one at a time, since prepending to a list is O(n) per call and
+    reversing the batch order is O(1).
+    """
+    batches: List[List[StoredMessage]] = []
+    before_seq = None
+    while True:
+        batch = backend.load_session(owner_id, session_id, limit=MAX_LOAD_LIMIT, before_seq=before_seq)
+        if not batch:
+            break
+        batches.append(batch)
+        if len(batch) < MAX_LOAD_LIMIT:
+            break
+        before_seq = batch[0].seq  # oldest message in this page (ascending order)
+
+    for batch in reversed(batches):
+        for message in batch:
+            yield {
+                "message_id": message.message_id,
+                "seq": message.seq,
+                "role": message.role,
+                "content": message.content,
+                "created_at": message.created_at,
+                "corpus_revision": message.corpus_revision,
+                "model": message.model,
+                "lang": message.lang,
+                "category": message.category,
+                "sources": message.sources,
+            }
 
 
 class InMemoryChatBackend:
@@ -874,6 +967,19 @@ class InMemoryChatBackend:
             for turn_key in [k for k in self._turns if k[0] == key]:
                 del self._turns[turn_key]
             return True
+
+    def delete_all_sessions(self, owner_id) -> List[str]:
+        with self._lock:
+            owned = [
+                session_id for session_id, session in self._sessions.items()
+                if session["owner_id"] == str(owner_id)
+            ]
+            for key in owned:
+                del self._sessions[key]
+                self._messages.pop(key, None)
+                for turn_key in [k for k in self._turns if k[0] == key]:
+                    del self._turns[turn_key]
+            return owned
 
     # Test affordance, not part of the Protocol.
     def sessions_for(self, owner_id: str) -> List[str]:

@@ -326,9 +326,20 @@ export const Services = {
     return data;
   },
 
-  async signup(email, password) {
+  /**
+   * `metadata` lands in `raw_user_meta_data`, which `handle_new_user`
+   * (supabase/migrations/20260822225415_profile_identity_atomic_cutover.sql)
+   * reads to seed `first_name`/`family_name` — coercing malformed input
+   * toward null rather than raising, because that trigger is AFTER INSERT
+   * on auth.users and a raise there rolls back account creation itself.
+   * Never send anything here this app is not prepared to have a direct
+   * GoTrue caller send maliciously: that trigger is the only validation.
+   */
+  async signup(email, password, metadata = {}) {
     if (!this.supabase) throw new Error('Supabase client not initialized.');
-    const { data, error } = await this.supabase.auth.signUp({ email, password });
+    const { data, error } = await this.supabase.auth.signUp({
+      email, password, options: { data: metadata },
+    });
     if (error) throw error;
     return data;
   },
@@ -428,6 +439,62 @@ export const Services = {
     const { error } = await this.supabase.auth.signOut({ scope: 'global' });
     if (error) throw error;
     return { signedOut: true, sessionMissing: false };
+  },
+
+  /**
+   * End every OTHER session, keeping this device's own signed in. Distinct
+   * from `logout`'s `scope: 'global'`, which ends this one too.
+   *
+   * There is no session-listing endpoint in the GoTrue admin API — it
+   * exposes only /admin/generate_link, /admin/user/{id}, /admin/users — so
+   * "Sign out everywhere else" is the whole feature, not a stand-in for a
+   * list the API does not offer.
+   *
+   * Revocation is NOT instant: Supabase's own docs are explicit that a
+   * revoked session's access token stays valid until its `exp` claim. The
+   * caller's copy must say so rather than imply the other devices are
+   * signed out the moment this call returns.
+   */
+  async signOutOtherSessions() {
+    if (!this.supabase) throw new Error('Authentication service not available.');
+    const { error } = await this.supabase.auth.signOut({ scope: 'others' });
+    if (error) throw error;
+  },
+
+  /**
+   * Send a reauthentication nonce to the reader's own email.
+   *
+   * GoTrue's own reauthentication_needed error code is what actually decides
+   * whether this step is required — the project's own "require
+   * reauthentication when changing password" setting exempts a session
+   * created within the last 24 hours, so calling this unconditionally before
+   * every password change would demand a code that was not always needed.
+   * `updateOwnPassword` is written to try without one first.
+   */
+  async reauthenticate() {
+    if (!this.supabase) throw new Error('Authentication service not available.');
+    const { error } = await this.supabase.auth.reauthenticate();
+    if (error) throw error;
+  },
+
+  /**
+   * Change the reader's own password. No current-password field: GoTrue has
+   * no such check, and asking for one would be UI for a step that does not
+   * exist server-side. `nonce` is supplied only on the second attempt, after
+   * `reauthenticate()` has sent one — see the caller in account/handlers.js
+   * for the two-step flow this single call is a leaf of.
+   *
+   * Deliberately does NOT revoke other sessions itself — the caller decides
+   * whether to (see `signOutOtherSessions`), because a raw GoTrue password
+   * change and "also end every other session" are two different promises,
+   * and this function keeps to the one its name makes.
+   */
+  async updateOwnPassword(password, nonce = null) {
+    if (!this.supabase) throw new Error('Authentication service not available.');
+    const payload = nonce ? { password, nonce } : { password };
+    const { data, error } = await this.supabase.auth.updateUser(payload);
+    if (error) throw error;
+    return data;
   },
 
   /**
@@ -662,11 +729,56 @@ export const Services = {
     });
   },
 
+  /**
+   * Downloads the reader's full conversation history as NDJSON.
+   *
+   * Not `sessionRequest` — that always parses the body as JSON, and this
+   * response's body IS the file. Returns `{ blob, filename }` rather than
+   * saving it itself: this module does I/O, not DOM manipulation, and the
+   * caller (account/handlers.js) is what knows how to trigger a download.
+   *
+   * Deliberately no `AbortController` ceiling, unlike `getChatHistory` and
+   * `sessionRequest`: those sit on a path that draws the screen and must not
+   * hang a reader looking at a spinner; this streams a reader's ENTIRE
+   * history and may legitimately take longer than either.
+   */
+  async exportConversations() {
+    const token = await this.getSessionToken();
+    if (!token) return null;
+
+    const response = await fetch('/account/api/export', {
+      headers: { Authorization: `Bearer ${token}` },
+      cache: 'no-store',
+    });
+
+    if (response.status === 401) return null;
+
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      const error = new Error(payload.error || `Export failed (${response.status})`);
+      error.status = response.status;
+      error.code = payload.code || 'unknown';
+      throw error;
+    }
+
+    const disposition = response.headers.get('Content-Disposition') || '';
+    const match = /filename="([^"]+)"/.exec(disposition);
+    const filename = match ? match[1] : 'sfda-copilot-conversations.ndjson';
+    const blob = await response.blob();
+    return { blob, filename };
+  },
+
+  /** Delete every owned conversation. Named distinctly from account
+   * deletion — see web/api/account.py's own docstring. */
+  async deleteAllConversations() {
+    return this.sessionRequest('/account/api/conversations', { method: 'DELETE' });
+  },
+
   async getProfile(userId) {
     if (!this.supabase) throw new Error('Supabase client not initialized.');
     const { data, error } = await this.supabase
       .from('profiles')
-      .select('id, full_name, organization, specialization, preferences')
+      .select('id, first_name, family_name, age, full_name, organization, specialization, preferences')
       .eq('id', userId)
       .single();
 
@@ -681,5 +793,22 @@ export const Services = {
       .upsert({ id: userId, ...updates }, { onConflict: 'id' });
     if (error) throw error;
     return true;
+  },
+
+  /**
+   * Merge into the caller's own `preferences`, never replace it.
+   *
+   * The upsert `updateProfile` does replaces the whole JSONB column, which
+   * is safe only while it holds a single key. This calls
+   * `update_own_preferences` (profile_preferences_merge_rpc.sql) instead —
+   * `auth.uid()`-bound server-side, so there is no userId argument here to
+   * get wrong, and its own allow-list rejects an unknown key rather than
+   * silently storing it. Returns the merged document.
+   */
+  async updateOwnPreferences(patch) {
+    if (!this.supabase) throw new Error('Supabase client not initialized.');
+    const { data, error } = await this.supabase.rpc('update_own_preferences', { p_patch: patch });
+    if (error) throw error;
+    return data;
   },
 };

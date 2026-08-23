@@ -113,10 +113,10 @@ export const Handlers = {
       btn?.addEventListener('click', () => AppState.get('authModal')?.show());
     });
 
-    DOMCache.get(CONFIG.SELECTORS.PROFILE_FORM)?.addEventListener('submit', (e) => this.handleProfileFormSubmit(e));
-    DOMCache.getAll(`${CONFIG.SELECTORS.PROFILE_BTN}, ${CONFIG.SELECTORS.PROFILE_BTN_OFFCANVAS}`).forEach(btn => {
-      btn?.addEventListener('click', () => this.handleProfileButtonClick());
-    });
+    // No click binding for PROFILE_BTN/PROFILE_BTN_OFFCANVAS: it is a plain
+    // <a href="/account"> now (docs/profile-refactor-plan.md §5) — the
+    // browser navigates on its own. auth-view.js still shows/hides it by
+    // sign-in state, same as every other account-scoped control.
 
     DOMCache.getAll(`${CONFIG.SELECTORS.FAQ_SIDEBAR}, ${CONFIG.SELECTORS.FAQ_OFFCANVAS}`).forEach(section => {
       section?.addEventListener('click', (e) => this.handleFaqClick(e));
@@ -155,27 +155,60 @@ export const Handlers = {
     const password = form.querySelector(`#${source}-password`)?.value;
 
     if (!email || !password) {
-      ErrorHandler.showAuthError('Please fill in both email and password.');
+      ErrorHandler.showAuthError(I18n.t('auth.missingFields'));
       return;
     }
 
     try {
       if (source === 'login') {
-        const data = await Services.login(email, password);
+        await Services.login(email, password);
         this.hideModal('authModal', CONFIG.SELECTORS.AUTH_MODAL);
         form.reset();
-        ErrorHandler.showToast(
-          data?.user?.email ? `Logged in as ${data.user.email}` : 'Login successful!'
-        );
+        // No toast here: AuthView.render (driven by the auth-state listener,
+        // not this handler) already writes `#user-status` from the frozen
+        // `auth.loggedInAs` key and swaps in the authenticated view. A toast
+        // saying the same thing a second time, in different words, was the
+        // product stating one fact twice — see the signup panel below for
+        // the reader-facing feedback this path still needs.
       } else {
-        await Services.signup(email, password);
+        // family_name is optional; empty stays empty rather than becoming a
+        // string GoTrue has to strip — handle_new_user already coerces "" to
+        // null via nullif(), so sending "" here is harmless either way.
+        const firstName = form.querySelector('#signup-first-name')?.value?.trim();
+        const familyName = form.querySelector('#signup-family-name')?.value?.trim();
+        await Services.signup(email, password, {
+          first_name: firstName,
+          family_name: familyName,
+        });
         form.reset();
-        ErrorHandler.showToast('Signup initiated! Please check your email to confirm.');
+        this.showSignupSent(email);
       }
     } catch (error) {
       logError(error, `handleAuthFormSubmit.${source}`);
       ErrorHandler.showAuthError(ErrorHandler.formatAuthError(error));
     }
+  },
+
+  /**
+   * Swap the signup form for a persistent confirmation panel, naming the
+   * address back to the reader so a typo is visible at the one moment it can
+   * still be fixed cheaply. Modelled on `showResetRequest`'s form-for-panel
+   * swap, but the panel replaces the form outright rather than sitting above
+   * it — signup has nothing left for the reader to do in this modal.
+   *
+   * A three-second toast used to be the only signal here, over a freshly
+   * reset, empty form: to a reader who missed the toast the screen said
+   * nothing happened. This is what `#reset-sent` already does one tab over.
+   */
+  showSignupSent(email) {
+    DOMCache.get(CONFIG.SELECTORS.SIGNUP_FORM)?.classList.add(CONFIG.CLASSES.D_NONE);
+    DOMCache.get(CONFIG.SELECTORS.SIGNUP_SENT)?.classList.remove(CONFIG.CLASSES.D_NONE);
+    const heading = DOMCache.get(CONFIG.SELECTORS.SIGNUP_SENT_HEADING);
+    const lead = DOMCache.get(CONFIG.SELECTORS.SIGNUP_SENT_LEAD);
+    const spam = DOMCache.get(CONFIG.SELECTORS.SIGNUP_SENT_SPAM);
+    if (heading) heading.textContent = I18n.t('auth.signupSent.heading');
+    if (lead) lead.textContent = I18n.t('auth.signupSent.lead', { email });
+    if (spam) spam.textContent = I18n.t('auth.signupSent.spam');
   },
 
   async processChatRequestInternal(queryText, category = '') {
@@ -937,6 +970,12 @@ export const Handlers = {
    */
   clearReaderScopedUI() {
     this.beginTranscriptEpoch();
+    // Unlike the history notice (unconditionally redrawn for the new reader
+    // right after this call, via showHistoryNotice's own remove-then-redraw),
+    // the completion notice only redraws if the new reader's profile also
+    // turns out incomplete — so it needs an explicit hide here, or reader A's
+    // strip survives on screen for reader B if B's own profile is complete.
+    UI.hideProfileCompletionNotice();
     /* The sidebar moves with everything else scoped to the reader who left.
        These rows are their own opening questions, and the app lives at "/" so
        nothing reloads on the way out — leaving them drawn behind the landing
@@ -1489,86 +1528,6 @@ export const Handlers = {
     AppState.set('recoveryMode', false);
     AuthView.leaveRecovery(null);
     this.clearSessionState();
-  },
-
-  async handleProfileFormSubmit(event) {
-    event.preventDefault();
-    ErrorHandler.clearErrors();
-
-    try {
-      const sessionData = await Services.supabase?.auth.getSession();
-      const user = sessionData?.data?.session?.user;
-
-      if (!user) {
-        return ErrorHandler.showProfileError(I18n.t('runtime.profile.sessionExpired'));
-      }
-
-      const formData = new FormData(event.target);
-      // No updated_at. The `on_profile_update` trigger sets it from the server
-      // clock on every update, and the column default covers the insert — so a
-      // browser-supplied timestamp was both redundant and less trustworthy.
-      // It is also the one key here the client has no privilege to write: the
-      // profile columns are granted individually so that `role`, `tier` and
-      // `is_disabled` cannot be, and a payload naming an ungranted column fails
-      // the whole statement with "permission denied for table profiles".
-      const updates = {
-        full_name: formData.get('full_name'),
-        organization: formData.get('organization'),
-        specialization: formData.get('specialization'),
-        preferences: { theme: formData.get('theme-preference') },
-      };
-
-      await Services.updateProfile(user.id, updates);
-      AppState.set('userProfile', { ...AppState.get('userProfile'), ...updates });
-      ThemeManager.apply(updates.preferences?.theme || CONFIG.CLASSES.LIGHT);
-      ErrorHandler.showToast(I18n.t('runtime.profile.saved'));
-      this.hideModal('profileModal', CONFIG.SELECTORS.PROFILE_MODAL);
-    } catch (error) {
-      // The raw error.message isn't translatable and can leak technical
-      // detail to the reader; log it for diagnosis and keep the surfaced
-      // message generic and bilingual.
-      logError(error, 'handleProfileFormSubmit');
-      ErrorHandler.showProfileError(I18n.t('runtime.profile.saveFailed'));
-    }
-  },
-
-  async handleProfileButtonClick() {
-    ErrorHandler.clearErrors();
-
-    const sessionData = await Services.supabase?.auth.getSession();
-    const user = sessionData?.data?.session?.user;
-
-    if (!user) {
-      ErrorHandler.showToast(I18n.t('runtime.profile.loginRequired'), true);
-      AppState.get('authModal')?.show();
-      return;
-    }
-
-    const cachedProfile = AppState.get('userProfile');
-    if (cachedProfile) {
-      UI.populateProfileForm(cachedProfile);
-    } else {
-      try {
-        const profile = await Services.getProfile(user.id);
-        if (profile) {
-          AppState.set('userProfile', profile);
-          UI.populateProfileForm(profile);
-        } else {
-          const form = DOMCache.get(CONFIG.SELECTORS.PROFILE_FORM);
-          if (form) {
-            form.reset();
-            UI.selectThemeRadio(form, null);
-          }
-        }
-      } catch (error) {
-        logError(error, 'handleProfileButtonClick');
-        ErrorHandler.showToast(I18n.t('runtime.profile.loadFailed'), true);
-        const form = DOMCache.get(CONFIG.SELECTORS.PROFILE_FORM);
-        form?.reset();
-      }
-    }
-
-    AppState.get('profileModal')?.show();
   },
 
   async handleLogout(event) {

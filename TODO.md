@@ -20,7 +20,7 @@ needs doing.
 - [Leaked-password protection is disabled in Supabase Auth](#leaked-password-protection-is-disabled-in-supabase-auth) — blocked on a Pro-plan upgrade, not code.
 - [Answer from a second provider](#answer-from-a-second-provider--and-why-the-code-is-the-easy-half) — the citation-fidelity harness is built (2026-08-22); still blocked on running it for real against the API.
 - [OpenRouter as one integration instead of several](#openrouter-as-one-integration-instead-of-several) — alternative to the entry above; same harness, same not-yet-run status.
-- [Refactor the profile page](#refactor-the-profile-page) — two live bugs fixed 2026-08-17; identity-field restructuring, signup capture, and modal-vs-page are still open.
+- [Refactor the profile page](#refactor-the-profile-page) — identity-field restructuring and modal-vs-page done 2026-08-23 (`/account` ships Identity + Preferences); signup capture and Security/Data/Delete sections (`docs/profile-refactor-plan.md` §17 Steps 4-7) are still open.
 - [Give readers a quota, and limits worth having](#give-readers-a-quota-and-limits-worth-having) — rate limiting is IP-keyed, not reader-keyed; not started.
 - [The browser suite flakes intermittently in test_source_panel.py](#the-browser-suite-flakes-intermittently-in-test_source_panelpy) — undiagnosed; resource-contention evidence only.
 - [Know what people actually ask](#know-what-people-actually-ask--without-reading-anyones-conversation) — an identity-free question log; not started, gated on scale.
@@ -30,6 +30,41 @@ needs doing.
 ---
 
 ## Known bugs
+
+### ~~A late profile read has no identity guard~~ — FIXED 2026-08-23
+
+**Where:** `static/js/app.js:407` — the `.then` that calls `AppState.set('userProfile', profile)`
+after `Services.getProfile()` resolves.
+
+**What is wrong.** `hydrateTranscript` (`app.js:248`) and the auth-state handler
+(`app.js:433-444`) both check that the identity the response belongs to still matches the
+identity currently signed in before writing it to `AppState`. The profile read at `app.js:407`
+does not. If reader A signs out and reader B signs in while A's `getProfile()` call is still in
+flight — slow network, a fast account switch on a shared machine — B's screen can end up showing
+A's name, organization, and specialization for as long as that stale write survives.
+
+**Who it reaches.** Anyone on a shared or slow connection who switches accounts quickly. Not
+theoretical: this is the exact race the two guards above already exist to close, on the one read
+that was missed.
+
+**Found while planning, not fixing.** Surfaced during the design pass for
+[Refactor the profile page](#refactor-the-profile-page) (§14·D·25 / T7 of
+`docs/profile-refactor-plan.md`), because that work adds two more UI elements
+(the composer's default search scope and the first-run completion strip) that hang off this same
+callback — so the guard has to be added there anyway. Recorded here because the bug predates that
+work and is independent of it.
+
+**The fix:** the same identity check `app.js:433-444` already does, applied to the `.then` at
+`app.js:407` before the `AppState.set` call.
+
+**Fixed 2026-08-23.** `checkId`/`dispatchedForUserId` are now captured once, before both
+fire-and-forget calls (`loadProfileWithTimeout` and `fetchIdentityWithRetry`), and the profile
+`.then` checks `identityCheckId` against it before writing `AppState.userProfile` — exactly the
+guard `app.js:433-444` already had, extended to cover the read that was missed. Landed alongside
+Step 4 of `docs/profile-refactor-plan.md` (the completion strip and search-scope preference both
+hang off this same callback, so the guard had to exist before either could be built on top of it).
+
+---
 
 ### ~~The FAQ rail gave no feedback on a busy click, and blew past its own chunking rule~~ — FIXED 2026-08-22
 
@@ -1101,6 +1136,46 @@ the `SUPABASE_BROWSER_MOCK` `from('profiles')` chain in
 `handle_new_user`, and adjusting the admin account detail view that reads
 profile columns. `test_frontend_architecture.py::test_handlers_own_user_facing_service_failures`
 pins that `ErrorHandler.showProfileError` stays in `handlers.js`.
+
+**Update 2026-08-23 — identity-field restructuring and modal-vs-page done;
+signup capture and the rest of the record still open.** Superseded by the
+full design in `docs/profile-refactor-plan.md`, produced and largely built in
+this pass:
+
+- **Identity split.** `full_name` is now a stored generated column over new
+  `first_name`/`family_name`/`age` columns
+  (`supabase/migrations/20260822225415_profile_identity_atomic_cutover.sql`).
+  All 4 live rows preserved byte-for-byte (legacy display names copied
+  verbatim into `first_name`, `family_name` left explicitly null — see that
+  migration and the plan's §15.2 for why a mechanical name split was
+  rejected). `handle_new_user` and `admin_update_profile` both rewritten;
+  `admin_get_user` extended (`20260822225623`) to expose the new columns to
+  the console's own edit form (`static/js/admin/ui.js`).
+- **Modal retired; `/account` built.** `#profileModal` is gone —
+  `web/api/account.py` (new blueprint), `web/templates/account.html`,
+  `static/js/account/{app,ui,handlers}.js` and `static/css/account.css` ship
+  the record's Identity and Preferences sections (theme + language,
+  instant-apply; identity, explicit-save with dirty tracking), the monogram,
+  and the standing line (role/tier/since/conversation-count/standing) via a
+  new `public.get_identity_flags(uuid)` RPC and `/api/identity`'s now-wider
+  response. `.sidebar-account`'s profile button is a plain link to it.
+- **Preferences merge RPC** shipped (`public.update_own_preferences(jsonb)`,
+  `20260822225239`) so the theme/language controls above cannot clobber each
+  other's stored preference the way the old modal's whole-object upsert
+  could have. Not yet wired into the identity form's organization/
+  specialization save, which still upserts — those two columns are not JSON,
+  so nothing is at risk there today.
+- **Still open:** signup does not yet capture `first_name`/`family_name`/
+  `age` (Step 4 of the plan's §17 build order); Security (password/email/
+  sessions, Step 5), Your data (export/delete conversations, Step 7) and
+  Delete account (Step 7) are not built — deliberately not stubbed as
+  placeholders on the page, per the plan's own "ship the feature before the
+  sentence that promises it" rule. Full account-menu consolidation (the
+  sidebar footer collapsing to one control, per Decision 1) and the
+  monogram/`view-transition-name` cross-document transition are both
+  deferred — the latter needs a media-query-scoped assignment across
+  `_sidebar.html`'s two rendered copies that was not safe to ship in this
+  pass (see that partial's own comment).
 `test_frontend.py::test_login_and_logout_flow` asserts `#profile-button` is
 visible after sign-in. Any new `page.auth.*`, `page.profile.*`, or `runtime:`
 strings must ship in both YAML files (`test_arabic_catalogue_covers_every_runtime_key`
@@ -2546,4 +2621,25 @@ Operators need a direct mechanism to send real-time or persistent notifications 
   - Controls to early-deactivate, delete, or re-send past broadcasts.
 - **Bilingual & Real-time**:
   - Dual-language fields (`title_en`, `title_ar`, `body_en`, `body_ar`) matching reader UI language.
+
+---
+
+### Account deletion (Spec 4) — blocked on a product decision, not on engineering
+
+**Where:** `docs/profile-refactor-plan.md` §16·4 has the full design (Migration A — FK-action
+fixes on `profiles.disabled_by`/`app_settings.updated_by`, verified live and ready to apply —
+then Migration B — a durable `account_deletions` saga table with retry/backoff, since a database
+transaction cannot include the outbound GoTrue admin-delete call). §17's Step 7 entry is marked
+`[ ]`, explicitly not started.
+
+**Why it's blocked.** §10's open question — "is reader self-deletion permitted at all, given the
+audit log?" — was never closed. P2 of the plan assumes yes; the "Still open" list at §17 still
+lists it as undecided. Export and bulk conversation deletion (same Step 7) do not depend on this
+answer and shipped 2026-08-23; account deletion does, and building a background saga that calls
+GoTrue's admin delete API on a schedule, against real accounts, on an assumption rather than a
+decision is the kind of hard-to-reverse action this file exists to flag rather than quietly do.
+
+**What's needed to unblock:** an explicit yes/no on self-deletion from whoever owns that call,
+given the audit-log retention question it raises. Once decided, the two migrations in §16·4 are
+already written and only need re-verification against the live schema before applying.
   - Hybrid delivery: Supabase Realtime broadcast for active sessions + REST DB query on page load for offline/new sessions.

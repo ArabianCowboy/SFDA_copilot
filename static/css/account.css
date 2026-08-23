@@ -1,0 +1,356 @@
+/* ============================================================================
+   Account — the reader's own record.
+
+   Layer 3 semantic names only, mirroring admin.css's own rule. Logical
+   properties throughout — test_css_contract.py fails the build on a physical
+   property that cannot mirror.
+
+   Same instrument as the reader surface and the console: porcelain ground,
+   hairlines, one teal. A record page that looked like a different product
+   from the chat it belongs to would undercut the one thing it is telling the
+   reader — that this is their file, on the product they were already using.
+   ========================================================================= */
+
+.account-body {
+  min-block-size: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-page);
+  color: var(--fg-primary);
+  font-family: var(--font-sans);
+}
+
+.skip-link {
+  position: absolute;
+  inset-block-start: var(--space-2);
+  inset-inline-start: var(--space-2);
+  z-index: var(--z-toast);
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  color: var(--fg-primary);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-200%);
+}
+
+.skip-link:focus-visible {
+  transform: translateY(0);
+}
+
+/* ── Top bar ─────────────────────────────────────────────────────────────── */
+
+.account-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  padding: var(--space-3) var(--gutter);
+  background: var(--bg-surface);
+  border-block-end: 1px solid var(--hairline);
+  /* Shared with the sidebar's account trigger (Decision 1's transition
+     contract, docs/profile-refactor-plan.md §13). Assigned by the trigger
+     itself via inline style, not here — this file has no knowledge of which
+     copy of _sidebar.html's macro is the one actually displayed. */
+}
+
+.account-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  text-decoration: none;
+  color: var(--fg-primary);
+  font-weight: var(--fw-display);
+}
+
+.account-brand .icon {
+  color: var(--signal);
+}
+
+.account-brand-sep,
+.account-brand-role {
+  color: var(--fg-muted);
+  font-weight: var(--fw-body);
+}
+
+.account-bar-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-inline-start: auto;
+}
+
+/* ── Gate / signed-out ──────────────────────────────────────────────────── */
+
+.account-gate {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-8) var(--gutter);
+  text-align: center;
+}
+
+.account-gate-text {
+  color: var(--fg-muted);
+  margin: 0;
+}
+
+/* ── Main ────────────────────────────────────────────────────────────────── */
+
+.account-main {
+  flex: 1;
+  padding: var(--space-6) var(--gutter);
+}
+
+.account-record {
+  max-inline-size: 42rem;
+  margin-inline: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+/* ── Record head ─────────────────────────────────────────────────────────── */
+
+.account-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.account-monogram {
+  inline-size: 3.25rem;
+  block-size: 3.25rem;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--signal-tint);
+  color: var(--signal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-display);
+  font-weight: var(--fw-display);
+  font-size: var(--fs-400);
+  /* Reader-typed initials, so the same isolation as any other reader-typed
+     value that can mix scripts. */
+  unicode-bidi: isolate;
+}
+
+.account-identity-cluster {
+  min-inline-size: 0;
+}
+
+.account-name {
+  margin: 0;
+  font-size: var(--fs-500);
+  font-weight: var(--fw-display);
+  /* Empty until the profile read resolves; never announces a blank heading
+     as though it were the reader's actual (missing) name. */
+  min-block-size: 1.2em;
+}
+
+.account-email {
+  margin: 0;
+  color: var(--fg-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--fs-200);
+  unicode-bidi: isolate;
+}
+
+/* ── Standing line ───────────────────────────────────────────────────────── */
+
+.account-standing {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-5);
+  margin: 0;
+  padding: var(--space-3) 0;
+  border-block: 1px solid var(--hairline);
+}
+
+.account-standing-item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.account-standing-item dt {
+  font-size: var(--fs-100);
+  text-transform: uppercase;
+  letter-spacing: var(--track-wide);
+  color: var(--fg-faint);
+}
+
+.account-standing-item dd {
+  margin: 0;
+  font-weight: var(--fw-medium);
+  /* Facts, not notifications — see docs/profile-refactor-plan.md §13.7:
+     "No animation on the standing line's values." Deliberately no
+     transition property anywhere in this rule. */
+}
+
+/* ── Sections ────────────────────────────────────────────────────────────── */
+
+.account-section-heading {
+  font-size: var(--fs-400);
+  font-weight: var(--fw-display);
+  margin-block-end: var(--space-3);
+}
+
+.account-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  padding: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.account-field-row {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-4);
+}
+
+/* Two half-width inputs on a phone is the cramped-form failure this plan
+   names explicitly (§3). Side by side only from the breakpoint where each
+   half still has room to breathe. */
+@media (min-width: 576px) {
+  .account-field-row {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.account-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.account-label {
+  font-weight: var(--fw-medium);
+  font-size: var(--fs-200);
+}
+
+.account-input {
+  background-color: var(--bg-surface);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-sm);
+  color: var(--fg-primary);
+  padding: var(--space-2) var(--space-3);
+  font: inherit;
+}
+
+.account-input:focus {
+  outline: none;
+  border-color: var(--signal);
+  box-shadow: 0 0 0 3px var(--focus-ring-shadow);
+}
+
+.account-input-age {
+  max-inline-size: 8rem;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.account-field-hint {
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: var(--fs-100);
+  max-inline-size: 60ch;
+}
+
+.account-form-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.account-saved-note {
+  margin: 0;
+  color: var(--signal);
+  font-size: var(--fs-200);
+  font-weight: var(--fw-medium);
+}
+
+.account-form-error {
+  margin: 0;
+  color: var(--danger);
+  font-size: var(--fs-200);
+}
+
+/* ── Preference fieldsets ────────────────────────────────────────────────── */
+
+.account-fieldset {
+  border: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.account-choice-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* Bespoke, never bare .form-check: Bootstrap's LTR build positions that
+   control with physical padding-left/float, which does not mirror under
+   RTL, and the shipped theme radios already carry the bug
+   (index.html:298-310) — see docs/profile-refactor-plan.md §14·A·6. Logical
+   properties only, and the whole row (input + label text) is one ≥24px
+   click target rather than a small input beside its label. */
+.account-choice {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  min-block-size: 2.25rem;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  user-select: none;
+}
+
+.account-choice:has(input:checked) {
+  border-color: var(--signal);
+  background: var(--signal-tint);
+  color: var(--signal);
+  font-weight: var(--fw-medium);
+}
+
+.account-choice:has(input:focus-visible) {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.account-choice input {
+  /* Still a real, keyboard-operable radio — visually minimal, not display:
+     none, which would drop it from the accessibility tree on some UAs. */
+  inline-size: 1rem;
+  block-size: 1rem;
+  accent-color: var(--signal);
+}
+
+.account-logout-scope {
+  color: var(--fg-muted);
+  font-size: var(--fs-200);
+  text-align: center;
+}
+
+/* ── Footer ──────────────────────────────────────────────────────────────── */
+
+.account-footer {
+  padding: var(--space-4) var(--gutter);
+  text-align: center;
+}
+
+.account-independence {
+  color: var(--fg-faint);
+  font-size: var(--fs-100);
+  max-inline-size: 60ch;
+  margin-inline: auto;
+}

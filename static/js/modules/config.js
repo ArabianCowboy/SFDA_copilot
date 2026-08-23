@@ -76,6 +76,10 @@ export const CONFIG = {
     TOAST: '#toast',
     LOGIN_FORM: '#login-form',
     SIGNUP_FORM: '#signup-form',
+    SIGNUP_SENT: '#signup-sent',
+    SIGNUP_SENT_HEADING: '#signup-sent-heading',
+    SIGNUP_SENT_LEAD: '#signup-sent-lead',
+    SIGNUP_SENT_SPAM: '#signup-sent-spam',
     LOGOUT_BTN: '#logout-button',
     LOGOUT_BTN_OFFCANVAS: '#logout-button-offcanvas',
     AUTH_BTN: '#auth-button',
@@ -88,9 +92,10 @@ export const CONFIG = {
     QUERY_INPUT: '#query-input',
     SEND_BTN: '#send-button',
     CATEGORY_SELECT: '#query-category',
-    PROFILE_MODAL: '#profileModal',
-    PROFILE_FORM: '#profile-form',
-    PROFILE_ERROR: '#profile-error',
+    // No PROFILE_MODAL/PROFILE_FORM/PROFILE_ERROR: the modal is retired
+    // (docs/profile-refactor-plan.md §5) — /account replaces it. PROFILE_BTN
+    // stays: it is now a plain <a href="/account">, still shown/hidden by
+    // sign-in state the same way every other account-scoped control is.
     PROFILE_BTN: '#profile-button',
     PROFILE_BTN_OFFCANVAS: '#profile-button-offcanvas',
     ACCOUNT_DISABLED_NOTICE: '#account-disabled-notice',

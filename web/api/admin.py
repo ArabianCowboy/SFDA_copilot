@@ -303,16 +303,32 @@ def user_detail(user_id: str) -> Response:
     return jsonify({"user": account, "self_id": g.identity.user_id})
 
 
-# The three profile fields an operator may rewrite, and nothing else. An exact
-# key set rather than a filter: an unknown key is a mistake worth reporting, not
+# The profile fields an operator may rewrite, and nothing else. An exact key
+# set rather than a filter: an unknown key is a mistake worth reporting, not
 # something to quietly drop, and this is the route that pins the design position
 # that the console can never send a password.
-_PROFILE_FIELDS = ("full_name", "organization", "specialization")
+#
+# full_name is no longer one of them: the identity cutover
+# (supabase/migrations/20260822225415_profile_identity_atomic_cutover.sql)
+# made it a stored generated column, so it can never appear in a write
+# payload — only first_name and family_name are writable now.
+_PROFILE_STRING_FIELDS = ("first_name", "family_name", "organization", "specialization")
 
 # Bounded because every value is duplicated into `before` AND `after` of an
 # append-only row that nothing can ever delete. Unbounded free text here is a
-# way to grow a table that has no eviction story.
-_PROFILE_MAX_LENGTH = 200
+# way to grow a table that has no eviction story. Mirrors the DB CHECKs
+# (profiles_first_name_chk/family_name_chk = 100, the two column-bound
+# checks in profile_column_bounds.sql = 200) so a too-long value is reported
+# by this route rather than surfacing as a raw constraint-violation error.
+_PROFILE_STRING_MAX_LENGTH = {
+    "first_name": 100,
+    "family_name": 100,
+    "organization": 200,
+    "specialization": 200,
+}
+
+# Matches profiles_age_chk (age is null or age between 13 and 120).
+_PROFILE_AGE_MIN, _PROFILE_AGE_MAX = 13, 120
 
 
 @admin_bp.route("/api/users/<user_id>/reset-password", methods=["POST"])
@@ -641,20 +657,35 @@ def patch_profile(user_id: str) -> Response:
     if not isinstance(payload, dict):
         return jsonify({"error": "invalid_payload"}), 400
 
-    unknown = set(payload) - set(_PROFILE_FIELDS) - {"expected_updated_at"}
+    unknown = set(payload) - set(_PROFILE_STRING_FIELDS) - {"age", "expected_updated_at"}
     if unknown:
         # Named explicitly. A console that sends `password` here should be told
         # so, not silently ignored — see test_no_console_route_accepts_a_password.
         return jsonify({"error": "unknown_field", "fields": sorted(unknown)}), 422
 
     values = {}
-    for field in _PROFILE_FIELDS:
+    for field in _PROFILE_STRING_FIELDS:
         value = payload.get(field)
         if value is not None and not isinstance(value, str):
             return jsonify({"error": "invalid_payload"}), 400
-        if isinstance(value, str) and len(value) > _PROFILE_MAX_LENGTH:
+        if isinstance(value, str) and len(value) > _PROFILE_STRING_MAX_LENGTH[field]:
             return jsonify({"error": "too_long", "field": field}), 422
+        if field in ("first_name", "family_name") and isinstance(value, str):
+            # Matches the DB's own normalisation (first_name = btrim(first_name)):
+            # trimmed here so a padded value is reported as the value it becomes,
+            # rather than reaching the CHECK and failing as a raw constraint error.
+            value = value.strip() or None
         values[field] = value
+
+    age = payload.get("age")
+    if age is not None:
+        # bool is a subclass of int in Python — reject it explicitly, or
+        # {"age": true} would silently become age=1.
+        if isinstance(age, bool) or not isinstance(age, int):
+            return jsonify({"error": "invalid_payload"}), 400
+        if not (_PROFILE_AGE_MIN <= age <= _PROFILE_AGE_MAX):
+            return jsonify({"error": "out_of_range", "field": "age"}), 422
+    values["age"] = age
 
     backend = current_app.config["admin_backend"]()
     if backend is None:

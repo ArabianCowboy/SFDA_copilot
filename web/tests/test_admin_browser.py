@@ -611,6 +611,7 @@ DETAILS = {
         # loaded at and a null one would let the assertion pass vacuously.
         "updated_at": "2026-05-01T09:00:00+00:00",
         "disabled_at": None, "disabled_by_email": None, "disabled_reason": None,
+        "first_name": "Test", "family_name": "User", "age": None,
         "full_name": "Test User", "organization": "Test Organization",
         "specialization": "Regulatory Affairs", "last_seen_at": None,
     },
@@ -622,6 +623,7 @@ DETAILS = {
         "disabled_at": "2026-06-01T00:00:00+00:00",
         "disabled_by_email": "admin@example.com",
         "disabled_reason": "Sharing an account with a colleague",
+        "first_name": None, "family_name": None, "age": None,
         "full_name": None, "organization": None,
         "specialization": None, "last_seen_at": None,
     },
@@ -631,6 +633,7 @@ DETAILS = {
         "created_at": "2026-04-01T00:00:00+00:00", "last_sign_in_at": None,
         "email_confirmed_at": None, "updated_at": None,
         "disabled_at": None, "disabled_by_email": None, "disabled_reason": None,
+        "first_name": None, "family_name": None, "age": None,
         "full_name": None, "organization": None, "specialization": None,
         "last_seen_at": None,
     },
@@ -1256,7 +1259,7 @@ def test_a_stale_profile_save_is_refused_rather_than_overwriting(browser_page: P
             body=json.dumps({"error": "profile_changed_since_loaded"})),
     )
     browser_page.locator(".admin-account-open", has_text="test@example.com").click()
-    browser_page.locator("#account-full-name").fill("Somebody Else")
+    browser_page.locator("#account-first-name").fill("Somebody Else")
     browser_page.locator("#account-profile-save").click()
 
     expect(browser_page.locator("#toast")).to_contain_text("Reload", ignore_case=True)

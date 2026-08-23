@@ -141,6 +141,7 @@ const App = {
       // landing view would be addressing nobody, and would still be on screen
       // for whoever signs in next.
       UI.hideHistoryNotice();
+      UI.hideProfileCompletionNotice();
       /* And the sidebar with it. These rows are one reader's own opening
          questions; the app lives at "/" and nothing reloads on the way out, so
          leaving them drawn behind the landing view is the same hazard the
@@ -318,14 +319,6 @@ const App = {
         );
       }
 
-      const profileModalEl = DOMCache.get(CONFIG.SELECTORS.PROFILE_MODAL);
-      if (profileModalEl && window.bootstrap?.Modal) {
-        AppState.set(
-          'profileModal',
-          window.bootstrap.Modal.getOrCreateInstance(profileModalEl)
-        );
-      }
-
       const sendBtn = DOMCache.get(CONFIG.SELECTORS.SEND_BTN);
       if (sendBtn) {
         AppState.set('originalSendButtonText', sendBtn.textContent?.trim() || I18n.t('chat.send'));
@@ -402,9 +395,28 @@ const App = {
             ErrorHandler.showToast(I18n.t('faq.loadFailed'), true);
           });
 
+        /* Captured once, before either fire-and-forget call below, and
+           reused by both: a reader who signs out (or enters recovery) while
+           either is still in flight leaves auth-view.js having bumped
+           identityCheckId, so a late answer for the account that just left
+           is recognised as stale rather than applied to whoever replaced
+           them. Previously only the identity check had this guard — see
+           TODO.md's "A late profile read has no identity guard" entry,
+           which this closes. */
+        const checkId = AppState.get('identityCheckId') || 0;
+        const dispatchedForUserId = user.id;
+
         this.loadProfileWithTimeout(user.id)
           .then(profileData => {
-            if (profileData) AppState.set('userProfile', profileData);
+            if ((AppState.get('identityCheckId') || 0) !== checkId) return;
+            if (!profileData) return;
+            AppState.set('userProfile', profileData);
+            // Only from this success branch, never from .catch and never
+            // for a stale identity — "don't flash before load" is structural
+            // here, not a guard bolted on afterward.
+            if (!profileData.first_name) {
+              UI.queueProfileCompletionNotice(dispatchedForUserId);
+            }
           })
           .catch(err => logError(err, 'loadProfileWithTimeout'));
 
@@ -429,9 +441,9 @@ const App = {
            actually for so a borrowed answer for someone else's account is
            discarded rather than applied — this fails to "unresolved, stay
            hidden" for B rather than showing them A's standing, which matches
-           how this app already treats every other unresolved case. */
-        const checkId = AppState.get('identityCheckId') || 0;
-        const dispatchedForUserId = user.id;
+           how this app already treats every other unresolved case.
+           `checkId`/`dispatchedForUserId` are the ones captured above, ahead
+           of both this and the profile load. */
         this.fetchIdentityWithRetry()
           .then(identity => {
             if ((AppState.get('identityCheckId') || 0) !== checkId) return;

@@ -165,6 +165,14 @@ runtime:
     checkingStatus: "Checking status..."
     servicesUnavailable: "Authentication services are not configured."
     initFailed: "Failed to initialize core application services."
+    missingFields: "Please fill in both email and password."
+    # Replaces a three-second toast that left a freshly-reset, empty form on
+    # screen with no other signal. Names the address back so a typo is
+    # visible while it can still be fixed cheaply.
+    signupSent:
+      heading: "Check your email"
+      lead: "We sent a confirmation link to {email}. Open it to finish creating your account."
+      spam: "No email after a few minutes? Check your spam folder."
     # Both of these map a GoTrue message that would otherwise reach the reader as
     # raw English. `emailUnavailable` also covers the signup rate limit, which is
     # the same ceiling surfacing on the adjacent form.
@@ -189,6 +197,54 @@ runtime:
     saved: "Profile saved."
     sessionExpired: "Your session seems to have expired. Please log out and log in again."
     loginRequired: "Please log in to manage your profile."
+    # /account's own runtime strings. Nested here rather than under a new
+    # top-level `account` block: test_admin_page.py pins the inlined
+    # runtime.* top-level keys to a closed set, and runtime_subset ships the
+    # whole tree (minus `admin`) to every page — a new top-level block would
+    # appear, unasked for, on the console too.
+    account:
+      roleAdmin: "Administrator"
+      roleUser: "Reader"
+      tierFree: "Free"
+      tierInternal: "Internal"
+      standingEnabled: "Active"
+      standingDisabled: "Disabled"
+      conversationOne: "{count} conversation"
+      conversations: "{count} conversations"
+      identitySaving: "Saving…"
+      identitySaved: "Saved."
+      identitySaveFailed: "Could not save. Please try again."
+      preferencesSaved: "Saved."
+      preferencesSaveFailed: "Could not save. Please try again."
+      loadFailed: "Could not load your account. Please reload the page."
+      passwordSaving: "Changing your password…"
+      passwordSaved: "Your password has been changed."
+      # GoTrue asked for a code before it would proceed — not a failure, the
+      # form reveals the code field and waits.
+      passwordReauthSent: "We sent a verification code to your email. Enter it below and try again."
+      passwordErrorWeak: "That password does not meet the requirements above."
+      passwordErrorSame: "That is your current password. Choose a different one."
+      passwordErrorReauth: "That code was not right. Check your email for the latest one."
+      passwordErrorSession: "Your session has expired. Please sign in again."
+      passwordErrorGeneric: "Could not change your password. Please try again."
+      signOutOthersSaving: "Signing out other sessions…"
+      signOutOthersSaved: "Done. Other devices will be signed out as their sessions expire."
+      signOutOthersFailed: "Could not sign out other sessions. Please try again."
+      exportPreparing: "Preparing your export…"
+      exportStarted: "Your download has started."
+      exportFailed: "Could not export your conversations. Please try again."
+      deleteAllConfirm: "Delete all conversations? This cannot be undone."
+      deleteAllSaving: "Deleting…"
+      deleteAllSaved: "All your conversations have been deleted."
+      deleteAllInFlight: "An answer is still being generated. Try again once it finishes."
+      deleteAllFailed: "Could not delete your conversations. Please try again."
+    # The first-run completion strip (docs/profile-refactor-plan.md §12.6).
+    # Nested under `finish*` rather than a new `runtime.account` block, for
+    # the same top-level-key reason as `account` above.
+    finishPrompt: "Add your name so your account record is complete."
+    finishOpen: "Open account"
+    finishDismiss: "Dismiss"
+    finishDismissAria: "Dismiss"
 
   faq:
     loadFailed: "Failed to load FAQs."
@@ -345,7 +401,9 @@ runtime:
       standing: "Standing"
       disabledBy: "Disabled by"
       disabledReason: "Reason"
-      fullName: "Full name"
+      firstName: "First name"
+      familyName: "Family name"
+      age: "Age"
       organization: "Organization"
       specialization: "Specialization"
       notSet: "Not set"
@@ -511,6 +569,9 @@ page:
     modalTitle: "Welcome to SFDA Copilot"
     login: "Login"
     signup: "Signup"
+    firstName: "First name"
+    familyName: "Family name"
+    firstNameRequired: "First name is required."
     email: "Email address"
     password: "Password"
     passwordHint: "Min. 8 chars, 1 uppercase, 1 lowercase, 1 number."
@@ -534,15 +595,68 @@ page:
       cancel: "Cancel"
 
   profile:
-    heading: "Edit Your Profile"
+    # Only the sidebar link's label lives here now — the rest of this block
+    # (heading, firstName, familyName, organization, specialization,
+    # themePreference, light, dark, save) moved to page.account.* when
+    # #profileModal was retired in favour of /account
+    # (docs/profile-refactor-plan.md §5).
     button: "Profile"
-    fullName: "Full Name"
+
+  account:
+    title: "My Account · SFDA Copilot"
+    skipToContent: "Skip to account"
+    pageTitle: "My Account"
+    backToChat: "Back to chat"
+    checking: "Loading your account…"
+    retry: "Try again"
+    signedOut: "Sign in to see your account."
+    standingAria: "Account standing"
+    role: "Role"
+    tier: "Tier"
+    since: "Since"
+    conversations: "Conversations"
+    standing: "Standing"
+    identityHeading: "Identity"
+    firstName: "First name"
+    familyName: "Family name"
+    age: "Age"
+    ageHint: "Used for audience segmentation — optional."
     organization: "Organization"
     specialization: "Specialization"
-    themePreference: "Theme Preference"
-    light: "Light"
-    dark: "Dark"
-    save: "Save Changes"
+    save: "Save changes"
+    preferencesHeading: "Preferences"
+    theme: "Theme"
+    themeLight: "Light"
+    themeDark: "Dark"
+    themeSystem: "System"
+    language: "Language"
+    languageEnglish: "English"
+    languageArabic: "Arabic"
+    securityHeading: "Security"
+    newPassword: "New password"
+    changePassword: "Change password"
+    # Revealed only when GoTrue actually asks for one — a session older than
+    # the project's "recently logged in" window (24h). Not shown up front:
+    # asking for a code nobody needs yet is the same failure as a required
+    # field with no reason attached.
+    reauthCode: "Verification code"
+    reauthCodeHint: "For your security, we sent a code to your email. Enter it to finish changing your password."
+    signOutOthers: "Sign out everywhere else"
+    # Revocation is not instant — Supabase's own docs are explicit that a
+    # revoked session's access token stays valid until it expires. Never
+    # imply the other devices are signed out the moment this button is
+    # clicked (docs/profile-refactor-plan.md §14·B·10).
+    signOutOthersHint: "Ends every session but this one. Other devices stay signed in until their current session expires."
+    logoutScope: "Signing out ends your session on every device."
+    # Data rights (docs/profile-refactor-plan.md Step 7). Export and bulk
+    # deletion of CONVERSATIONS only — full account deletion is a separate,
+    # not-yet-built feature (see web/api/account.py's own docstring), and
+    # this copy is deliberately careful not to promise it.
+    dataHeading: "Your data"
+    exportConversations: "Export my conversations"
+    exportHint: "Download every conversation you've had, as a file (NDJSON — one line per conversation, readable by any text editor)."
+    deleteAllConversations: "Delete all conversations"
+    deleteAllHint: "Permanently deletes every conversation. Your account, profile and sign-in stay untouched."
 
   chat:
     welcomeLead: "Welcome to"

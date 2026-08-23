@@ -12,7 +12,59 @@
 
 import { iconMarkup } from './icons.js';
 
+/* The reader's own last-used search scope, remembered per device — not tied
+ * to an account, so nothing here waits on a profile read or risks the
+ * late-arrival hazard an account-level default would carry (a saved
+ * preference landing after the reader has already begun working). Default
+ * stays 'all': on an unset, unreadable or unrecognised value the safe
+ * direction is the widest scope — a failed read must never silently narrow
+ * which corpus a regulatory question is answered from. See
+ * docs/profile-refactor-plan.md §12.5.
+ */
+const SEARCH_SCOPE_KEY = 'sfda-search-scope';
+
+function readSavedScope() {
+  try {
+    return localStorage.getItem(SEARCH_SCOPE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function saveScope(value) {
+  try {
+    if (value && value !== 'all') localStorage.setItem(SEARCH_SCOPE_KEY, value);
+    else localStorage.removeItem(SEARCH_SCOPE_KEY);
+  } catch {
+    // Private mode or a storage policy that throws: the in-memory selection
+    // still works for this session, it just is not remembered for the next.
+  }
+}
+
 export const CustomDropdown = {
+  /* Module-scope, not per-instance: init() runs once at boot and there is
+   * exactly one category dropdown on the page. Set only by the two paths a
+   * reader can actually choose through — a click or a keyboard confirm —
+   * never by the last-used-scope default applied at init, so that default
+   * itself does not look like a choice that would block a later one. */
+  _readerChose: false,
+  _selectItem: null,
+
+  /**
+   * Apply a value that was NOT a reader's own choice — the last-used-scope
+   * default at boot. Refuses once `_readerChose` is true, so a slow caller
+   * can never overwrite a selection the reader already made.
+   */
+  setValue(value) {
+    if (this._readerChose || !this._selectItem) return;
+    this._selectItem(value, { persist: false });
+  },
+
+  /** For a reader change: forget this device's memory of who was choosing. */
+  reset() {
+    this._readerChose = false;
+  },
+
   init() {
     const dropdown = document.getElementById('category-dropdown');
     if (!dropdown) return;
@@ -81,6 +133,18 @@ export const CustomDropdown = {
       });
     };
 
+    /* The public, value-based entry point setValue()/init's own last-used
+       default call through. Silently no-ops on an unrecognised value —
+       legacy free-text specialization, or a value this device never saw —
+       staying on whatever is already selected (which starts as "All
+       Categories") rather than guessing. */
+    this._selectItem = (value, { persist }) => {
+      const item = items.find(i => i.dataset.value === value);
+      if (!item) return;
+      select(item);
+      if (persist) saveScope(value);
+    };
+
     trigger.addEventListener('click', (e) => {
       e.stopPropagation();
       setOpen(!isOpen());
@@ -89,7 +153,9 @@ export const CustomDropdown = {
     items.forEach(item => {
       item.addEventListener('click', (e) => {
         e.stopPropagation();
+        this._readerChose = true;
         select(item);
+        saveScope(item.dataset.value);
         setOpen(false);
       });
     });
@@ -107,7 +173,11 @@ export const CustomDropdown = {
         case 'End':       next = items.length - 1; break;
         case 'Enter':
         case ' ':
-          if (current > -1) select(items[current]);
+          if (current > -1) {
+            this._readerChose = true;
+            select(items[current]);
+            saveScope(items[current].dataset.value);
+          }
           setOpen(false);
           e.preventDefault();
           return;
@@ -144,5 +214,12 @@ export const CustomDropdown = {
         setOpen(false);
       }
     });
+
+    /* The last-used-scope default. Not a reader choice — _readerChose stays
+       false — so an explicit selection later in this same session still
+       wins outright, and this can never race one: it runs synchronously,
+       here, before any interaction is possible. */
+    const saved = readSavedScope();
+    if (saved) this._selectItem(saved, { persist: false });
   },
 };
