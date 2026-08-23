@@ -87,6 +87,10 @@
            JS actually builds ships here; the rest render server-side. */
         window.__ICONS = {{ icons_runtime | tojson }};
         window.__CATEGORY_ICONS = {{ category_icons | tojson }};
+        /* Recorded on every consent grant, so a record stays attributable to
+           the actual policy text it was given under. See app.py's own
+           PRIVACY_POLICY_VERSION comment. */
+        window.__POLICY_VERSION = {{ policy_version | tojson }};
     </script>
 
     <!-- Versions the ES modules themselves. The <script> tag below carries
@@ -275,6 +279,40 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
                                     <div class="invalid-feedback">
                                         {{ t('page.auth.passwordInvalid') }}
                                     </div>
+                                </div>
+
+                                <!-- Unticked by default (docs/profile-refactor-plan.md
+                                     §12.3): consent must be an affirmative act, not a
+                                     pre-checked box. Gates the age field below it —
+                                     the personal question is never asked of someone
+                                     who declined the purpose it serves. Bespoke
+                                     .consent-row, not bare .form-check, which does
+                                     not mirror under the LTR Bootstrap build. -->
+                                <div class="consent-row mb-2">
+                                    <input type="checkbox" id="signup-marketing-consent" name="marketing_consent">
+                                    <label for="signup-marketing-consent">{{ t('page.auth.consent.marketing') }}</label>
+                                </div>
+
+                                <div class="consent-reveal" id="signup-age-reveal">
+                                    <div>
+                                        <div class="form-floating mb-3">
+                                            <input type="number" class="form-control" id="signup-age" placeholder=" "
+                                                inputmode="numeric" min="13" max="120" autocomplete="off">
+                                            <label for="signup-age">
+                                                {{ icon('user', 15) }}<span>{{ t('page.account.age') }}</span>
+                                            </label>
+                                            <div class="form-text mt-1">{{ t('page.auth.consent.ageHint') }}</div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- A SEPARATE required tick, never bundled with
+                                     consent above — bundling is what invalidates
+                                     consent as an affirmative, specific act. -->
+                                <div class="consent-row mb-3">
+                                    <input type="checkbox" id="signup-terms" name="terms" required>
+                                    <label for="signup-terms">{{ t('page.auth.consent.terms') | safe }}</label>
+                                    <div class="invalid-feedback">{{ t('page.auth.consent.termsRequired') }}</div>
                                 </div>
 
                                 <button type="submit" class="btn btn-primary w-100 btn-lg py-2 fw-bold">

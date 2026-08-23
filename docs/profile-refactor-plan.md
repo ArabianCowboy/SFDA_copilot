@@ -1688,13 +1688,57 @@ since nothing in it existed yet.**
       available in this session reads or writes them. Needs either dashboard access or a Management
       API credential this session does not have.
 
-### Step 6 — Consent, blocked on the policy
+### Step 6 — Consent
 
-- [ ] **The bilingual سياسة الاستخدام والخصوصية must exist and be approved first** (§12.4). Nothing
-      in this step ships before it.
-- [ ] Consent columns + trigger (§16·3, Spec 3), unticked box gating the age field, withdrawal on
-      `/account` never rate-limited.
-- [ ] Admin visibility and export of the consent record (§14·C·20).
+**Shipped 2026-08-23, by explicit direction from the product owner: write a generic bilingual
+policy now, to unblock the engineering, and review/polish its actual content later.** §12.4's own
+sequencing rule — "no marketing data is collected until the policy is approved and published" —
+is therefore knowingly not fully honoured by this pass: the policy exists and is published, but is
+a DRAFT, not yet approved as binding legal text. `/privacy`, the signup consent checkbox, and the
+`/account` withdrawal toggle all say so explicitly (`page.policy.draftNotice`), and
+`PRIVACY_POLICY_VERSION` (`web/api/app.py`) is a versioned string specifically so a real, reviewed
+policy can replace the draft later without orphaning consent records already granted under it —
+each grant records the exact version it was made under.
+
+- [x] **The bilingual سياسة الاستخدام والخصوصية**, at `GET /privacy` — public, ungated, same
+      "safe to open blind" reasoning `deep_link` already gives. Content: scope, what is collected,
+      how it is used (with marketing singled out as consent-gated), sharing, retention, rights
+      (access/export/delete/withdraw — linking to the already-shipped `/account` features),
+      security, contact. Both languages, key-parity verified by hand (no `page.*` catalogue-parity
+      test exists yet — T3's own gap, still open).
+- [x] Consent columns + trigger (§16·3, Spec 3 — applied close to verbatim, with one adaptation:
+      Spec 3's guard-trigger text predates this project's live INSERT-branch fix
+      (`20260822224942_profile_privilege_guard_covers_insert.sql`), so the consent-column guard was
+      merged into that existing INSERT/UPDATE structure rather than replacing it with Spec 3's
+      UPDATE-only text). `marketing_consent`, `marketing_consent_granted_at`,
+      `marketing_consent_withdrawn_at`, `marketing_consent_policy_version`,
+      `marketing_consent_language`, `marketing_consent_surface`,
+      `marketing_consent_granted_while_unconfirmed` — current state plus latest grant/withdrawal
+      context, not an immutable event log (the migration's own comment says so explicitly).
+      Verified live: a grant without policy/language/surface is rejected (`22023`); a client cannot
+      write the three server-owned timestamp/flag columns (`42501`, both INSERT and UPDATE); a
+      re-grant preserves the prior withdrawal time; a withdrawal preserves the prior grant context
+      without validating it.
+- [x] Signup: a separate, unticked marketing-consent checkbox that reveals the age field only when
+      ticked (never bundled with the required terms tick, which is its own separate checkbox
+      linking to `/privacy`). `handle_new_user` coerces malformed/missing consent metadata to a
+      decline rather than raising — never turns arbitrary client metadata into a blocked signup,
+      the same rule Step 4's version already established for `first_name`/`family_name`/`age`.
+      `.consent-row`/`.consent-reveal` in `components.css`: bespoke, logical properties only, never
+      bare `.form-check`, and the age reveal is a `grid-template-rows` height transition rather
+      than JS measurement.
+- [x] Withdrawal on `/account`, in the existing "Your data" section (Step 7) — the same
+      instant-apply, browser→Postgres write the Identity form's own fields already use, so there is
+      no Flask route to rate-limit and none was added. Offers to clear `age` on withdrawal without
+      requiring it (T9) — declining the offer still lets withdrawal succeed and never touches age.
+- [x] Admin visibility of the consent record (§14·C·20 does not resolve to real section content in
+      this doc — read as "give an operator the same record the subject has"): `admin_get_user`
+      extended with the same seven fields, surfaced read-only in the console's account-detail
+      identity facts. **Not extended to Step 7's reader-facing export** — that surface is
+      conversations only, matching its own shipped IA line ("export conversations"), and the
+      consent record is already visible to the subject directly on `/account`; treating "export of
+      the consent record" as "visible to the subject" rather than "bundled into the NDJSON
+      download" was a deliberate scope call, not an oversight.
 
 ### Step 7 — Data rights
 
@@ -1748,15 +1792,23 @@ not the decoded identity — Flask-Limiter's own `before_request` hook runs BEFO
 `_gate`, so `g.identity` is not set yet when a rate key is computed, and re-authenticating there
 would be a second `supabase.auth.get_user` round trip on top of the one `_gate` already makes.
 
-### Still open before Step 6 or 7 begins
+### Still open
 
-1. Is reader self-deletion permitted, given the audit log? (§10·6 — P2 assumes yes; decide.)
-2. `age` or `birth_year`? A stored age is wrong within twelve months (§12.2, Decision 5).
-3. Does signup also capture `organization`?
-4. Where does the Beehiiv opt-in live, and does its consent copy merge with §12.4's?
+Steps 6 and 7 both shipped without these being formally closed — none turned out to gate what was
+actually built, but none should be read as decided either:
+
+1. **Genuinely still blocking** — is reader self-deletion permitted, given the audit log? (§10·6 —
+   P2 assumes yes; decide.) This is the one remaining piece of Step 7 (the deletion saga) and it
+   has not been started.
+2. `age` or `birth_year`? A stored age is wrong within twelve months (§12.2, Decision 5). Shipped
+   as `age`, unresolved.
+3. Does signup also capture `organization`? Shipped as no (§12.2's own table already said never) —
+   this one is effectively answered by what was built, just never crossed off here.
+4. Where does the Beehiiv opt-in live, and does its consent copy merge with §12.4's? Not addressed
+   by Step 6 — the shipped consent checkbox covers this product's own marketing use only.
 5. **How will anyone know whether this worked?** (§14·D·31.) No baseline exists, and
    `PRODUCT.md:158-160` forbids inventing numbers. Define privacy-safe aggregate metrics before
-   adding funnel friction — Step 4 is the first step that adds any.
+   adding funnel friction — Step 4 is the first step that adds any, and Step 6 added more.
 
 ---
 

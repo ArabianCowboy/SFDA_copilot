@@ -215,6 +215,10 @@ def test_a_rate_limited_signup_is_not_shown_in_raw_english(browser_page: Page):
     browser_page.locator("#signup-first-name").fill("New")
     browser_page.locator("#signup-email").fill("new@example.com")
     browser_page.locator("#signup-password").fill("ValidPass1")
+    # Required since Step 6 (docs/profile-refactor-plan.md §12.4) — without
+    # it the form fails native validation before ever reaching GoTrue, and
+    # the mocked signUpError this test exists to exercise never fires.
+    browser_page.locator("#signup-terms").check()
     browser_page.locator("#signup-form").evaluate("(f) => f.requestSubmit()")
 
     error = browser_page.locator("#auth-error")

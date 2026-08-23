@@ -1,0 +1,192 @@
+{# سياسة الاستخدام والخصوصية / Usage and Privacy Policy — public, ungated.
+
+   DRAFT CONTENT. Written to unblock Step 6 of docs/profile-refactor-plan.md
+   per the product owner's own instruction (2026-08-23): generic, not
+   reviewed as a legal document. #page-draft-notice says so on the page
+   itself, and page.policy.draftNotice carries the same statement in both
+   languages — this is not a silent placeholder. #}<!DOCTYPE html>
+<html lang="{{ lang }}" dir="{{ text_dir }}">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#0F5E63">
+    <title>{{ t('page.policy.title') }}</title>
+
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
+    <link rel="alternate icon" href="{{ url_for('static', filename='favicon.ico') }}">
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Azeret+Mono:wght@400;500&family=Readex+Pro:wght@200..700&family=Zain:wght@300;400;700;800;900&display=swap"
+        rel="stylesheet">
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"
+        integrity="sha384-9ndCyUaIbzAi2FUVXJi0CjmCapSmO7SnpJef0486qhLnuZ2cdeRhO02iuK6FUUVM" crossorigin="anonymous">
+
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}?v={{ asset_version }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}?v={{ asset_version }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components.css') }}?v={{ asset_version }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/account.css') }}?v={{ asset_version }}">
+
+    <!-- Prevent FOUC. Identical to account.html/index.html. -->
+    <script>
+        (function() {
+            try {
+                var t = localStorage.getItem('theme');
+                if (!t) t = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+                document.documentElement.setAttribute('data-bs-theme', t);
+
+                var l = localStorage.getItem('lang');
+                if (l === 'ar' || l === 'en') {
+                    if (document.documentElement.lang !== l) {
+                        if (!sessionStorage.getItem('__langfix')) {
+                            sessionStorage.setItem('__langfix', '1');
+                            document.cookie = 'lang=' + l + ';path=/;max-age=31536000;samesite=lax';
+                            location.reload();
+                            return;
+                        }
+                        localStorage.setItem('lang', document.documentElement.lang);
+                    }
+                }
+                sessionStorage.removeItem('__langfix');
+            } catch(e) {}
+        })();
+    </script>
+
+    <script>
+        window.__I18N = {{ i18n_runtime | tojson }};
+        window.__LANG = {{ lang | tojson }};
+        window.__ICONS = {{ icons_runtime | tojson }};
+    </script>
+
+    <script type="importmap">{{ module_import_map | tojson }}</script>
+</head>
+
+<body class="account-body">
+    <a class="skip-link" href="#policy-main">{{ t('page.policy.skipToContent') }}</a>
+
+    <header class="account-bar">
+        <a class="account-brand" href="{{ url_for('index') }}">
+            {{ icon('shield', 18) }}
+            <span class="account-brand-name">{{ t('page.brand.name') }}</span>
+            <span class="account-brand-sep" aria-hidden="true">·</span>
+            <span class="account-brand-role">{{ t('page.policy.pageTitle') }}</span>
+        </a>
+
+        <div class="account-bar-actions">
+            <a class="btn btn-sm btn-ghost" href="{{ url_for('index') }}">
+                {{ t('page.account.backToChat') }}
+            </a>
+
+            <button class="lang-toggle-btn btn btn-sm" type="button"
+                data-lang="{{ 'en' if lang == 'ar' else 'ar' }}"
+                aria-label="{{ t('runtime.lang.switchAria') }}">
+                <span class="lang-code">{{ 'EN' if lang == 'ar' else 'ع' }}</span>
+            </button>
+
+            <button class="theme-toggle-btn btn btn-sm" type="button"
+                aria-label="{{ t('page.nav.toggleTheme') }}" aria-pressed="false"></button>
+        </div>
+    </header>
+
+    <main id="policy-main" class="account-main">
+        <div class="account-record" id="policy-content">
+            <section class="account-head" aria-labelledby="policy-heading">
+                <div class="account-identity-cluster">
+                    <h1 class="account-name" id="policy-heading">{{ t('page.policy.pageTitle') }}</h1>
+                    <p class="account-email" dir="ltr">{{ t('page.policy.version') }} {{ policy_version }}</p>
+                </div>
+            </section>
+
+            <div class="account-section" id="page-draft-notice" role="note">
+                <div class="account-card" style="border-color: var(--warning);">
+                    <strong>{{ t('page.policy.draftHeading') }}</strong>
+                    <p class="account-field-hint">{{ t('page.policy.draftNotice') }}</p>
+                </div>
+            </div>
+
+            <section class="account-section" aria-labelledby="policy-scope-heading">
+                <h2 class="account-section-heading" id="policy-scope-heading">{{ t('page.policy.scopeHeading') }}</h2>
+                <div class="account-card">
+                    <p>{{ t('page.policy.scopeBody') }}</p>
+                </div>
+            </section>
+
+            <section class="account-section" aria-labelledby="policy-collect-heading">
+                <h2 class="account-section-heading" id="policy-collect-heading">{{ t('page.policy.collectHeading') }}</h2>
+                <div class="account-card">
+                    <p>{{ t('page.policy.collectIntro') }}</p>
+                    <ul>
+                        <li>{{ t('page.policy.collectAccount') }}</li>
+                        <li>{{ t('page.policy.collectProfile') }}</li>
+                        <li>{{ t('page.policy.collectQuestions') }}</li>
+                        <li>{{ t('page.policy.collectTechnical') }}</li>
+                    </ul>
+                </div>
+            </section>
+
+            <section class="account-section" aria-labelledby="policy-use-heading">
+                <h2 class="account-section-heading" id="policy-use-heading">{{ t('page.policy.useHeading') }}</h2>
+                <div class="account-card">
+                    <p>{{ t('page.policy.useIntro') }}</p>
+                    <ul>
+                        <li>{{ t('page.policy.useOperate') }}</li>
+                        <li>{{ t('page.policy.useImprove') }}</li>
+                        <li>{{ t('page.policy.useMarketing') }}</li>
+                    </ul>
+                    <p>{{ t('page.policy.useMarketingConsent') }}</p>
+                </div>
+            </section>
+
+            <section class="account-section" aria-labelledby="policy-share-heading">
+                <h2 class="account-section-heading" id="policy-share-heading">{{ t('page.policy.shareHeading') }}</h2>
+                <div class="account-card">
+                    <p>{{ t('page.policy.shareBody') }}</p>
+                </div>
+            </section>
+
+            <section class="account-section" aria-labelledby="policy-retention-heading">
+                <h2 class="account-section-heading" id="policy-retention-heading">{{ t('page.policy.retentionHeading') }}</h2>
+                <div class="account-card">
+                    <p>{{ t('page.policy.retentionBody') }}</p>
+                </div>
+            </section>
+
+            <section class="account-section" aria-labelledby="policy-rights-heading">
+                <h2 class="account-section-heading" id="policy-rights-heading">{{ t('page.policy.rightsHeading') }}</h2>
+                <div class="account-card">
+                    <p>{{ t('page.policy.rightsIntro') }}</p>
+                    <ul>
+                        <li>{{ t('page.policy.rightsAccess') }}</li>
+                        <li>{{ t('page.policy.rightsExport') }}</li>
+                        <li>{{ t('page.policy.rightsDelete') }}</li>
+                        <li>{{ t('page.policy.rightsWithdraw') }}</li>
+                    </ul>
+                </div>
+            </section>
+
+            <section class="account-section" aria-labelledby="policy-security-heading">
+                <h2 class="account-section-heading" id="policy-security-heading">{{ t('page.policy.securityHeading') }}</h2>
+                <div class="account-card">
+                    <p>{{ t('page.policy.securityBody') }}</p>
+                </div>
+            </section>
+
+            <section class="account-section" aria-labelledby="policy-contact-heading">
+                <h2 class="account-section-heading" id="policy-contact-heading">{{ t('page.policy.contactHeading') }}</h2>
+                <div class="account-card">
+                    <p>{{ t('page.policy.contactBody') }}</p>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <footer class="account-footer">
+        <p class="account-independence">{{ t('page.landing.notice') | safe }}</p>
+    </footer>
+
+    <script src="{{ url_for('static', filename='js/privacy.js') }}?v={{ asset_version }}" type="module"></script>
+</body>
+
+</html>

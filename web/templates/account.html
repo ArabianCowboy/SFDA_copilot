@@ -70,6 +70,11 @@
         window.__I18N = {{ i18n_runtime | tojson }};
         window.__LANG = {{ lang | tojson }};
         window.__ICONS = {{ icons_runtime | tojson }};
+        /* Recorded on every consent grant/re-grant from the withdrawal
+           toggle, so a record stays attributable to the actual policy text
+           it was given under. See app.py's own PRIVACY_POLICY_VERSION
+           comment. */
+        window.__POLICY_VERSION = {{ policy_version | tojson }};
     </script>
 
     <script type="importmap">{{ module_import_map | tojson }}</script>
@@ -305,6 +310,27 @@
                  to promise it. -->
             <section class="account-section" aria-labelledby="data-heading">
                 <h2 class="account-section-heading" id="data-heading">{{ t('page.account.dataHeading') }}</h2>
+
+                <!-- Consent (docs/profile-refactor-plan.md §12.3, Step 6).
+                     Withdrawal is exactly this same toggle, and is never
+                     rate-limited: it is a direct browser->Postgres write
+                     under RLS, same path the rest of this card uses, and no
+                     Flask route sits in front of it to rate-limit. -->
+                <div class="account-card" id="consent-card">
+                    <label class="account-choice">
+                        <input type="checkbox" id="consent-marketing-toggle">
+                        <span>{{ t('page.auth.consent.marketing') }}</span>
+                    </label>
+                    <div class="account-field" id="consent-clear-age-row" hidden>
+                        <label class="account-choice">
+                            <input type="checkbox" id="consent-clear-age">
+                            <span>{{ t('page.account.consentClearAge') }}</span>
+                        </label>
+                    </div>
+                    <p class="account-field-hint" id="consent-state-note"></p>
+                    <p class="account-saved-note" id="consent-saved-note" role="status" aria-live="polite" hidden></p>
+                    <div class="account-form-error" id="consent-error" role="alert" hidden></div>
+                </div>
 
                 <div class="account-card">
                     <p class="account-field-hint">{{ t('page.account.exportHint') }}</p>

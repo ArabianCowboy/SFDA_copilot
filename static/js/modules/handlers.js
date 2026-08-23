@@ -86,6 +86,20 @@ export const Handlers = {
     DOMCache.get(CONFIG.SELECTORS.LOGIN_FORM)?.addEventListener('submit', (e) => this.handleAuthFormSubmit(e, 'login'));
     DOMCache.get(CONFIG.SELECTORS.SIGNUP_FORM)?.addEventListener('submit', (e) => this.handleAuthFormSubmit(e, 'signup'));
 
+    // The age field reveals only when marketing consent is ticked
+    // (docs/profile-refactor-plan.md §12.3) — a CSS grid-row transition
+    // (components.css), toggled by one class here.
+    document.getElementById('signup-marketing-consent')?.addEventListener('change', (e) => {
+      document.getElementById('signup-age-reveal')?.classList.toggle('is-open', e.target.checked);
+      // Unticking clears any age already typed, so a reader who reconsiders
+      // does not silently submit an age under a consent they withdrew before
+      // sending the form.
+      if (!e.target.checked) {
+        const age = document.getElementById('signup-age');
+        if (age) age.value = '';
+      }
+    });
+
     document.getElementById('login-btn-submit')?.addEventListener('click', (e) => {
       e.preventDefault();
       DOMCache.get(CONFIG.SELECTORS.LOGIN_FORM)?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
@@ -176,9 +190,21 @@ export const Handlers = {
         // null via nullif(), so sending "" here is harmless either way.
         const firstName = form.querySelector('#signup-first-name')?.value?.trim();
         const familyName = form.querySelector('#signup-family-name')?.value?.trim();
+        // Marketing consent gates age (docs/profile-refactor-plan.md §12.3):
+        // an unticked box means age is never sent at all, not sent-and-
+        // ignored — handle_new_user coerces it to null regardless, but not
+        // sending it is the honest client-side mirror of that rule.
+        const consented = form.querySelector('#signup-marketing-consent')?.checked === true;
+        const ageValue = form.querySelector('#signup-age')?.value;
         await Services.signup(email, password, {
           first_name: firstName,
           family_name: familyName,
+          marketing_consent: consented,
+          ...(consented ? {
+            marketing_consent_policy_version: window.__POLICY_VERSION,
+            marketing_consent_language: I18n.lang,
+            age: ageValue === '' || ageValue == null ? undefined : Number(ageValue),
+          } : {}),
         });
         form.reset();
         this.showSignupSent(email);
