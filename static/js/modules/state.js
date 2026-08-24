@@ -26,6 +26,30 @@ export const AppState = {
     // visible in one place — `clearSessionState` has to clear every one of them.
     sidebarOwner: null,
     sidebarTabSettled: false,
+
+    // ── Notification Center (docs/notification-center-plan.md) ──────────
+    // The interval id for the active-notifications poll, so it can be torn
+    // down on sign-out and on the tab going hidden, and re-established on
+    // sign-in / the tab becoming visible again — the same reasoning
+    // `sidebarOwner` documents above, applied to a recurring fetch instead
+    // of a one-shot one.
+    notificationsPollTimer: null,
+    // The real Supabase auth user id the poll/Realtime pair are currently
+    // running for — distinct from sidebarOwner, which falls back to an
+    // email under the ?testing=true bypass where no real session (and so
+    // no channel to authorize) exists at all.
+    notificationsUserId: null,
+    // The last-fetched active list, cached so the inbox and the bell badge
+    // agree without a second round trip when the inbox opens.
+    notificationsActive: [],
+    // At most one modal-type notification shown at once (BroadcastCoordinator
+    // in ui.js) — an id, not a boolean, so a second poll tick that still
+    // finds the same notification active does not reopen what the reader is
+    // already looking at.
+    notificationsOpenModalId: null,
+    // Cursor for the inbox's own keyset pagination.
+    notificationsHistoryCursor: null,
+    notificationsHistoryExhausted: false,
   },
 
   get(key) {

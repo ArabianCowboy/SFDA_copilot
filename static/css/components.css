@@ -2393,3 +2393,293 @@
     transition: none;
   }
 }
+
+/* ===================================================================
+   Notification Center (docs/notification-center-plan.md §4)
+
+   Severity is spent on --danger/--warning/--confidence and a neutral ink
+   tone for "info" — never --signal. --signal is rationed to retrieval and
+   citation state elsewhere in this file, and a generic admin notice is
+   neither; borrowing it here would dilute the one cue that tells a reader
+   "this sentence came from a document" (see this file's own header note).
+   =================================================================== */
+
+.severity-info    { --notif-accent: var(--fg-muted); }
+.severity-success { --notif-accent: var(--confidence); }
+.severity-warning { --notif-accent: var(--warning); }
+.severity-danger  { --notif-accent: var(--danger); }
+
+/* ── Bell + badge ─────────────────────────────────────────────────── */
+
+.notifications-bell-btn {
+  position: relative;
+}
+.notifications-unread-badge {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-end: 0;
+  min-inline-size: 18px;
+  block-size: 18px;
+  padding-inline: 3px;
+  border-radius: var(--radius-pill);
+  background: var(--danger);
+  color: var(--paper-000);
+  font-family: var(--font-mono);
+  font-size: var(--fs-100);
+  font-weight: var(--fw-medium);
+  line-height: 18px;
+  text-align: center;
+}
+/* One soft scale pulse on increment — never continuous ambient motion. */
+@keyframes notifBadgePulse {
+  0%   { transform: scale(1); }
+  40%  { transform: scale(1.35); }
+  100% { transform: scale(1); }
+}
+.notifications-unread-badge.is-pulsing {
+  animation: notifBadgePulse var(--duration-m) var(--ease-out);
+}
+
+/* ── Corner toast stack ───────────────────────────────────────────── */
+
+#notifications-toast-stack {
+  position: fixed;
+  inset-block-end: var(--space-5);
+  inset-inline-end: var(--space-5);
+  z-index: var(--z-toast);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  inline-size: min(360px, calc(100vw - var(--space-8)));
+  pointer-events: none;
+}
+.broadcast-toast {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  border-inline-start: 2px solid var(--notif-accent);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-lg);
+  pointer-events: auto;
+  /* Spring-eased slide + settle: overshoots slightly then eases back. */
+  animation: notifToastIn var(--duration-l) var(--ease-out);
+}
+@keyframes notifToastIn {
+  from { opacity: 0; transform: translateX(calc(24px * var(--flip))); }
+  60%  { opacity: 1; transform: translateX(calc(-4px * var(--flip))); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+.broadcast-toast.is-leaving {
+  animation: notifToastOut var(--duration-m) var(--ease-soft) forwards;
+}
+@keyframes notifToastOut {
+  to { opacity: 0; transform: translateX(calc(24px * var(--flip))) scale(.96); }
+}
+.broadcast-toast-body {
+  flex: 1;
+  min-inline-size: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.broadcast-toast-body strong {
+  font-weight: var(--fw-display);
+  font-size: var(--fs-300);
+  color: var(--fg-primary);
+}
+.broadcast-toast-body p {
+  margin: 0;
+  font-size: var(--fs-200);
+  color: var(--fg-secondary);
+  line-height: var(--lh-snug);
+}
+.broadcast-toast-dismiss {
+  flex: none;
+  display: inline-flex;
+  padding: var(--space-1);
+  border: none;
+  background: transparent;
+  color: var(--fg-faint);
+  border-radius: var(--radius-sm);
+}
+.broadcast-toast-dismiss:hover { color: var(--fg-secondary); }
+/* Progress-bar countdown, on the block-end edge — the plan's own pattern,
+   same construction as .toast-notification.has-action's undo meter above:
+   shrinks from an inline-start anchor so it mirrors under RTL for free. */
+.broadcast-toast::after {
+  content: "";
+  position: absolute;
+  inset-inline-start: 0;
+  inset-block-end: 0;
+  block-size: 2px;
+  inline-size: 100%;
+  background: var(--notif-accent);
+  animation: notifToastCountdown var(--notif-toast-duration, 8000ms) linear forwards;
+}
+.broadcast-toast:hover::after,
+.broadcast-toast:focus-within::after {
+  animation-play-state: paused;
+}
+/* Shrinks inline-size itself, not a transform — the same construction as
+   .toast-notification.has-action::after above. The element's
+   inset-inline-start stays anchored at 0, so the far edge alone retreats
+   and the bar mirrors under RTL with no transform-origin (a physical
+   property with no logical form) anywhere in sight. */
+@keyframes notifToastCountdown {
+  from { inline-size: 100%; }
+  to   { inline-size: 0%; }
+}
+
+/* ── Banner ────────────────────────────────────────────────────────── */
+/* Height-collapse, not fade — grows in by height and pushes content down
+   rather than overlaying it. Same grid-template-rows 0fr → 1fr technique
+   as .consent-reveal above. */
+
+#notifications-banner {
+  display: grid;
+  grid-template-rows: 0fr;
+  inset-inline: 0;
+  border-block-end: 1px solid transparent;
+  background: var(--bg-surface);
+  transition: grid-template-rows var(--duration-l) var(--ease-out);
+}
+#notifications-banner.is-open {
+  grid-template-rows: 1fr;
+  border-block-end-color: var(--hairline);
+}
+#notifications-banner > .broadcast-banner-body,
+#notifications-banner > .broadcast-banner-dismiss {
+  min-block-size: 0;
+  overflow: hidden;
+}
+#notifications-banner:empty { border: none; }
+.broadcast-banner-body {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  padding: var(--space-3) var(--space-5);
+  border-inline-start: 2px solid var(--notif-accent);
+}
+.broadcast-banner-body strong {
+  font-weight: var(--fw-display);
+  font-size: var(--fs-300);
+  color: var(--fg-primary);
+}
+.broadcast-banner-body span {
+  font-size: var(--fs-200);
+  color: var(--fg-secondary);
+}
+.broadcast-banner-dismiss {
+  position: absolute;
+  inset-inline-end: var(--space-3);
+  inset-block-start: var(--space-3);
+  border: none;
+  background: transparent;
+  color: var(--fg-faint);
+  padding: var(--space-1);
+  border-radius: var(--radius-sm);
+}
+#notifications-banner { position: relative; }
+.broadcast-banner-dismiss:hover { color: var(--fg-secondary); }
+
+/* ── Acknowledgement modal ────────────────────────────────────────── */
+
+.broadcast-modal .modal-content {
+  /* 2px, matching the system's own established accent weight (the toast
+     error/success rule above, the tab indicator, the blockquote) — not a
+     bespoke heavier weight for this one surface. */
+  border-inline-start: 2px solid var(--notif-accent);
+}
+.broadcast-modal .modal-body {
+  color: var(--fg-secondary);
+  line-height: var(--lh-body);
+}
+.broadcast-modal .modal-body p { margin: 0; }
+
+/* ── Inbox ─────────────────────────────────────────────────────────── */
+
+.notifications-inbox-list {
+  max-block-size: 60vh;
+  overflow-y: auto;
+  padding: var(--space-2);
+}
+.notifications-inbox-list.is-loading { opacity: .6; }
+.notifications-inbox-empty {
+  padding: var(--space-6) var(--space-4);
+  text-align: center;
+  color: var(--fg-muted);
+  font-size: var(--fs-300);
+}
+.notifications-inbox-item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  inline-size: 100%;
+  padding: var(--space-3) var(--space-4);
+  border: none;
+  border-radius: var(--radius-sm);
+  border-inline-start: 2px solid transparent;
+  background: transparent;
+  text-align: start;
+  /* Read-state color settle: the unread accent fades to neutral over
+     ~250ms as mark-read fires, rather than an instant re-render. */
+  transition: border-color var(--duration-m) var(--ease-soft),
+              background var(--duration-s) var(--ease-soft);
+}
+.notifications-inbox-item:hover { background: var(--bg-sunken); }
+.notifications-inbox-item.is-unread {
+  border-inline-start-color: var(--notif-accent);
+  background: var(--bg-sunken);
+}
+.notifications-inbox-item-title {
+  font-weight: var(--fw-display);
+  font-size: var(--fs-300);
+  color: var(--fg-primary);
+}
+.notifications-inbox-item-body {
+  font-size: var(--fs-200);
+  color: var(--fg-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.notifications-inbox-item-time {
+  font-family: var(--font-mono);
+  font-size: var(--fs-100);
+  color: var(--fg-faint);
+}
+/* Inbox item reveal on open: fade+rise with a short per-row stagger,
+   capped at the first six rows. */
+.notifications-inbox-item {
+  animation: notifRowIn var(--duration-m) var(--ease-out) backwards;
+  animation-delay: calc(var(--notif-row-index, 0) * 30ms);
+}
+@keyframes notifRowIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.notifications-inbox-load-more-row {
+  display: flex;
+  justify-content: center;
+  padding: var(--space-3);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .broadcast-toast,
+  .broadcast-toast.is-leaving,
+  .broadcast-toast::after,
+  .notifications-unread-badge.is-pulsing,
+  .notifications-inbox-item {
+    animation: none;
+  }
+  #notifications-banner {
+    transition: none;
+  }
+}

@@ -17,6 +17,7 @@ import hashlib
 import logging
 import sys
 import threading
+import uuid
 from collections.abc import Callable, Sequence
 from contextlib import contextmanager
 from functools import wraps
@@ -179,6 +180,10 @@ from web.services.citations import (
 )
 from web.services.conversation_store import ConversationStore
 from web.services.identity_cache import IdentityFlags, IdentityFlagsCache
+from web.services.notification_store import (
+    InMemoryNotificationBackend,
+    get_notification_backend,
+)
 from web.services.openai_app import OpenAIHandler
 from web.services.search_engine import ImprovedSearchEngine, SearchResult
 from web.services.search_exceptions import ManifestValidationError, SearchEngineError
@@ -240,11 +245,11 @@ SUPPORTED_FAQ_LANGS = ("en", "ar")
 # that mixes a fresh template with a stale module is worse than a stale page —
 # post-icon-migration it would render an <i class="bi"> with no icon font behind
 # it, or print a glyph NAME as text. MODULE_IMPORT_MAP below closes that.
-ASSET_VERSION = "warm46"
+ASSET_VERSION = "warm48"
 
 # Product release, rendered in the landing footer. Kept as one constant so
 # the number cannot drift between the page and the module headers.
-APP_VERSION = "0.5.0 (Beta)"
+APP_VERSION = "0.5.1 (Beta)"
 
 # The privacy policy's own version, recorded on every consent grant
 # (docs/profile-refactor-plan.md §16·3, Spec 3) so a consent record stays
@@ -1618,6 +1623,13 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
     # survives the process, which is what makes tests independent.
     app.config["_testing_admin_backend"] = InMemoryAdminBackend()
     app.config["_testing_chat_backend"] = InMemoryChatBackend()
+    # Shares the SAME _users list as _testing_admin_backend (not a copy) —
+    # see InMemoryNotificationBackend's own docstring: a role/tier targeting
+    # decision made here must agree with whatever the admin console fixtures
+    # say, including after a test disables or promotes a seeded user.
+    app.config["_testing_notification_backend"] = InMemoryNotificationBackend(
+        users=app.config["_testing_admin_backend"]._users
+    )
 
     # Resolved ONCE per process, not per turn, and taken FROM THE ENGINE rather
     # than from `active_build.txt`.
@@ -1678,6 +1690,14 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
 
     app.config["admin_backend"] = admin_backend
     app.config["settings_service"] = SettingsService(admin_backend)
+
+    def notification_backend():
+        """Resolved per call, same reasoning as admin_backend above."""
+        if app.config["TESTING"]:
+            return app.config["_testing_notification_backend"]
+        return get_notification_backend()
+
+    app.config["notification_backend"] = notification_backend
 
     # Recovery mail, for the reader's forgot-password and the console's send-reset
     # alike. Same shape as `admin_backend` above and for the same reason: built
@@ -1858,6 +1878,19 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
     # the limiter object does not exist yet when that module is imported.
     limiter.limit("10 per minute")(app.view_functions["admin.revoke_sessions"])
     limiter.limit("10 per minute")(app.view_functions["admin.change_email"])
+    # Keyed per-administrator (admin.py's own _admin_notification_rate_key),
+    # not per-IP or the blueprint's blanket 60/minute: a broadcast fans a
+    # message out to every targeted reader at once, and the default IP key
+    # would let a compromised admin account spam via multiple IPs or let
+    # several admins behind one office NAT share one budget.
+    from web.api.admin import _admin_notification_rate_key
+
+    limiter.limit(
+        lambda: config.get("server", "rate_limit", {}).get(
+            "notification_broadcast_api", "10 per hour"
+        ),
+        key_func=_admin_notification_rate_key,
+    )(app.view_functions["admin.create_notification"])
 
     # Imported here for the same reason admin_bp is: account.py imports back
     # into this module for _authenticate_request, and a top-level import
@@ -2610,6 +2643,190 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
         store.clear(canonical)
 
         return _no_store(jsonify(ok=True, id=canonical))
+
+    # ── Notification Center (reader) ────────────────────────────────────────
+    #
+    # docs/notification-center-plan.md. REST here is the guaranteed-delivery
+    # path; a Realtime push (web/services/notification_service.py) only ever
+    # tells an open tab "go call one of these again" — it carries no content
+    # of its own. Every response is private, no-store: these are one
+    # reader's targeted messages and read state, the same reasoning
+    # `_no_store` already applies to conversation titles.
+
+    def _notification_backend() -> Any | None:
+        factory = current_app.config.get("notification_backend")
+        return factory() if factory else None
+
+    def _notifications_limit(name: str, default: str):
+        return lambda: config.get("server", "rate_limit", {}).get(name, default)
+
+    def _localized_notification(row: dict, lang: str) -> dict:
+        title_key = "title_ar" if lang == "ar" else "title_en"
+        body_key = "body_ar" if lang == "ar" else "body_en"
+        return {
+            "id": row["id"],
+            "type": row["type"],
+            "severity": row["severity"],
+            "title": row.get(title_key) or row.get("title_en"),
+            "body": row.get(body_key) or row.get("body_en"),
+            "requires_ack": bool(row.get("requires_ack")),
+            "created_at": row.get("created_at"),
+            "expires_at": row.get("expires_at"),
+            "deactivated_at": row.get("deactivated_at"),
+            "read_at": row.get("read_at"),
+            "dismissed_at": row.get("dismissed_at"),
+            "acknowledged_at": row.get("acknowledged_at"),
+        }
+
+    @app.route("/api/notifications/active", methods=["GET"])
+    @auth_required
+    @limiter.limit(_notifications_limit("notifications_active_api", "30 per minute"))
+    def handle_notifications_active() -> Response | tuple[Response, int]:
+        backend = _notification_backend()
+        if backend is None:
+            # No service-role key configured for this deployment. An absent
+            # notification is not a lie the way a false "no conversations"
+            # would be — nothing durable is lost, unlike chat history.
+            return _no_store(jsonify(notifications=[]))
+
+        lang = (request.args.get("lang") or "en").lower()
+        try:
+            rows = backend.list_active_for_reader(g.identity.user_id)
+        except Exception:
+            logger.warning(
+                "Could not load active notifications for %s.", g.identity.user_id, exc_info=True
+            )
+            return (
+                jsonify(
+                    error="Notifications could not be loaded.",
+                    code="notifications_unavailable",
+                ),
+                503,
+            )
+
+        return _no_store(
+            jsonify(notifications=[_localized_notification(row, lang) for row in rows])
+        )
+
+    @app.route("/api/notifications/history", methods=["GET"])
+    @auth_required
+    @limiter.limit(_notifications_limit("notifications_history_api", "20 per minute"))
+    def handle_notifications_history() -> Response | tuple[Response, int]:
+        """Cursor/keyset page of every notification ever targeted to this
+        reader, matching /api/chat/sessions's own cursor_updated_at/cursor_id
+        shape exactly — this app's actual reader-facing pagination precedent.
+        """
+        backend = _notification_backend()
+        if backend is None:
+            return _no_store(jsonify(notifications=[], next_cursor=None))
+
+        lang = (request.args.get("lang") or "en").lower()
+        cursor_created_at = request.args.get("cursor_created_at")
+        cursor_id = request.args.get("cursor_id")
+        # Both halves or neither, matching the RPC's own guard — a half
+        # cursor is a client bug, and paging from the top is the recoverable
+        # reading of it.
+        if not cursor_created_at or not cursor_id:
+            cursor_created_at = None
+            cursor_id = None
+
+        limit = clamp_list_limit(request.args.get("limit", type=int))
+
+        try:
+            rows = backend.list_history_for_reader(
+                g.identity.user_id,
+                cursor_created_at=cursor_created_at,
+                cursor_id=cursor_id,
+                limit=limit,
+            )
+        except Exception:
+            logger.warning(
+                "Could not load notification history for %s.", g.identity.user_id, exc_info=True
+            )
+            return (
+                jsonify(
+                    error="Notification history could not be loaded.",
+                    code="notifications_unavailable",
+                ),
+                503,
+            )
+
+        next_cursor = (
+            {"created_at": rows[-1]["created_at"], "id": rows[-1]["id"]}
+            if len(rows) == limit
+            else None
+        )
+        return _no_store(
+            jsonify(
+                notifications=[_localized_notification(row, lang) for row in rows],
+                next_cursor=next_cursor,
+            )
+        )
+
+    @app.route("/api/notifications/mark-read", methods=["POST"])
+    @auth_required
+    @limiter.limit(_notifications_limit("notifications_mark_api", "60 per minute"))
+    def handle_notifications_mark_read() -> Response | tuple[Response, int]:
+        backend = _notification_backend()
+        if backend is None:
+            return jsonify(error="storage_unavailable"), 503
+
+        payload = request.get_json(silent=True)
+        if not isinstance(payload, dict):
+            return jsonify(error="invalid_payload"), 400
+
+        notification_id = payload.get("notification_id")
+        action = payload.get("action")
+        if not isinstance(notification_id, str) or action not in (
+            "read",
+            "dismissed",
+            "acknowledged",
+        ):
+            return jsonify(error="invalid_payload"), 400
+
+        try:
+            uuid.UUID(notification_id)
+        except (ValueError, AttributeError, TypeError):
+            return jsonify(error="no_such_notification"), 404
+
+        from web.services.admin_store import AdminActionRefused
+
+        try:
+            row = backend.mark_read(notification_id, g.identity.user_id, action)
+        except AdminActionRefused as refused:
+            status = 404 if refused.code == "no_such_notification" else 409
+            return jsonify(error=refused.code), status
+        except Exception:
+            logger.warning(
+                "Could not record %s on %s for %s.",
+                action,
+                notification_id,
+                g.identity.user_id,
+                exc_info=True,
+            )
+            return jsonify(error="mark_read_failed"), 503
+
+        return _no_store(jsonify(ok=True, notification_id=notification_id, **row))
+
+    @app.route("/api/notifications/mark-all-read", methods=["POST"])
+    @auth_required
+    @limiter.limit(_notifications_limit("notifications_mark_api", "60 per minute"))
+    def handle_notifications_mark_all_read() -> Response | tuple[Response, int]:
+        backend = _notification_backend()
+        if backend is None:
+            return jsonify(error="storage_unavailable"), 503
+
+        try:
+            count = backend.mark_all_read(g.identity.user_id)
+        except Exception:
+            logger.warning(
+                "Could not mark all notifications read for %s.",
+                g.identity.user_id,
+                exc_info=True,
+            )
+            return jsonify(error="mark_read_failed"), 503
+
+        return _no_store(jsonify(ok=True, marked=count))
 
     @app.route("/api/chat/stream", methods=["POST"])
     @auth_required

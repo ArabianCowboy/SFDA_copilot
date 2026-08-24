@@ -151,12 +151,21 @@ export function bindLanguageChoice() {
 
 /**
  * Map a GoTrue error to which `runtime.profile.account.passwordError*` key
- * to show. Matched on `.message` text, not a `.code` field — the pinned
- * @supabase/supabase-js@2.39.7 (-> gotrue-js@2.62.2) throws AuthApiError
- * with only `{message, status}`; the server's own `error_code` field is
- * read into nothing by that version and never reaches the client at all.
- * Same defensive substring-matching convention as
- * `ErrorHandler.formatAuthError` (dom.js) uses for the same reason.
+ * to show. Matched on `.message` text, not a `.code` field.
+ *
+ * Originally because the pinned @supabase/supabase-js@2.39.7 (->
+ * gotrue-js@2.62.2) threw AuthApiError with only `{message, status}` — the
+ * server's own `error_code` field was read into nothing and never reached
+ * the client at all. Upgraded to 2.74.0 (2026-08-24; auth-js's `error_code`
+ * support landed in 2.63.0), which DOES populate `.code` now — but this is
+ * left as substring matching rather than switched to it: every string
+ * checked below is matched against GoTrue's own English error prose, which
+ * still needs to work regardless of whether a future response happens to
+ * carry a structured code, and rewriting a working classifier on an
+ * unrelated SDK bump is exactly the kind of untested scope creep this
+ * upgrade was deliberately kept narrow to avoid. Same defensive
+ * substring-matching convention as `ErrorHandler.formatAuthError` (dom.js)
+ * uses for the same reason.
  */
 function classifyPasswordError(error) {
   const message = (error?.message || '').toLowerCase();

@@ -8,17 +8,27 @@
 
 import { ErrorHandler } from '../modules/dom.js';
 import { I18n } from '../modules/i18n.js';
+import { newRequestId } from '../modules/services.js';
 import { AdminRequestError } from './services.js';
 import {
   clearSettingsErrors,
   focusTab,
+  prefillComposer,
+  readComposerForm,
   renderAccountDetail,
   renderAudit,
+  renderNotificationHistory,
+  renderNotificationsPanel,
   renderUsers,
+  resetComposerForm,
+  setAudiencePreview,
+  setNotificationComposerSending,
   setPeopleLoading,
   showAccountList,
   showAccountMessage,
   showAuditMessage,
+  showComposerError,
+  showNotificationHistoryMessage,
   showPeopleMessage,
   readProfileForm,
   readSettingsDisplay,
@@ -31,6 +41,7 @@ import {
   stageRevert,
   showSettingsErrors,
   showSettingsMessage,
+  syncNotificationTargetFields,
   tabIds,
 } from './ui.js';
 
@@ -126,6 +137,232 @@ export function bindConsoleEvents() {
  * and an operator who is checking what changed wants it there, not one
  * interaction away. Re-read after a save, because the save just added to it.
  */
+/**
+ * Notification Center composer + history (docs/notification-center-plan.md
+ * §4). One init function, matching initPeopleTab/initSettingsTab's own
+ * shape: closes over the panel's own request state (the preview debounce,
+ * the history offset, the row cache resend needs) rather than leaking it
+ * onto module scope, which multiple tabs would then have to coordinate.
+ */
+const NOTIFICATION_REFUSALS = {
+  idempotency_conflict: 'admin.notifications.composer.idempotency_conflict',
+  no_matching_recipients: 'admin.notifications.composer.no_matching_recipients',
+  no_such_target_user: 'admin.notifications.composer.no_such_target_user',
+  target_user_disabled: 'admin.notifications.composer.target_user_disabled',
+  actor_no_longer_administrator: 'admin.notifications.composer.actor_no_longer_administrator',
+};
+
+const NOTIFICATION_VALIDATION_KEYS = {
+  invalid_type: 'admin.notifications.composer.invalid_type',
+  invalid_severity: 'admin.notifications.composer.invalid_severity',
+  invalid_field: 'admin.notifications.composer.invalid_field',
+  invalid_target_kind: 'admin.notifications.composer.invalid_target_kind',
+  invalid_target_role: 'admin.notifications.composer.invalid_target_role',
+  invalid_target_tier: 'admin.notifications.composer.invalid_target_tier',
+  invalid_target_user: 'admin.notifications.composer.invalid_target_user',
+};
+
+const NOTIFICATION_HISTORY_REFUSALS = {
+  no_such_notification: 'admin.notifications.history.no_such_notification',
+  already_deactivated: 'admin.notifications.history.already_deactivated',
+  already_deleted: 'admin.notifications.history.already_deleted',
+  actor_no_longer_administrator: 'admin.notifications.history.actor_no_longer_administrator',
+};
+
+function describeComposerError(error) {
+  const code = error instanceof AdminRequestError ? error.code : null;
+  const key = NOTIFICATION_REFUSALS[code] || NOTIFICATION_VALIDATION_KEYS[code];
+  return key ? I18n.t(key) : I18n.t('admin.notifications.composer.sendFailed');
+}
+
+function describeHistoryActionError(error, fallbackKey) {
+  const code = error instanceof AdminRequestError ? error.code : null;
+  const key = NOTIFICATION_HISTORY_REFUSALS[code];
+  return key ? I18n.t(key) : I18n.t(fallbackKey);
+}
+
+export async function initNotificationsTab(services) {
+  renderNotificationsPanel();
+
+  const form = document.getElementById('notification-composer-form');
+  if (!form) return;
+
+  // Full row objects, keyed by id, refreshed on every history load — the
+  // table itself only carries what it displays, and "Resend" needs the
+  // bilingual title/body/targeting the table never shows in full.
+  let historyRows = new Map();
+  let historyOffset = 0;
+  const historyLimit = 20;
+  let previewTimer = null;
+  let previewGeneration = 0;
+  // "Active" to match the status <select>'s own default (ui.js's
+  // buildNotificationHistoryToolbar) — deletion is soft, so without this a
+  // deleted notification stayed in this table forever.
+  let historyStatus = 'active';
+  let historyGeneration = 0;
+
+  function setHistoryControlsDisabled(disabled) {
+    const select = document.getElementById('notification-history-status');
+    const loadMore = document.getElementById('notification-history-load-more');
+    if (select) select.disabled = disabled;
+    if (loadMore) loadMore.disabled = disabled;
+  }
+
+  // Race-safety: a filter change and a "Load more" click can both be in
+  // flight at once (or two filter changes in quick succession) — without a
+  // generation token, a stale response can render after a newer one, and
+  // both would bump the same historyOffset, skipping or duplicating rows.
+  // Mirrors updatePreview's own previewGeneration pattern just below.
+  async function loadHistory({ append = false } = {}) {
+    const mine = ++historyGeneration;
+    if (!append) {
+      historyOffset = 0;
+      historyRows = new Map();
+    }
+    setHistoryControlsDisabled(true);
+    try {
+      const result = await services.notificationHistory({
+        limit: historyLimit,
+        offset: historyOffset,
+        status: historyStatus,
+      });
+      if (mine !== historyGeneration) return;
+      const rows = result.notifications || [];
+      rows.forEach((row) => historyRows.set(row.id, row));
+      renderNotificationHistory(rows, { append, filterStatus: historyStatus });
+      historyOffset += rows.length;
+      const loadMore = document.getElementById('notification-history-load-more');
+      if (loadMore) loadMore.hidden = rows.length < historyLimit;
+    } catch {
+      if (mine !== historyGeneration) return;
+      showNotificationHistoryMessage(I18n.t('admin.notifications.history.loadFailed'));
+    } finally {
+      if (mine === historyGeneration) setHistoryControlsDisabled(false);
+    }
+  }
+
+  async function updatePreview() {
+    const mine = ++previewGeneration;
+    const fields = readComposerForm();
+    if (!['all', 'role', 'tier', 'user'].includes(fields.target_kind)) return;
+    try {
+      const result = await services.notificationAudiencePreview({
+        target_kind: fields.target_kind,
+        target_role: fields.target_role,
+        target_tier: fields.target_tier,
+        target_user_id: fields.target_user_id,
+      });
+      if (mine !== previewGeneration) return;
+      setAudiencePreview(result.target_count);
+    } catch {
+      if (mine !== previewGeneration) return;
+      setAudiencePreview(null);
+    }
+  }
+
+  function schedulePreview() {
+    clearTimeout(previewTimer);
+    previewTimer = setTimeout(updatePreview, 300);
+  }
+
+  document.getElementById('notif-target-kind')?.addEventListener('change', (event) => {
+    syncNotificationTargetFields(event.target.value);
+    schedulePreview();
+  });
+  ['notif-target-role', 'notif-target-tier', 'notif-target-user'].forEach((id) => {
+    const field = document.getElementById(id);
+    field?.addEventListener('input', schedulePreview);
+    field?.addEventListener('change', schedulePreview);
+  });
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    showComposerError(null);
+
+    const fields = readComposerForm();
+    if (!fields.title_en || !fields.title_ar || !fields.body_en || !fields.body_ar) {
+      showComposerError(I18n.t('admin.notifications.composer.invalid_field'));
+      return;
+    }
+
+    // Minted once per DISTINCT submission attempt, not once per click: a
+    // retry of the same click (the operator pressing Send again after a
+    // transient network failure) must reuse the same id so the server's
+    // idempotency check actually applies. A successful send or an explicit
+    // Resend/reset both clear it, which is what "distinct" means here.
+    if (!form.dataset.requestId) form.dataset.requestId = newRequestId();
+
+    setNotificationComposerSending(true);
+    try {
+      await services.createNotification({ ...fields, client_request_id: form.dataset.requestId });
+      ErrorHandler.showToast(I18n.t('admin.notifications.composer.sent'));
+      resetComposerForm();
+      delete form.dataset.requestId;
+      delete form.dataset.resendOf;
+      loadHistory();
+    } catch (error) {
+      showComposerError(describeComposerError(error));
+    } finally {
+      setNotificationComposerSending(false);
+    }
+  });
+
+  document.getElementById('notification-history-body')?.addEventListener('click', async (event) => {
+    const deactivateBtn = event.target.closest('[data-notif-deactivate]');
+    const deleteBtn = event.target.closest('[data-notif-delete]');
+    const resendBtn = event.target.closest('[data-notif-resend]');
+
+    if (deactivateBtn) {
+      const id = deactivateBtn.dataset.notifDeactivate;
+      if (!window.confirm(I18n.t('admin.notifications.history.deactivateConfirm'))) return;
+      try {
+        await services.deactivateNotification(id);
+        ErrorHandler.showToast(I18n.t('admin.notifications.history.deactivated'));
+        loadHistory();
+      } catch (error) {
+        ErrorHandler.showToast(
+          describeHistoryActionError(error, 'admin.notifications.history.deactivateFailed'),
+          true,
+        );
+      }
+    } else if (deleteBtn) {
+      const id = deleteBtn.dataset.notifDelete;
+      if (!window.confirm(I18n.t('admin.notifications.history.deleteConfirm'))) return;
+      try {
+        await services.deleteNotification(id);
+        ErrorHandler.showToast(I18n.t('admin.notifications.history.deleted'));
+        loadHistory();
+      } catch (error) {
+        ErrorHandler.showToast(
+          describeHistoryActionError(error, 'admin.notifications.history.deleteFailed'),
+          true,
+        );
+      }
+    } else if (resendBtn) {
+      // Not a new endpoint (docs/notification-center-plan.md §3): prefill
+      // the composer from the source row, mark it a resend, and let the
+      // ordinary submit path send it with a fresh idempotency key.
+      const id = resendBtn.dataset.notifResend;
+      const row = historyRows.get(id);
+      if (!row) return;
+      prefillComposer(row);
+      delete form.dataset.requestId;
+      form.dataset.resendOf = id;
+    }
+  });
+
+  document.getElementById('notification-history-load-more')?.addEventListener('click', () => {
+    loadHistory({ append: true });
+  });
+
+  document.getElementById('notification-history-status')?.addEventListener('change', (event) => {
+    historyStatus = event.target.value;
+    loadHistory();
+  });
+
+  await loadHistory();
+}
+
 export async function loadAudit(services) {
   if (!document.getElementById('audit-body')) return;
   try {

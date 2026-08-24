@@ -188,6 +188,18 @@ const App = {
     Handlers.loadSessions(identity).catch((error) =>
       logError(error, 'settleTranscript.loadSessions'),
     );
+
+    // Notification Center (docs/notification-center-plan.md). Started here
+    // rather than from the auth-state listener directly: `settleTranscript`
+    // is the one place "a reader is now signed in" is already decided,
+    // including the testing-mode bypass (handleTestingModeInit calls this
+    // too) and the recovery-mode exclusion (settled to null there, so this
+    // branch never runs mid-recovery). `user?.id` is the real Supabase auth
+    // id for a genuine session; the testing bypass's `{email}`-only object
+    // has none, which correctly skips the Realtime leg (see
+    // startNotificationsPolling's own comment) while REST polling still
+    // runs either way.
+    if (!document.hidden) Handlers.startNotificationsPolling(user?.id || null);
   },
 
   /**

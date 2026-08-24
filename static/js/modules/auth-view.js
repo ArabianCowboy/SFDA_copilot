@@ -33,6 +33,11 @@ function updateStatusAndActions(user) {
     CONFIG.SELECTORS.LOGOUT_BTN_OFFCANVAS,
     CONFIG.SELECTORS.PROFILE_BTN,
     CONFIG.SELECTORS.PROFILE_BTN_OFFCANVAS,
+    // The Notification Center bell: shown to any signed-in reader, not
+    // privilege-gated like ADMIN_BTN, so it belongs beside PROFILE_BTN here
+    // rather than in renderAdminAffordance below.
+    CONFIG.SELECTORS.NOTIFICATIONS_BELL_BTN,
+    CONFIG.SELECTORS.NOTIFICATIONS_BELL_BTN_OFFCANVAS,
   ];
 
   DOMCache.getAll([...authSelectors, ...userSelectors].join(', ')).forEach((btn) => {

@@ -63,6 +63,14 @@ export const CONFIG = {
     MESSAGE_LIST: 'message-list',
     MESSAGE_CODE_BLOCK: 'message-code-block',
     MESSAGE_INLINE_CODE: 'message-inline-code',
+
+    // ── Notification Center ──────────────────────────────────────────
+    NOTIF_TOAST: 'broadcast-toast',
+    NOTIF_TOAST_LEAVING: 'is-leaving',
+    NOTIF_BANNER_OPEN: 'is-open',
+    NOTIF_BADGE_PULSE: 'is-pulsing',
+    NOTIF_ITEM_UNREAD: 'is-unread',
+    NOTIF_ITEM_SETTLING: 'is-settling',
   },
 
   SELECTORS: {
@@ -115,6 +123,28 @@ export const CONFIG = {
     FORGOT_LINK: '#forgot-password-link',
     RESET_BACK: '#reset-back-to-login',
     LOGIN_PANE_FORM: '#login-form',
+
+    // ── Notification Center (docs/notification-center-plan.md) ──────────
+    // Bell + badge follow the same two-copy pattern as AUTH_BTN/PROFILE_BTN
+    // above: the sidebar macro renders once as the desktop aside and once
+    // inside the mobile offcanvas, so every reader-facing control there has
+    // an id and an `-offcanvas` twin, updated together via DOMCache.getAll.
+    NOTIFICATIONS_BELL_BTN: '#notifications-bell-button',
+    NOTIFICATIONS_BELL_BTN_OFFCANVAS: '#notifications-bell-button-offcanvas',
+    NOTIFICATIONS_BADGE: '#notifications-unread-badge',
+    NOTIFICATIONS_BADGE_OFFCANVAS: '#notifications-unread-badge-offcanvas',
+    // The three push shells. One of each — a broadcast is admin-authored and
+    // rare, unlike the reader's own chat toasts, so a stacking multi-slot
+    // toast area is still one element, not per-message nodes reused from a
+    // pool.
+    NOTIFICATIONS_TOAST_STACK: '#notifications-toast-stack',
+    NOTIFICATIONS_BANNER: '#notifications-banner',
+    NOTIFICATIONS_MODAL: '#notifications-modal',
+    // The inbox: a centered modal on every viewport, never an offcanvas —
+    // DESIGN.md's One Drawer Rule already spends this page's one mobile
+    // drawer on the sidebar.
+    NOTIFICATIONS_INBOX_MODAL: '#notifications-inbox-modal',
+    NOTIFICATIONS_INBOX_LIST: '#notifications-inbox-list',
   },
 };
 

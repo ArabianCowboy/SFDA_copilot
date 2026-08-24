@@ -3,7 +3,7 @@
  * Supabase auth, profile CRUD, FAQ fetch and the chat API call.
  */
 
-import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.7/+esm';
+import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.74.0/+esm';
 
 /* Deliberately NOT global: a /g regex carries lastIndex between calls, and
    this one is reused across every drain of the stream buffer. */
@@ -11,14 +11,19 @@ const FRAME_SEPARATOR = /\r?\n\r?\n/;
 
 /* The one outstanding /api/identity call, shared by every concurrent
    caller. `onAuthStateChange` fires this lookup on both INITIAL_SESSION and
-   SIGNED_IN for a single page load (verified against the pinned
-   @supabase/supabase-js@2.39.7: `_recoverAndRefresh` queues a SIGNED_IN
+   SIGNED_IN for a single page load — originally verified against
+   @supabase/supabase-js@2.39.7 (`_recoverAndRefresh` queues a SIGNED_IN
    notification during initialize() while `onAuthStateChange` separately
    emits INITIAL_SESSION straight to each subscriber once initializePromise
-   settles) — without this, that is two independent, unordered fetches
-   racing to decide one boolean, and whichever happens to RESOLVE last wins
-   regardless of which was more current. One shared promise means both
-   callers see the same answer, so there is nothing left to race. */
+   settles), and re-confirmed on upgrade to 2.74.0 (2026-08-24, see
+   docs/notification-center-plan.md §2/§7 step 4a: auth-js's own changelog
+   between those versions documents no change to this ordering, and this
+   dedup does not depend on which event causes the double-fire — only on the
+   fact that concurrent calls can happen). Without it, two independent,
+   unordered fetches race to decide one boolean, and whichever happens to
+   RESOLVE last wins regardless of which was more current. One shared
+   promise means both callers see the same answer, so there is nothing left
+   to race. */
 let identityInFlight = null;
 
 /**
@@ -843,5 +848,89 @@ export const Services = {
     const { data, error } = await this.supabase.rpc('update_own_preferences', { p_patch: patch });
     if (error) throw error;
     return data;
+  },
+
+  /**
+   * Notification Center (docs/notification-center-plan.md). Reader-facing
+   * only — the admin composer/history calls live in static/js/admin/services.js,
+   * a separate module tree with its own import map (test_frontend_architecture.py).
+   *
+   * All four go through `sessionRequest`, which already gives them the
+   * bearer token, `cache: 'no-store'` (this is one reader's own targeted
+   * messages and read state), 401-resolves-to-null, and a tagged error on
+   * every other failure. REST is the guaranteed-delivery path — a Realtime
+   * push, when the pinned SDK supports one, only ever tells an open tab to
+   * call `fetchActive` again sooner than its next poll.
+   */
+  notifications: {
+    fetchActive(lang = document.documentElement.lang || 'en') {
+      return Services.sessionRequest(`/api/notifications/active?lang=${encodeURIComponent(lang)}`);
+    },
+
+    /** `cursor` is the opaque `{created_at, id}` the previous page returned,
+     * passed back verbatim — the same keyset contract `listSessions` uses. */
+    fetchHistory({ cursor = null, lang = document.documentElement.lang || 'en' } = {}) {
+      const params = new URLSearchParams({ lang });
+      if (cursor?.created_at && cursor?.id) {
+        params.set('cursor_created_at', cursor.created_at);
+        params.set('cursor_id', cursor.id);
+      }
+      return Services.sessionRequest(`/api/notifications/history?${params.toString()}`);
+    },
+
+    markRead(notificationId, action) {
+      return Services.sessionRequest('/api/notifications/mark-read', {
+        method: 'POST',
+        body: { notification_id: notificationId, action },
+      });
+    },
+
+    markAllRead() {
+      return Services.sessionRequest('/api/notifications/mark-all-read', { method: 'POST' });
+    },
+
+    /**
+     * The Realtime leg of the plan's hybrid delivery (§2) — a latency
+     * optimisation for an already-open tab, never the source of truth.
+     * REST (`fetchActive` above, on its own poll loop) is the guaranteed-
+     * delivery path; every message this channel delivers carries no
+     * notification content at all, only `{notification_id, revision}` —
+     * handlers.js's only reaction is "call fetchActive again now instead
+     * of waiting for the next poll tick".
+     *
+     * Requires @supabase/supabase-js >= 2.74.0 (realtime-js's `private`
+     * channel option; verified absent below that — see this module's own
+     * import comment and docs/notification-center-plan.md §2/§7 step 4a).
+     *
+     * `onMessage(payload)` fires on every broadcast; `onStatusChange(status)`
+     * fires on every `.subscribe()` status transition, INCLUDING the first
+     * — handlers.js reconciles with a fresh `fetchActive` on every
+     * `SUBSCRIBED`, not just reconnects, so a channel that only just
+     * finished authorizing does not miss whatever was sent while it was
+     * still connecting.
+     */
+    subscribe(userId, { onMessage, onStatusChange } = {}) {
+      this.unsubscribe();
+      if (!Services.supabase || !userId) return null;
+
+      const topic = `notify:user:${userId}`;
+      this._channel = Services.supabase
+        .channel(topic, { config: { private: true } })
+        .on('broadcast', { event: 'notify' }, ({ payload }) => onMessage?.(payload))
+        .subscribe((status) => onStatusChange?.(status));
+      return this._channel;
+    },
+
+    /** Torn down on sign-out and whenever the tab goes hidden (Page
+     * Visibility) — re-established, with its own fresh reconcile fetch, on
+     * sign-in or the tab becoming visible again. See handlers.js. */
+    unsubscribe() {
+      if (this._channel && Services.supabase) {
+        Services.supabase.removeChannel(this._channel);
+      }
+      this._channel = null;
+    },
+
+    _channel: null,
   },
 };

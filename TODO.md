@@ -46,6 +46,7 @@ bottom of this file: [How this file works](#how-this-file-works).
 - [Account deletion (Spec 4)](#account-deletion-spec-4--blocked-on-a-product-decision-not-on-engineering) — blocked on an unclosed product decision; both migrations written.
 - [The CSP still allows an image from any HTTPS origin](#the-csp-still-allows-an-image-from-any-https-origin) — hardening the deep-linking plan asked for and never got.
 - [A conversation id now reaches the access log](#a-conversation-id-now-reaches-the-access-log) — a verification task, possibly already fine; unverified either way.
+- [Signup kill-switch — let an operator pause new registrations](#signup-kill-switch--let-an-operator-pause-new-registrations) — not started.
 
 ---
 
@@ -711,6 +712,10 @@ this caused without touching the trade.
 
 ### Admin broadcast & Reader Notification Center (Popups, Banners, and Inbox History)
 
+**Full implementation plan:** [`docs/notification-center-plan.md`](docs/notification-center-plan.md) — schema, RLS/RPC design, Realtime security model, backend/frontend file plan, i18n, security checklist, rollout order, and test plan. Went through direct codebase verification, a comparison against two independently-drafted alternative plans, and an adversarial OpenCode review that found and fixed 17 real defects (a schema bug that would have broken account deletion, a security gap letting a reader forge their own read receipts, a missing actor-revalidation race, and more). This entry stays here as the short version.
+
+**Status (2026-08-24): implemented, including the Realtime hybrid leg.** Schema (6 migrations plus 2 follow-up fixes, all applied and advisor-clean), the reader and admin RPCs, `web/services/notification_store.py` and `notification_service.py`, every reader/admin route, rate limits, the full reader UI (bell/badge, toast/banner/acknowledgement-modal, session-snoozed inbox, private-channel Realtime subscribe) and admin UI (composer with audience preview, send history, deactivate/delete/resend), and bilingual i18n are all built and wired. `@supabase/supabase-js` is upgraded to `2.74.0` (from `2.39.7`, which verifiably lacked the `private` channel option this feature needs) after a full read of `auth-js`'s changelog across that span found no breaking change to this app's own fragile auth behaviors. The private-channel RLS boundary was verified directly against the live Postgres project (a session-variable simulation of two distinct readers, confirming the policy admits one and refuses the other) — a mock cannot prove that property, so it was proven where it actually lives. Coverage: 45 backend tests, 9 Playwright browser tests for the feature itself, and the full pre-existing 252-test browser suite still green against the new SDK pin. `mypy web` could not be run to verify this pass locally — it fails on an unrelated, pre-existing numpy/mypy stub incompatibility in this dev environment (reproduced identically on a clean `main`, before this feature's changes), and no tool in this session could log into a real Supabase project to exercise the upgraded auth flow end-to-end — that one check is still owed before this ships to production.
+
 **Where:**
 
 - Database: `supabase/migrations/` (tables: `public.notifications`, `public.user_notification_reads`, RLS policies, RPC queries for read metrics).
@@ -844,6 +849,20 @@ the deployment, not the repository.
 log formatter, not in Flask, so no application code changes either way. Whatever the
 answer turns out to be, write it down in `docs/OPERATIONS.md`, which exists precisely
 for state this repository cannot hold.
+
+---
+
+### Signup kill-switch — let an operator pause new registrations
+
+**Where:** `web/api/auth.py:90` `POST /auth/signup` (no gate today); `web/config.yaml:server` defaults; `web/services/settings_service.py:28` `GENERATION_KEYS` / `SettingsService`; `web/api/admin.py:192` `GET/PUT /admin/api/settings`; `web/templates/index.html:231` `#signup-pane` + `static/js/modules/handlers.js:207` `handleAuthFormSubmit`; `web/i18n/en.yaml` / `ar.yaml`.
+
+**What is wrong.** Signup cannot be paused without a deploy or a Supabase-dashboard change. When load spikes there is no operator control in the console to refuse `POST /auth/signup` with a machine code and render a bilingual explanation; the only levers are code or the project-wide Supabase Auth toggle outside the app's audit trail.
+
+**Who it reaches.** Every new visitor during a surge; operators who need a reversible, audited control that does not affect chat/auth for existing readers.
+
+**How it was found.** Operator request 2026-08-24; code read confirms no check before `supabase.auth.sign_up` and no `signup_enabled` key in `web/config.yaml` or `app_settings`.
+
+**What fixing it would disturb.** No migration if stored as `app_settings.settings.signup_enabled` (same JSONB as generation settings, different key namespace + bool validation). Otherwise: add `server.signup_enabled: true` default in `web/config.yaml`, extend `SettingsService` with a non-generation key set + bool validation and 30–60s TTL with immediate invalidate on `PUT`, gate `signup()` before the Supabase call (return `403 {error:"signup_disabled"}`), add or extend `GET/PUT /admin/api/settings` behind `admin_bp`'s bearer gate (`web/api/admin.py:98`) with `actor_from_request` audit, add admin toggle + reader banner/disabled tab in `index.html` / `handlers.js` / `services.js` with `runtime.auth` / `runtime.admin` keys in both YAML files (fails `test_arabic_catalogue_covers_every_runtime_key` if AR lags), and add unit + browser tests. Document the bypass: a Flask gate does not block a direct `supabase-js` `signUp` with the anon key — note the hard-close option (dashboard disable or Management API) in `docs/OPERATIONS.md`. Bump `ASSET_VERSION` in `web/api/app.py:248` for any CSS/JS change.
 
 ---
 

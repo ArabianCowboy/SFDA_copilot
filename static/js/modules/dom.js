@@ -3,7 +3,7 @@
  * DOM caching and centralised error presentation.
  */
 
-import { CONFIG } from './config.js';
+import { CONFIG, prefersReducedMotion } from './config.js';
 import { I18n } from './i18n.js';
 import { iconMarkup } from './icons.js';
 
@@ -288,3 +288,218 @@ export const ErrorHandler = {
 
 /** Shorthand used throughout the codebase. */
 export const logError = (error, context = '') => ErrorHandler.log(error, context);
+
+/* ——————————————— NOTIFICATION CENTER (broadcast notices) ——————————————— */
+/* docs/notification-center-plan.md §4. A sibling to ErrorHandler above, not
+   an extension of it: ErrorHandler owns the single #toast slot for this
+   reader's OWN request failures; a broadcast is admin-authored, can stack,
+   and has three distinct display shapes (toast/banner/modal) with different
+   dismissal semantics. Sharing one slot would mean an admin notice and a
+   "could not send message" toast fighting over the same element. */
+
+const AUTO_DISMISS_MS = 8000;
+
+export const BroadcastNotice = {
+  /* Session-only snooze: a modal closed via Escape/backdrop (not the
+     explicit Acknowledge action) is suppressed for the rest of THIS browser
+     session so the next poll/reconnect does not reopen it immediately. It
+     stays unacknowledged server-side and resurfaces on the next real
+     session — see notifications_mark_read's own type-checked action set,
+     which has no "snoozed" action because this is deliberately never sent
+     to the server at all. */
+  _snoozed: new Set(),
+
+  isSnoozed(id) {
+    if (this._snoozed.has(id)) return true;
+    try {
+      return sessionStorage.getItem(`sfda-notif-snooze-${id}`) === '1';
+    } catch {
+      return false;
+    }
+  },
+
+  snooze(id) {
+    this._snoozed.add(id);
+    try {
+      sessionStorage.setItem(`sfda-notif-snooze-${id}`, '1');
+    } catch {
+      /* Private browsing or storage disabled. The in-memory Set still
+         covers the rest of this page's life, which is all a snooze ever
+         promised — see the plan's own "session-level, not a server fact". */
+    }
+  },
+
+  /**
+   * A corner toast: severity-tinted, auto-dismissing, stackable.
+   * `onDismiss(reason)` fires once, with `'auto' | 'manual'`.
+   */
+  showToast(notification, { onDismiss } = {}) {
+    const stack = DOMCache.get(CONFIG.SELECTORS.NOTIFICATIONS_TOAST_STACK);
+    if (!stack) return;
+
+    const el = document.createElement('div');
+    el.className = `${CONFIG.CLASSES.NOTIF_TOAST} severity-${notification.severity}`;
+    el.dataset.notificationId = notification.id;
+    el.setAttribute('role', 'status');
+    if (!prefersReducedMotion())
+      el.style.setProperty('--notif-toast-duration', `${AUTO_DISMISS_MS}ms`);
+
+    const body = document.createElement('div');
+    body.className = 'broadcast-toast-body';
+    body.setAttribute('dir', 'auto'); // admin-authored, mixed-script safe
+    const title = document.createElement('strong');
+    title.textContent = notification.title;
+    const message = document.createElement('p');
+    message.textContent = notification.body;
+    body.append(title, message);
+
+    const dismissBtn = document.createElement('button');
+    dismissBtn.type = 'button';
+    dismissBtn.className = 'broadcast-toast-dismiss';
+    dismissBtn.setAttribute('aria-label', I18n.t('chat.notifications.dismiss'));
+    dismissBtn.innerHTML = iconMarkup('close', 14);
+
+    el.append(body, dismissBtn);
+    stack.appendChild(el);
+
+    let settled = false;
+    let timer = null;
+
+    const settle = (reason) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      el.classList.add(CONFIG.CLASSES.NOTIF_TOAST_LEAVING);
+      const finish = () => {
+        el.remove();
+        onDismiss?.(reason);
+      };
+      if (prefersReducedMotion()) finish();
+      else el.addEventListener('animationend', finish, { once: true });
+    };
+
+    dismissBtn.addEventListener('click', () => settle('manual'));
+
+    if (!prefersReducedMotion()) {
+      // Paused while hovered or focused, mirroring ErrorHandler's own
+      // #toast hold behaviour — a countdown a reader is actively engaging
+      // with must not remove itself out from under them.
+      const hold = () => clearTimeout(timer);
+      const resume = () => {
+        clearTimeout(timer);
+        timer = setTimeout(() => settle('auto'), AUTO_DISMISS_MS);
+      };
+      el.addEventListener('mouseenter', hold);
+      el.addEventListener('focusin', hold);
+      el.addEventListener('mouseleave', resume);
+      el.addEventListener('focusout', resume);
+      resume();
+    }
+
+    return { dismiss: () => settle('manual') };
+  },
+
+  /**
+   * The single-slot banner. `aria-live="polite"` and deliberately never
+   * steals keyboard focus on arrival — forced focus is reserved for the
+   * acknowledgement modal alone, per the plan's own accessibility rule.
+   */
+  showBanner(notification, { onDismiss } = {}) {
+    const el = DOMCache.get(CONFIG.SELECTORS.NOTIFICATIONS_BANNER);
+    if (!el) return;
+
+    el.innerHTML = '';
+    el.className = `broadcast-banner severity-${notification.severity}`;
+    el.dataset.notificationId = notification.id;
+
+    const body = document.createElement('div');
+    body.className = 'broadcast-banner-body';
+    body.setAttribute('dir', 'auto');
+    const title = document.createElement('strong');
+    title.textContent = notification.title;
+    const message = document.createElement('span');
+    message.textContent = notification.body;
+    body.append(title, message);
+
+    const dismissBtn = document.createElement('button');
+    dismissBtn.type = 'button';
+    dismissBtn.className = 'broadcast-banner-dismiss';
+    dismissBtn.setAttribute('aria-label', I18n.t('chat.notifications.bannerDismiss'));
+    dismissBtn.innerHTML = iconMarkup('close', 14);
+    dismissBtn.addEventListener('click', () => BroadcastNotice.hideBanner(onDismiss));
+
+    el.append(body, dismissBtn);
+    // A rAF between setting content and adding the open class, so the
+    // height-collapse transition actually runs from 0 rather than starting
+    // already at its resting height on the very first paint.
+    requestAnimationFrame(() => el.classList.add(CONFIG.CLASSES.NOTIF_BANNER_OPEN));
+  },
+
+  hideBanner(onDismiss) {
+    const el = DOMCache.get(CONFIG.SELECTORS.NOTIFICATIONS_BANNER);
+    if (!el || !el.classList.contains(CONFIG.CLASSES.NOTIF_BANNER_OPEN)) return;
+    const id = el.dataset.notificationId;
+    el.classList.remove(CONFIG.CLASSES.NOTIF_BANNER_OPEN);
+    onDismiss?.(id);
+  },
+
+  /**
+   * The acknowledgement modal. Reuses this app's existing Bootstrap Modal
+   * utility (the same one #authModal already uses) rather than a bespoke
+   * dialog — DESIGN.md's One Drawer Rule is about offcanvas drawers, not
+   * this, and a centered modal is what the auth flow already proves works
+   * with this codebase's focus-trap/backdrop/Escape handling.
+   *
+   * Escape and backdrop-click DO close it — they are never disabled — but
+   * only the explicit Acknowledge button calls `onAcknowledge`. Every other
+   * close path calls `onSnooze` instead, which the caller uses to suppress
+   * it client-side for the rest of this session (see `snooze` above).
+   */
+  showModal(notification, { onAcknowledge, onSnooze } = {}) {
+    const el = DOMCache.get(CONFIG.SELECTORS.NOTIFICATIONS_MODAL);
+    if (!el || !window.bootstrap?.Modal) return null;
+
+    const titleEl = el.querySelector('.broadcast-modal-title');
+    const bodyEl = el.querySelector('.broadcast-modal-body');
+    const ackBtn = el.querySelector('.broadcast-modal-acknowledge');
+    if (titleEl) titleEl.textContent = notification.title;
+    if (bodyEl) bodyEl.textContent = notification.body;
+    el.dataset.notificationId = notification.id;
+    el.className = `modal fade broadcast-modal severity-${notification.severity}`;
+
+    const modal = window.bootstrap.Modal.getOrCreateInstance(el, {
+      backdrop: true,
+      keyboard: true,
+    });
+
+    let acknowledged = false;
+    // Bootstrap ignores hide() while its own fade-in transition is still
+    // running (see handlers.js's hideModal, which documents this same
+    // limitation for the auth modal) — a click landing in that window would
+    // otherwise be silently swallowed, leaving an urgent notice open with no
+    // sign the reader's own "Got it" was heard at all.
+    const requestHide = () => {
+      modal.hide();
+      if (el.classList.contains('fade')) {
+        setTimeout(() => {
+          if (el.classList.contains('show')) modal.hide();
+        }, 350);
+      }
+    };
+    const onAckClick = () => {
+      acknowledged = true;
+      requestHide();
+    };
+    const onHidden = () => {
+      ackBtn?.removeEventListener('click', onAckClick);
+      el.removeEventListener('hidden.bs.modal', onHidden);
+      if (acknowledged) onAcknowledge?.();
+      else onSnooze?.();
+    };
+
+    ackBtn?.addEventListener('click', onAckClick);
+    el.addEventListener('hidden.bs.modal', onHidden);
+    modal.show();
+    return modal;
+  },
+};

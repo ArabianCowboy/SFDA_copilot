@@ -26,6 +26,7 @@ is silent.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import re
 from collections.abc import Callable, Sequence
@@ -41,6 +42,7 @@ from flask import (
     render_template,
     request,
 )
+from flask_limiter.util import get_remote_address
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +71,28 @@ def _bearer_token() -> str | None:
         return None
     token = header[len("Bearer ") :].strip()
     return token or None
+
+
+def _admin_notification_rate_key() -> str:
+    """Per-administrator, not per-IP, and not `g.identity.user_id` either.
+
+    Flask-Limiter's own extension-level ``before_request`` runs BEFORE this
+    blueprint's own (``_gate`` below) — the same ordering
+    ``web/api/app.py``'s ``_account_rate_key`` documents and works around —
+    so `g.identity` is not populated yet when a decorator-applied rate-limit
+    key function evaluates. Hashing the bearer token itself gets the same
+    per-administrator isolation `notification_broadcast_api` needs (a
+    compromised admin account spamming via multiple IPs, or several admins
+    behind one office NAT sharing one budget) without a second
+    `supabase.auth.get_user` round trip just to compute a rate key.
+    """
+    header = request.headers.get("Authorization", "")
+    if not header.startswith("Bearer "):
+        return get_remote_address()
+    token = header[len("Bearer ") :].strip()
+    if not token:
+        return get_remote_address()
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
 @admin_bp.before_request
@@ -870,6 +894,337 @@ def audit() -> Response | tuple[Response, int]:
             "offset": offset,
         }
     )
+
+
+_NOTIFICATION_TYPES = ("toast", "banner", "modal")
+_NOTIFICATION_SEVERITIES = ("info", "success", "warning", "danger")
+_NOTIFICATION_TARGET_KINDS = ("all", "role", "tier", "user")
+_NOTIFICATION_TARGET_ROLES = ("user", "admin")
+_NOTIFICATION_TITLE_MAX = 200
+_NOTIFICATION_BODY_MAX = 2000
+
+
+def _notification_backend():
+    factory = current_app.config.get("notification_backend")
+    return factory() if factory else None
+
+
+def _validate_notification_targeting(payload: dict) -> tuple[dict, Response | tuple] | None:
+    """``(fields, None)`` on success, or ``(None, error_response)``.
+
+    Shared by the audience-preview and create routes so the two cannot
+    silently drift about what a valid targeting payload looks like.
+
+    Deliberately does NOT require ``target_user_id`` to parse as a uuid.
+    Every real ``profiles.id`` is one, but the in-memory testing backend's
+    seeded fixtures use human-readable ids ("test-user-id") — the same
+    reason ``SupabaseAdminBackend.set_user_flags``/``update_profile`` do
+    their own uuid validation at the backend layer instead of the route, so
+    the check only ever fires against the real database. This mirrors that:
+    format validation lives in ``SupabaseNotificationBackend``, not here.
+    """
+    target_kind = payload.get("target_kind")
+    if target_kind not in _NOTIFICATION_TARGET_KINDS:
+        return None, (jsonify({"error": "invalid_target_kind"}), 422)
+
+    target_role = payload.get("target_role")
+    target_tier = payload.get("target_tier")
+    target_user_id = payload.get("target_user_id")
+
+    if target_kind == "role":
+        if target_role not in _NOTIFICATION_TARGET_ROLES:
+            return None, (jsonify({"error": "invalid_target_role"}), 422)
+        target_tier = None
+        target_user_id = None
+    elif target_kind == "tier":
+        if not isinstance(target_tier, str) or not target_tier.strip():
+            return None, (jsonify({"error": "invalid_target_tier"}), 422)
+        target_tier = target_tier.strip()
+        target_role = None
+        target_user_id = None
+    elif target_kind == "user":
+        if not isinstance(target_user_id, str) or not target_user_id.strip():
+            return None, (jsonify({"error": "invalid_target_user"}), 422)
+        target_user_id = target_user_id.strip()
+        target_role = None
+        target_tier = None
+    else:  # 'all'
+        target_role = None
+        target_tier = None
+        target_user_id = None
+
+    return (
+        {
+            "target_kind": target_kind,
+            "target_role": target_role,
+            "target_tier": target_tier,
+            "target_user_id": target_user_id,
+        },
+        None,
+    )
+
+
+@admin_bp.route("/api/notifications/audience-preview", methods=["POST"])
+def notifications_audience_preview() -> Response | tuple[Response, int]:
+    """Dry run: how many accounts this targeting would currently reach.
+
+    Persists nothing — the composer calls this on every targeting-field
+    change, before any send. Excludes disabled accounts, matching what
+    admin_create_notification actually snapshots/counts at send time.
+    """
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return jsonify({"error": "invalid_payload"}), 400
+
+    fields, error = _validate_notification_targeting(payload)
+    if error:
+        return error
+
+    backend = _notification_backend()
+    if backend is None:
+        return jsonify({"error": "storage_unavailable"}), 503
+
+    count = backend.preview_audience(
+        target_kind=fields["target_kind"],
+        target_role=fields["target_role"],
+        target_tier=fields["target_tier"],
+        target_user_id=fields["target_user_id"],
+    )
+    return jsonify({"target_count": count})
+
+
+@admin_bp.route("/api/notifications", methods=["POST"])
+def create_notification() -> Response | tuple[Response, int]:
+    """Send a broadcast notification: insert + recipient snapshot + audit
+    row (one transaction, admin_create_notification) followed by a
+    best-effort Realtime push to every targeted reader's private channel.
+
+    The Realtime push happens AFTER the RPC commits and is never allowed to
+    fail this response — REST is the guaranteed-delivery path
+    (docs/notification-center-plan.md §2); Realtime only tells an
+    already-open tab to refetch sooner than its next poll.
+    """
+    import uuid as _uuid
+
+    from web.services.admin_store import AdminActionRefused
+    from web.services.audit import actor_from_request
+    from web.services.notification_service import (
+        publish_notification_event,
+        recipients_for_publish,
+    )
+
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return jsonify({"error": "invalid_payload"}), 400
+
+    notification_type = payload.get("type")
+    if notification_type not in _NOTIFICATION_TYPES:
+        return jsonify({"error": "invalid_type"}), 422
+
+    severity = payload.get("severity") or "info"
+    if severity not in _NOTIFICATION_SEVERITIES:
+        return jsonify({"error": "invalid_severity"}), 422
+
+    texts: dict[str, str] = {}
+    for field, limit in (
+        ("title_en", _NOTIFICATION_TITLE_MAX),
+        ("title_ar", _NOTIFICATION_TITLE_MAX),
+        ("body_en", _NOTIFICATION_BODY_MAX),
+        ("body_ar", _NOTIFICATION_BODY_MAX),
+    ):
+        value = payload.get(field)
+        if not isinstance(value, str):
+            return jsonify({"error": "invalid_payload"}), 400
+        value = value.strip()
+        if not value or len(value) > limit:
+            return jsonify({"error": "invalid_field", "field": field}), 422
+        texts[field] = value
+
+    fields, error = _validate_notification_targeting(payload)
+    if error:
+        return error
+
+    expires_at = payload.get("expires_at")
+    if expires_at is not None and not isinstance(expires_at, str):
+        return jsonify({"error": "invalid_payload"}), 400
+
+    resend_of = payload.get("resend_of")
+    if resend_of is not None:
+        if not isinstance(resend_of, str):
+            return jsonify({"error": "invalid_payload"}), 400
+        try:
+            _uuid.UUID(resend_of)
+        except (ValueError, AttributeError, TypeError):
+            return jsonify({"error": "invalid_payload"}), 400
+
+    client_request_id = payload.get("client_request_id")
+    if not isinstance(client_request_id, str):
+        return jsonify({"error": "invalid_payload"}), 400
+    try:
+        _uuid.UUID(client_request_id)
+    except (ValueError, AttributeError, TypeError):
+        return jsonify({"error": "invalid_payload"}), 400
+
+    backend = _notification_backend()
+    if backend is None:
+        return jsonify({"error": "storage_unavailable"}), 503
+
+    try:
+        created = backend.create(
+            type=notification_type,
+            severity=severity,
+            title_en=texts["title_en"],
+            title_ar=texts["title_ar"],
+            body_en=texts["body_en"],
+            body_ar=texts["body_ar"],
+            target_kind=fields["target_kind"],
+            target_role=fields["target_role"],
+            target_tier=fields["target_tier"],
+            target_user_id=fields["target_user_id"],
+            expires_at=expires_at,
+            resend_of=resend_of,
+            client_request_id=client_request_id,
+            actor=actor_from_request(g.identity),
+        )
+    except AdminActionRefused as refused:
+        logger.warning("Refused notification send by %s: %s", g.identity.email, refused.code)
+        return jsonify({"error": refused.code}), 409
+
+    was_replay = created.pop("_replay", False)
+
+    # Skipped under TESTING — see deactivate_notification's own comment.
+    if not was_replay and not current_app.config.get("TESTING"):
+        try:
+            recipient_ids = recipients_for_publish(backend, created)
+            publish_notification_event(
+                recipient_ids,
+                notification_id=created["id"],
+                revision=created.get("created_at") or "",
+                event="notify",
+            )
+        except Exception:
+            # publish_notification_event already catches and logs its own
+            # failures; this is a second line of defense so a bug in
+            # resolving recipients cannot turn a successful send into a 500.
+            logger.warning(
+                "Could not resolve/publish Realtime recipients for notification %s.",
+                created.get("id"),
+                exc_info=True,
+            )
+
+    return jsonify({"notification": created}), (200 if was_replay else 201)
+
+
+@admin_bp.route("/api/notifications/history", methods=["GET"])
+def notification_history() -> Response | tuple[Response, int]:
+    """Offset/limit, matching the rest of the admin surface (list_users,
+    list_audit) — only the reader-facing history uses cursor pagination."""
+    try:
+        limit, offset = _parse_pagination_params(request)
+    except (TypeError, ValueError):
+        return jsonify({"error": "invalid_pagination"}), 400
+
+    status = request.args.get("status") or "all"
+    if status not in ("all", "active", "deactivated", "deleted"):
+        return jsonify({"error": "invalid_status"}), 422
+
+    backend = _notification_backend()
+    if backend is None:
+        return jsonify({"notifications": [], "total": 0, "limit": limit, "offset": offset})
+
+    rows, total = backend.list_history(limit=limit, offset=offset, status=status)
+    return jsonify({"notifications": rows, "total": total, "limit": limit, "offset": offset})
+
+
+@admin_bp.route("/api/notifications/<notification_id>/deactivate", methods=["POST"])
+def deactivate_notification(notification_id: str) -> Response | tuple[Response, int]:
+    """Format validation for ``notification_id`` deliberately lives in
+    ``SupabaseNotificationBackend`` (a malformed id there is a "not found",
+    the same reasoning as ``SupabaseAdminBackend.set_user_flags``), not
+    here — the in-memory testing backend mints real uuids for every
+    notification it creates, so there is nothing for a route-level check to
+    catch except a client typo, which the backend already turns into 404.
+    """
+    from web.services.admin_store import AdminActionRefused
+    from web.services.audit import actor_from_request
+    from web.services.notification_service import (
+        publish_notification_event,
+        recipients_for_publish,
+    )
+
+    backend = _notification_backend()
+    if backend is None:
+        return jsonify({"error": "storage_unavailable"}), 503
+
+    try:
+        updated = backend.deactivate(notification_id, actor=actor_from_request(g.identity))
+    except AdminActionRefused as refused:
+        status = 404 if refused.code == "no_such_notification" else 409
+        return jsonify({"error": refused.code}), status
+
+    # Same content-free push as create — an open tab must stop showing a
+    # modal the operator just pulled, not wait for its next reload. Skipped
+    # under TESTING: there is no live Realtime endpoint behind the in-memory
+    # backend, so attempting the HTTP call would just be a slow, pointless
+    # DNS/connect failure on every test run rather than a meaningful check.
+    if not current_app.config.get("TESTING"):
+        try:
+            recipient_ids = recipients_for_publish(backend, updated)
+            publish_notification_event(
+                recipient_ids,
+                notification_id=notification_id,
+                revision=updated.get("deactivated_at") or "",
+                event="notify",
+            )
+        except Exception:
+            logger.warning(
+                "Could not publish deactivation for notification %s.",
+                notification_id,
+                exc_info=True,
+            )
+
+    return jsonify({"notification": updated})
+
+
+@admin_bp.route("/api/notifications/<notification_id>", methods=["DELETE"])
+def delete_notification(notification_id: str) -> Response | tuple[Response, int]:
+    """Soft delete only. Preserves recipient/read history for audit review.
+
+    Same "format validation lives in the Supabase backend" reasoning as
+    ``deactivate_notification`` above.
+    """
+    from web.services.admin_store import AdminActionRefused
+    from web.services.audit import actor_from_request
+    from web.services.notification_service import (
+        publish_notification_event,
+        recipients_for_publish,
+    )
+
+    backend = _notification_backend()
+    if backend is None:
+        return jsonify({"error": "storage_unavailable"}), 503
+
+    try:
+        updated = backend.delete(notification_id, actor=actor_from_request(g.identity))
+    except AdminActionRefused as refused:
+        status = 404 if refused.code == "no_such_notification" else 409
+        return jsonify({"error": refused.code}), status
+
+    if not current_app.config.get("TESTING"):
+        try:
+            recipient_ids = recipients_for_publish(backend, updated)
+            publish_notification_event(
+                recipient_ids,
+                notification_id=notification_id,
+                revision=updated.get("deleted_at") or "",
+                event="notify",
+            )
+        except Exception:
+            logger.warning(
+                "Could not publish deletion for notification %s.", notification_id, exc_info=True
+            )
+
+    return jsonify({"notification": updated})
 
 
 @admin_bp.route("/api/identity")

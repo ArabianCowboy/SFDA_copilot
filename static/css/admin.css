@@ -1094,3 +1094,55 @@ select.admin-input {
 .admin-scroll {
   overflow-x: auto;
 }
+
+/* ── Notification Center (docs/notification-center-plan.md §4) ──────────── */
+
+.admin-textarea {
+  resize: vertical;
+  min-block-size: 4.5em;
+  font-family: inherit;
+}
+
+/* Paired EN/AR folios — the composer's signature: two languages drafted
+   side by side rather than stacked, so a reviewer can compare them without
+   scrolling. Collapses to one column on a narrow console viewport. */
+.admin-field-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3) var(--space-5);
+  padding-block-end: var(--space-4);
+  border-block-end: 1px solid var(--hairline);
+}
+.admin-field-pair .admin-field {
+  padding-block-end: 0;
+  border-block-end: none;
+}
+@media (max-width: 640px) {
+  .admin-field-pair {
+    grid-template-columns: 1fr;
+  }
+}
+
+.admin-status-active {
+  color: var(--confidence-strong);
+  font-weight: var(--fw-medium);
+}
+.admin-status-deactivated {
+  color: var(--warning);
+  font-weight: var(--fw-medium);
+}
+.admin-status-deleted {
+  color: var(--fg-faint);
+}
+
+.admin-notif-history-toolbar {
+  margin-block: var(--space-2) var(--space-3);
+}
+
+/* Dims a deleted row uniformly, including .admin-cell-machine's own explicit
+   `color` (a plain `color:` on the row would lose to that per-cell rule) —
+   opacity, not color, matching this file's own .admin-pager-btn:disabled
+   convention for a muted-but-still-legible/still-clickable state. */
+.admin-notif-row--deleted {
+  opacity: 0.6;
+}

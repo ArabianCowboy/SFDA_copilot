@@ -164,5 +164,33 @@ export function createAdminServices(getToken) {
       if (targetId) query.set('target_id', targetId);
       return request(`audit?${query}`);
     },
+
+    /**
+     * Notification Center (docs/notification-center-plan.md). Dry run: how
+     * many accounts one targeting choice would currently reach. Persists
+     * nothing — the composer calls this on every field change.
+     */
+    notificationAudiencePreview: (targeting) =>
+      request('notifications/audience-preview', { method: 'POST', body: targeting }),
+
+    /**
+     * Send a broadcast. `payload.client_request_id` makes a retry of the
+     * SAME submission idempotent — see the composer's own resend/retry
+     * handling. A 409 `idempotency_conflict` means the same id was already
+     * used for different content; a 201/200 response carries the sent row.
+     */
+    createNotification: (payload) => request('notifications', { method: 'POST', body: payload }),
+
+    /** Offset/limit, matching users()/audit() above — only the reader-facing
+     * inbox uses cursor pagination (docs/notification-center-plan.md §3). */
+    notificationHistory: ({ limit = 20, offset = 0, status = 'all' } = {}) =>
+      request(`notifications/history?limit=${limit}&offset=${offset}&status=${status}`),
+
+    deactivateNotification: (id) =>
+      request(`notifications/${encodeURIComponent(id)}/deactivate`, { method: 'POST' }),
+
+    /** Soft delete. Preserves recipient/read history for audit review. */
+    deleteNotification: (id) =>
+      request(`notifications/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   };
 }

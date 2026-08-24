@@ -711,6 +711,77 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
         </div>
     </main>
 
+    <!-- ═══════════════════════════════════════════
+         NOTIFICATION CENTER — admin broadcasts
+         docs/notification-center-plan.md §4. Three display shells (toast
+         stack / banner / modal) plus the reader's inbox, all outside the
+         sidebar macro: they render once regardless of how many times that
+         macro renders (desktop aside + mobile offcanvas).
+         ═══════════════════════════════════════════ -->
+
+    <!-- Corner toast stack. Populated entirely by dom.js's BroadcastNotice —
+         empty in markup, aria-live is per-toast (role="status" on each). -->
+    <div id="notifications-toast-stack" class="notifications-toast-stack" aria-live="polite"></div>
+
+    <!-- Single-slot banner. aria-live="polite" and deliberately never
+         receives focus on arrival — forced focus is reserved for the
+         acknowledgement modal below. Empty until BroadcastNotice.showBanner
+         fills it; the open/closed state is the .is-open class alone. -->
+    <div id="notifications-banner" class="broadcast-banner" role="status" aria-live="polite"></div>
+
+    <!-- The acknowledgement modal, for type=modal notifications. Reuses this
+         page's own Bootstrap Modal (the same component #authModal uses)
+         rather than a bespoke dialog. Escape and backdrop-click both close
+         it without acknowledging — see BroadcastNotice.showModal. -->
+    <div class="modal fade broadcast-modal" id="notifications-modal" tabindex="-1" role="dialog"
+        aria-modal="true" aria-labelledby="notifications-modal-title" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2 class="modal-title h5 broadcast-modal-title" id="notifications-modal-title" dir="auto"></h2>
+                </div>
+                <div class="modal-body">
+                    <p class="broadcast-modal-body" dir="auto"></p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-primary broadcast-modal-acknowledge">
+                        {{ t('runtime.chat.notifications.acknowledge') }}
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- The inbox: bell → this. A centered modal on every viewport, never an
+         offcanvas — DESIGN.md's One Drawer Rule already spends this page's
+         one mobile drawer on the sidebar, and a second one stacked on top
+         of it means two backdrops and two focus traps. -->
+    <div class="modal fade" id="notifications-inbox-modal" tabindex="-1" role="dialog"
+        aria-modal="true" aria-labelledby="notifications-inbox-title" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2 class="modal-title h5" id="notifications-inbox-title">
+                        {{ icon('bell', 18) }}<span>{{ t('runtime.chat.notifications.inboxTitle') }}</span>
+                    </h2>
+                    <button type="button" id="notifications-mark-all-read" class="btn btn-sm btn-ghost">
+                        {{ t('runtime.chat.notifications.markAllRead') }}
+                    </button>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"
+                        aria-label="{{ t('page.nav.close') }}"></button>
+                </div>
+                <div class="modal-body p-0">
+                    <div id="notifications-inbox-list" class="notifications-inbox-list"></div>
+                    <div class="notifications-inbox-load-more-row">
+                        <button type="button" id="notifications-inbox-load-more" class="btn btn-sm btn-ghost">
+                            {{ t('runtime.chat.notifications.loadMore') }}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Toast -->
     <div id="toast" class="toast-notification hidden" role="alert" aria-live="assertive"></div>
 

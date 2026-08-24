@@ -135,6 +135,10 @@
                     id="tab-audit" aria-controls="panel-audit" aria-selected="false" tabindex="-1">
                     {{ icon('clipboard', 15) }}<span>{{ t('page.admin.tabs.audit') }}</span>
                 </button>
+                <button class="admin-tab" role="tab" type="button"
+                    id="tab-notifications" aria-controls="panel-notifications" aria-selected="false" tabindex="-1">
+                    {{ icon('bell', 15) }}<span>{{ t('page.admin.tabs.notifications') }}</span>
+                </button>
             </nav>
 
             <section class="admin-panel" role="tabpanel" id="panel-overview"
@@ -177,6 +181,15 @@
                 aria-labelledby="tab-audit" tabindex="0" hidden>
                 <h1 class="admin-heading">{{ t('page.admin.tabs.audit') }}</h1>
                 <div id="audit-body" class="admin-panel-body"></div>
+            </section>
+
+            {# docs/notification-center-plan.md §4. Ships empty, like every
+               other panel above except People — the composer form and the
+               history table are both built by static/js/admin/ui.js. #}
+            <section class="admin-panel" role="tabpanel" id="panel-notifications"
+                aria-labelledby="tab-notifications" tabindex="0" hidden>
+                <h1 class="admin-heading">{{ t('page.admin.tabs.notifications') }}</h1>
+                <div id="notifications-body" class="admin-panel-body"></div>
             </section>
         </div>
     </main>

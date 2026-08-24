@@ -199,6 +199,35 @@ export function createClient() {
       };
       return { data: state.profile.preferences, error: null };
     },
+    /* Notification Center (docs/notification-center-plan.md §2/§8). A
+       structural stub — no message arrives through it on its own. The plan
+       is explicit that private-channel AUTHORIZATION cannot be proven by a
+       mock (that property is proven server-side, against the real RLS
+       policy — see docs/notification-center-plan.md's own "verified
+       directly against the live project" note); this exists so
+       services.js's subscribe/unsubscribe code path runs without throwing
+       during every sign-in a browser test does, and so a test that wants
+       to can drive it explicitly:
+       window.__supabaseState.notificationChannelSubscribeCallback('SUBSCRIBED')
+       replays a (re)connect, and
+       window.__supabaseState.notificationChannelBroadcastCallback({payload})
+       simulates one push arriving. */
+    channel(topic) {
+      const chan = {
+        _topic: topic,
+        on(type, filter, callback) {
+          if (type === 'broadcast') state.notificationChannelBroadcastCallback = callback;
+          return chan;
+        },
+        subscribe(callback) {
+          state.notificationChannelSubscribeCallback = callback;
+          queueMicrotask(() => callback?.('SUBSCRIBED'));
+          return chan;
+        },
+      };
+      return chan;
+    },
+    removeChannel() {},
   };
 }
 """
@@ -563,7 +592,7 @@ def browser_page(page):
     """
     context = page.context
     context.route(
-        "**/@supabase/supabase-js@2.39.7/+esm",
+        "**/@supabase/supabase-js@2.74.0/+esm",
         lambda route: route.fulfill(
             status=200,
             content_type="application/javascript",

@@ -1637,4 +1637,139 @@ export const UI = {
       }
     },
   },
+
+  /**
+   * Notification Center (docs/notification-center-plan.md §4). Rendering
+   * only — polling, Services calls, and the inbox's Bootstrap Modal
+   * instance are owned by handlers.js/app.js, the same drawing/orchestration
+   * split every other panel in this module follows.
+   */
+  Notifications: {
+    bellButtons() {
+      return DOMCache.getAll(
+        `${CONFIG.SELECTORS.NOTIFICATIONS_BELL_BTN}, ${CONFIG.SELECTORS.NOTIFICATIONS_BELL_BTN_OFFCANVAS}`,
+      );
+    },
+
+    badges() {
+      return DOMCache.getAll(
+        `${CONFIG.SELECTORS.NOTIFICATIONS_BADGE}, ${CONFIG.SELECTORS.NOTIFICATIONS_BADGE_OFFCANVAS}`,
+      );
+    },
+
+    /** Both bell copies at once, so the mobile offcanvas and the desktop
+     * aside never disagree about how many are unread. */
+    setUnreadCount(count) {
+      const label = count > 0 ? I18n.t('chat.notifications.unreadBadge', { count }) : '';
+      this.badges().forEach((badge) => {
+        badge.textContent = count > 0 ? String(count > 99 ? '99+' : count) : '';
+        badge.classList.toggle(CONFIG.CLASSES.D_NONE, count === 0);
+      });
+      this.bellButtons().forEach((btn) => {
+        if (count > 0)
+          btn.setAttribute('aria-label', `${I18n.t('chat.notifications.bellAria')} — ${label}`);
+        else btn.setAttribute('aria-label', I18n.t('chat.notifications.bellAria'));
+      });
+    },
+
+    /** A single soft scale pulse on increment — never continuous ambient
+     * motion, per the plan's own Top-10 motion note. */
+    pulseBadge() {
+      if (prefersReducedMotion()) return;
+      this.badges().forEach((badge) => {
+        badge.classList.remove(CONFIG.CLASSES.NOTIF_BADGE_PULSE);
+        // Force reflow so re-adding the class restarts the animation even
+        // when the badge was already pulsing a moment ago.
+        void badge.offsetWidth;
+        badge.classList.add(CONFIG.CLASSES.NOTIF_BADGE_PULSE);
+      });
+    },
+
+    _formatTimestamp(iso) {
+      try {
+        const date = new Date(iso);
+        // dir="auto" lets the browser's own bidi algorithm place the U+200F
+        // marks Intl embeds, the same mitigation UI.hydrateTimestamps
+        // already uses above rather than fighting them with an isolate.
+        return {
+          text: date.toLocaleString(I18n.lang, { dateStyle: 'medium', timeStyle: 'short' }),
+          iso,
+        };
+      } catch {
+        return { text: '', iso };
+      }
+    },
+
+    /**
+     * The inbox list. `onOpen(notification)` fires when a row is activated
+     * (marks it read); `onDismiss`/`onAcknowledge` back the per-row actions
+     * for a still-active item. History rows past their active window render
+     * read-only.
+     */
+    renderInboxList(items, { onOpen } = {}) {
+      const list = DOMCache.get(CONFIG.SELECTORS.NOTIFICATIONS_INBOX_LIST);
+      if (!list) return;
+
+      list.innerHTML = '';
+
+      if (!items.length) {
+        const empty = document.createElement('p');
+        empty.className = 'notifications-inbox-empty';
+        empty.textContent = I18n.t('chat.notifications.inboxEmpty');
+        list.appendChild(empty);
+        return;
+      }
+
+      const fragment = document.createDocumentFragment();
+      items.forEach((item, index) => {
+        const row = document.createElement('button');
+        row.type = 'button';
+        row.className = `notifications-inbox-item severity-${item.severity}`;
+        row.classList.toggle(CONFIG.CLASSES.NOTIF_ITEM_UNREAD, !item.read_at);
+        row.dataset.notificationId = item.id;
+        row.setAttribute('dir', 'auto');
+        // Per-row entrance stagger, capped at the first six — the plan's
+        // "Inbox item reveal on open" pattern. Disabled under reduced motion
+        // via the CSS rule itself (prefers-reduced-motion), not here.
+        row.style.setProperty('--notif-row-index', String(Math.min(index, 6)));
+
+        const title = document.createElement('span');
+        title.className = 'notifications-inbox-item-title';
+        title.textContent = item.title;
+
+        const body = document.createElement('span');
+        body.className = 'notifications-inbox-item-body';
+        body.textContent = item.body;
+
+        const meta = document.createElement('time');
+        meta.className = 'notifications-inbox-item-time';
+        meta.setAttribute('dir', 'auto');
+        const { text, iso } = this._formatTimestamp(item.created_at);
+        meta.textContent = text;
+        meta.dateTime = iso;
+
+        row.append(title, body, meta);
+        row.addEventListener('click', () => onOpen?.(item));
+        fragment.appendChild(row);
+      });
+      list.appendChild(fragment);
+    },
+
+    setInboxLoading(loading) {
+      const list = DOMCache.get(CONFIG.SELECTORS.NOTIFICATIONS_INBOX_LIST);
+      list?.classList.toggle('is-loading', !!loading);
+    },
+
+    setInboxUnavailable(unavailable) {
+      const list = DOMCache.get(CONFIG.SELECTORS.NOTIFICATIONS_INBOX_LIST);
+      if (!list) return;
+      if (unavailable) {
+        list.innerHTML = '';
+        const notice = document.createElement('p');
+        notice.className = 'notifications-inbox-empty';
+        notice.textContent = I18n.t('chat.notifications.inboxUnavailable');
+        list.appendChild(notice);
+      }
+    },
+  },
 };

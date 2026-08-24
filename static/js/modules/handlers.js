@@ -4,7 +4,7 @@
  */
 
 import { CONFIG } from './config.js';
-import { DOMCache, ErrorHandler, logError } from './dom.js';
+import { DOMCache, ErrorHandler, logError, BroadcastNotice } from './dom.js';
 import { AppState } from './state.js';
 import { AuthView } from './auth-view.js';
 import { UI } from './ui.js';
@@ -68,6 +68,21 @@ let resetCooldownTimer = null;
    module-scoped rather than a form attribute: the form is torn down on success
    and the guard has to outlive it. */
 let recoverySubmitInFlight = false;
+
+/* Notification Center (docs/notification-center-plan.md §2/§4). Bumped on
+   every start/stop of the poll — a sign-out, a sign-in, or the tab leaving
+   or regaining visibility. An in-flight /active fetch stamps the value it
+   started under, so a response that resolves after the reader signed out
+   or switched identity is discarded rather than painted into the new
+   session's bell/inbox — the same "race safety on the client" the plan
+   requires of the (not yet wired) Realtime path, applied here to polling. */
+let notificationsGeneration = 0;
+
+/* Which notifications this tab has already shown as a toast/banner/modal
+   this poll session, so a notification does not re-present itself every
+   30s poll tick while it stays active and un-dismissed. Cleared whenever
+   polling (re)starts for a fresh identity. */
+let notificationsPresented = new Set();
 
 export const Handlers = {
   bindEvents() {
@@ -164,6 +179,29 @@ export const Handlers = {
        would eventually fire one action twice. */
     document.addEventListener('click', (event) => this.handleSidebarClick(event));
     document.addEventListener('keydown', (event) => this.handleSidebarKeydown(event));
+
+    // ── Notification Center ────────────────────────────────────────────
+    DOMCache.getAll(
+      `${CONFIG.SELECTORS.NOTIFICATIONS_BELL_BTN}, ${CONFIG.SELECTORS.NOTIFICATIONS_BELL_BTN_OFFCANVAS}`,
+    ).forEach((btn) => {
+      btn?.addEventListener('click', () => this.openNotificationsInbox());
+    });
+    document
+      .getElementById('notifications-mark-all-read')
+      ?.addEventListener('click', () => this.markAllNotificationsRead());
+    document
+      .getElementById('notifications-inbox-load-more')
+      ?.addEventListener('click', () => this.loadMoreNotificationHistory());
+
+    // Torn down/re-established with the tab's own visibility, per the plan's
+    // reconnect/reconciliation rule: a hidden tab has no business polling,
+    // and a tab that just became visible again is exactly the moment a
+    // reader would notice a stale bell.
+    document.addEventListener('visibilitychange', () => {
+      if (!AppState.get('sidebarOwner')) return; // nobody signed in — nothing to poll
+      if (document.hidden) this.stopNotificationsPolling();
+      else this.startNotificationsPolling(AppState.get('notificationsUserId'));
+    });
   },
 
   async handleAuthFormSubmit(event, source) {
@@ -1036,6 +1074,235 @@ export const Handlers = {
     UI.clearTranscript();
     SourcePanel.reset();
     resetCitationState();
+    // Same reasoning as the sidebar rows above: an active broadcast list is
+    // scoped to the reader who was signed in, and re-fetched fresh for
+    // whoever replaced them once identity resolves again.
+    this.stopNotificationsPolling();
+    AppState.set('notificationsUserId', null);
+    UI.Notifications.setUnreadCount(0);
+  },
+
+  /**
+   * Notification Center (docs/notification-center-plan.md §2/§4). The full
+   * hybrid delivery: a poll floor (REST is the guaranteed-delivery path,
+   * regardless of Realtime's own health) plus a private per-user Realtime
+   * channel that reconciles immediately on every message AND on every
+   * successful (re)subscribe — covering both a live push and a reconnect
+   * after a drop with the exact same code path.
+   *
+   * `userId` is the real Supabase auth user id, not the `sidebarOwner`
+   * identity string `app.js` otherwise uses (which falls back to an email
+   * under the `?testing=true` bypass, where there is no real session and
+   * therefore no channel to authorize at all — `Services.notifications
+   * .subscribe` already no-ops on a falsy id, so passing null there is
+   * correct, not a gap).
+   */
+  startNotificationsPolling(userId = null) {
+    this.stopNotificationsPolling();
+    AppState.set('notificationsUserId', userId);
+    notificationsGeneration += 1;
+    const generation = notificationsGeneration;
+    notificationsPresented = new Set();
+
+    const tick = () => this.fetchActiveNotifications(generation);
+    tick(); // reconcile immediately — every (re)start is also a fresh read
+    AppState.set('notificationsPollTimer', setInterval(tick, 45000));
+
+    if (userId) {
+      Services.notifications.subscribe(userId, {
+        onMessage: () => {
+          if (generation !== notificationsGeneration) return;
+          this.fetchActiveNotifications(generation);
+        },
+        onStatusChange: (status) => {
+          if (generation !== notificationsGeneration) return;
+          if (status === 'SUBSCRIBED') this.fetchActiveNotifications(generation);
+        },
+      });
+    }
+  },
+
+  /** Torn down on sign-out, on identity change, and while the tab is
+   * hidden — NOT on a full sign-out's own notificationsUserId, which
+   * `clearSessionState`/`clearReaderScopedUI` clear explicitly, so the
+   * Page Visibility restart below still knows who to resubscribe as
+   * for an ordinary tab-hide/show that never left the same reader signed
+   * in. */
+  stopNotificationsPolling() {
+    const timer = AppState.get('notificationsPollTimer');
+    if (timer) clearInterval(timer);
+    AppState.set('notificationsPollTimer', null);
+    Services.notifications.unsubscribe();
+    notificationsGeneration += 1; // discard any fetch already in flight
+  },
+
+  async fetchActiveNotifications(generation) {
+    let response;
+    try {
+      response = await Services.notifications.fetchActive();
+    } catch (error) {
+      // Silent by design: a failed poll tick is not a user-facing failure
+      // the way a chat request's is — it costs the bell one refresh cycle,
+      // and the next tick tries again. Logged for diagnosis only.
+      logError(error, 'fetchActiveNotifications');
+      return;
+    }
+    if (generation !== notificationsGeneration) return; // stale — reader signed out/switched
+    if (!response) return; // 401 — nobody signed in
+
+    const items = response.notifications || [];
+    AppState.set('notificationsActive', items);
+    UI.Notifications.setUnreadCount(items.filter((n) => !n.read_at).length);
+
+    items
+      .filter((n) => !notificationsPresented.has(n.id) && !BroadcastNotice.isSnoozed(n.id))
+      .forEach((n) => this.presentNotification(n));
+  },
+
+  /** Route one active notification to its display shape. Fires at most once
+   * per id per poll session — see `notificationsPresented`. */
+  presentNotification(notification) {
+    notificationsPresented.add(notification.id);
+
+    if (notification.type === 'toast') {
+      UI.Notifications.pulseBadge();
+      BroadcastNotice.showToast(notification, {
+        onDismiss: (reason) => {
+          if (reason === 'manual') this.markNotificationRead(notification.id, 'dismissed');
+        },
+      });
+      return;
+    }
+
+    if (notification.type === 'banner') {
+      UI.Notifications.pulseBadge();
+      BroadcastNotice.showBanner(notification, {
+        onDismiss: (id) => this.markNotificationRead(id, 'dismissed'),
+      });
+      return;
+    }
+
+    // 'modal': at most one shown at once (BroadcastCoordinator, per the
+    // plan) — AppState.notificationsOpenModalId is the guard. A second
+    // modal-type notification arriving while one is open simply waits for
+    // the next poll tick, by which point the first will have been acted on.
+    if (AppState.get('notificationsOpenModalId')) return;
+    AppState.set('notificationsOpenModalId', notification.id);
+    UI.Notifications.pulseBadge();
+    BroadcastNotice.showModal(notification, {
+      onAcknowledge: () => {
+        AppState.set('notificationsOpenModalId', null);
+        this.markNotificationRead(notification.id, 'acknowledged');
+      },
+      onSnooze: () => {
+        AppState.set('notificationsOpenModalId', null);
+        BroadcastNotice.snooze(notification.id);
+      },
+    });
+  },
+
+  async markNotificationRead(notificationId, action) {
+    try {
+      await Services.notifications.markRead(notificationId, action);
+    } catch (error) {
+      logError(error, `markNotificationRead:${action}`);
+      ErrorHandler.showToast(I18n.t('chat.notifications.markReadFailed'), true);
+      return;
+    }
+    // Drop it from the cached active list so a reopened inbox and the badge
+    // agree without waiting for the next poll tick.
+    const remaining = (AppState.get('notificationsActive') || []).filter(
+      (n) => n.id !== notificationId,
+    );
+    AppState.set('notificationsActive', remaining);
+    UI.Notifications.setUnreadCount(remaining.filter((n) => !n.read_at).length);
+  },
+
+  async markAllNotificationsRead() {
+    try {
+      await Services.notifications.markAllRead();
+    } catch (error) {
+      logError(error, 'markAllNotificationsRead');
+      ErrorHandler.showToast(I18n.t('chat.notifications.markAllReadFailed'), true);
+      return;
+    }
+    const active = (AppState.get('notificationsActive') || []).map((n) => ({
+      ...n,
+      read_at: n.read_at || new Date().toISOString(),
+    }));
+    AppState.set('notificationsActive', active);
+    UI.Notifications.setUnreadCount(0);
+    this.loadNotificationHistory({ reset: true });
+  },
+
+  /** Open the inbox modal and load its first page. A row opening marks it
+   * read server-side (notifications_list_history_for_reader's own served_at
+   * stamp handles "served"; opening the row itself sends the explicit
+   * `read` action). */
+  openNotificationsInbox() {
+    const el = DOMCache.get(CONFIG.SELECTORS.NOTIFICATIONS_INBOX_MODAL);
+    if (!el || !window.bootstrap?.Modal) return;
+    const modal = window.bootstrap.Modal.getOrCreateInstance(el);
+    AppState.set('notificationsInboxModal', modal);
+    modal.show();
+    this.loadNotificationHistory({ reset: true });
+  },
+
+  async loadNotificationHistory({ reset = false } = {}) {
+    if (reset) {
+      AppState.set('notificationsHistoryCursor', null);
+      AppState.set('notificationsHistoryExhausted', false);
+    }
+    UI.Notifications.setInboxLoading(true);
+
+    let response;
+    try {
+      response = await Services.notifications.fetchHistory({
+        cursor: reset ? null : AppState.get('notificationsHistoryCursor'),
+      });
+    } catch (error) {
+      logError(error, 'loadNotificationHistory');
+      UI.Notifications.setInboxLoading(false);
+      UI.Notifications.setInboxUnavailable(true);
+      return;
+    }
+    UI.Notifications.setInboxLoading(false);
+
+    if (!response) {
+      UI.Notifications.setInboxUnavailable(true);
+      return;
+    }
+
+    const items = response.notifications || [];
+    const combined = reset
+      ? items
+      : (AppState.get('notificationsHistoryItems') || []).concat(items);
+    AppState.set('notificationsHistoryItems', combined);
+    AppState.set('notificationsHistoryCursor', response.next_cursor || null);
+    AppState.set('notificationsHistoryExhausted', !response.next_cursor);
+
+    UI.Notifications.renderInboxList(combined, {
+      onOpen: (item) => this.openNotificationFromInbox(item),
+    });
+  },
+
+  loadMoreNotificationHistory() {
+    if (AppState.get('notificationsHistoryExhausted')) return;
+    this.loadNotificationHistory({ reset: false });
+  },
+
+  /** A row activated from the inbox: mark it read (idempotent — the RPC
+   * itself only ever sets read_at once) and reflect that in the list
+   * without a full reload. */
+  async openNotificationFromInbox(item) {
+    if (!item.read_at) await this.markNotificationRead(item.id, 'read');
+    const items = (AppState.get('notificationsHistoryItems') || []).map((n) =>
+      n.id === item.id ? { ...n, read_at: n.read_at || new Date().toISOString() } : n,
+    );
+    AppState.set('notificationsHistoryItems', items);
+    UI.Notifications.renderInboxList(items, {
+      onOpen: (row) => this.openNotificationFromInbox(row),
+    });
   },
 
   /** SSE path. The stage line reports the retrieval count mid-stream, but the
@@ -1669,6 +1936,12 @@ export const Handlers = {
     UI.History.clear();
     AppState.set('sidebarOwner', null);
     AppState.set('sidebarTabSettled', false);
+    this.stopNotificationsPolling();
+    AppState.set('notificationsUserId', null);
+    UI.Notifications.setUnreadCount(0);
+    AppState.set('notificationsActive', []);
+    AppState.set('notificationsHistoryItems', []);
+    AppState.set('notificationsOpenModalId', null);
     try {
       sessionStorage.removeItem('sfda-transcript');
     } catch (error) {

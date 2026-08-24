@@ -113,6 +113,14 @@
 <div class="sidebar-account">
   <span id="user-status{{ suffix }}" class="auth-status-text">{{ t('runtime.auth.checkingStatus') }}</span>
   <div class="auth-status-actions">
+    {# Notification Center bell (docs/notification-center-plan.md). Hidden
+       until signed-in, same visibility rule as profile-button below —
+       auth-view.js's userSelectors toggles both together. #}
+    <button id="notifications-bell-button{{ suffix }}" class="btn btn-sm btn-ghost d-none notifications-bell-btn" type="button"
+            aria-label="{{ t('runtime.chat.notifications.bellAria') }}">
+      {{ icon('bell', 14) }}
+      <span id="notifications-unread-badge{{ suffix }}" class="notifications-unread-badge d-none" aria-hidden="true"></span>
+    </button>
     <button id="auth-button{{ suffix }}" class="btn btn-sm btn-primary" type="button">{{ t('page.auth.loginSignup') }}</button>
     {# No view-transition-name here yet: this macro renders twice per page
        (desktop aside + mobile offcanvas), and a name must be unique among

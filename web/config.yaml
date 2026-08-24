@@ -120,6 +120,21 @@ server:
     # ordinary single-conversation sessions_api limit, but cheap enough (one
     # RPC round trip, no streamed read) not to need export's ceiling.
     account_bulk_delete_api: "10 per hour"
+    # Notification Center (docs/notification-center-plan.md). The three
+    # reader-facing limits mirror history_api/sessions_api's own reasoning:
+    # each REPLACES the per_day/per_hour/per_minute defaults so ordinary
+    # polling and inbox browsing cannot spend the shared office-NAT budget.
+    # active fires on every page load and poll tick, so it is generous like
+    # history_api; mark is cheap single-row writes, generous like sessions_api.
+    notifications_active_api: "30 per minute"
+    notifications_history_api: "20 per minute"
+    notifications_mark_api: "60 per minute"
+    # Admin broadcast send. Keyed per-administrator (web/api/admin.py's
+    # _admin_notification_rate_key), NOT per-IP — the Limiter default would
+    # let a compromised admin account spam via multiple IPs, and would make
+    # several admins behind one office NAT share one budget. Low on purpose:
+    # this fans a message out to every targeted reader at once.
+    notification_broadcast_api: "10 per hour"
 
   # CORS origins (only used when debug=false)
   allowed_origins:

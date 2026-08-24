@@ -356,6 +356,14 @@ They sit _in_ `#messages` rather than above it, so they scroll with the conversa
 
 They are notices, not decisions — dismissible, non-blocking, and never modal. The history notice is scoped to the **reader**, not the browser: a shared machine is the ordinary case here, and one colleague dismissing it must not mark it read for the next person to sign in.
 
+### Notification Center (docs/notification-center-plan.md)
+
+A second, separate family from the Notices above — admin-authored rather than system-generated, living outside `#messages` rather than inside it, and, for one of its three shapes, deliberately **not** the "never modal" rule Notices holds: a `modal`-type broadcast is the one place this app blocks on purpose, because the whole point of that type is an operator saying something a reader must acknowledge before continuing. The other two shapes, toast and banner, keep the ordinary non-blocking contract.
+
+Severity never spends `--signal`: that teal is rationed to retrieval and citation state everywhere else in this system, and a generic admin notice is neither, so severity runs on `--danger`/`--warning`/`--confidence` (matching the existing `.toast-notification.error`/`.success` precedent) plus a neutral ink tone for `info`. Every accent — the toast's inline-start rule, the banner's, the modal's, the inbox row's — is 2px, the system's one meaningful-rule weight (see the note under Notices above), not a bespoke heavier line for a new surface.
+
+The bell lives in `.sidebar-account`, shown only to a signed-in reader, with an unread badge that pulses once — never continuously — on increment. The inbox is a centered modal on every viewport, never an offcanvas: the sidebar has already spent this page's one mobile drawer (The One Drawer Rule, above), and a second one stacked on top of it is exactly the two-backdrops failure that rule exists to prevent.
+
 ### Conversation list (signature component)
 
 The reader's own work, listed in the column the FAQ rail used to own alone. It shares that rail's scroll behaviour, its group-heading treatment and its active-row marker deliberately: two lists in one column that looked like two systems would make the tab switch feel like a page change.

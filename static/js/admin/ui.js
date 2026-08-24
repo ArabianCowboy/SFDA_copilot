@@ -20,6 +20,7 @@ const TABS = [
   { tab: 'tab-settings', panel: 'panel-settings' },
   { tab: 'tab-people', panel: 'panel-people' },
   { tab: 'tab-audit', panel: 'panel-audit' },
+  { tab: 'tab-notifications', panel: 'panel-notifications' },
 ];
 
 const el = (id) => document.getElementById(id);
@@ -776,6 +777,9 @@ const ACTION_KEYS = {
   'user.email_change_accepted': 'admin.audit.actionEmailChangeAccepted',
   'user.email_change_failed': 'admin.audit.actionEmailChangeFailed',
   'user.email_change_outcome_unknown': 'admin.audit.actionEmailChangeUnknown',
+  'notification.create': 'admin.audit.actionNotificationCreate',
+  'notification.deactivate': 'admin.audit.actionNotificationDeactivate',
+  'notification.delete': 'admin.audit.actionNotificationDelete',
 };
 
 function describeAction(action) {
@@ -1639,4 +1643,522 @@ export function showAccountMessage(message) {
   p.id = 'account-error';
   p.textContent = message;
   detail.appendChild(p);
+}
+
+/* ── Notification Center (docs/notification-center-plan.md §4) ──────────────
+   Ships empty in admin.html, like every panel above except People — this
+   builds the composer form and the history table entirely. Rendering only:
+   no fetch, no submit handling — admin/handlers.js's initNotificationsTab
+   owns every event this form and table need. */
+
+const NOTIFICATION_TYPES = ['toast', 'banner', 'modal'];
+const NOTIFICATION_SEVERITIES = ['info', 'success', 'warning', 'danger'];
+
+function notifField(labelKey, control, { hint } = {}) {
+  const row = document.createElement('div');
+  row.className = 'admin-field';
+
+  const label = document.createElement('label');
+  label.className = 'admin-field-label';
+  label.htmlFor = control.id;
+  label.textContent = I18n.t(labelKey);
+
+  row.append(label, control);
+
+  if (hint) {
+    const hintEl = document.createElement('p');
+    hintEl.className = 'admin-form-hint';
+    hintEl.textContent = hint;
+    row.appendChild(hintEl);
+  }
+  return row;
+}
+
+function notifSelect(id, options) {
+  const select = document.createElement('select');
+  select.id = id;
+  select.className = 'admin-input';
+  options.forEach(({ value, label }) => {
+    const opt = document.createElement('option');
+    opt.value = value;
+    opt.textContent = label;
+    select.appendChild(opt);
+  });
+  return select;
+}
+
+/** Builds the composer form. Returns the `<form>` — the caller (renderNotificationsPanel)
+ * appends it, so this can also be unit-exercised on its own. */
+function buildComposerForm() {
+  const form = document.createElement('form');
+  form.id = 'notification-composer-form';
+  form.className = 'admin-form';
+  form.noValidate = true;
+
+  const hint = document.createElement('p');
+  hint.className = 'admin-form-hint';
+  hint.textContent = I18n.t('admin.notifications.hint');
+  form.appendChild(hint);
+
+  const error = document.createElement('p');
+  error.className = 'admin-form-hint is-warning';
+  error.id = 'notification-composer-error';
+  error.hidden = true;
+  error.setAttribute('role', 'alert');
+  form.appendChild(error);
+
+  form.appendChild(
+    notifField(
+      'admin.notifications.composer.typeLabel',
+      notifSelect(
+        'notif-type',
+        NOTIFICATION_TYPES.map((v) => ({
+          value: v,
+          label: I18n.t(`admin.notifications.composer.type${v[0].toUpperCase()}${v.slice(1)}`),
+        })),
+      ),
+    ),
+  );
+
+  form.appendChild(
+    notifField(
+      'admin.notifications.composer.severityLabel',
+      notifSelect(
+        'notif-severity',
+        NOTIFICATION_SEVERITIES.map((v) => ({
+          value: v,
+          label: I18n.t(`admin.notifications.composer.severity${v[0].toUpperCase()}${v.slice(1)}`),
+        })),
+      ),
+    ),
+  );
+
+  // Paired EN/AR folios, side by side where the viewport allows — the
+  // composer's own "regulatory dispatch" signature, per the plan's design
+  // direction. .admin-field-pair is a plain flex/grid wrapper in admin.css.
+  const titlePair = document.createElement('div');
+  titlePair.className = 'admin-field-pair';
+  const titleEn = document.createElement('input');
+  titleEn.type = 'text';
+  titleEn.id = 'notif-title-en';
+  titleEn.className = 'admin-input';
+  titleEn.maxLength = 200;
+  titleEn.required = true;
+  const titleAr = document.createElement('input');
+  titleAr.type = 'text';
+  titleAr.id = 'notif-title-ar';
+  titleAr.className = 'admin-input';
+  titleAr.dir = 'rtl';
+  titleAr.maxLength = 200;
+  titleAr.required = true;
+  titlePair.append(
+    notifField('admin.notifications.composer.titleEnLabel', titleEn),
+    notifField('admin.notifications.composer.titleArLabel', titleAr),
+  );
+  form.appendChild(titlePair);
+
+  const bodyPair = document.createElement('div');
+  bodyPair.className = 'admin-field-pair';
+  const bodyEn = document.createElement('textarea');
+  bodyEn.id = 'notif-body-en';
+  bodyEn.className = 'admin-input admin-textarea';
+  bodyEn.maxLength = 2000;
+  bodyEn.rows = 3;
+  bodyEn.required = true;
+  const bodyAr = document.createElement('textarea');
+  bodyAr.id = 'notif-body-ar';
+  bodyAr.className = 'admin-input admin-textarea';
+  bodyAr.dir = 'rtl';
+  bodyAr.maxLength = 2000;
+  bodyAr.rows = 3;
+  bodyAr.required = true;
+  bodyPair.append(
+    notifField('admin.notifications.composer.bodyEnLabel', bodyEn),
+    notifField('admin.notifications.composer.bodyArLabel', bodyAr),
+  );
+  form.appendChild(bodyPair);
+
+  form.appendChild(
+    notifField(
+      'admin.notifications.composer.targetLabel',
+      notifSelect('notif-target-kind', [
+        { value: 'all', label: I18n.t('admin.notifications.composer.targetAll') },
+        { value: 'role', label: I18n.t('admin.notifications.composer.targetRole') },
+        { value: 'tier', label: I18n.t('admin.notifications.composer.targetTier') },
+        { value: 'user', label: I18n.t('admin.notifications.composer.targetUser') },
+      ]),
+    ),
+  );
+
+  // The three target sub-fields. Only one is ever visible at a time —
+  // handlers.js toggles `hidden` on the row that matches notif-target-kind.
+  const roleRow = notifField(
+    'admin.notifications.composer.targetLabel',
+    notifSelect('notif-target-role', [
+      { value: 'user', label: I18n.t('admin.notifications.composer.targetRoleUser') },
+      { value: 'admin', label: I18n.t('admin.notifications.composer.targetRoleAdmin') },
+    ]),
+  );
+  roleRow.id = 'notif-target-role-row';
+  roleRow.hidden = true;
+  form.appendChild(roleRow);
+
+  const tierInput = document.createElement('input');
+  tierInput.type = 'text';
+  tierInput.id = 'notif-target-tier';
+  tierInput.className = 'admin-input';
+  tierInput.placeholder = I18n.t('admin.notifications.composer.tierPlaceholder');
+  const tierRow = notifField('admin.notifications.composer.targetLabel', tierInput);
+  tierRow.id = 'notif-target-tier-row';
+  tierRow.hidden = true;
+  form.appendChild(tierRow);
+
+  const userInput = document.createElement('input');
+  userInput.type = 'text';
+  userInput.id = 'notif-target-user';
+  userInput.className = 'admin-input';
+  userInput.dir = 'ltr';
+  userInput.placeholder = I18n.t('admin.notifications.composer.userIdPlaceholder');
+  const userRow = notifField('admin.notifications.composer.targetLabel', userInput);
+  userRow.id = 'notif-target-user-row';
+  userRow.hidden = true;
+  form.appendChild(userRow);
+
+  const expiresInput = document.createElement('input');
+  expiresInput.type = 'datetime-local';
+  expiresInput.id = 'notif-expires';
+  expiresInput.className = 'admin-input';
+  form.appendChild(notifField('admin.notifications.composer.expiresLabel', expiresInput));
+
+  const preview = document.createElement('p');
+  preview.id = 'notif-audience-preview';
+  preview.className = 'admin-form-hint';
+  preview.textContent = I18n.t('admin.notifications.composer.audiencePreviewNone');
+  form.appendChild(preview);
+
+  const actions = document.createElement('div');
+  actions.className = 'admin-form-actions';
+  const send = document.createElement('button');
+  send.type = 'submit';
+  send.id = 'notif-send';
+  send.className = 'btn btn-primary btn-sm';
+  send.textContent = I18n.t('admin.notifications.composer.send');
+  actions.appendChild(send);
+  form.appendChild(actions);
+
+  return form;
+}
+
+/** Show/hide the correct target sub-field for the chosen target kind. Pure
+ * DOM — handlers.js calls this from the target-kind select's change event. */
+export function syncNotificationTargetFields(kind) {
+  ['role', 'tier', 'user'].forEach((k) => {
+    const row = el(`notif-target-${k}-row`);
+    if (row) row.hidden = k !== kind;
+  });
+}
+
+export function setNotificationComposerSending(sending) {
+  const btn = el('notif-send');
+  if (btn) {
+    btn.disabled = sending;
+    btn.textContent = I18n.t(
+      sending ? 'admin.notifications.composer.sending' : 'admin.notifications.composer.send',
+    );
+  }
+}
+
+export function showComposerError(message) {
+  const error = el('notification-composer-error');
+  if (!error) return;
+  if (message) {
+    error.textContent = message;
+    error.hidden = false;
+  } else {
+    error.hidden = true;
+    error.textContent = '';
+  }
+}
+
+export function setAudiencePreview(count) {
+  const el_ = el('notif-audience-preview');
+  if (!el_) return;
+  el_.textContent =
+    count === null
+      ? I18n.t('admin.notifications.composer.audiencePreviewFailed')
+      : count > 0
+        ? I18n.t('admin.notifications.composer.audiencePreviewLabel', { count })
+        : I18n.t('admin.notifications.composer.audiencePreviewNone');
+}
+
+/** Read the composer's current values into the payload shape POST
+ * /admin/api/notifications expects. Does not validate — the server is the
+ * gate; this just collects what is on screen. */
+export function readComposerForm() {
+  const targetKind = el('notif-target-kind')?.value || 'all';
+  const expires = el('notif-expires')?.value;
+  return {
+    type: el('notif-type')?.value,
+    severity: el('notif-severity')?.value,
+    title_en: el('notif-title-en')?.value?.trim(),
+    title_ar: el('notif-title-ar')?.value?.trim(),
+    body_en: el('notif-body-en')?.value?.trim(),
+    body_ar: el('notif-body-ar')?.value?.trim(),
+    target_kind: targetKind,
+    target_role: targetKind === 'role' ? el('notif-target-role')?.value : null,
+    target_tier: targetKind === 'tier' ? el('notif-target-tier')?.value?.trim() : null,
+    target_user_id: targetKind === 'user' ? el('notif-target-user')?.value?.trim() : null,
+    // datetime-local has no timezone; treated as the browser's local time,
+    // which is what the operator was looking at when they picked it.
+    expires_at: expires ? new Date(expires).toISOString() : null,
+    // Set on the form's own dataset by handlers.js's resend flow — not a
+    // field this form draws a control for. Absent for an ordinary send.
+    resend_of: el('notification-composer-form')?.dataset.resendOf || null,
+  };
+}
+
+/** Fill the composer from a history row, for "Resend". Does not touch
+ * client_request_id or resend_of — handlers.js owns both, since they are
+ * about THIS submission's identity, not the notification's content. */
+export function prefillComposer(row) {
+  const setValue = (id, value) => {
+    const field = el(id);
+    if (field) field.value = value ?? '';
+  };
+  setValue('notif-type', row.type);
+  setValue('notif-severity', row.severity);
+  setValue('notif-title-en', row.title_en);
+  setValue('notif-title-ar', row.title_ar);
+  setValue('notif-body-en', row.body_en);
+  setValue('notif-body-ar', row.body_ar);
+  setValue('notif-target-kind', row.target_kind);
+  setValue('notif-target-role', row.target_role);
+  setValue('notif-target-tier', row.target_tier);
+  setValue('notif-target-user', row.target_user_id);
+  syncNotificationTargetFields(row.target_kind);
+  el('notification-composer-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  el('notif-title-en')?.focus();
+}
+
+export function resetComposerForm() {
+  const form = el('notification-composer-form');
+  form?.reset();
+  syncNotificationTargetFields('all');
+  showComposerError(null);
+  setAudiencePreview(0);
+}
+
+const NOTIFICATION_STATUS_KEYS = {
+  active: 'admin.notifications.history.statusActive',
+  deactivated: 'admin.notifications.history.statusDeactivated',
+  deleted: 'admin.notifications.history.statusDeleted',
+};
+
+// "All" first (it's the escape hatch back to everything), "Active" selected
+// by default below — deletion in this app is soft (admin_delete_notification
+// never hard-deletes), so without a default filter a deleted row stays
+// visible in this table forever, which is the bug this control exists to fix.
+const NOTIFICATION_STATUS_FILTER_OPTIONS = [
+  { value: 'all', key: 'admin.notifications.history.statusFilterAll' },
+  { value: 'active', key: 'admin.notifications.history.statusActive' },
+  { value: 'deactivated', key: 'admin.notifications.history.statusDeactivated' },
+  { value: 'deleted', key: 'admin.notifications.history.statusDeleted' },
+];
+
+const NOTIFICATION_HISTORY_EMPTY_KEYS = {
+  all: 'admin.notifications.history.empty',
+  active: 'admin.notifications.history.emptyActive',
+  deactivated: 'admin.notifications.history.emptyDeactivated',
+  deleted: 'admin.notifications.history.emptyDeleted',
+};
+
+/** Filter toolbar above the history table, reusing the page-size select's own
+ * classes (`.admin-pager-size`/`-label`/`-select`) so it reads as the same
+ * kind of control rather than a new visual idiom. */
+function buildNotificationHistoryToolbar() {
+  const toolbar = document.createElement('div');
+  toolbar.className = 'admin-pager-size admin-notif-history-toolbar';
+
+  const label = document.createElement('label');
+  label.className = 'admin-pager-size-label';
+  label.htmlFor = 'notification-history-status';
+  label.textContent = I18n.t('admin.notifications.history.statusFilterLabel');
+
+  const select = document.createElement('select');
+  select.className = 'form-select admin-input admin-pager-select';
+  select.id = 'notification-history-status';
+  NOTIFICATION_STATUS_FILTER_OPTIONS.forEach(({ value, key }) => {
+    const option = document.createElement('option');
+    option.value = value;
+    option.textContent = I18n.t(key);
+    option.selected = value === 'active';
+    select.appendChild(option);
+  });
+
+  toolbar.append(label, select);
+  return toolbar;
+}
+
+/** The Notifications panel shell: composer at the top, history below. Built
+ * once; renderNotificationHistory repaints the table body on its own. */
+export function renderNotificationsPanel() {
+  const body = el('notifications-body');
+  if (!body) return;
+  body.textContent = '';
+
+  body.appendChild(buildComposerForm());
+
+  const historyHeading = document.createElement('h2');
+  historyHeading.className = 'admin-subheading';
+  historyHeading.textContent = I18n.t('admin.notifications.history.heading');
+  body.appendChild(historyHeading);
+
+  body.appendChild(buildNotificationHistoryToolbar());
+
+  const historyBody = document.createElement('div');
+  historyBody.id = 'notification-history-body';
+  body.appendChild(historyBody);
+
+  const loadMoreRow = document.createElement('div');
+  loadMoreRow.className = 'admin-form-actions';
+  const loadMore = document.createElement('button');
+  loadMore.type = 'button';
+  loadMore.id = 'notification-history-load-more';
+  loadMore.className = 'btn btn-sm btn-ghost';
+  loadMore.textContent = I18n.t('admin.audit.more');
+  loadMoreRow.appendChild(loadMore);
+  body.appendChild(loadMoreRow);
+}
+
+export function showNotificationHistoryMessage(message) {
+  const body = el('notification-history-body');
+  if (!body) return;
+  body.textContent = '';
+  const p = document.createElement('p');
+  p.className = 'admin-empty';
+  p.textContent = message;
+  body.appendChild(p);
+}
+
+/**
+ * The send history table. `append` mirrors renderAudit's own contract: false
+ * rebuilds the table (a status-filter change, a fresh load), true appends
+ * the next offset page onto the existing body.
+ */
+export function renderNotificationHistory(rows, { append = false, filterStatus = 'all' } = {}) {
+  const body = el('notification-history-body');
+  if (!body) return;
+
+  if (!append) {
+    body.textContent = '';
+    if (!rows.length) {
+      const empty = document.createElement('p');
+      empty.className = 'admin-empty';
+      empty.textContent = I18n.t(
+        NOTIFICATION_HISTORY_EMPTY_KEYS[filterStatus] || NOTIFICATION_HISTORY_EMPTY_KEYS.all,
+      );
+      body.appendChild(empty);
+      return;
+    }
+
+    const table = document.createElement('table');
+    table.className = 'admin-table';
+    table.id = 'notification-history-table';
+    const head = document.createElement('thead');
+    const headRow = document.createElement('tr');
+    [
+      'columnStatus',
+      'columnType',
+      'columnAudience',
+      'columnTargets',
+      'columnServed',
+      'columnRead',
+      'columnDismissed',
+      'columnAcknowledged',
+    ].forEach((key) => {
+      const th = document.createElement('th');
+      th.scope = 'col';
+      th.textContent = I18n.t(`admin.notifications.history.${key}`);
+      headRow.appendChild(th);
+    });
+    // No i18n key: this column is the row actions, same as people's
+    // columnActions (an empty header, filled by the buttons themselves).
+    headRow.appendChild(document.createElement('th'));
+    head.appendChild(headRow);
+    table.append(head, document.createElement('tbody'));
+
+    const scroll = document.createElement('div');
+    scroll.className = 'admin-scroll';
+    scroll.appendChild(table);
+    body.appendChild(scroll);
+  } else if (!rows.length) {
+    return;
+  }
+
+  const tbody = el('notification-history-table')?.querySelector('tbody');
+  if (!tbody) return;
+
+  rows.forEach((row) => {
+    const tr = document.createElement('tr');
+    // Dims the whole row, not just the status cell — .admin-cell-machine
+    // below sets its own explicit `color`, which would win over an inherited
+    // one, so this uses opacity, matching the disabled-control convention
+    // this file already uses elsewhere (e.g. .admin-pager-btn:disabled).
+    if (row.deleted_at) tr.className = 'admin-notif-row--deleted';
+
+    const status = document.createElement('td');
+    const statusKey =
+      NOTIFICATION_STATUS_KEYS[
+        row.deleted_at ? 'deleted' : row.deactivated_at ? 'deactivated' : 'active'
+      ];
+    status.textContent = I18n.t(statusKey);
+    status.className = `admin-status-${row.deleted_at ? 'deleted' : row.deactivated_at ? 'deactivated' : 'active'}`;
+
+    const type = document.createElement('td');
+    type.textContent = row.type;
+
+    const audience = document.createElement('td');
+    audience.textContent =
+      row.target_kind === 'all'
+        ? I18n.t('admin.notifications.composer.targetAll')
+        : row.target_kind === 'role'
+          ? `${I18n.t('admin.notifications.composer.targetRole')}: ${row.target_role}`
+          : row.target_kind === 'tier'
+            ? `${I18n.t('admin.notifications.composer.targetTier')}: ${row.target_tier}`
+            : I18n.t('admin.notifications.composer.targetUser');
+
+    const targets = machineCell(String(row.target_count ?? 0));
+    const served = machineCell(String(row.served_count ?? 0));
+    const read = machineCell(String(row.read_count ?? 0));
+    const dismissed = machineCell(String(row.dismissed_count ?? 0));
+    const acknowledged = machineCell(String(row.acknowledged_count ?? 0));
+
+    const actions = document.createElement('td');
+    actions.className = 'admin-row-actions';
+    if (!row.deleted_at && !row.deactivated_at) {
+      const deactivate = document.createElement('button');
+      deactivate.type = 'button';
+      deactivate.className = 'btn btn-sm btn-ghost admin-row-action';
+      deactivate.dataset.notifDeactivate = row.id;
+      deactivate.textContent = I18n.t('admin.notifications.history.deactivate');
+      actions.appendChild(deactivate);
+    }
+    if (!row.deleted_at) {
+      const del = document.createElement('button');
+      del.type = 'button';
+      del.className = 'btn btn-sm btn-ghost admin-row-action';
+      del.dataset.notifDelete = row.id;
+      del.textContent = I18n.t('admin.notifications.history.delete');
+      actions.appendChild(del);
+    }
+    const resend = document.createElement('button');
+    resend.type = 'button';
+    resend.className = 'btn btn-sm btn-ghost admin-row-action';
+    resend.dataset.notifResend = row.id;
+    resend.textContent = I18n.t('admin.notifications.history.resend');
+    actions.appendChild(resend);
+
+    tr.append(status, type, audience, targets, served, read, dismissed, acknowledged, actions);
+    tbody.appendChild(tr);
+  });
 }
