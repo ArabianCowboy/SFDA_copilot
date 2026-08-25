@@ -339,6 +339,15 @@
   overflow: hidden;
 }
 .modal-header {
+  display: flex;
+  align-items: center;
+  /* Bootstrap's own close-button margin (`margin-inline-start: auto`) only
+     absorbs *leftover* flex space — it does nothing to separate the close
+     button from a sibling action sitting right next to it (e.g. the inbox
+     modal's "mark all as read"). That's what was crowding the X against
+     the button/text next to it in both languages; `gap` fixes it for every
+     modal header, not just that one. */
+  gap: var(--space-3);
   background: var(--bg-sunken);
   border-block-end: 1px solid var(--hairline);
   color: var(--fg-primary);
@@ -352,7 +361,63 @@
   letter-spacing: var(--track-tight);
 }
 .modal-header .modal-title .icon { color: var(--signal); }
-.modal-header .btn-close { filter: none; opacity: .6; }
+
+/* The dismiss control, redrawn on-brand: Bootstrap's default `.btn-close`
+   is a fixed, low-contrast grey X baked into a background-image data URI
+   that ignores the app's colour tokens (and its dark-mode `.btn-close-white`
+   variant is a separate asset, not a token swap). This masks the same
+   glyph as the `close` icon (web/utils/icons.py) with `currentColor`-style
+   theming, in a round hit target that mirrors the `.source-panel-close` /
+   `.passage-close` icon-button pattern used elsewhere in this file. Shared
+   by both dismissible-surface headers in the page (modal and offcanvas) so
+   every "X" in the app reads as the same control. */
+.modal-header .btn-close,
+.offcanvas-header .btn-close {
+  --sfda-close-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.65 3.65a.5.5 0 0 1 .7 0L8 7.29l3.65-3.64a.5.5 0 1 1 .7 .7L8.71 8l3.64 3.65a.5.5 0 0 1-.7.7L8 8.71l-3.65 3.64a.5.5 0 0 1-.7-.7L7.29 8 3.65 4.35a.5.5 0 0 1 0-.7'/%3E%3C/svg%3E");
+  flex: none;
+  position: relative;
+  inline-size: 32px;
+  block-size: 32px;
+  padding: 0;
+  margin: 0;
+  border-radius: var(--radius-pill);
+  background: none;
+  opacity: 1;
+  transition: background var(--duration-s) var(--ease-soft);
+}
+.modal-header .btn-close::before,
+.offcanvas-header .btn-close::before {
+  content: "";
+  position: absolute;
+  inset: 8px;
+  background-color: var(--fg-faint);
+  -webkit-mask: var(--sfda-close-glyph) center / contain no-repeat;
+  mask: var(--sfda-close-glyph) center / contain no-repeat;
+  transition: background-color var(--duration-s) var(--ease-soft);
+}
+/* The modal header sits on `--bg-sunken`, so its hover halo steps the other
+   way, toward `--bg-surface`, to read as a halo at all; the offcanvas
+   header is the reverse (`--bg-surface` resting), so it steps toward
+   `--bg-sunken` instead. */
+.modal-header .btn-close:hover,
+.modal-header .btn-close:focus-visible {
+  background: var(--bg-surface);
+}
+.offcanvas-header .btn-close:hover,
+.offcanvas-header .btn-close:focus-visible {
+  background: var(--bg-sunken);
+}
+.modal-header .btn-close:focus-visible,
+.offcanvas-header .btn-close:focus-visible {
+  outline: 2px solid var(--hairline-strong);
+  outline-offset: 1px;
+}
+.modal-header .btn-close:hover::before,
+.modal-header .btn-close:focus-visible::before,
+.offcanvas-header .btn-close:hover::before,
+.offcanvas-header .btn-close:focus-visible::before {
+  background-color: var(--fg-primary);
+}
 .nav-tabs { border-block-end: 1px solid var(--hairline); }
 .nav-tabs .nav-link {
   display: inline-flex;
