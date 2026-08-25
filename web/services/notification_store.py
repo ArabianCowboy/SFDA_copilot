@@ -607,6 +607,13 @@ class InMemoryNotificationBackend:
             raise AdminActionRefused("no_such_notification")
         if row["deleted_at"] is None:
             raise AdminActionRefused("not_yet_deleted")
+        # Mirrors the real RPC: sever inbound "resent from" pointers before
+        # removing the row, so purging a resend's source never touches the
+        # resend itself (found in live use — the real Postgres FK on
+        # notifications.resend_of rejected the delete outright without this).
+        for other in self._notifications:
+            if other.get("resend_of") == notification_id:
+                other["resend_of"] = None
         self._notifications.remove(row)
         self._recipients.pop(notification_id, None)
         for key in [k for k in self._reads if k[0] == notification_id]:

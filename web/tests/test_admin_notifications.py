@@ -365,6 +365,37 @@ def test_purge_succeeds_after_delete_and_the_row_is_gone(client):
     assert not any(n["id"] == nid for n in history["notifications"])
 
 
+def test_purging_a_resend_source_severs_the_pointer_but_keeps_the_resend(client):
+    """Regression test for a real bug found in live use: notifications.
+    resend_of self-references another row in this same table, and purging a
+    notification some OTHER notification's resend_of still points to must
+    not fail (the real RPC's FK on resend_of previously rejected this
+    outright) — nor may it delete the referencing resend, which is a real,
+    separate notification with its own recipients/history.
+    """
+    source = client.post("/admin/api/notifications", json=_payload(), headers=ADMIN).get_json()[
+        "notification"
+    ]
+    source_id = source["id"]
+
+    resend = client.post(
+        "/admin/api/notifications",
+        json=_payload(client_request_id=str(uuid.uuid4()), resend_of=source_id),
+        headers=ADMIN,
+    ).get_json()["notification"]
+    resend_id = resend["id"]
+
+    assert client.delete(f"/admin/api/notifications/{source_id}", headers=ADMIN).status_code == 200
+    purge = client.post(f"/admin/api/notifications/{source_id}/purge", headers=ADMIN)
+    assert purge.status_code == 200
+
+    history = client.get("/admin/api/notifications/history?status=all", headers=ADMIN).get_json()
+    by_id = {n["id"]: n for n in history["notifications"]}
+    assert source_id not in by_id
+    assert resend_id in by_id
+    assert by_id[resend_id]["resend_of"] is None
+
+
 def test_purge_of_an_unknown_notification_is_404(client):
     r = client.post(f"/admin/api/notifications/{uuid.uuid4()}/purge", headers=ADMIN)
     assert r.status_code == 404
