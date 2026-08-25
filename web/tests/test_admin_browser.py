@@ -151,12 +151,37 @@ SETTINGS = {
 }
 
 
-def _admin_console(page: Page, *, settings=SETTINGS, lang: str = "") -> None:
+# The registrations block loads unconditionally alongside settings
+# (docs/registrations-pause-plan.md §9 Step 12) — routed here by default so
+# every existing `_admin_console`-based test keeps seeing a real answer
+# instead of the load-failure toast this endpoint would otherwise produce on
+# every admin page open.
+REGISTRATIONS = {"signup_enabled": True, "default": True}
+
+
+def _admin_console(
+    page: Page, *, settings=SETTINGS, registrations=REGISTRATIONS, lang: str = ""
+) -> None:
     _route_identity(page, status=200, body=ADMIN_IDENTITY)
     page.route(
         "**/admin/api/settings",
         lambda route: route.fulfill(
             status=200, content_type="application/json", body=json.dumps(settings)
+        ),
+    )
+    # `registrations=None` opts out of this default route — a page-level
+    # route takes priority over a context-level one regardless of add order,
+    # so a caller that already installed its own stateful
+    # `context.route("**/admin/api/registrations", ...)` needs this one
+    # skipped, not merely overridden.
+    if registrations is None:
+        page.goto(f"/admin?testing=true{lang}")
+        expect(page.locator("#admin-console")).to_be_visible()
+        return
+    page.route(
+        "**/admin/api/registrations",
+        lambda route: route.fulfill(
+            status=200, content_type="application/json", body=json.dumps(registrations)
         ),
     )
     page.goto(f"/admin?testing=true{lang}")
@@ -186,6 +211,68 @@ def test_a_changed_setting_is_marked_as_changed(browser_page: Page):
     expect(
         browser_page.locator('.admin-field[data-field="temperature"] .admin-field-origin')
     ).to_have_text("Changed here")
+
+
+# ── Registrations ────────────────────────────────────────────────────────────
+
+
+def test_an_operator_can_pause_and_resume_registrations(browser_page: Page):
+    """docs/registrations-pause-plan.md §9 Step 12's own proof: click, expect
+    the pill to flip, reload, expect it to persist."""
+    state = {"signup_enabled": True, "default": True}
+
+    def handle(route):
+        if route.request.method == "PUT":
+            state["signup_enabled"] = route.request.post_data_json["signup_enabled"]
+        _json(route, state)
+
+    browser_page.context.route("**/admin/api/registrations", handle)
+    _admin_console(browser_page, registrations=None)
+    browser_page.locator("#tab-settings").click()
+
+    status = browser_page.locator("#registrations-state")
+    toggle = browser_page.locator("#registrations-toggle")
+    expect(status).to_have_text("Open")
+    expect(toggle).to_have_text("Pause registrations")
+
+    # Pausing is confirmed (this console's own asymmetry — see the i18n
+    # comment beside admin.registrations.confirmPause); resuming, below, is
+    # not, so only this click needs a dialog handler.
+    browser_page.once("dialog", lambda dialog: dialog.accept())
+    toggle.click()
+    expect(status).to_have_text("Paused")
+    expect(toggle).to_have_text("Resume registrations")
+    expect(browser_page.locator("#toast")).to_contain_text("paused", ignore_case=True)
+
+    # Persists — a reload reads the same server-side state back, not a
+    # client-side flip that would vanish on refresh.
+    browser_page.reload()
+    browser_page.locator("#tab-settings").click()
+    expect(browser_page.locator("#registrations-state")).to_have_text("Paused")
+
+    browser_page.locator("#registrations-toggle").click()
+    expect(browser_page.locator("#registrations-state")).to_have_text("Open")
+    expect(browser_page.locator("#toast")).to_contain_text("resumed", ignore_case=True)
+
+
+def test_a_failed_toggle_restores_the_button_rather_than_leaving_it_saving(browser_page: Page):
+    browser_page.context.route(
+        "**/admin/api/registrations",
+        lambda route: (
+            route.fulfill(status=503, content_type="application/json", body="{}")
+            if route.request.method == "PUT"
+            else _json(route, REGISTRATIONS)
+        ),
+    )
+    _admin_console(browser_page, registrations=None)
+    browser_page.locator("#tab-settings").click()
+    browser_page.once("dialog", lambda dialog: dialog.accept())
+    browser_page.locator("#registrations-toggle").click()
+
+    expect(browser_page.locator("#toast")).to_contain_text("Could not save", ignore_case=True)
+    toggle = browser_page.locator("#registrations-toggle")
+    expect(toggle).to_be_enabled()
+    expect(toggle).to_have_text("Pause registrations")
 
 
 def test_a_rejected_save_puts_the_message_beside_its_field(browser_page: Page):
@@ -1556,6 +1643,7 @@ def test_people_pager_out_of_order_responses_resolve_correctly(browser_page: Pag
     Assert the DOM shows newer query and aborted request does not surface error."""
     _route_identity(browser_page, status=200, body=ADMIN_IDENTITY)
     browser_page.route("**/admin/api/settings", lambda route: _json(route, SETTINGS))
+    browser_page.route("**/admin/api/registrations", lambda route: _json(route, REGISTRATIONS))
 
     held_routes = []
 
@@ -1624,6 +1712,7 @@ def test_people_pager_repeated_rapid_clicks_only_issue_one_request(browser_page:
     calls = []
     _route_identity(browser_page, status=200, body=ADMIN_IDENTITY)
     browser_page.route("**/admin/api/settings", lambda route: _json(route, SETTINGS))
+    browser_page.route("**/admin/api/registrations", lambda route: _json(route, REGISTRATIONS))
 
     def users_handler(route):
         url = route.request.url
@@ -1695,6 +1784,7 @@ def test_people_pager_loading_busy_visual_threshold(browser_page: Page):
     """Fast requests (<100ms) never show .is-busy-visual. Slow requests (>100ms) show it while in-flight."""
     _route_identity(browser_page, status=200, body=ADMIN_IDENTITY)
     browser_page.route("**/admin/api/settings", lambda route: _json(route, SETTINGS))
+    browser_page.route("**/admin/api/registrations", lambda route: _json(route, REGISTRATIONS))
 
     # Fast initial load
     def fast_users(route):
@@ -1797,6 +1887,7 @@ def test_people_pager_boundary_drift_resets_to_offset_0(browser_page: Page):
     """Out-of-bounds offset returning {users: [], total: 0} resets to offset 0 and refetches."""
     _route_identity(browser_page, status=200, body=ADMIN_IDENTITY)
     browser_page.route("**/admin/api/settings", lambda route: _json(route, SETTINGS))
+    browser_page.route("**/admin/api/registrations", lambda route: _json(route, REGISTRATIONS))
     requested_offsets = []
     call_count = [0]
 

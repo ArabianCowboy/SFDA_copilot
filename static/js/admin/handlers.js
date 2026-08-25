@@ -34,9 +34,12 @@ import {
   readProfileForm,
   readSettingsDisplay,
   readSettingsForm,
+  renderRegistrations,
+  showRegistrationsMessage,
   renderSettings,
   selectTab,
   setProfileSaving,
+  setRegistrationsSaving,
   setSettingsSaving,
   showGateMessage,
   stageRevert,
@@ -1236,6 +1239,62 @@ export async function initPeopleTab(services) {
  * down with it — and the server validates the resulting state for exactly that
  * reason. One submit, one decision.
  */
+export async function initRegistrationsTab(services) {
+  const body = document.getElementById('registrations-body');
+  if (!body) return;
+
+  // The last state the SERVER reported — kept so a failed save can restore
+  // the toggle's label without guessing it back from `dataset.nextValue`.
+  let currentState = null;
+
+  try {
+    currentState = await services.registrations();
+    renderRegistrations(currentState);
+  } catch {
+    showRegistrationsMessage(I18n.t('admin.registrations.loadFailed'));
+    ErrorHandler.showToast(I18n.t('admin.registrations.loadFailed'), true);
+    return;
+  }
+
+  // Delegated, like the settings panel's own body listener, so it survives
+  // renderRegistrations replacing the toggle button on every save.
+  body.addEventListener('click', async (event) => {
+    const toggle = event.target.closest('#registrations-toggle');
+    if (!toggle) return;
+
+    const nextValue = toggle.dataset.nextValue === 'true';
+    // Only pausing is confirmed — same asymmetry this console already uses
+    // for demote/disable versus promote/enable (see the i18n comment beside
+    // admin.registrations.confirmPause): a click that takes a capability
+    // away from every future reader gets a guard, a click that restores it
+    // does not.
+    if (!nextValue && !window.confirm(I18n.t('admin.registrations.confirmPause'))) return;
+    setRegistrationsSaving(true);
+    try {
+      currentState = await services.saveRegistrations(nextValue);
+      renderRegistrations(currentState);
+      ErrorHandler.showToast(
+        I18n.t(
+          currentState.signup_enabled
+            ? 'admin.registrations.savedOpen'
+            : 'admin.registrations.savedPaused',
+        ),
+      );
+      // The save just wrote an audit row; showing a stale log beside a
+      // change that is already live is the one moment the record looks
+      // untrustworthy — the settings panel's own save handler makes the
+      // same call for the same reason.
+      loadAudit(services);
+    } catch {
+      // Restores the toggle's label as well as its disabled state — the
+      // save never took effect, so the button must go back to describing
+      // the action it still offers, not linger on "Saving…".
+      renderRegistrations(currentState);
+      ErrorHandler.showToast(I18n.t('admin.registrations.saveFailed'), true);
+    }
+  });
+}
+
 export async function initSettingsTab(services) {
   const body = document.getElementById('settings-body');
   if (!body) return;

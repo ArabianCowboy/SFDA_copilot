@@ -90,6 +90,95 @@ export function focusTab(tabId) {
 
 export const tabIds = () => TABS.map((entry) => entry.tab);
 
+/* ── Registrations ───────────────────────────────────────────────────────── */
+
+/**
+ * Render the registrations-pause control. Its own function, its own render
+ * target (`#registrations-body`), and its own submit handler in
+ * `admin/handlers.js` — a registrations toggle is not a generation setting
+ * (docs/registrations-pause-plan.md §2) and must not share the settings
+ * form's re-render-on-model-change cycle or its single Save button.
+ *
+ * @param {{signup_enabled: boolean, default: boolean}} state
+ */
+export function renderRegistrations({ signup_enabled: enabled, default: deployedDefault }) {
+  const body = el('registrations-body');
+  if (!body) return;
+  body.textContent = '';
+
+  const hint = document.createElement('p');
+  hint.className = 'admin-form-hint';
+  hint.textContent = I18n.t('admin.registrations.hint');
+  body.appendChild(hint);
+
+  // Above the toggle, not below it as small print: an operator deciding
+  // whether to click is exactly the person who needs to read this FIRST —
+  // reusing the same `.admin-notice` shape the broken-account state uses
+  // elsewhere in this console, rather than an `.admin-form-hint` whose
+  // visual weight matches an ordinary field caption.
+  const notice = document.createElement('div');
+  notice.className = 'admin-notice';
+  const noticeHeading = document.createElement('strong');
+  noticeHeading.textContent = I18n.t('admin.registrations.bypassHeading');
+  const noticeBody = document.createElement('p');
+  noticeBody.textContent = I18n.t('admin.registrations.bypassNote');
+  notice.append(noticeHeading, noticeBody);
+  body.appendChild(notice);
+
+  const row = document.createElement('div');
+  row.className = 'admin-registrations-row';
+
+  const state = document.createElement('span');
+  state.id = 'registrations-state';
+  // Composes the shared .admin-mark pill (the Administrator role badge uses
+  // the same one) rather than duplicating its geometry — see the CSS.
+  state.className = `admin-mark admin-registrations-state ${enabled ? 'is-signal' : 'is-warning'}`;
+  const stateIcon = iconElement(enabled ? 'check' : 'stop', 12);
+  if (stateIcon) state.appendChild(stateIcon);
+  const stateLabel = document.createElement('span');
+  stateLabel.textContent = I18n.t(
+    enabled ? 'admin.registrations.open' : 'admin.registrations.paused',
+  );
+  state.appendChild(stateLabel);
+  row.appendChild(state);
+
+  const toggle = document.createElement('button');
+  toggle.type = 'button';
+  toggle.id = 'registrations-toggle';
+  toggle.className = 'btn btn-outline-secondary btn-sm';
+  toggle.dataset.nextValue = enabled ? 'false' : 'true';
+  toggle.textContent = I18n.t(enabled ? 'admin.registrations.pause' : 'admin.registrations.resume');
+  row.appendChild(toggle);
+
+  body.appendChild(row);
+
+  // Unused today, kept off the DOM rather than rendered: the deployed
+  // default becomes visible again once revert-to-default is offered here,
+  // mirroring the settings panel's own "Changed here" / "Deployed default"
+  // markers.
+  void deployedDefault;
+}
+
+export function setRegistrationsSaving(isSaving) {
+  const toggle = el('registrations-toggle');
+  if (!toggle) return;
+  toggle.disabled = isSaving;
+  if (isSaving) toggle.textContent = I18n.t('admin.registrations.saving');
+}
+
+/** Same shape as showPeopleMessage/showAuditMessage/showSettingsMessage —
+ * this panel's own load-failure message, not a hand-rolled one-off, so a
+ * failed load reads the same way every other panel's failed load does. */
+export function showRegistrationsMessage(message) {
+  const body = el('registrations-body');
+  if (!body) return;
+  body.textContent = '';
+  const p = document.createElement('p');
+  p.className = 'admin-empty';
+  p.textContent = message;
+  body.appendChild(p);
+}
+
 /* ── Settings ────────────────────────────────────────────────────────────── */
 
 /**

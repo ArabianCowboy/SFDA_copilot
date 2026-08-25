@@ -2,13 +2,19 @@ import logging
 from typing import Any
 
 from flask import Blueprint, current_app, jsonify, request, session
+from supabase_auth.errors import AuthError
 
-from web.services.account_recovery import RecoveryRefused, recovery_redirect_url
+from web.services.account_recovery import (
+    RecoveryRefused,
+    recovery_redirect_url,
+    signup_redirect_url,
+)
 from web.utils.supabase_client import get_supabase
 
 auth_bp = Blueprint("auth", __name__)
 
-# Its own blueprint purely so it can carry its own rate limit.
+# Both of these are their own blueprint purely so each can carry its own rate
+# limit.
 #
 # Flask-Limiter registers a per-route limit through the decorator at definition
 # time, and this blueprint's routes are defined at import — before the limiter
@@ -18,10 +24,30 @@ auth_bp = Blueprint("auth", __name__)
 # blueprint-scoped limit is the mechanism the console already uses successfully,
 # and it is applied in `_register_routes`.
 #
-# Scoped to this one route rather than all of `auth_bp` because a 5/minute
+# Scoped to one route each rather than all of `auth_bp` because a 5/minute
 # ceiling on logout would be wrong.
 recover_bp = Blueprint("recover", __name__)
+# `/signup` used to live on `auth_bp` and inherit no limit at all — the same
+# unlimited-decorator trap described above, just never noticed because nothing
+# gated the route yet. Split out once a gate made the route worth protecting:
+# signup sends mail, the same reasoning `recover_bp` already carries.
+signup_bp = Blueprint("signup", __name__)
 logger = logging.getLogger(__name__)
+
+# The only fields `signup()` will ever forward into `raw_user_meta_data`, and
+# copied BY PRESENCE, not truthiness — `False` and `0` must survive. Anything
+# else in the request body is dropped rather than forwarded: this composes the
+# object the client used to be trusted to send itself (see
+# `static/js/modules/services.js`'s `signup` docstring), so an allow-list here
+# is what makes "the server is prepared for this" true again.
+SIGNUP_METADATA_KEYS = (
+    "first_name",
+    "family_name",
+    "marketing_consent",
+    "marketing_consent_policy_version",
+    "marketing_consent_language",
+    "age",
+)
 
 
 # Session keys holding one reader's legacy conversation litter. Named once so
@@ -87,62 +113,182 @@ def rotate_session_for_new_identity() -> None:
         session.pop(key, None)
 
 
-@auth_bp.route("/signup", methods=["POST"])
-def signup():
-    data = request.get_json()
+def _signup_metadata(data: dict[str, Any]) -> dict[str, Any]:
+    """The allow-listed subset of the request body, unconverted.
+
+    By presence, not truthiness: ``"marketing_consent": False`` must survive,
+    which a plain ``data.get(key)`` filtered through ``if value`` would drop.
+    Values are forwarded exactly as received — never stringified — because
+    `handle_new_user` (`20260823014034_marketing_consent_record.sql:300`)
+    tests `jsonb_typeof(... ) = 'boolean'` on `marketing_consent`, and a
+    string there silently becomes a declined consent for every new account.
+    """
+    return {key: data[key] for key in SIGNUP_METADATA_KEYS if key in data}
+
+
+@signup_bp.route("/signup", methods=["POST"])
+def signup() -> Any:
+    """Create an account — the one route the browser's signup form calls.
+
+    Gated before anything else touches the provider: an operator-paused
+    instance must never construct a Supabase client for this request, let
+    alone spend a network call on it. See
+    ``docs/registrations-pause-plan.md`` for the full contract, including why
+    the gate reads three-valued (``True``/``False``/``None``) and answers a
+    ``503`` rather than a ``403`` when it cannot tell which.
+
+    Answers in machine codes, not sentences — this endpoint composes no
+    English. ``static/js/modules/dom.js``'s ``formatAuthError`` owns every
+    reader-facing string in both languages; a message composed here would be
+    a second, untranslated path this app does not have.
+    """
+    data = request.get_json(silent=True) or {}
     email = data.get("email")
     password = data.get("password")
+    lang = data.get("lang")
 
-    if not email or not password:
-        return jsonify({"error": "Email and password are required"}), 400
+    # Malformed before paused: a blank password is wrong whether or not
+    # signups are open, it should not spend a settings read, and "paused" is
+    # not an answer the reader could act on for a request this broken.
+    #
+    # `lang` is validated here too, not left to `signup_redirect_url` — a
+    # non-string value (an int, a list) reached `quote()` unguarded and
+    # raised, which the broad `except Exception` below turned into a
+    # `503 provider_unavailable`: a malformed CLIENT request reported as an
+    # upstream outage. `recover()` validates the same way for the same
+    # reason.
+    if not email or not password or not isinstance(lang, (str, type(None))):
+        return jsonify({"error": "missing_fields"}), 400
+
+    settings_service = current_app.config["settings_service"]
+    enabled = settings_service.signup_enabled()
+    if enabled is None:
+        return jsonify({"error": "auth_unavailable"}), 503
+    if not enabled:
+        return jsonify({"error": "signup_disabled"}), 403
 
     try:
         supabase = get_supabase()
         if not supabase:
-            return jsonify({"error": "Supabase client not available"}), 500
+            return jsonify({"error": "provider_unavailable"}), 503
 
-        # Create user in Supabase Auth
-        response = supabase.auth.sign_up(
-            {
-                "email": email,
-                "password": password,
-            }
-        )
+        options: dict[str, Any] = {"data": _signup_metadata(data)}
+        redirect_to = signup_redirect_url(lang)
+        if redirect_to:
+            options["email_redirect_to"] = redirect_to
 
-        # Handle response structure - check for error attribute first
+        # Re-read immediately before the network call, not just once at the
+        # top of the view. The first check and the actual GoTrue round trip
+        # are separated by metadata/redirect-URL construction and the request
+        # itself; on the single-worker/multi-thread deployment an operator's
+        # pause can land in that window. This does not close the window
+        # entirely — the read here and the send below are still two steps,
+        # not one atomic one, and closing it fully would need the BEFORE
+        # INSERT trigger `docs/registrations-pause-plan.md` §4 explicitly
+        # rejects (it would also block admin-created accounts). It narrows
+        # the window from "the whole view" to "one network round trip",
+        # which is the practical amount of narrowing available without that
+        # trade-off. Found in review (/code-review, 2026-08-26).
+        if settings_service.signup_enabled() is False:
+            return jsonify({"error": "signup_disabled"}), 403
+
+        response = supabase.auth.sign_up({"email": email, "password": password, "options": options})
+
+        # Provably unreachable against the installed `supabase_auth` 2.31.0:
+        # its `sign_up()` either returns a populated `AuthResponse` or RAISES
+        # (see the `except AuthError` branch below) — it never returns an
+        # object with a populated `.error`. Kept anyway, defensively, in case
+        # a future SDK version changes that contract back; a branch that
+        # never runs today costs nothing to leave in place, and removing it
+        # is the thing that would need re-adding under pressure later.
         if hasattr(response, "error") and response.error:
-            error_msg = getattr(response.error, "message", str(response.error))
-            logger.warning(f"Signup error: {error_msg}")
-            return jsonify({"error": error_msg}), 400
+            message = getattr(response.error, "message", str(response.error)) or ""
+            logger.warning("Signup refused by provider: %s", message)
+            code, status = _signup_error_response(None, message)
+            return jsonify({"error": code}), status
 
-        # Access user data from the response
-        # Try different possible response structures
         user = None
         if hasattr(response, "user") and response.user:
             user = response.user
         elif hasattr(response, "data") and hasattr(response.data, "user"):
             user = response.data.user
-        elif hasattr(response, "user"):
-            user = response.user
 
         if not user:
-            logger.error(f"Signup response structure unexpected: {dir(response)}")
-            return jsonify({"error": "Unexpected response from authentication service"}), 500
+            logger.error("Signup response structure unexpected: %r", response)
+            return jsonify({"error": "provider_unavailable"}), 503
 
-        # Return success response
         return jsonify(
             {"message": "User created successfully", "user": {"id": user.id, "email": user.email}}
         ), 201
 
-    except Exception as e:
-        logger.error(f"Signup exception: {e!s}", exc_info=True)
-        error_msg = str(e)
-        # Extract more meaningful error messages from common exceptions
-        if "Invalid login credentials" in error_msg or "invalid_credentials" in error_msg.lower():
-            error_msg = "Invalid email or password"
-        elif "User already registered" in error_msg or "already_registered" in error_msg.lower():
-            error_msg = "This email is already registered"
-        return jsonify({"error": error_msg}), 400
+    except AuthError as exc:
+        # THIS is the branch every real refusal actually takes — a duplicate
+        # email, a weak password, GoTrue's own per-address cooldown. `exc.code`
+        # is GoTrue's own machine code (`email_exists`, `weak_password`,
+        # `over_email_send_rate_limit`, even `signup_disabled` if an operator
+        # used the dashboard hard-close from docs/OPERATIONS.md) — read that
+        # first, and fall back to the English-prose heuristic only when a
+        # future GoTrue error has no code we recognise yet.
+        logger.warning("Signup refused by provider: %s (code=%s)", exc.message, exc.code)
+        code, status = _signup_error_response(exc.code, exc.message)
+        return jsonify({"error": code}), status
+    except Exception:
+        # Nothing above raised an AuthError — the provider itself did not
+        # answer (network failure, malformed client, an SDK exception with no
+        # GoTrue semantics at all). This is the one branch that is honestly an
+        # outage.
+        logger.error("Signup exception", exc_info=True)
+        return jsonify({"error": "provider_unavailable"}), 503
+
+
+# GoTrue's own machine code (`AuthError.code`, from `supabase_auth.errors.ErrorCode`)
+# mapped to ours, and to the status this app answers with — not always the
+# status GoTrue itself used. `signup_disabled` is GoTrue's own: an operator
+# who used the dashboard/Management-API hard close (docs/OPERATIONS.md) gets
+# GoTrue refusing directly, and this maps that refusal onto the SAME code and
+# status our own console-driven pause already answers with, so the reader
+# sees one consistent "paused" rather than two different refusals depending
+# on which layer closed signups.
+_GOTRUE_CODE_MAP: dict[str, tuple[str, int]] = {
+    "email_exists": ("already_registered", 400),
+    "user_already_exists": ("already_registered", 400),
+    "weak_password": ("weak_password", 400),
+    "email_address_invalid": ("invalid_email", 400),
+    "validation_failed": ("invalid_email", 400),
+    "over_request_rate_limit": ("too_soon", 429),
+    "over_email_send_rate_limit": ("email_unavailable", 429),
+    "signup_disabled": ("signup_disabled", 403),
+    "email_provider_disabled": ("signup_disabled", 403),
+}
+
+
+def _signup_error_response(gotrue_code: str | None, message: str) -> tuple[str, int]:
+    """Our machine code and HTTP status for a refused signup.
+
+    Reads GoTrue's OWN code first — an enum member, not prose, so it survives
+    a wording change upstream — and falls back to English-substring matching
+    on ``message`` only when ``gotrue_code`` is ``None`` or one this table
+    does not recognise yet. See §7 of ``docs/registrations-pause-plan.md``
+    for the table this mirrors.
+    """
+    if gotrue_code and gotrue_code in _GOTRUE_CODE_MAP:
+        return _GOTRUE_CODE_MAP[gotrue_code]
+
+    lowered = message.lower()
+    if "already registered" in lowered or "already_registered" in lowered:
+        return "already_registered", 400
+    if "valid email" in lowered:
+        return "invalid_email", 400
+    if "password" in lowered:
+        return "weak_password", 400
+    if "for security purposes" in lowered or "only request this after" in lowered:
+        return "too_soon", 429
+    if "rate limit" in lowered or "over_email_send_rate_limit" in lowered:
+        return "email_unavailable", 429
+    # The provider answered — this is a refusal, not an outage — so it is
+    # NOT `provider_unavailable`, which is reserved for the exception path
+    # above where nothing answered at all.
+    return "signup_refused", 400
 
 
 @auth_bp.route("/login", methods=["POST"])

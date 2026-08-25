@@ -184,6 +184,31 @@
   text-align: center;
 }
 
+/* Separates the registrations block from the generation settings form below
+   it (docs/registrations-pause-plan.md §9 Step 12) — an explicit rule rather
+   than the browser default <hr>, which draws with a physical border. */
+.admin-divider {
+  border: 0;
+  border-block-start: 1px solid var(--hairline);
+  margin-block: var(--space-2) 0;
+  margin-inline: 0;
+}
+
+.admin-registrations-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+/* The state pill itself is `class="admin-mark is-signal"` /
+   `"admin-mark is-warning"` — see admin/ui.js — not a bespoke component.
+   "open" borrows .is-signal (this is the privileged, attention-worthy state,
+   same reasoning .is-signal gives for Administrator); "paused" is what
+   .admin-mark.is-warning exists for. Composing the shared mark rather than
+   duplicating its geometry here means a future change to the pill's padding,
+   radius or type scale only has to happen once. */
+.admin-registrations-state { gap: var(--space-1); }
+
 /* ── Forms ───────────────────────────────────────────────────────────────── */
 
 .admin-form {
@@ -886,6 +911,19 @@ select.admin-input {
   background: var(--bg-sunken);
   color: var(--fg-muted);
 }
+
+/* Same neutral ground as .is-off, --warning text instead of --fg-muted — for
+   a mark that means "restricted", not merely "absent". No tint fill: --danger
+   and --warning have no tint variant anywhere in this file, only text/rail
+   treatments (see .admin-form-hint.is-warning below), and one mark needing a
+   warning state was not reason enough to start giving --warning a fill it
+   has nowhere else. */
+.admin-mark.is-warning {
+  background: var(--bg-sunken);
+  color: var(--warning);
+}
+
+.admin-mark .icon { flex: none; }
 
 /* Who withdrew access, when, and why — one sentence across the foot of the
    card. It was three more rows in the wall of definitions, which is where a

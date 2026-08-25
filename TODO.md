@@ -1,4 +1,4 @@
-STATUS: CURRENT AUTHORITY — open work only. Last verified against code 2026-08-23.
+STATUS: CURRENT AUTHORITY — open work only. Last verified against code 2026-08-25.
 Resolved entries live in `docs/archive/TODO-resolved.md`.
 
 # TODO
@@ -34,6 +34,7 @@ bottom of this file: [How this file works](#how-this-file-works).
 
 - [Leaked-password protection is disabled in Supabase Auth](#leaked-password-protection-is-disabled-in-supabase-auth) — blocked on a Pro-plan upgrade, not code.
 - [Security email is English-only](#security-email-is-english-only-on-a-product-that-is-bilingual-by-construction) — blocked in the Supabase dashboard, not code.
+- [`SettingsService.snapshot()` can publish a stale value over a fresher one](#settingsservicesnapshot-can-publish-a-stale-value-over-a-fresher-one) — diagnosed, unfixed; the fix shape is already proven elsewhere in the same file.
 - [Answer from a second provider](#answer-from-a-second-provider--and-why-the-code-is-the-easy-half) — the citation-fidelity harness is built (2026-08-22); still blocked on running it for real against the API.
 - [OpenRouter as one integration instead of several](#openrouter-as-one-integration-instead-of-several) — alternative to the entry above; same harness, same not-yet-run status.
 - [Refactor the profile page](#refactor-the-profile-page) — Steps 0-5 and most of Step 7 shipped 2026-08-23; the three remaining items each have their own entry below.
@@ -46,7 +47,6 @@ bottom of this file: [How this file works](#how-this-file-works).
 - [Account deletion (Spec 4)](#account-deletion-spec-4--blocked-on-a-product-decision-not-on-engineering) — blocked on an unclosed product decision; both migrations written.
 - [The CSP still allows an image from any HTTPS origin](#the-csp-still-allows-an-image-from-any-https-origin) — hardening the deep-linking plan asked for and never got.
 - [A conversation id now reaches the access log](#a-conversation-id-now-reaches-the-access-log) — a verification task, possibly already fine; unverified either way.
-- [Registrations pause — let an operator pause new signups](#registrations-pause--let-an-operator-pause-new-signups) — not started.
 
 ---
 
@@ -110,6 +110,71 @@ change.
 section, and every template edit becomes a two-language edit from then on. Recorded at
 §14·D·26 and §17 Step 5 of `docs/archive/2026-08-23_profile-refactor.md`, where it is
 the one Step 5 item left unchecked — blocked, not attempted.
+
+---
+
+### `SettingsService.snapshot()` can publish a stale value over a fresher one
+
+**Where:** `web/services/settings_service.py`, `snapshot()` and `_publish()`. `snapshot()`
+reads the store via `self._overrides()` (I/O) with no lock held, then unconditionally
+writes the result into `self._cached` / `self._loaded_at` under `self._lock`, with no check
+for whether a write landed in between.
+
+**What is wrong.** Two threads (production runs `--threads 8`) can interleave: thread A's
+`snapshot()` starts its unlocked read while the settings are still old, thread B calls
+`update()` (a genuine settings save), which writes the new value and calls `_publish()`
+to install it — then thread A's read finishes, using the value it read before B's write, and
+unconditionally overwrites `_cached`/`_loaded_at` with that stale copy. For up to `ttl_seconds`
+(60s default), every reader sees the value **before** the save that just succeeded, even
+though the store and the save's own HTTP response both say the new one is live.
+
+**Who it reaches.** Any concurrent `GET /admin/api/settings` (or an internal `snapshot()`
+call from `apply_generation_settings`) racing a `PUT` from another operator, or from the
+same operator opening a second tab. Narrow window, plausible on a console two people share.
+
+**How it was found.** An adversarial security review (agy, `gemini-3.7-flash-high`, its
+default model, 2026-08-25)
+of the registrations-pause feature (`docs/registrations-pause-plan.md`) found the identical
+shape in the NEW code this feature added — `SettingsService.signup_enabled()`'s operational
+cache had the same unlocked-read-then-unconditional-write race, fixed in that commit with a
+"did a newer value get published while I was reading" check before the write-back
+(`settings_service.py`, `signup_enabled()`'s `baseline_loaded_at` guard). Checking whether
+`snapshot()` — the pattern `signup_enabled()` was modelled on — had the same problem found
+that it does, and predates this feature.
+
+**What fixing it would disturb.** The fix is the same shape already proven for
+`signup_enabled()`: capture `self._loaded_at` under the lock before starting the unlocked
+read, and on write-back check whether it advanced past that baseline before overwriting —
+if it did, a concurrent writer already published something newer, so defer to it instead.
+Needs a regression test in the shape of `test_a_slow_read_in_flight_does_not_clobber_a_
+concurrent_publish` (`web/tests/test_registrations_pause.py`), which proves the equivalent
+fix for the operational cache without relying on real thread scheduling — that test's
+own docstring explains the deterministic-interleaving technique. Touches the generation
+settings path every chat request depends on for its model/temperature/token ceiling, so
+it deserves its own commit and its own careful review rather than folding into an unrelated
+change.
+
+**Confirmed independently 2026-08-26** by `/code-review` (a forked session with real
+repository access, reviewing the built registrations-pause feature), which found the same
+gap without being told about it. That pass also surfaced two smaller, related items, filed
+here rather than each earning a separate entry:
+
+- **`static/js/modules/services.js`'s `Services.signup()`** builds the request body as
+  `{ email, password, lang, ...metadata }` — `metadata` spread last, so a future metadata key
+  literally named `email`, `password`, or `lang` would silently overwrite the real value
+  client-side, with no server-side collision guard (`SIGNUP_METADATA_KEYS` in
+  `web/api/auth.py` only filters what gets forwarded into `raw_user_meta_data`, it does not
+  guard the top-level request fields). Dormant today — nothing sends a colliding key — but
+  worth a comment or a spread-order fix before the next metadata field is added.
+- **`SettingsService`'s operational cache (`signup_enabled`) and its generation cache
+  (`snapshot`) each independently query `admin_store.get_settings()` against the same
+  single-row JSONB document.** `static/js/admin.js` fires `initRegistrationsTab` and
+  `initSettingsTab` concurrently on every admin console open, so a cold cache on both sides
+  (e.g. right after a process restart) costs two Supabase round trips for the identical row
+  instead of one. Not a correctness issue, and not judged worth the coupling risk of merging
+  two caches this feature deliberately kept separate (§2 of
+  `docs/registrations-pause-plan.md`) — recorded in case the round trip ever becomes
+  measurable.
 
 ---
 
@@ -849,25 +914,6 @@ the deployment, not the repository.
 log formatter, not in Flask, so no application code changes either way. Whatever the
 answer turns out to be, write it down in `docs/OPERATIONS.md`, which exists precisely
 for state this repository cannot hold.
-
----
-
-### Registrations pause — let an operator pause new signups
-
-> Filed 2026-08-24 as _Signup kill-switch_; renamed because "kill-switch" is jargon
-> the control itself should not carry — the feature is unchanged.
-
-**Where:** `web/api/auth.py:90` `POST /auth/signup` (no gate today); `web/config.yaml:server` defaults; `web/services/settings_service.py:28` `GENERATION_KEYS` / `SettingsService`; `web/api/admin.py:192` `GET/PUT /admin/api/settings`; `web/templates/index.html:231` `#signup-pane` + `static/js/modules/handlers.js:207` `handleAuthFormSubmit`; `web/i18n/en.yaml` / `ar.yaml`.
-
-**What is wrong.** Signup cannot be paused without a deploy or a Supabase-dashboard change. When load spikes there is no operator control in the console to refuse `POST /auth/signup` with a machine code and render a bilingual explanation; the only levers are code or the project-wide Supabase Auth toggle outside the app's audit trail.
-
-**Who it reaches.** Every new visitor during a surge; operators who need a reversible, audited control that does not affect chat/auth for existing readers.
-
-**How it was found.** Operator request 2026-08-24; code read confirms no check before `supabase.auth.sign_up` and no `signup_enabled` key in `web/config.yaml` or `app_settings`.
-
-**What fixing it would disturb.** No migration if stored as `app_settings.settings.signup_enabled` (same JSONB as generation settings, different key namespace + bool validation). Otherwise: add `server.signup_enabled: true` default in `web/config.yaml`, extend `SettingsService` with a non-generation key set + bool validation and 30–60s TTL with immediate invalidate on `PUT`, gate `signup()` before the Supabase call (return `403 {error:"signup_disabled"}`), add or extend `GET/PUT /admin/api/settings` behind `admin_bp`'s bearer gate (`web/api/admin.py:98`) with `actor_from_request` audit, add admin toggle + reader banner/disabled tab in `index.html` / `handlers.js` / `services.js` with `runtime.auth` / `runtime.admin` keys in both YAML files (fails `test_arabic_catalogue_covers_every_runtime_key` if AR lags), and add unit + browser tests. Document the bypass: a Flask gate does not block a direct `supabase-js` `signUp` with the anon key — note the hard-close option (dashboard disable or Management API) in `docs/OPERATIONS.md`. Bump `ASSET_VERSION` in `web/api/app.py:248` for any CSS/JS change.
-
----
 
 ## How this file works
 

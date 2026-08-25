@@ -161,6 +161,14 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
                                 data-bs-target="#signup-pane" type="button" role="tab" aria-controls="signup-pane"
                                 aria-selected="false">
                                 {{ icon('user-plus', 16) }}<span>{{ t('page.auth.signup') }}</span>
+                                {# A visitor scanning tabs should not have to open Signup to discover it is
+                                   paused — but the tab itself stays selectable (see #signup-paused above for
+                                   why). The dot is decorative; the sr-only text is what a screen reader
+                                   actually announces, so the fact travels even without color. #}
+                                {% if signup_paused %}
+                                <span class="signup-tab-paused-dot" aria-hidden="true"></span>
+                                <span class="sr-only">{{ t('page.auth.signupPausedBadge') }}</span>
+                                {% endif %}
                             </button>
                         </li>
                     </ul>
@@ -230,7 +238,22 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 
                         <!-- Signup pane -->
                         <div class="tab-pane fade" id="signup-pane" role="tabpanel" aria-labelledby="signup-tab">
-                            <form id="signup-form" novalidate>
+                            <!-- Server-rendered from base_render_context's own
+                                 settings read (docs/registrations-pause-plan.md
+                                 §6) — no round trip, no flash. Replaces the form
+                                 outright rather than disabling #signup-tab: a
+                                 disabled tab announces "disabled" to a screen
+                                 reader with no reason attached, and a visitor who
+                                 came specifically to register is told nothing. An
+                                 UNDETERMINED flag (a cold read failure) renders the
+                                 form OPEN, never hidden — the 403 at submit time is
+                                 the honest place to say "could not check". -->
+                            <div id="signup-paused" class="signup-paused-notice {{ '' if signup_paused else 'd-none' }}"
+                                role="status" aria-live="polite">
+                                <p class="signup-paused-notice-heading">{{ t('page.auth.signupPaused.heading') }}</p>
+                                <p class="signup-paused-notice-lead">{{ t('page.auth.signupPaused.lead') }}</p>
+                            </div>
+                            <form id="signup-form" class="{{ 'd-none' if signup_paused else '' }}" novalidate>
                                 <!-- Required by THIS FORM only — the column stays
                                      nullable, and a raw GoTrue caller can omit the
                                      metadata entirely (§14·D4 /

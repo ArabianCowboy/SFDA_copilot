@@ -1384,6 +1384,59 @@
 }
 .history-notice-dismiss:hover { color: var(--fg-primary); }
 
+/* "New registrations are paused right now." (docs/registrations-pause-plan.md
+   §6 / §9 Step 12). Same shape as .history-notice on purpose: this is the same
+   kind of object, something the app is telling the reader before they act,
+   not a routine status toast — and it carries an instruction the reader has
+   to act on ("sign in above" if they already have an account), which is what
+   earns the --warning rail rather than --confidence. Server-rendered, not
+   dismissible: it describes the form's current state rather than announcing
+   a one-time event, so there is nothing here to dismiss. */
+.signup-paused-notice {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-block: var(--space-3);
+  padding-block: var(--space-3);
+  padding-inline: var(--space-3);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-xs);
+  background: var(--bg-sunken);
+  color: var(--fg-muted);
+  font-size: var(--fs-200);
+  line-height: var(--lh-body);
+}
+.signup-paused-notice::before {
+  content: '';
+  position: absolute;
+  inset-block: var(--space-3);
+  inset-inline-start: 0;
+  inline-size: 2px;
+  border-radius: var(--radius-pill);
+  background: var(--warning);
+}
+.signup-paused-notice-heading {
+  margin: 0;
+  color: var(--fg-primary);
+  font-weight: var(--fw-medium);
+}
+.signup-paused-notice-lead { margin: 0; }
+
+/* The dot on #signup-tab when registrations are paused — decorative only,
+   see the template comment for the sr-only text that carries the fact for
+   assistive tech. Sized and inset like the other small state marks in this
+   file rather than a bespoke size. */
+.signup-tab-paused-dot {
+  display: inline-block;
+  inline-size: 6px;
+  block-size: 6px;
+  margin-inline-start: var(--space-1);
+  border-radius: var(--radius-pill);
+  background: var(--warning);
+  vertical-align: middle;
+}
+
 /* Same shape as .history-notice — a disclosure and an invitation share a box,
    distinguished only by rail colour: confidence (signal) rather than warning,
    because there is nothing wrong here, only something offered. */

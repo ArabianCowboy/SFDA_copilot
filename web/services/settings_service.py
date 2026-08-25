@@ -33,6 +33,23 @@ GENERATION_KEYS: tuple[str, ...] = (
     "reasoning_effort",
 )
 
+# A second, parallel key set for settings that are stored in the same
+# `app_settings.settings` JSONB document but have nothing to do with
+# generation: no pairwise validation against a model's parameter contract, no
+# rebuild of the OpenAI handler on write. Kept as its OWN tuple rather than
+# folded into GENERATION_KEYS so `validate()` — which merges a patch with
+# `deployed_defaults()` and reasons about model/token/effort compatibility —
+# never has to grow an "except this one" branch for a boolean.
+#
+# Sharing the class below rather than living in a standalone module, unlike
+# `notification_store.get_purge_retention_days` / `set_purge_retention_days`:
+# those read and write the row directly, with no cache and no lock, which is
+# fine for a value read once per admin-tab load and is a live lost-update race
+# waiting for a second concurrent writer. This key set shares
+# `SettingsService._write_lock` instead — the one thing a signup gate,
+# checked on every request, genuinely cannot do without.
+NON_GENERATION_KEYS: tuple[str, ...] = ("signup_enabled",)
+
 TEMPERATURE_RANGE = (0.0, 2.0)
 
 
@@ -102,6 +119,11 @@ def deployed_defaults() -> dict[str, Any]:
         # its own documented default that we should not second-guess.
         "reasoning_effort": config.get("openai", "reasoning_effort", None),
     }
+
+
+def deployed_non_generation_defaults() -> dict[str, Any]:
+    """The values config.yaml ships for :data:`NON_GENERATION_KEYS`."""
+    return {"signup_enabled": config.get("server", "signup_enabled", True)}
 
 
 def _context_ceiling() -> int:
@@ -193,6 +215,31 @@ def validate(patch: dict[str, Any], current: dict[str, Any]) -> list[ValidationE
     return errors
 
 
+def validate_non_generation(patch: dict[str, Any]) -> list[ValidationError]:
+    """Validate a :data:`NON_GENERATION_KEYS` patch in isolation.
+
+    Unlike :func:`validate`, this never merges against the resulting state —
+    there is exactly one key, it is a boolean, and a boolean cannot be made
+    invalid by another boolean's value the way a token ceiling can by a model
+    choice.
+    """
+    errors: list[ValidationError] = []
+
+    unknown = sorted(set(patch) - set(NON_GENERATION_KEYS))
+    errors.extend(ValidationError(field=key, code="unknown_setting") for key in unknown)
+
+    if "signup_enabled" in patch:
+        value = patch["signup_enabled"]
+        # `type(value) is bool`, not `isinstance` — `isinstance(True, int)` is
+        # True in Python, and every numeric validator above already carries
+        # this exact guard for that reason. Here the test runs the other way:
+        # 1, 0, "true" and "false" are all refused rather than coerced.
+        if type(value) is not bool:
+            errors.append(ValidationError("signup_enabled", "not_a_boolean"))
+
+    return errors
+
+
 class SettingsService:
     """Effective settings, cached in process.
 
@@ -205,7 +252,12 @@ class SettingsService:
     never sees their own change lag.
     """
 
-    def __init__(self, backend_provider, ttl_seconds: float = 60.0) -> None:
+    def __init__(
+        self,
+        backend_provider,
+        ttl_seconds: float = 60.0,
+        operational_ttl_seconds: float = 45.0,
+    ) -> None:
         # A provider rather than a backend, so the Supabase client is built on
         # first use rather than at create_app time. Constructing it during
         # startup would put a network dependency in front of a process whose
@@ -219,6 +271,22 @@ class SettingsService:
         self._write_lock = threading.Lock()
         self._cached: dict[str, Any] | None = None
         self._loaded_at = 0.0
+
+        # The NON_GENERATION_KEYS cache slot, entirely separate from the pair
+        # above: a flag read must never be served from, or overwrite, the
+        # generation snapshot, and vice versa. Its TTL is not the propagation
+        # mechanism for a console toggle — a write publishes the committed
+        # value immediately, the same way `_publish` does for generation
+        # settings below — it only bounds staleness from an edit made outside
+        # this process entirely, such as the Supabase SQL editor.
+        self._operational_ttl = operational_ttl_seconds
+        self._operational_cached: bool | None = None
+        self._operational_loaded_at = 0.0
+        # True once ANY read of the flag has ever succeeded, in this process.
+        # Distinguishes "the store is down, but I know the last value" (serve
+        # it, however stale) from "the store is down and I have never once
+        # been able to ask" (undetermined — see signup_enabled's docstring).
+        self._operational_ever_loaded = False
 
     @staticmethod
     def _now() -> float:
@@ -336,6 +404,176 @@ class SettingsService:
             self._cached = dict(effective)
             self._loaded_at = self._now()
 
+    def _invalidate_operational_cache(self) -> None:
+        """Force the next read of :data:`NON_GENERATION_KEYS` to hit the store.
+
+        Called after every successful write to the row — including a
+        generation-only one via :meth:`update`, which writes the WHOLE
+        document back regardless of which keys changed. That makes a
+        generation save a write to the flag's storage even though it did not
+        touch the flag, and missing this call is the bug this design cannot
+        afford: the flag would then read stale for up to its own TTL after
+        an unrelated save.
+
+        Deliberately does NOT clear ``_operational_cached`` itself — only
+        ``_operational_loaded_at``, which is enough to fail the freshness
+        check in :meth:`signup_enabled` and force a real read. Clearing the
+        value too used to conflate "this needs revalidating" with "nothing
+        was ever read": a generation save immediately followed by a read
+        failure would answer ``None`` (undetermined, `503`) instead of the
+        last known value, however stale — exactly the fabricated-outage
+        failure mode :meth:`signup_enabled` exists to avoid.
+        """
+        with self._lock:
+            self._operational_loaded_at = 0.0
+
+    def signup_enabled(self) -> bool | None:
+        """Whether the signup form accepts new accounts right now.
+
+        Three-valued on purpose: ``True``/``False`` is an operator's own
+        decision, and ``None`` means "could not determine" — the two must
+        stay distinguishable because a caller answers them as a ``403`` and a
+        ``503`` respectively, which mean opposite things to a reader.
+        ``docs/registrations-pause-plan.md`` §5 is the argument for this
+        split over the two-valued fail-open/fail-closed alternatives.
+
+        Publish-on-write, not TTL expiry, is what makes a console toggle
+        take effect immediately on this single-worker deployment — see
+        :meth:`set_signup_enabled`. The TTL here only bounds staleness from
+        an edit made OUTSIDE this process, such as the Supabase SQL editor.
+        """
+        with self._lock:
+            fresh = (
+                self._operational_cached is not None
+                and self._now() - self._operational_loaded_at < self._operational_ttl
+            )
+            if fresh:
+                return self._operational_cached
+            # Captured under the SAME lock as the freshness check, before any
+            # I/O starts. `set_signup_enabled` publishes under this lock too,
+            # so if its publish lands while the read below is in flight, the
+            # loaded_at it wrote will be strictly newer than this snapshot —
+            # which is how the write-back below can tell it would be
+            # clobbering a fresher value with a stale one, and defer to it
+            # instead. Without this, a slow unlocked read racing a concurrent
+            # toggle could silently overwrite an operator's fresh "paused"
+            # with the stale "open" this call started with.
+            baseline_loaded_at = self._operational_loaded_at
+
+        # `self._backend` is a property that resolves the provider closure —
+        # for the real app that means `create_client(url, key)`, which can
+        # raise on a present-but-malformed URL/key, not just return None for
+        # an absent one. It used to be read OUTSIDE this try block, so that
+        # raise reached every caller uncaught — and `base_render_context()`
+        # (`web/api/app.py`) calls `signup_enabled()` unconditionally on
+        # EVERY full-page render, including `/admin` and `/account`, neither
+        # of which reads the result. An unguarded raise here would 500 the
+        # whole site, not just signup. Found in review (/code-review, 2026-08-26).
+        try:
+            backend = self._backend
+            if backend is None:
+                # No service-role key configured. Nothing could ever have been
+                # written, so there is nothing to disagree with — answer the
+                # deployed default, the same reasoning `read_overrides` already
+                # gives for the generation keys.
+                return bool(deployed_non_generation_defaults()["signup_enabled"])
+
+            stored = backend.get_settings() or {}
+            if not isinstance(stored, dict):
+                raise TypeError(
+                    f"stored settings must be a JSON object, got {type(stored).__name__}"
+                )
+        except Exception:
+            logger.error("Registrations-pause flag read failed.", exc_info=True)
+            with self._lock:
+                if self._operational_ever_loaded:
+                    # A pause must survive a Supabase blip: serve the last
+                    # known value, however stale, rather than silently
+                    # reopening — or closing — signups mid-incident.
+                    return self._operational_cached
+            # Never successfully read in THIS process. Answering the
+            # deployed default here would be a fabricated "open" during a
+            # cold-start outage; the caller must treat this as undetermined.
+            return None
+
+        value = stored.get("signup_enabled")
+        if type(value) is not bool:
+            # Absent (never overridden) or malformed (the row is JSONB with
+            # no shape constraint) both mean "no usable override" — revert
+            # to the deployed default rather than propagating garbage.
+            value = bool(deployed_non_generation_defaults()["signup_enabled"])
+
+        with self._lock:
+            if self._operational_loaded_at > baseline_loaded_at:
+                # Someone else — set_signup_enabled's publish, or another
+                # concurrent signup_enabled() read — already installed a
+                # newer value while this read was in flight. Trust that one
+                # instead of overwriting it with what we just read.
+                return self._operational_cached
+            self._operational_cached = value
+            self._operational_loaded_at = self._now()
+            self._operational_ever_loaded = True
+        return value
+
+    def set_signup_enabled(self, enabled: Any, *, actor) -> list[ValidationError]:
+        """Set or clear the registrations-pause override.
+
+        ``enabled=None`` removes the override, reverting to the deployed
+        default — the same "null removes" convention :meth:`update` uses for
+        generation keys. Takes the SAME ``_write_lock`` as :meth:`update`,
+        so a console toggle and a generation save can never interleave a
+        read-modify-write and silently discard one of them — the exact race
+        `20260814022601_app_settings.sql` declines to solve with a `version`
+        column, on the assumption every writer takes this one lock.
+
+        Never rebuilds the OpenAI handler and never runs an ``on_committed``
+        hook: a registrations toggle has no business restarting generation.
+        """
+        errors = validate_non_generation({} if enabled is None else {"signup_enabled": enabled})
+        if errors:
+            return errors
+
+        backend = self._backend
+        if backend is None:
+            return [ValidationError("_", "storage_unavailable")]
+
+        with self._write_lock:
+            try:
+                original = dict(self._read_overrides())
+            except Exception:
+                logger.error(
+                    "Settings read failed during a registrations-pause update; refusing to write.",
+                    exc_info=True,
+                )
+                return [ValidationError("_", "storage_unavailable")]
+
+            # Whole-document read, whole-document write — generation keys in
+            # `original` ride along untouched, the same way a generation save
+            # leaves `signup_enabled` untouched in the other direction.
+            stored = dict(original)
+            if enabled is None:
+                stored.pop("signup_enabled", None)
+            else:
+                stored["signup_enabled"] = enabled
+
+            backend.put_settings(stored, actor=actor, before=original, after=dict(stored))
+            self._invalidate_operational_cache()
+
+            # Publish the committed value directly rather than re-reading —
+            # same reasoning as `_publish` above: a store that fails in the
+            # instant after a successful write must not un-publish a change
+            # that already happened.
+            published = (
+                bool(deployed_non_generation_defaults()["signup_enabled"])
+                if enabled is None
+                else enabled
+            )
+            with self._lock:
+                self._operational_cached = published
+                self._operational_loaded_at = self._now()
+                self._operational_ever_loaded = True
+        return []
+
     def update(self, patch: dict[str, Any], *, actor, on_committed=None) -> list[ValidationError]:
         """Apply a patch. Returns errors; an empty list means it was written.
 
@@ -398,6 +636,11 @@ class SettingsService:
             )
             # Trust the store's answer over our own copy where it gives one.
             self._publish(committed if isinstance(committed, dict) else stored)
+            # This just replaced the WHOLE row, including whatever
+            # `signup_enabled` was set to — a write to that key's storage
+            # even though this patch never named it. See
+            # `_invalidate_operational_cache`'s own docstring.
+            self._invalidate_operational_cache()
 
             # Inside the lock, deliberately. Two overlapping saves would
             # otherwise each store, then build, then swap — and if the first

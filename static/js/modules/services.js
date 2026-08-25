@@ -358,23 +358,40 @@ export const Services = {
   },
 
   /**
+   * Create an account through our own origin, not straight to GoTrue.
+   *
+   * Unlike `login` above, this one goes to `/auth/signup` — the same
+   * server-mediation `requestPasswordReset` below already uses, for a
+   * different reason here: it is the only place an operator's registrations
+   * pause (`runtime.admin.registrations.*` in the console) can actually be
+   * enforced. A browser-direct `this.supabase.auth.signUp` bypasses any
+   * server-side gate by construction, whatever that gate says.
+   *
    * `metadata` lands in `raw_user_meta_data`, which `handle_new_user`
    * (supabase/migrations/20260822225415_profile_identity_atomic_cutover.sql)
    * reads to seed `first_name`/`family_name` — coercing malformed input
    * toward null rather than raising, because that trigger is AFTER INSERT
-   * on auth.users and a raise there rolls back account creation itself.
-   * Never send anything here this app is not prepared to have a direct
-   * GoTrue caller send maliciously: that trigger is the only validation.
+   * on auth.users and a raise there rolls back account creation itself. The
+   * server allow-lists which of these keys it forwards, so this is no longer
+   * the only validation the way the docstring here used to warn — but keep
+   * sending only what belongs in `raw_user_meta_data` regardless.
    */
-  async signup(email, password, metadata = {}) {
-    if (!this.supabase) throw new Error('Supabase client not initialized.');
-    const { data, error } = await this.supabase.auth.signUp({
-      email,
-      password,
-      options: { data: metadata },
+  async signup(email, password, metadata = {}, lang) {
+    const response = await fetch('/auth/signup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({ email, password, lang, ...metadata }),
     });
-    if (error) throw error;
-    return data;
+
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const refusal = new Error(body.error || `Signup failed (${response.status})`);
+      refusal.code = body.error;
+      refusal.status = response.status;
+      throw refusal;
+    }
+    return body;
   },
 
   /**

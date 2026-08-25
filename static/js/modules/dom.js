@@ -129,6 +129,26 @@ function bindToastHold(toast) {
 
 export const ErrorHandler = {
   formatAuthError(error) {
+    /* A `code` means the error came from one of OUR OWN endpoints (signup,
+       recovery) and is a machine code, not English prose — matched exactly,
+       ahead of the substring map below, because there is nothing to guess
+       at. GoTrue's own errors carry no code: they are still reached from
+       `login`, which stays browser-direct, and only the substring map below
+       can translate them. */
+    const byCode = {
+      missing_fields: I18n.t('auth.missingFields'),
+      signup_disabled: I18n.t('auth.signupDisabled'),
+      auth_unavailable: I18n.t('auth.signupUnavailable'),
+      provider_unavailable: I18n.t('auth.signupUnavailable'),
+      already_registered: I18n.t('auth.alreadyRegistered'),
+      invalid_email: I18n.t('auth.invalidEmail'),
+      weak_password: I18n.t('auth.weakPassword'),
+      too_soon: I18n.t('auth.tooSoon'),
+      email_unavailable: I18n.t('auth.emailUnavailable'),
+      signup_refused: I18n.t('auth.signupFailed'),
+    };
+    if (error?.code && byCode[error.code]) return byCode[error.code];
+
     const message = error?.message?.toLowerCase() || '';
     /* Built per call, not once at module load, so the catalogue is already
        populated and a language switch is reflected. */

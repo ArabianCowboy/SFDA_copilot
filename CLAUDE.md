@@ -3,7 +3,7 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 STATUS: CURRENT AUTHORITY — working agreement for agents and new contributors.
-Last verified against code 2026-08-23.
+Last verified against code 2026-08-25.
 
 SFDA Copilot: a bilingual (EN/AR, RTL) Flask + Supabase + LLM app that answers questions
 from the official SFDA guideline corpus and cites its sources. **Python 3.10 is the real
@@ -86,11 +86,11 @@ lines) is a factory built from staged private helpers — `_configure_app`, `_in
 closures defined _inside_ `_register_routes`; `admin.py` and `account.py` are imported inside
 it too, deliberately, to break an import cycle (both import back for `_authenticate_request`).
 
-| Blueprint               | File                 | Serves                                                    |
-| ----------------------- | -------------------- | --------------------------------------------------------- |
-| `auth_bp`, `recover_bp` | `web/api/auth.py`    | signup, login, logout, password recovery                  |
-| `admin_bp`              | `web/api/admin.py`   | `/admin` console: people, account detail, audit, settings |
-| `account_bp`            | `web/api/account.py` | `/account` page, NDJSON export, bulk conversation delete  |
+| Blueprint                            | File                 | Serves                                                                                        |
+| ------------------------------------ | -------------------- | --------------------------------------------------------------------------------------------- |
+| `auth_bp`, `recover_bp`, `signup_bp` | `web/api/auth.py`    | login, logout, password recovery, signup (its own blueprint so it carries its own rate limit) |
+| `admin_bp`                           | `web/api/admin.py`   | `/admin` console: people, account detail, audit, settings                                     |
+| `account_bp`                         | `web/api/account.py` | `/account` page, NDJSON export, bulk conversation delete                                      |
 
 **The path a question takes.** `POST /api/chat/stream` → auth → validate → _ownership preflight
 in the view body, before any retrieval or response frame_ → `SearchEngine` (FAISS semantic +

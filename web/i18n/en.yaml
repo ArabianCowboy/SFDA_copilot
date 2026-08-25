@@ -188,6 +188,14 @@ runtime:
     servicesUnavailable: "Authentication services are not configured."
     initFailed: "Failed to initialize core application services."
     missingFields: "Please fill in both email and password."
+    # Registrations pause (docs/registrations-pause-plan.md). signupUnavailable
+    # covers both `auth_unavailable` (could not check) and `provider_unavailable`
+    # (the auth service itself did not answer) — a reader cannot act on the
+    # difference, so both get the same "try again" framing.
+    signupDisabled: "New registrations are paused right now. If you already have an account, sign in above."
+    signupUnavailable: "We could not check whether registration is open. Please try again in a moment."
+    weakPassword: "That password was not accepted. Try a longer one."
+    signupFailed: "We could not create your account. Please try again."
     # Replaces a three-second toast that left a freshly-reset, empty form on
     # screen with no other signal. Names the address back so a typo is
     # visible while it can still be fixed cheaply.
@@ -346,6 +354,29 @@ runtime:
     signedInAs: "Signed in as {email}"
     roleLabel: "Role"
     empty: "Nothing here yet."
+    # Its own block, sibling to `settings` below rather than nested inside
+    # it: that panel's own heading is literally "Generation", and a
+    # registrations switch inside it would be a category error, riding the
+    # generation form's single Save button for an unrelated write.
+    registrations:
+      heading: "Registrations"
+      hint: "Applies to the signup form immediately. Readers who are already signed in are unaffected."
+      open: "Open"
+      paused: "Paused"
+      pause: "Pause registrations"
+      resume: "Resume registrations"
+      # Only PAUSING is confirmed — this console's own convention (compare
+      # admin.people.confirmDisable/confirmDemote, neither of which has an
+      # "enable"/"promote" counterpart) confirms the action that TAKES AWAY a
+      # capability, never the one that restores it.
+      confirmPause: "Pause new signups? Existing readers can still sign in — this does not stop a direct call to the authentication provider."
+      saving: "Saving…"
+      savedPaused: "Registrations paused."
+      savedOpen: "Registrations resumed."
+      loadFailed: "Could not load the registrations setting."
+      saveFailed: "Could not save the registrations setting."
+      bypassHeading: "What this does not cover"
+      bypassNote: "This pauses the signup form. It does not stop a direct call to the authentication provider — see docs/OPERATIONS.md."
     settings:
       heading: "Generation"
       hint: "Applies to answers from here on. Conversations already streaming finish on the previous settings."
@@ -747,6 +778,14 @@ page:
       confirmPassword: "Confirm new password"
       submit: "Save new password"
       cancel: "Cancel"
+    # Server-rendered replacement for #signup-form when an operator has
+    # paused registrations (docs/registrations-pause-plan.md §6).
+    signupPaused:
+      heading: "Registration is paused"
+      lead: "New accounts are not being created at the moment. Existing accounts sign in as usual."
+    # Screen-reader-only text on #signup-tab's paused dot — read this in place
+    # of the parenthetical it looks like, not appended after "Signup" visibly.
+    signupPausedBadge: "(paused)"
 
   profile:
     # Only the sidebar link's label lives here now — the rest of this block

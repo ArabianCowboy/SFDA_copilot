@@ -145,6 +145,7 @@ from web.api.auth import (
     auth_bp,
     recover_bp,
     rotate_session_for_new_identity,
+    signup_bp,
 )
 from web.services.account_recovery import (
     InMemoryRecoveryDispatcher,
@@ -245,7 +246,7 @@ SUPPORTED_FAQ_LANGS = ("en", "ar")
 # that mixes a fresh template with a stale module is worse than a stale page —
 # post-icon-migration it would render an <i class="bi"> with no icon font behind
 # it, or print a glyph NAME as text. MODULE_IMPORT_MAP below closes that.
-ASSET_VERSION = "warm53"
+ASSET_VERSION = "warm55"
 
 # Product release, rendered in the landing footer. Kept as one constant so
 # the number cannot drift between the page and the module headers.
@@ -1860,6 +1861,15 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
     limiter.limit(
         lambda: config.get("server", "rate_limit", {}).get("recover_api", "5 per minute"),
     )(recover_bp)
+    # Signup, server-mediated as of the registrations-pause work
+    # (docs/registrations-pause-plan.md) — it used to live on `auth_bp` and
+    # inherit no limit at all. Same reasoning as recover_api above: it is an
+    # unauthenticated endpoint that sends mail, sitting in front of GoTrue's
+    # own project-wide ceiling rather than replacing it.
+    app.register_blueprint(signup_bp, url_prefix="/auth")
+    limiter.limit(
+        lambda: config.get("server", "rate_limit", {}).get("signup_api", "5 per minute"),
+    )(signup_bp)
     # Imported here rather than at module scope: admin.py imports back into this
     # module for `_authenticate_request`, and a top-level import would be a cycle.
     from web.api.admin import admin_bp
@@ -1985,6 +1995,13 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
         lang = lang or pick_lang(request)
         catalog = load_catalog(lang)
 
+        # An undetermined flag (a cold process whose first read failed)
+        # renders the signup form OPEN, never hidden — hiding it on every
+        # blip would mean readers periodically cannot even see the tab, and
+        # the `503` at submit time is the honest place to say "could not
+        # check". Only a confirmed pause hides it here.
+        signup_enabled = app.config["settings_service"].signup_enabled()
+
         return {
             "SUPABASE_URL": supabase_url or "",
             "SUPABASE_ANON_KEY": supabase_anon_key or "",
@@ -1998,6 +2015,7 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
             # twice is the same mapping drifting eventually.
             "category_icons": CATEGORY_ICONS,
             "policy_version": PRIVACY_POLICY_VERSION,
+            "signup_paused": signup_enabled is False,
         }
 
     app.config["base_render_context"] = base_render_context

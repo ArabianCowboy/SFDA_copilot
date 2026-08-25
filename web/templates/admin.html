@@ -150,6 +150,13 @@
             <section class="admin-panel" role="tabpanel" id="panel-settings"
                 aria-labelledby="tab-settings" tabindex="0" hidden>
                 <h1 class="admin-heading">{{ t('page.admin.tabs.settings') }}</h1>
+                {# Its own block, rendered and wired separately from
+                   #settings-body below — a registrations toggle is not a
+                   generation setting (docs/registrations-pause-plan.md §2)
+                   and must not ride the generation form's own Save button
+                   or its re-render-on-model-change cycle. #}
+                <div id="registrations-body" class="admin-panel-body"></div>
+                <hr class="admin-divider">
                 <div id="settings-body" class="admin-panel-body"></div>
             </section>
 

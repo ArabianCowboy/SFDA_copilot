@@ -151,6 +151,33 @@ def get_recovery_dispatcher() -> RecoveryDispatcher | None:
     return SupabaseRecoveryDispatcher(_client)
 
 
+def _public_base_url() -> str | None:
+    """``PUBLIC_BASE_URL``, validated as a bare http(s) origin, or ``None``.
+
+    Never raises. Whether an unusable value is a refusal (recovery) or a value
+    to silently omit (signup) is a decision only each caller can make, so it is
+    made there, not here.
+
+    Non-empty is not the same as usable. This value ends up in an email as a
+    link people are told to click, so a typo here is not a 404 — it is a link
+    that goes somewhere else. Validated rather than trusted.
+
+    Deliberately NOT https-only: local development runs on http://127.0.0.1:5000
+    and refusing that would make the flow untestable off a deployed host. The
+    scheme check exists to reject `javascript:` and friends, and Supabase's own
+    redirect allow-list is the control that decides which hosts are real.
+    """
+    base = (os.getenv("PUBLIC_BASE_URL") or "").strip().rstrip("/")
+    if not base:
+        return None
+    parsed = urlparse(base)
+    if parsed.scheme not in ("http", "https") or not parsed.netloc:
+        return None
+    if parsed.query or parsed.fragment or "@" in parsed.netloc:
+        return None
+    return base
+
+
 def recovery_redirect_url(lang: str | None = None) -> str:
     """Where the recovery link comes back to.
 
@@ -164,27 +191,11 @@ def recovery_redirect_url(lang: str | None = None) -> str:
     bug, and the marker also has to be readable *before* the Supabase client is
     constructed, because it selects the flow type.
     """
-    base = (os.getenv("PUBLIC_BASE_URL") or "").strip().rstrip("/")
-    if not base:
-        raise RecoveryRefused("reset_not_configured", "PUBLIC_BASE_URL is not set")
-
-    # Non-empty is not the same as usable. This value ends up in an email as a
-    # link people are told to click, so a typo here is not a 404 — it is a
-    # recovery link that goes somewhere else. Validated rather than trusted.
-    #
-    # Deliberately NOT https-only: local development runs on http://127.0.0.1:5000
-    # and refusing that would make the flow untestable off a deployed host. The
-    # scheme check exists to reject `javascript:` and friends, and Supabase's own
-    # redirect allow-list is the control that decides which hosts are real.
-    parsed = urlparse(base)
-    if parsed.scheme not in ("http", "https") or not parsed.netloc:
-        raise RecoveryRefused(
-            "reset_not_configured", "PUBLIC_BASE_URL is not an absolute http(s) URL"
-        )
-    if parsed.query or parsed.fragment or "@" in parsed.netloc:
+    base = _public_base_url()
+    if base is None:
         raise RecoveryRefused(
             "reset_not_configured",
-            "PUBLIC_BASE_URL must be a bare origin with no credentials, query or fragment",
+            "PUBLIC_BASE_URL is not set, or is not a bare http(s) origin",
         )
 
     url = f"{base}/?recovery=1"
@@ -193,4 +204,32 @@ def recovery_redirect_url(lang: str | None = None) -> str:
     # not know what language the target reads.
     if lang:
         url += f"&lang={quote(lang, safe='')}"
+    return url
+
+
+def signup_redirect_url(lang: str | None = None) -> str | None:
+    """Where a confirmation link comes back to, or ``None`` to send no
+    ``email_redirect_to`` at all — GoTrue then falls back to the project's own
+    Site URL, which is what every signup used before this function existed.
+
+    Shares `_public_base_url`'s validation with `recovery_redirect_url`, but
+    unlike that function this one never raises. A recovery mail with a broken
+    link is worse than not sending one; a signup with a broken link is not
+    worse than the signup this app has always sent with no link option at
+    all — so refusing to send here would be a regression this migration must
+    not cause. Logged rather than silent, so a misconfigured deployment is at
+    least visible. Drops the `?recovery=1` marker (this is not a recovery
+    landing) and keeps `&lang=`.
+    """
+    base = _public_base_url()
+    if base is None:
+        logger.warning(
+            "PUBLIC_BASE_URL is not set, or is not a bare http(s) origin; "
+            "signup will omit email_redirect_to and GoTrue will use the "
+            "project's own Site URL instead."
+        )
+        return None
+    url = f"{base}/"
+    if lang:
+        url += f"?lang={quote(lang, safe='')}"
     return url

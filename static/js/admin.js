@@ -29,6 +29,7 @@ import {
   bindConsoleEvents,
   initNotificationsTab,
   initPeopleTab,
+  initRegistrationsTab,
   initSettingsTab,
   loadAudit,
   showAccessFailure,
@@ -72,6 +73,7 @@ const Admin = {
       // Only after the console is revealed, and deliberately not awaited: a
       // panel that fails to load should leave the rest of the console usable
       // rather than take the page down with it.
+      initRegistrationsTab(services);
       initSettingsTab(services);
       initPeopleTab(services);
       loadAudit(services);

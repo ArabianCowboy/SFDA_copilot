@@ -15,6 +15,16 @@ server:
   # comment here said "in session" long after that stopped being true.
   chat_history_length: 10
 
+  # Whether the signup form accepts new accounts. An operator pauses
+  # registrations from the console, which stores an override in
+  # app_settings; an absent override means this value. Deployed true so
+  # an instance that has never been paused is open.
+  #
+  # This is an APPLICATION control. It does not stop a caller talking to
+  # the authentication provider directly with the publishable anon key —
+  # see docs/OPERATIONS.md for the hard close.
+  signup_enabled: true
+
   # Soft character budget for one conversation's stored history, measured as
   # serialized JSON. This exists so a conversation cannot grow without bound in
   # memory; it is NOT a model-context limit.
@@ -106,6 +116,11 @@ server:
     # every accepted call sends mail, and GoTrue's own project-wide ceiling is
     # 30/hour — a caller must not be able to exhaust that in one minute.
     recover_api: "5 per minute"
+    # Signup, server-mediated as of the registrations-pause work
+    # (docs/registrations-pause-plan.md). Same reasoning as recover_api: an
+    # unauthenticated endpoint that sends mail, sitting in front of GoTrue's
+    # own project-wide ceiling rather than replacing it.
+    signup_api: "5 per minute"
     # Full account export (GET /account/api/export). Low, per the security
     # pass's adopted limits (docs/profile-refactor-plan.md §4): it streams
     # every stored message a reader has, an exhaustive per-session read far

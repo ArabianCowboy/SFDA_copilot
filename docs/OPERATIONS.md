@@ -1,4 +1,4 @@
-STATUS: CURRENT AUTHORITY — state this repository cannot hold. Last verified 2026-08-23.
+STATUS: CURRENT AUTHORITY — state this repository cannot hold. Last verified 2026-08-25.
 
 This file records configuration that lives in the Supabase dashboard, in DNS, and in a
 third-party mail provider — none of it in version control, some of it write-only once saved.
@@ -216,3 +216,75 @@ when the answer matters.
   reaches the browser as raw English Supabase text with no key in either
   catalogue.
 - `supabase/README.md` — migration conventions and how schema changes are applied.
+
+---
+
+# Registrations pause: what it covers, and what needs the dashboard
+
+**Status:** built 2026-08-25. See `docs/registrations-pause-plan.md` for the full
+design; this section is the part of it that lives outside the repository.
+
+The console's **Registrations** control (`/admin` → Settings → Registrations)
+refuses `POST /auth/signup` — the route the signup form actually calls — with a
+`403 {"error": "signup_disabled"}`, and it is audited the same way a generation
+settings change is.
+
+**It is an application control, not a provider one.** `SUPABASE_URL` and the
+publishable anon key are in every page by necessity, and
+`POST /auth/v1/signup` against the project accepts a request carrying them
+whatever this app's console currently says. Pausing here stops the product's
+own signup form; it does not stop a caller who talks to GoTrue directly.
+
+**For a hard close** — an incident where that residual path has to be shut
+too — disable email signups at the provider:
+
+- Dashboard: **Authentication → Sign In / Providers → Email**, toggle off.
+- Or the Management API:
+
+  ```bash
+  curl -X PATCH "https://api.supabase.com/v1/projects/$PROJECT_REF/config/auth" \
+    -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{"disable_signup": true}'
+  ```
+
+That change is **outside this app's audit log.** If you make it, note it here
+with the date and who made it, and lift both controls when the incident ends —
+a provider-side close leaves the console still reporting "Open," and nothing in
+this repository will tell you otherwise.
+
+**Propagation is immediate, not TTL-bound — for a NEW request.** This
+deployment runs a single worker, so a console toggle publishes the committed
+value directly, and any request that reads the flag after the toggle sees it
+immediately. The flag's cache (45s) exists only to bound staleness from an
+edit made _outside_ this process, such as changing the `app_settings` row
+directly in the Supabase SQL editor. Do not build TTL-shortening machinery
+for the console path; it is not the propagation mechanism there.
+
+**One narrow exception, corrected 2026-08-26.** `POST /auth/signup` re-reads
+the flag twice — once at the top of the view, once immediately before the
+GoTrue call — specifically to shrink this window, but a request that is
+already past the second check when a pause lands can still complete: nothing
+in this application makes "check the flag" and "create the account" one
+atomic step. Closing that fully would need a database-level guard (a `BEFORE
+INSERT` trigger on `auth.users`), which `docs/registrations-pause-plan.md` §4
+explicitly rejects — it would also block admin-created accounts and any
+provider-internal flow. In practice the window is one HTTP round trip to
+GoTrue, and a pause used during an active incident should be treated as
+"effective within about a request's length," not instantaneous for requests
+already in flight.
+
+**Failure posture.** If the settings store cannot be read at all and a value
+was cached from an earlier successful read, that value is served however
+stale — a pause must survive a Supabase blip without silently reopening
+signups. Only a process that has _never_ successfully read the flag (a cold
+start during an outage) answers `503 {"error": "auth_unavailable"}` rather than
+guessing. See §5 of `docs/registrations-pause-plan.md` for the full argument.
+
+**Confirm email must stay enabled** (Authentication → Emails → Confirm email).
+Signup is server-mediated: with Confirm email **on**, GoTrue returns a user and
+no session, `/auth/signup` answers `201`, and the browser shows the
+check-your-mail panel — today's behaviour. Turning Confirm email **off** would
+have GoTrue return a session to the _server_, which does not forward it, and a
+reader would be told to check mail that never arrives while holding no
+session. That would need a code change first, not just a dashboard toggle.

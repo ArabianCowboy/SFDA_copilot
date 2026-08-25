@@ -803,6 +803,55 @@ reads" below.
 
 ## [HISTORICAL] Resolved planned work
 
+### [HISTORICAL] ~~Registrations pause — let an operator pause new signups~~ — BUILT 2026-08-25
+
+> Built per `docs/registrations-pause-plan.md`, which stays live (it is a design
+> record, not a superseded one — see its own STATUS line). **The filed entry's
+> central premise was wrong**, and that is worth saying plainly rather than
+> editing away: `POST /auth/signup`, the route it named to gate, was **dead in
+> production**. The browser signed up straight through `supabase-js`
+> `auth.signUp()`, direct to GoTrue with the public anon key — nothing called
+> the Flask route at all. Gating it as filed would have shipped an operator
+> control that paused nothing. Commit A of the plan moved
+> `static/js/modules/services.js`'s `signup()` onto `POST /auth/signup` first,
+> so the gate would have something real to gate; Commit B then added the flag
+> behind it, as a `NON_GENERATION_KEYS` family inside `SettingsService` (own
+> cache slot, same `_write_lock`, `signup_enabled()` reading three-valued —
+> `True`/`False`/`None` for "could not determine" — rather than the two-valued
+> fail-open/fail-closed the filed entry assumed). No migration: the flag lives
+> in `app_settings.settings.signup_enabled`, the same JSONB row generation
+> settings already use. `GET/PUT /admin/api/registrations` is its own endpoint,
+> not folded into `/admin/api/settings` — the filed entry's "add or extend"
+> phrasing left that open, and extending would have made every registrations
+> toggle rebuild the OpenAI handler (`apply_generation_settings` runs inside
+> `put_settings`'s write lock). Audited through the existing
+> `admin_write_settings` RPC (action `settings.update`) rather than a new
+> migration for a more specific action name. `docs/OPERATIONS.md` gained the
+> bypass note the filed entry asked for, plus the Management API hard-close
+> command and the Confirm-email interaction this migration introduces.
+> `docs/ARCHITECTURE.md` now states which `auth_bp` routes are browser-direct
+> (`login`) versus server-mediated (`signup`, `recover`, `logout`) — a fact
+> that was true before this work and had never been written down. 35 new
+> server-side tests (`web/tests/test_registrations_pause.py`), 8 rewritten
+> browser tests (`test_signup_identity_capture.py`'s 7 plus one in
+> `test_password_recovery.py`) that now intercept `/auth/signup` at the network
+> layer instead of reading a browser-side Supabase mock that the migration made
+> unreachable, and 3 new admin-console browser tests including the
+> pause-persists-across-reload proof the plan asked for.
+>
+> Filed 2026-08-24 as _Signup kill-switch_; renamed because "kill-switch" is jargon
+> the control itself should not carry — the feature is unchanged.
+
+**Where:** `web/api/auth.py:90` `POST /auth/signup` (no gate today); `web/config.yaml:server` defaults; `web/services/settings_service.py:28` `GENERATION_KEYS` / `SettingsService`; `web/api/admin.py:192` `GET/PUT /admin/api/settings`; `web/templates/index.html:231` `#signup-pane` + `static/js/modules/handlers.js:207` `handleAuthFormSubmit`; `web/i18n/en.yaml` / `ar.yaml`.
+
+**What is wrong.** Signup cannot be paused without a deploy or a Supabase-dashboard change. When load spikes there is no operator control in the console to refuse `POST /auth/signup` with a machine code and render a bilingual explanation; the only levers are code or the project-wide Supabase Auth toggle outside the app's audit trail.
+
+**Who it reaches.** Every new visitor during a surge; operators who need a reversible, audited control that does not affect chat/auth for existing readers.
+
+**How it was found.** Operator request 2026-08-24; code read confirms no check before `supabase.auth.sign_up` and no `signup_enabled` key in `web/config.yaml` or `app_settings`.
+
+**What fixing it would disturb.** No migration if stored as `app_settings.settings.signup_enabled` (same JSONB as generation settings, different key namespace + bool validation). Otherwise: add `server.signup_enabled: true` default in `web/config.yaml`, extend `SettingsService` with a non-generation key set + bool validation and 30–60s TTL with immediate invalidate on `PUT`, gate `signup()` before the Supabase call (return `403 {error:"signup_disabled"}`), add or extend `GET/PUT /admin/api/settings` behind `admin_bp`'s bearer gate (`web/api/admin.py:98`) with `actor_from_request` audit, add admin toggle + reader banner/disabled tab in `index.html` / `handlers.js` / `services.js` with `runtime.auth` / `runtime.admin` keys in both YAML files (fails `test_arabic_catalogue_covers_every_runtime_key` if AR lags), and add unit + browser tests. Document the bypass: a Flask gate does not block a direct `supabase-js` `signUp` with the anon key — note the hard-close option (dashboard disable or Management API) in `docs/OPERATIONS.md`. Bump `ASSET_VERSION` in `web/api/app.py:248` for any CSS/JS change.
+
 ### [HISTORICAL] ~~The active conversation is per-browser, not per-tab~~ — CLOSED 2026-08-22
 
 > Closed by `2026-08-22_per-tab-deep-linking.md`, landed the same

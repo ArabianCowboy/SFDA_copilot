@@ -124,6 +124,13 @@ export function createAdminServices(getToken) {
      */
     saveSettings: (patch) => request('settings', { method: 'PUT', body: patch }),
 
+    /** Whether the signup form accepts new accounts, and what it reverts to. */
+    registrations: () => request('registrations'),
+
+    /** Pause or resume. Audited the same way a generation settings save is. */
+    saveRegistrations: (signupEnabled) =>
+      request('registrations', { method: 'PUT', body: { signup_enabled: signupEnabled } }),
+
     /** Accounts and their standing. */
     users: ({ limit = 50, offset = 0, q = '', signal } = {}) =>
       request(`users?limit=${limit}&offset=${offset}&q=${encodeURIComponent(q)}`, { signal }),

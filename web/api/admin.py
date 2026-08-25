@@ -279,6 +279,72 @@ def put_settings() -> Response | tuple[Response, int]:
     )
 
 
+@admin_bp.route("/api/registrations", methods=["GET"])
+def get_registrations() -> Response | tuple[Response, int]:
+    """Whether the signup form accepts new accounts, and what it reverts to.
+
+    A separate endpoint from `/api/settings` rather than a field folded into
+    it — see `docs/registrations-pause-plan.md` §2 for why: this value is not
+    a generation setting, has no pairwise validation against a model, and
+    must never trigger `apply_generation_settings`. Keeping it off that
+    endpoint keeps `put_settings`'s tested response contract, and its
+    `applied`/`active` semantics, unchanged.
+    """
+    from web.services.settings_service import deployed_non_generation_defaults
+
+    service = current_app.config["settings_service"]
+    enabled = service.signup_enabled()
+    if enabled is None:
+        return jsonify({"error": "storage_unavailable"}), 503
+    return jsonify(
+        {
+            "signup_enabled": enabled,
+            "default": bool(deployed_non_generation_defaults()["signup_enabled"]),
+        }
+    )
+
+
+@admin_bp.route("/api/registrations", methods=["PUT"])
+def put_registrations() -> Response | tuple[Response, int]:
+    """Pause or resume the signup form. Audited the same way a generation
+    settings change is: `admin_write_settings` writes the store and the
+    audit row in one transaction, action `settings.update` — there is only
+    the one RPC, and its action string is hardcoded, so this reuses it
+    rather than adding a migration for a marginally more specific name.
+    """
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict) or "signup_enabled" not in payload:
+        return jsonify({"error": "invalid_payload"}), 400
+
+    from web.services.audit import actor_from_request
+
+    service = current_app.config["settings_service"]
+    errors = service.set_signup_enabled(
+        payload["signup_enabled"], actor=actor_from_request(g.identity)
+    )
+    if errors:
+        # `errors[0].code` is always `not_a_boolean` or `storage_unavailable`
+        # here — `set_signup_enabled` only ever validates the one
+        # `signup_enabled` field this route sends, so `unknown_setting`
+        # (which `put_settings`'s equivalent branch does have to handle,
+        # since it accepts an arbitrary patch) can never appear. Simplified
+        # 2026-08-26 after review found the filter for it was dead code.
+        if errors[0].code == "storage_unavailable":
+            return jsonify({"error": "storage_unavailable"}), 503
+        return jsonify({"error": "invalid_signup_enabled"}), 422
+
+    logger.info("Registrations pause updated by %s: %s", g.identity.email, payload)
+
+    from web.services.settings_service import deployed_non_generation_defaults
+
+    return jsonify(
+        {
+            "signup_enabled": service.signup_enabled(),
+            "default": bool(deployed_non_generation_defaults()["signup_enabled"]),
+        }
+    )
+
+
 def _parse_pagination_params(req: Any = None) -> tuple[int, int]:
     """Parse and clamp pagination query parameters from the request.
 

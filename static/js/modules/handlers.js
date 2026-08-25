@@ -246,18 +246,23 @@ export const Handlers = {
         // sending it is the honest client-side mirror of that rule.
         const consented = form.querySelector('#signup-marketing-consent')?.checked === true;
         const ageValue = form.querySelector('#signup-age')?.value;
-        await Services.signup(email, password, {
-          first_name: firstName,
-          family_name: familyName,
-          marketing_consent: consented,
-          ...(consented
-            ? {
-                marketing_consent_policy_version: window.__POLICY_VERSION,
-                marketing_consent_language: I18n.lang,
-                age: ageValue === '' || ageValue == null ? undefined : Number(ageValue),
-              }
-            : {}),
-        });
+        await Services.signup(
+          email,
+          password,
+          {
+            first_name: firstName,
+            family_name: familyName,
+            marketing_consent: consented,
+            ...(consented
+              ? {
+                  marketing_consent_policy_version: window.__POLICY_VERSION,
+                  marketing_consent_language: I18n.lang,
+                  age: ageValue === '' || ageValue == null ? undefined : Number(ageValue),
+                }
+              : {}),
+          },
+          I18n.lang,
+        );
         form.reset();
         this.showSignupSent(email);
       }
