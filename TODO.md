@@ -46,7 +46,7 @@ bottom of this file: [How this file works](#how-this-file-works).
 - [Account deletion (Spec 4)](#account-deletion-spec-4--blocked-on-a-product-decision-not-on-engineering) — blocked on an unclosed product decision; both migrations written.
 - [The CSP still allows an image from any HTTPS origin](#the-csp-still-allows-an-image-from-any-https-origin) — hardening the deep-linking plan asked for and never got.
 - [A conversation id now reaches the access log](#a-conversation-id-now-reaches-the-access-log) — a verification task, possibly already fine; unverified either way.
-- [Signup kill-switch — let an operator pause new registrations](#signup-kill-switch--let-an-operator-pause-new-registrations) — not started.
+- [Registrations pause — let an operator pause new signups](#registrations-pause--let-an-operator-pause-new-signups) — not started.
 
 ---
 
@@ -852,7 +852,10 @@ for state this repository cannot hold.
 
 ---
 
-### Signup kill-switch — let an operator pause new registrations
+### Registrations pause — let an operator pause new signups
+
+> Filed 2026-08-24 as _Signup kill-switch_; renamed because "kill-switch" is jargon
+> the control itself should not carry — the feature is unchanged.
 
 **Where:** `web/api/auth.py:90` `POST /auth/signup` (no gate today); `web/config.yaml:server` defaults; `web/services/settings_service.py:28` `GENERATION_KEYS` / `SettingsService`; `web/api/admin.py:192` `GET/PUT /admin/api/settings`; `web/templates/index.html:231` `#signup-pane` + `static/js/modules/handlers.js:207` `handleAuthFormSubmit`; `web/i18n/en.yaml` / `ar.yaml`.
 
