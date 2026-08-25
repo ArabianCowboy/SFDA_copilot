@@ -1139,6 +1139,24 @@ select.admin-input {
   margin-block: var(--space-2) var(--space-3);
 }
 
+/* Bulk selection toolbar — [hidden] handles visibility, no display rule
+   needed. .admin-form-actions already supplies the flex/gap. */
+.admin-notif-bulk-toolbar {
+  align-items: center;
+  margin-block-end: var(--space-2);
+}
+
+/* Same sizing/accent convention as .consent-row's own bespoke checkbox
+   (components.css) — a bare input, no Bootstrap .form-check, so the RTL
+   float/padding-left mirroring bug that class carries in this app's LTR-only
+   Bootstrap build never applies. */
+.admin-notif-select {
+  inline-size: 1.125rem;
+  block-size: 1.125rem;
+  accent-color: var(--signal);
+  cursor: pointer;
+}
+
 /* Dims a deleted row uniformly, including .admin-cell-machine's own explicit
    `color` (a plain `color:` on the row would lose to that per-cell rule) —
    opacity, not color, matching this file's own .admin-pager-btn:disabled

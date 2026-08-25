@@ -780,6 +780,7 @@ const ACTION_KEYS = {
   'notification.create': 'admin.audit.actionNotificationCreate',
   'notification.deactivate': 'admin.audit.actionNotificationDeactivate',
   'notification.delete': 'admin.audit.actionNotificationDelete',
+  'notification.purge': 'admin.audit.actionNotificationPurge',
 };
 
 function describeAction(action) {
@@ -1974,7 +1975,9 @@ const NOTIFICATION_HISTORY_EMPTY_KEYS = {
 
 /** Filter toolbar above the history table, reusing the page-size select's own
  * classes (`.admin-pager-size`/`-label`/`-select`) so it reads as the same
- * kind of control rather than a new visual idiom. */
+ * kind of control rather than a new visual idiom. Also carries "Clear all" —
+ * a bulk soft-delete of every row matching the current filter, not just the
+ * loaded page (handlers.js pages through the whole filtered set first). */
 function buildNotificationHistoryToolbar() {
   const toolbar = document.createElement('div');
   toolbar.className = 'admin-pager-size admin-notif-history-toolbar';
@@ -1995,8 +1998,97 @@ function buildNotificationHistoryToolbar() {
     select.appendChild(option);
   });
 
-  toolbar.append(label, select);
+  const clearAll = document.createElement('button');
+  clearAll.type = 'button';
+  clearAll.id = 'notification-history-clear-all';
+  clearAll.className = 'btn btn-sm btn-ghost';
+  clearAll.textContent = I18n.t('admin.notifications.history.clearAllInFilter');
+
+  toolbar.append(label, select, clearAll);
   return toolbar;
+}
+
+/** Retention setting + "Purge eligible" bulk action — shown only while
+ * viewing the Deleted filter (handlers.js toggles `.hidden`), since that's
+ * the one view where the setting and the action are both actionable. Manual
+ * per-row/selected purge (elsewhere on this table) never consults the
+ * retention days value; only this bulk action does. */
+function buildPurgeToolbar() {
+  const toolbar = document.createElement('div');
+  toolbar.id = 'notification-purge-toolbar';
+  toolbar.className = 'admin-pager-size admin-notif-history-toolbar';
+  toolbar.hidden = true;
+
+  const label = document.createElement('label');
+  label.className = 'admin-pager-size-label';
+  label.htmlFor = 'notification-purge-retention-days';
+  label.textContent = I18n.t('admin.notifications.history.purgeRetentionLabel');
+
+  const input = document.createElement('input');
+  input.type = 'number';
+  input.id = 'notification-purge-retention-days';
+  input.className = 'form-control admin-input';
+  input.min = '1';
+  input.max = '3650';
+  input.setAttribute('dir', 'ltr');
+
+  const save = document.createElement('button');
+  save.type = 'button';
+  save.id = 'notification-purge-retention-save';
+  save.className = 'btn btn-sm btn-ghost';
+  save.textContent = I18n.t('admin.notifications.history.purgeRetentionSave');
+
+  const purgeEligible = document.createElement('button');
+  purgeEligible.type = 'button';
+  purgeEligible.id = 'notification-purge-eligible';
+  purgeEligible.className = 'btn btn-sm btn-ghost';
+  purgeEligible.textContent = I18n.t('admin.notifications.history.purgeEligible');
+
+  toolbar.append(label, input, save, purgeEligible);
+  return toolbar;
+}
+
+/** Selection toolbar: built once, hidden until a row checkbox is ticked
+ * (handlers.js toggles it via setBulkSelectionState as the selection set
+ * changes) — never re-rendered, so it survives a "Load more" append. */
+function buildBulkSelectionToolbar() {
+  const toolbar = document.createElement('div');
+  toolbar.id = 'notification-history-bulk-toolbar';
+  toolbar.className = 'admin-form-actions admin-notif-bulk-toolbar';
+  toolbar.hidden = true;
+
+  const count = document.createElement('span');
+  count.id = 'notification-history-bulk-count';
+  count.className = 'admin-pager-size-label';
+
+  const clearSelected = document.createElement('button');
+  clearSelected.type = 'button';
+  clearSelected.id = 'notification-history-clear-selected';
+  clearSelected.className = 'btn btn-sm btn-ghost';
+  clearSelected.textContent = I18n.t('admin.notifications.history.clearSelected');
+
+  // Same selection, a different action: handlers.js filters selectedIds down
+  // to the already-Deleted rows for this one, so a mixed selection (some
+  // active, some deleted — reachable from the "All" filter) resolves
+  // sensibly through whichever button the operator actually clicks.
+  const purgeSelected = document.createElement('button');
+  purgeSelected.type = 'button';
+  purgeSelected.id = 'notification-history-purge-selected';
+  purgeSelected.className = 'btn btn-sm btn-ghost';
+  purgeSelected.textContent = I18n.t('admin.notifications.history.purgeSelected');
+
+  toolbar.append(count, clearSelected, purgeSelected);
+  return toolbar;
+}
+
+/** Shows/hides the bulk-selection toolbar and updates its count as
+ * handlers.js's selection set changes. */
+export function setBulkSelectionState(count) {
+  const toolbar = el('notification-history-bulk-toolbar');
+  if (!toolbar) return;
+  toolbar.hidden = count === 0;
+  const label = el('notification-history-bulk-count');
+  if (label) label.textContent = I18n.t('admin.notifications.history.selectedCount', { count });
 }
 
 /** The Notifications panel shell: composer at the top, history below. Built
@@ -2014,6 +2106,8 @@ export function renderNotificationsPanel() {
   body.appendChild(historyHeading);
 
   body.appendChild(buildNotificationHistoryToolbar());
+  body.appendChild(buildPurgeToolbar());
+  body.appendChild(buildBulkSelectionToolbar());
 
   const historyBody = document.createElement('div');
   historyBody.id = 'notification-history-body';
@@ -2066,6 +2160,17 @@ export function renderNotificationHistory(rows, { append = false, filterStatus =
     table.id = 'notification-history-table';
     const head = document.createElement('thead');
     const headRow = document.createElement('tr');
+
+    const selectAllTh = document.createElement('th');
+    selectAllTh.scope = 'col';
+    const selectAll = document.createElement('input');
+    selectAll.type = 'checkbox';
+    selectAll.id = 'notification-history-select-all';
+    selectAll.className = 'admin-notif-select';
+    selectAll.setAttribute('aria-label', I18n.t('admin.notifications.history.selectAllAria'));
+    selectAllTh.appendChild(selectAll);
+    headRow.appendChild(selectAllTh);
+
     [
       'columnStatus',
       'columnType',
@@ -2105,6 +2210,18 @@ export function renderNotificationHistory(rows, { append = false, filterStatus =
     // one, so this uses opacity, matching the disabled-control convention
     // this file already uses elsewhere (e.g. .admin-pager-btn:disabled).
     if (row.deleted_at) tr.className = 'admin-notif-row--deleted';
+
+    // Every row gets a checkbox now, deleted or not: a non-deleted row can
+    // be bulk-cleared, a deleted one can be bulk-purged — handlers.js's
+    // "Clear selected"/"Purge selected" each filter the shared selection
+    // down to the rows their own action actually applies to.
+    const selectTd = document.createElement('td');
+    const selectCheckbox = document.createElement('input');
+    selectCheckbox.type = 'checkbox';
+    selectCheckbox.className = 'admin-notif-select';
+    selectCheckbox.dataset.notifSelect = row.id;
+    selectCheckbox.setAttribute('aria-label', I18n.t('admin.notifications.history.selectRowAria'));
+    selectTd.appendChild(selectCheckbox);
 
     const status = document.createElement('td');
     const statusKey =
@@ -2151,6 +2268,17 @@ export function renderNotificationHistory(rows, { append = false, filterStatus =
       del.textContent = I18n.t('admin.notifications.history.delete');
       actions.appendChild(del);
     }
+    if (row.deleted_at) {
+      // Purge is never offered before Delete — admin_purge_notification
+      // itself refuses a not-yet-deleted row (AN009/not_yet_deleted), so
+      // there is nothing this button could do on an active/deactivated row.
+      const purge = document.createElement('button');
+      purge.type = 'button';
+      purge.className = 'btn btn-sm btn-ghost admin-row-action';
+      purge.dataset.notifPurge = row.id;
+      purge.textContent = I18n.t('admin.notifications.history.purge');
+      actions.appendChild(purge);
+    }
     const resend = document.createElement('button');
     resend.type = 'button';
     resend.className = 'btn btn-sm btn-ghost admin-row-action';
@@ -2158,7 +2286,18 @@ export function renderNotificationHistory(rows, { append = false, filterStatus =
     resend.textContent = I18n.t('admin.notifications.history.resend');
     actions.appendChild(resend);
 
-    tr.append(status, type, audience, targets, served, read, dismissed, acknowledged, actions);
+    tr.append(
+      selectTd,
+      status,
+      type,
+      audience,
+      targets,
+      served,
+      read,
+      dismissed,
+      acknowledged,
+      actions,
+    );
     tbody.appendChild(tr);
   });
 }

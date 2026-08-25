@@ -140,6 +140,16 @@ server:
   allowed_origins:
     - https://sfda-copilot.aifoudahub.com
 
+# Notification Center (docs/notification-center-plan.md). Deploy-time default
+# for the "Purge eligible" bulk convenience action's retention window — how
+# many days a notification sits Deleted before that action includes it.
+# Admin-overridable at runtime (web/services/notification_store.py's
+# get_purge_retention_days/set_purge_retention_days, stored the same way as
+# the generation settings: an app_settings override, absent key falls back
+# to this default). Manual per-row/selected purge never consults this value.
+notifications:
+  purge_retention_days: 90
+
 # --- Search Engine Configuration ---
 search_engine:
   embedding_type: local  # 'openai' or 'local'

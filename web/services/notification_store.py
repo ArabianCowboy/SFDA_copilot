@@ -52,6 +52,7 @@ _REFUSAL_CODES = {
     "AN006": "no_such_notification",
     "AN007": "already_deactivated",
     "AN008": "already_deleted",
+    "AN009": "not_yet_deleted",
     "RN001": "not_a_recipient",
     "RN002": "action_type_mismatch",
 }
@@ -154,6 +155,13 @@ class NotificationBackend(Protocol):
 
     def delete(self, notification_id: str, *, actor) -> dict:
         """Soft delete. Same refusal set as deactivate (minus already_deactivated)."""
+        ...
+
+    def purge(self, notification_id: str, *, actor) -> dict:
+        """Permanent erasure of an already soft-deleted row and its recipient/
+        read-receipt rows. Raises AdminActionRefused for
+        no_such_notification/not_yet_deleted/actor_no_longer_administrator.
+        """
         ...
 
     def list_history(self, *, limit: int, offset: int, status: str) -> tuple:
@@ -321,6 +329,23 @@ class SupabaseNotificationBackend:
         try:
             response = self._client.rpc(
                 "admin_delete_notification",
+                {
+                    "p_notification_id": notification_id,
+                    "p_actor_id": actor.user_id,
+                    "p_actor_email": actor.email,
+                    "p_request_ip": actor.request_ip,
+                    "p_user_agent": actor.user_agent,
+                },
+            ).execute()
+        except Exception as exception:
+            raise _refusal_from(exception) from exception
+        return getattr(response, "data", None) or {}
+
+    def purge(self, notification_id: str, *, actor) -> dict:
+        _require_uuid(notification_id, "no_such_notification")
+        try:
+            response = self._client.rpc(
+                "admin_purge_notification",
                 {
                     "p_notification_id": notification_id,
                     "p_actor_id": actor.user_id,
@@ -574,6 +599,20 @@ class InMemoryNotificationBackend:
         row["deleted_by"] = actor.user_id
         return dict(row)
 
+    def purge(self, notification_id: str, *, actor) -> dict:
+        if not self._actor_ok(actor):
+            raise AdminActionRefused("actor_no_longer_administrator")
+        row = next((n for n in self._notifications if n["id"] == notification_id), None)
+        if row is None:
+            raise AdminActionRefused("no_such_notification")
+        if row["deleted_at"] is None:
+            raise AdminActionRefused("not_yet_deleted")
+        self._notifications.remove(row)
+        self._recipients.pop(notification_id, None)
+        for key in [k for k in self._reads if k[0] == notification_id]:
+            del self._reads[key]
+        return {"id": notification_id, "purged": True}
+
     def list_history(self, *, limit: int, offset: int, status: str) -> tuple:
         rows = list(reversed(self._notifications))
         if status == "active":
@@ -702,6 +741,63 @@ class InMemoryNotificationBackend:
 
     def all_enabled_profile_ids(self) -> list:
         return [u["id"] for u in self._users if not u.get("is_disabled")]
+
+
+# ── Purge retention setting ──────────────────────────────────────────────
+#
+# Deliberately NOT routed through web/services/settings_service.py's
+# SettingsService/GENERATION_KEYS — that machinery is purpose-built for the
+# five LLM generation fields (model, temperature, ...) and its own
+# validate() knows only about them. This is one unrelated integer, so it
+# reuses the SAME underlying storage primitive instead (admin_store's
+# get_settings/put_settings, backed by the admin_write_settings RPC and the
+# single app_settings JSONB document — see supabase/migrations/
+# 20260814022601_app_settings.sql's own "the set of settings will grow"
+# rationale) without touching the generation-specific validation layer.
+_PURGE_RETENTION_SETTINGS_KEY = "notifications_purge_retention_days"
+
+
+def get_purge_retention_days(admin_backend) -> int:
+    """The window, in days, the console's "Purge eligible" bulk action uses
+    to decide which already-Deleted rows to include. Manual per-row/selected
+    purge never consults this — see admin_purge_notification's own
+    docstring for why that is deliberate, not an inconsistency.
+
+    Tolerant of an unavailable backend (falls back to the deployed default,
+    same "an outage costs an override, not an answer" reasoning as
+    SettingsService's own lenient read) since this is consulted on every
+    Notifications tab load, not just a settings save.
+    """
+    from web.utils.config_loader import config
+
+    default = config.get("notifications", "purge_retention_days", 90)
+    if admin_backend is None:
+        return default
+    try:
+        stored = admin_backend.get_settings() or {}
+    except Exception:
+        logger.error(
+            "Purge-retention setting read failed; using the deployed default.", exc_info=True
+        )
+        return default
+    value = stored.get(_PURGE_RETENTION_SETTINGS_KEY)
+    return (
+        value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else default
+    )
+
+
+def set_purge_retention_days(admin_backend, days: int, *, actor) -> int:
+    """Raises ValueError for an out-of-range value; the route maps that to 422."""
+    if not isinstance(days, int) or isinstance(days, bool) or not (1 <= days <= 3650):
+        raise ValueError("purge_retention_days must be an integer between 1 and 3650")
+    current = admin_backend.get_settings() or {}
+    before = {_PURGE_RETENTION_SETTINGS_KEY: current.get(_PURGE_RETENTION_SETTINGS_KEY)}
+    updated = dict(current)
+    updated[_PURGE_RETENTION_SETTINGS_KEY] = days
+    admin_backend.put_settings(
+        updated, actor=actor, before=before, after={_PURGE_RETENTION_SETTINGS_KEY: days}
+    )
+    return days
 
 
 def get_notification_backend() -> NotificationBackend | None:

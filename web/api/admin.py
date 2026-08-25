@@ -1227,6 +1227,71 @@ def delete_notification(notification_id: str) -> Response | tuple[Response, int]
     return jsonify({"notification": updated})
 
 
+@admin_bp.route("/api/notifications/<notification_id>/purge", methods=["POST"])
+def purge_notification(notification_id: str) -> Response | tuple[Response, int]:
+    """Permanent erasure of an already-Deleted notification and its
+    recipient/read-receipt rows. See admin_purge_notification's own
+    migration comment for why this never enforces the retention-days
+    setting server-side — that setting only filters what the console's bulk
+    "Purge eligible" action sends here, one id at a time; a manual purge (this
+    route, called directly) is always the administrator's own call.
+
+    No Realtime publish here, unlike deactivate/delete: by the time
+    something is purge-eligible it has already been Deleted (and any
+    Realtime invalidation for that already fired), so there is no open tab
+    left that could still be showing it.
+    """
+    from web.services.admin_store import AdminActionRefused
+    from web.services.audit import actor_from_request
+
+    backend = _notification_backend()
+    if backend is None:
+        return jsonify({"error": "storage_unavailable"}), 503
+
+    try:
+        result = backend.purge(notification_id, actor=actor_from_request(g.identity))
+    except AdminActionRefused as refused:
+        status = 404 if refused.code == "no_such_notification" else 409
+        return jsonify({"error": refused.code}), status
+
+    return jsonify(result)
+
+
+@admin_bp.route("/api/notifications/purge-settings", methods=["GET"])
+def notifications_purge_settings() -> Response | tuple[Response, int]:
+    """The retention window (days) the console's "Purge eligible" bulk
+    action uses. See get_purge_retention_days's own docstring for why this
+    is a small standalone setting rather than routed through the generation
+    SettingsService."""
+    from web.services.notification_store import get_purge_retention_days
+
+    backend = current_app.config["admin_backend"]()
+    return jsonify({"purge_retention_days": get_purge_retention_days(backend)})
+
+
+@admin_bp.route("/api/notifications/purge-settings", methods=["PUT"])
+def update_notifications_purge_settings() -> Response | tuple[Response, int]:
+    from web.services.audit import actor_from_request
+    from web.services.notification_store import set_purge_retention_days
+
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict) or "purge_retention_days" not in payload:
+        return jsonify({"error": "invalid_payload"}), 400
+
+    backend = current_app.config["admin_backend"]()
+    if backend is None:
+        return jsonify({"error": "storage_unavailable"}), 503
+
+    try:
+        days = set_purge_retention_days(
+            backend, payload["purge_retention_days"], actor=actor_from_request(g.identity)
+        )
+    except ValueError:
+        return jsonify({"error": "invalid_purge_retention_days"}), 422
+
+    return jsonify({"purge_retention_days": days})
+
+
 @admin_bp.route("/api/identity")
 def identity() -> Response | tuple[Response, int]:
     """Confirms the caller is an administrator.

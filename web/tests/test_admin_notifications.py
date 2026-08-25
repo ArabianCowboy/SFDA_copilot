@@ -328,3 +328,116 @@ def test_history_pagination_shape(client):
     page = client.get("/admin/api/notifications/history?limit=2&offset=0", headers=ADMIN).get_json()
     assert page["total"] == 3
     assert len(page["notifications"]) == 2
+
+
+# ── Purge ────────────────────────────────────────────────────────────────────
+
+
+def test_purge_refuses_a_notification_that_has_not_been_deleted_yet(client):
+    created = client.post("/admin/api/notifications", json=_payload(), headers=ADMIN).get_json()[
+        "notification"
+    ]
+    nid = created["id"]
+
+    r = client.post(f"/admin/api/notifications/{nid}/purge", headers=ADMIN)
+    assert r.status_code == 409
+    assert r.get_json()["error"] == "not_yet_deleted"
+
+    # Still there — a refused purge must not have removed anything.
+    history = client.get("/admin/api/notifications/history?status=all", headers=ADMIN).get_json()
+    assert any(n["id"] == nid for n in history["notifications"])
+
+
+def test_purge_succeeds_after_delete_and_the_row_is_gone(client):
+    created = client.post("/admin/api/notifications", json=_payload(), headers=ADMIN).get_json()[
+        "notification"
+    ]
+    nid = created["id"]
+
+    assert client.delete(f"/admin/api/notifications/{nid}", headers=ADMIN).status_code == 200
+
+    r = client.post(f"/admin/api/notifications/{nid}/purge", headers=ADMIN)
+    assert r.status_code == 200
+    assert r.get_json()["purged"] is True
+
+    # Gone even under status=all — unlike soft delete, purge actually erases it.
+    history = client.get("/admin/api/notifications/history?status=all", headers=ADMIN).get_json()
+    assert not any(n["id"] == nid for n in history["notifications"])
+
+
+def test_purge_of_an_unknown_notification_is_404(client):
+    r = client.post(f"/admin/api/notifications/{uuid.uuid4()}/purge", headers=ADMIN)
+    assert r.status_code == 404
+    assert r.get_json()["error"] == "no_such_notification"
+
+
+def test_purge_is_refused_a_second_time(client):
+    created = client.post("/admin/api/notifications", json=_payload(), headers=ADMIN).get_json()[
+        "notification"
+    ]
+    nid = created["id"]
+    client.delete(f"/admin/api/notifications/{nid}", headers=ADMIN)
+    assert client.post(f"/admin/api/notifications/{nid}/purge", headers=ADMIN).status_code == 200
+
+    # The row is gone, so a second purge sees "no such notification", not
+    # "not yet deleted" — a different refusal than the pre-delete case above.
+    second = client.post(f"/admin/api/notifications/{nid}/purge", headers=ADMIN)
+    assert second.status_code == 404
+    assert second.get_json()["error"] == "no_such_notification"
+
+
+def test_purge_routes_require_administrator_access(client):
+    assert client.post(f"/admin/api/notifications/{uuid.uuid4()}/purge").status_code == 401
+    assert (
+        client.post(f"/admin/api/notifications/{uuid.uuid4()}/purge", headers=READER).status_code
+        == 403
+    )
+    assert client.get("/admin/api/notifications/purge-settings").status_code == 401
+    assert (
+        client.put(
+            "/admin/api/notifications/purge-settings",
+            json={"purge_retention_days": 30},
+        ).status_code
+        == 401
+    )
+
+
+def test_purge_retention_setting_defaults_and_round_trips(client):
+    default = client.get("/admin/api/notifications/purge-settings", headers=ADMIN).get_json()
+    assert default["purge_retention_days"] == 90
+
+    saved = client.put(
+        "/admin/api/notifications/purge-settings",
+        json={"purge_retention_days": 30},
+        headers=ADMIN,
+    )
+    assert saved.status_code == 200
+    assert saved.get_json()["purge_retention_days"] == 30
+
+    fetched = client.get("/admin/api/notifications/purge-settings", headers=ADMIN).get_json()
+    assert fetched["purge_retention_days"] == 30
+
+
+@pytest.mark.parametrize(
+    "bad_value",
+    [
+        0,
+        -5,
+        3651,
+        "thirty",
+        30.5,
+        None,
+        # isinstance(True, int) is True in Python — a naive `isinstance(days,
+        # int)` guard would silently accept a bool as a "valid" day count.
+        True,
+        False,
+    ],
+)
+def test_purge_retention_setting_rejects_out_of_range_values(client, bad_value):
+    r = client.put(
+        "/admin/api/notifications/purge-settings",
+        json={"purge_retention_days": bad_value},
+        headers=ADMIN,
+    )
+    assert r.status_code == 422
+    assert r.get_json()["error"] == "invalid_purge_retention_days"

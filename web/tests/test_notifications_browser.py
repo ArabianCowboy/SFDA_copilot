@@ -20,6 +20,7 @@ recipient list both share.
 from __future__ import annotations
 
 import json
+from datetime import datetime, timedelta, timezone
 from urllib.parse import parse_qs, urlparse
 
 import pytest
@@ -463,6 +464,169 @@ def test_the_notification_history_filter_is_translated(browser_page: Page):
     )
 
 
+def _bulk_row(index: int, *, deleted: bool = False) -> dict:
+    return {
+        "id": f"{index:08d}-1111-4111-8111-111111111111",
+        "type": "toast",
+        "severity": "info",
+        "target_kind": "all",
+        "target_role": None,
+        "target_tier": None,
+        "target_count": 1,
+        "served_count": 0,
+        "read_count": 0,
+        "dismissed_count": 0,
+        "acknowledged_count": 0,
+        "deactivated_at": None,
+        "deleted_at": "2026-08-24T00:00:00+00:00" if deleted else None,
+    }
+
+
+def _route_bulk_history(page: Page, rows: list) -> list:
+    """Wires a status-and-pagination-aware history mock plus a DELETE mock
+    that flips `deleted_at` in place. Returns the list of every DELETE
+    request's target id, in call order, for assertions."""
+    deleted_ids: list = []
+
+    def handle_history(route):
+        params = parse_qs(urlparse(route.request.url).query)
+        status = params.get("status", ["all"])[0]
+        limit = int(params.get("limit", ["20"])[0])
+        offset = int(params.get("offset", ["0"])[0])
+        if status == "deleted":
+            matching = [r for r in rows if r["deleted_at"]]
+        elif status == "active":
+            matching = [r for r in rows if not r["deactivated_at"] and not r["deleted_at"]]
+        else:
+            matching = list(rows)
+        page_rows = matching[offset : offset + limit]
+        route.fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps(
+                {
+                    "notifications": page_rows,
+                    "total": len(matching),
+                    "limit": limit,
+                    "offset": offset,
+                }
+            ),
+        )
+
+    page.route("**/admin/api/notifications/history*", handle_history)
+
+    def handle_delete(route):
+        # "**/admin/api/notifications/*" also structurally matches
+        # ".../notifications/history" (one path segment). Routes registered
+        # later win when patterns overlap, so this one — registered after
+        # the history route above — must fall back to it for anything that
+        # isn't actually a DELETE, or it would swallow the history GETs too.
+        if route.request.method != "DELETE":
+            route.fallback()
+            return
+        notif_id = route.request.url.rsplit("/", 1)[-1]
+        deleted_ids.append(notif_id)
+        for row in rows:
+            if row["id"] == notif_id:
+                row["deleted_at"] = "2026-08-24T00:00:00+00:00"
+                break
+        route.fulfill(status=200, content_type="application/json", body=json.dumps({"ok": True}))
+
+    page.route("**/admin/api/notifications/*", handle_delete)
+    return deleted_ids
+
+
+def test_clearing_selected_notifications_deletes_only_those_checked(browser_page: Page):
+    _route_identity(browser_page)
+    rows = [_bulk_row(1), _bulk_row(2), _bulk_row(3)]
+    deleted_ids = _route_bulk_history(browser_page, rows)
+
+    browser_page.goto("/admin?testing=true")
+    expect(browser_page.locator("#admin-console")).to_be_visible()
+    browser_page.locator("#tab-notifications").click()
+    expect(browser_page.locator("#notification-history-table")).to_be_visible()
+
+    browser_page.locator(f'[data-notif-select="{rows[0]["id"]}"]').check()
+    browser_page.locator(f'[data-notif-select="{rows[1]["id"]}"]').check()
+
+    toolbar = browser_page.locator("#notification-history-bulk-toolbar")
+    expect(toolbar).to_be_visible()
+    expect(browser_page.locator("#notification-history-bulk-count")).to_have_text("2 selected")
+
+    browser_page.once("dialog", lambda dialog: dialog.accept())
+    browser_page.locator("#notification-history-clear-selected").click()
+
+    expect(browser_page.locator("#toast")).to_contain_text("2 notifications deleted")
+    expect(toolbar).to_be_hidden()
+
+    # Only the two checked ids were sent to the delete endpoint — the third,
+    # unchecked row was never touched.
+    expect(browser_page.locator("#notification-history-table tbody tr")).to_have_count(1)
+    assert sorted(deleted_ids) == sorted([rows[0]["id"], rows[1]["id"]])
+
+
+def test_clearing_selected_excludes_an_already_deleted_row_from_a_mixed_selection(
+    browser_page: Page,
+):
+    """Regression test: "Clear selected" used to send every checked id to
+    deleteNotification with no filtering at all, so checking one active row
+    and one already-Deleted row together (reachable from the "All" filter,
+    where every row — deleted or not — now has a checkbox) would try to
+    delete the already-deleted row too, drawing a needless partial-failure
+    toast. It must only ever act on the non-deleted rows in the selection.
+    """
+    _route_identity(browser_page)
+    active_row = _bulk_row(1)
+    deleted_row = _bulk_row(2, deleted=True)
+    rows = [active_row, deleted_row]
+    deleted_ids = _route_bulk_history(browser_page, rows)
+
+    browser_page.goto("/admin?testing=true")
+    expect(browser_page.locator("#admin-console")).to_be_visible()
+    browser_page.locator("#tab-notifications").click()
+
+    browser_page.locator("#notification-history-status").select_option("all")
+    expect(browser_page.locator("#notification-history-table tbody tr")).to_have_count(2)
+
+    browser_page.locator(f'[data-notif-select="{active_row["id"]}"]').check()
+    browser_page.locator(f'[data-notif-select="{deleted_row["id"]}"]').check()
+    expect(browser_page.locator("#notification-history-bulk-count")).to_have_text("2 selected")
+
+    browser_page.once("dialog", lambda dialog: dialog.accept())
+    browser_page.locator("#notification-history-clear-selected").click()
+
+    expect(browser_page.locator("#toast")).to_contain_text("1 notifications deleted")
+    # Only the active row was ever sent to the delete endpoint.
+    assert deleted_ids == [active_row["id"]]
+
+
+def test_clear_all_pages_through_every_row_in_the_filter_not_just_one_page(browser_page: Page):
+    """Regression guard for fetchAllIdsForClear's pagination loop: the history
+    endpoint caps `limit` at 200 server-side, so "Clear all" has to keep
+    paging until a short page proves there's nothing left. 201 rows — one
+    more than a single page — is the minimum size that actually exercises
+    the loop; a test with <=200 rows would pass even if the loop stopped
+    after the first page.
+    """
+    _route_identity(browser_page)
+    rows = [_bulk_row(i) for i in range(201)]
+    deleted_ids = _route_bulk_history(browser_page, rows)
+
+    browser_page.goto("/admin?testing=true")
+    expect(browser_page.locator("#admin-console")).to_be_visible()
+    browser_page.locator("#tab-notifications").click()
+    expect(browser_page.locator("#notification-history-table")).to_be_visible()
+
+    browser_page.once("dialog", lambda dialog: dialog.accept())
+    browser_page.locator("#notification-history-clear-all").click()
+
+    expect(browser_page.locator("#notification-history-body .admin-empty")).to_be_visible(
+        timeout=15000
+    )
+    assert len(deleted_ids) == 201
+    assert set(deleted_ids) == {row["id"] for row in rows}
+
+
 def test_audience_preview_updates_when_targeting_changes_to_role(browser_page: Page):
     _route_identity(browser_page)
     browser_page.route(
@@ -490,3 +654,148 @@ def test_audience_preview_updates_when_targeting_changes_to_role(browser_page: P
     expect(browser_page.locator("#notif-target-role-row")).to_be_visible()
 
     expect(browser_page.locator("#notif-audience-preview")).to_contain_text("7")
+
+
+# ── Purge ────────────────────────────────────────────────────────────────────
+
+
+def _route_purge(page: Page, rows: list, *, retention_days: int = 90) -> dict:
+    """History (status-aware), an in-memory purge-settings GET/PUT, and a
+    purge POST that actually removes the row from `rows` — unlike delete,
+    which only flips `deleted_at`. Returns a mutable dict the test can
+    inspect (`retention_days`, `purged_ids`)."""
+    state = {"retention_days": retention_days, "purged_ids": []}
+
+    def handle_history(route):
+        status = parse_qs(urlparse(route.request.url).query).get("status", ["all"])[0]
+        if status == "deleted":
+            matching = [r for r in rows if r["deleted_at"]]
+        elif status == "active":
+            matching = [r for r in rows if not r["deactivated_at"] and not r["deleted_at"]]
+        else:
+            matching = list(rows)
+        route.fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps(
+                {"notifications": matching, "total": len(matching), "limit": 200, "offset": 0}
+            ),
+        )
+
+    page.route("**/admin/api/notifications/history*", handle_history)
+
+    def handle_purge_settings(route):
+        if route.request.method == "GET":
+            route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps({"purge_retention_days": state["retention_days"]}),
+            )
+            return
+        body = json.loads(route.request.post_data or "{}")
+        state["retention_days"] = body.get("purge_retention_days", state["retention_days"])
+        route.fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps({"purge_retention_days": state["retention_days"]}),
+        )
+
+    page.route("**/admin/api/notifications/purge-settings", handle_purge_settings)
+
+    def handle_purge(route):
+        notif_id = route.request.url.split("/notifications/")[1].split("/purge")[0]
+        rows[:] = [r for r in rows if r["id"] != notif_id]
+        state["purged_ids"].append(notif_id)
+        route.fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps({"id": notif_id, "purged": True}),
+        )
+
+    page.route("**/admin/api/notifications/*/purge", handle_purge)
+
+    return state
+
+
+def test_purge_button_only_appears_on_deleted_rows_and_erases_them(browser_page: Page):
+    _route_identity(browser_page)
+    active_row = _bulk_row(1, deleted=False)
+    deleted_row = _bulk_row(2, deleted=True)
+    deleted_id = deleted_row["id"]
+    rows = [active_row, deleted_row]
+    state = _route_purge(browser_page, rows)
+
+    browser_page.goto("/admin?testing=true")
+    expect(browser_page.locator("#admin-console")).to_be_visible()
+    browser_page.locator("#tab-notifications").click()
+
+    browser_page.locator("#notification-history-status").select_option("all")
+    expect(browser_page.locator("#notification-history-table tbody tr")).to_have_count(2)
+
+    # Purge is offered only on the already-Deleted row.
+    expect(browser_page.locator(f'[data-notif-purge="{deleted_id}"]')).to_have_count(1)
+    expect(browser_page.locator(f'[data-notif-purge="{active_row["id"]}"]')).to_have_count(0)
+
+    browser_page.once("dialog", lambda dialog: dialog.accept())
+    browser_page.locator(f'[data-notif-purge="{deleted_id}"]').click()
+
+    expect(browser_page.locator("#toast")).to_contain_text("purge", ignore_case=True)
+    # Gone even under "All" — this is what distinguishes purge from delete.
+    expect(browser_page.locator("#notification-history-table tbody tr")).to_have_count(1)
+    assert state["purged_ids"] == [deleted_id]
+
+
+def test_purge_eligible_only_purges_rows_past_the_retention_window(browser_page: Page):
+    """The strict "<" comparison itself (found in review: the original code
+    used "<=", which would purge a row deleted exactly on the retention
+    boundary despite the confirm dialog promising "more than {days} days")
+    is verified by reading handlers.js directly rather than by a timed
+    browser assertion — real network/page-load jitter between this
+    timestamp being computed here and the browser's own Date.now() at click
+    time makes an exact-boundary row an inherently flaky thing to assert on
+    in an end-to-end test. This test instead proves the general direction
+    with a wide margin on both sides.
+    """
+    now = datetime.now(timezone.utc)
+    old_row = _bulk_row(1, deleted=True)
+    old_row["deleted_at"] = (now - timedelta(days=100)).isoformat()
+    recent_row = _bulk_row(2, deleted=True)
+    recent_row["deleted_at"] = (now - timedelta(days=10)).isoformat()
+    old_id = old_row["id"]
+    rows = [old_row, recent_row]
+
+    _route_identity(browser_page)
+    state = _route_purge(browser_page, rows, retention_days=90)
+
+    browser_page.goto("/admin?testing=true")
+    expect(browser_page.locator("#admin-console")).to_be_visible()
+    browser_page.locator("#tab-notifications").click()
+
+    browser_page.locator("#notification-history-status").select_option("deleted")
+    expect(browser_page.locator("#notification-history-table tbody tr")).to_have_count(2)
+    expect(browser_page.locator("#notification-purge-retention-days")).to_have_value("90")
+
+    browser_page.once("dialog", lambda dialog: dialog.accept())
+    browser_page.locator("#notification-purge-eligible").click()
+
+    # Only the row deleted 100 days ago clears a 90-day window; the one
+    # deleted 10 days ago must survive.
+    expect(browser_page.locator("#notification-history-table tbody tr")).to_have_count(1)
+    assert state["purged_ids"] == [old_id]
+
+
+def test_purge_retention_days_can_be_saved(browser_page: Page):
+    _route_identity(browser_page)
+    state = _route_purge(browser_page, [], retention_days=90)
+
+    browser_page.goto("/admin?testing=true")
+    expect(browser_page.locator("#admin-console")).to_be_visible()
+    browser_page.locator("#tab-notifications").click()
+    browser_page.locator("#notification-history-status").select_option("deleted")
+
+    expect(browser_page.locator("#notification-purge-retention-days")).to_have_value("90")
+    browser_page.locator("#notification-purge-retention-days").fill("45")
+    browser_page.locator("#notification-purge-retention-save").click()
+
+    expect(browser_page.locator("#toast")).to_contain_text("saved", ignore_case=True)
+    assert state["retention_days"] == 45

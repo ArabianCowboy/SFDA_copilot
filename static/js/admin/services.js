@@ -192,5 +192,17 @@ export function createAdminServices(getToken) {
     /** Soft delete. Preserves recipient/read history for audit review. */
     deleteNotification: (id) =>
       request(`notifications/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
+    /** Permanent erasure — only valid on an already-Deleted row. */
+    purgeNotification: (id) =>
+      request(`notifications/${encodeURIComponent(id)}/purge`, { method: 'POST' }),
+
+    getPurgeRetentionDays: () => request('notifications/purge-settings'),
+
+    setPurgeRetentionDays: (days) =>
+      request('notifications/purge-settings', {
+        method: 'PUT',
+        body: { purge_retention_days: days },
+      }),
   };
 }

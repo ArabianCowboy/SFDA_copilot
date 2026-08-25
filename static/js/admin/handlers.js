@@ -22,6 +22,7 @@ import {
   renderUsers,
   resetComposerForm,
   setAudiencePreview,
+  setBulkSelectionState,
   setNotificationComposerSending,
   setPeopleLoading,
   showAccountList,
@@ -166,6 +167,7 @@ const NOTIFICATION_HISTORY_REFUSALS = {
   no_such_notification: 'admin.notifications.history.no_such_notification',
   already_deactivated: 'admin.notifications.history.already_deactivated',
   already_deleted: 'admin.notifications.history.already_deleted',
+  not_yet_deleted: 'admin.notifications.history.not_yet_deleted',
   actor_no_longer_administrator: 'admin.notifications.history.actor_no_longer_administrator',
 };
 
@@ -200,12 +202,80 @@ export async function initNotificationsTab(services) {
   // deleted notification stayed in this table forever.
   let historyStatus = 'active';
   let historyGeneration = 0;
+  // Ids checked via the per-row/select-all checkboxes — cleared on every
+  // fresh (non-append) load, since a filter change or a bulk clear both
+  // replace the rendered row set.
+  let selectedIds = new Set();
+  // Overwritten from the server once, right after init — this default only
+  // covers the brief window before that read resolves.
+  let purgeRetentionDays = 90;
+
+  function updateBulkSelectionUI() {
+    setBulkSelectionState(selectedIds.size);
+  }
+
+  // Whether a selected id's row is currently rendered as Deleted — read
+  // from the DOM (the row's own admin-notif-row--deleted class, set in the
+  // same render pass as its checkbox) rather than from the historyRows Map,
+  // so "Clear selected"/"Purge selected" can't disagree with each other or
+  // silently drop an id whose historyRows entry didn't survive a reload
+  // (found in review: relying on historyRows here was fragile across a
+  // partial-failure retry that reloads a different page than the one an id
+  // was originally selected from).
+  function isRowDeleted(id) {
+    const checkbox = document.querySelector(
+      `#notification-history-table [data-notif-select="${id}"]`,
+    );
+    return Boolean(checkbox?.closest('tr')?.classList.contains('admin-notif-row--deleted'));
+  }
+
+  // Keeps the header "select all" checkbox honest after a render — without
+  // this, checking "select all" and then clicking "Load more" left the
+  // header checked while only the pre-append rows were actually selected
+  // (found in review).
+  function syncSelectAllCheckbox() {
+    const selectAll = document.getElementById('notification-history-select-all');
+    if (!selectAll) return;
+    const checkboxes = Array.from(
+      document.querySelectorAll('#notification-history-table [data-notif-select]'),
+    );
+    const checkedCount = checkboxes.filter((checkbox) =>
+      selectedIds.has(checkbox.dataset.notifSelect),
+    ).length;
+    selectAll.checked = checkboxes.length > 0 && checkedCount === checkboxes.length;
+    selectAll.indeterminate = checkedCount > 0 && checkedCount < checkboxes.length;
+  }
+
+  function updateClearAllAvailability() {
+    const clearAll = document.getElementById('notification-history-clear-all');
+    // Nothing to clear while looking at rows that are already deleted.
+    if (clearAll) clearAll.disabled = historyStatus === 'deleted';
+  }
+
+  // The retention setting and "Purge eligible" only make sense while
+  // actually looking at Deleted rows — every other filter hides the toolbar
+  // entirely rather than showing it disabled, since there's nothing on
+  // screen it could act on.
+  function updatePurgeToolbarVisibility() {
+    const toolbar = document.getElementById('notification-purge-toolbar');
+    if (toolbar) toolbar.hidden = historyStatus !== 'deleted';
+  }
 
   function setHistoryControlsDisabled(disabled) {
     const select = document.getElementById('notification-history-status');
     const loadMore = document.getElementById('notification-history-load-more');
+    const clearAll = document.getElementById('notification-history-clear-all');
+    const clearSelected = document.getElementById('notification-history-clear-selected');
+    const purgeSelected = document.getElementById('notification-history-purge-selected');
+    const purgeEligible = document.getElementById('notification-purge-eligible');
     if (select) select.disabled = disabled;
     if (loadMore) loadMore.disabled = disabled;
+    if (clearSelected) clearSelected.disabled = disabled;
+    if (purgeSelected) purgeSelected.disabled = disabled;
+    if (purgeEligible) purgeEligible.disabled = disabled;
+    // Re-disabling "Clear all" always follows the deleted-filter rule, not
+    // just the in-flight one, so it doesn't spuriously re-enable mid-filter.
+    if (clearAll) clearAll.disabled = disabled || historyStatus === 'deleted';
   }
 
   // Race-safety: a filter change and a "Load more" click can both be in
@@ -218,6 +288,8 @@ export async function initNotificationsTab(services) {
     if (!append) {
       historyOffset = 0;
       historyRows = new Map();
+      selectedIds = new Set();
+      updateBulkSelectionUI();
     }
     setHistoryControlsDisabled(true);
     try {
@@ -230,6 +302,7 @@ export async function initNotificationsTab(services) {
       const rows = result.notifications || [];
       rows.forEach((row) => historyRows.set(row.id, row));
       renderNotificationHistory(rows, { append, filterStatus: historyStatus });
+      syncSelectAllCheckbox();
       historyOffset += rows.length;
       const loadMore = document.getElementById('notification-history-load-more');
       if (loadMore) loadMore.hidden = rows.length < historyLimit;
@@ -239,6 +312,155 @@ export async function initNotificationsTab(services) {
     } finally {
       if (mine === historyGeneration) setHistoryControlsDisabled(false);
     }
+  }
+
+  // Pages through every row matching `status`, not just one page — "Clear
+  // all" means all, and the history endpoint caps `limit` at 200
+  // server-side (web/api/admin.py's _parse_pagination_params). Bounded at
+  // 50 pages (10,000 rows) as a runaway-loop backstop — but the caller must
+  // check `truncated` and refuse rather than silently clearing a partial
+  // set while telling the operator it cleared everything (found in review:
+  // the original version returned only the first 10,000 ids with no signal
+  // that more existed).
+  async function fetchAllIdsForClear(status) {
+    const ids = [];
+    const pageLimit = 200;
+    const maxPages = 50;
+    let truncated = true;
+    for (let offset = 0, page = 0; page < maxPages; page += 1) {
+      const result = await services.notificationHistory({ limit: pageLimit, offset, status });
+      const rows = result.notifications || [];
+      rows.forEach((row) => {
+        if (!row.deleted_at) ids.push(row.id);
+      });
+      if (rows.length < pageLimit) {
+        truncated = false;
+        break;
+      }
+      offset += rows.length;
+    }
+    return { ids, truncated };
+  }
+
+  // Runs `worker` over `items` with at most `concurrency` in flight at once,
+  // in Promise.allSettled's own {status, reason}-shaped result order — a
+  // plain Promise.allSettled(ids.map(...)) fired every delete at once, which
+  // review flagged as an unbounded burst (up to 10,000 concurrent requests
+  // at fetchAllIdsForClear's own ceiling). Pooled to be a good citizen of
+  // the browser's connection limit and the server's request queue even
+  // though neither /deactivate nor the plain DELETE route is rate-limited
+  // today (verified against web/api/admin.py — only notification CREATE is,
+  // via notification_broadcast_api).
+  async function runWithConcurrency(items, worker, concurrency) {
+    const results = new Array(items.length);
+    let next = 0;
+    async function runOne() {
+      while (next < items.length) {
+        const index = next;
+        next += 1;
+        try {
+          await worker(items[index]);
+          results[index] = { status: 'fulfilled' };
+        } catch (error) {
+          results[index] = { status: 'rejected', reason: error };
+        }
+      }
+    }
+    await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, runOne));
+    return results;
+  }
+
+  // Shared by "Clear"/"Purge" — both are the same shape: run one action per
+  // id (pooled, above), toast a success/partial/fail summary, reload, and
+  // re-select whatever failed so a retry doesn't require the operator to
+  // re-find and re-check rows by hand (found in review: loadHistory's own
+  // !append branch always clears selectedIds, which previously lost this
+  // for free after a partial failure).
+  async function runBulkAction(ids, actionFn, { successKey, partialKey, failKey }) {
+    const results = await runWithConcurrency(ids, actionFn, 8);
+    const failedIds = ids.filter((_, index) => results[index].status === 'rejected');
+    const succeeded = ids.length - failedIds.length;
+    if (failedIds.length === 0) {
+      ErrorHandler.showToast(
+        I18n.t(`admin.notifications.history.${successKey}`, { count: succeeded }),
+      );
+    } else if (succeeded === 0) {
+      ErrorHandler.showToast(I18n.t(`admin.notifications.history.${failKey}`), true);
+    } else {
+      ErrorHandler.showToast(
+        I18n.t(`admin.notifications.history.${partialKey}`, {
+          count: succeeded,
+          failed: failedIds.length,
+        }),
+        true,
+      );
+    }
+    await loadHistory();
+    if (failedIds.length) {
+      selectedIds = new Set(failedIds);
+      document
+        .querySelectorAll('#notification-history-table [data-notif-select]')
+        .forEach((checkbox) => {
+          checkbox.checked = selectedIds.has(checkbox.dataset.notifSelect);
+        });
+      updateBulkSelectionUI();
+      syncSelectAllCheckbox();
+    }
+  }
+
+  // Reuses the existing single-notification delete RPC per id rather than a
+  // dedicated bulk endpoint — no schema/backend change, and this is an
+  // admin-console-scale operation (tens, not thousands, per click).
+  async function bulkClear(ids) {
+    await runBulkAction(ids, (id) => services.deleteNotification(id), {
+      successKey: 'bulkCleared',
+      partialKey: 'bulkClearedPartial',
+      failKey: 'bulkClearFailed',
+    });
+  }
+
+  // Same reuse-the-single-row-endpoint reasoning as bulkClear, over
+  // purgeNotification instead of deleteNotification.
+  async function bulkPurge(ids) {
+    await runBulkAction(ids, (id) => services.purgeNotification(id), {
+      successKey: 'bulkPurged',
+      partialKey: 'bulkPurgedPartial',
+      failKey: 'bulkPurgeFailed',
+    });
+  }
+
+  // Same pagination shape as fetchAllIdsForClear, filtered by age instead of
+  // by deleted_at presence — only rows that have been sitting Deleted for at
+  // least `retentionDays` are included. Manual purge (per-row/selected)
+  // never calls this; only the "Purge eligible" bulk action does.
+  async function fetchEligiblePurgeIds(retentionDays) {
+    const ids = [];
+    const pageLimit = 200;
+    const maxPages = 50;
+    let truncated = true;
+    const cutoff = Date.now() - retentionDays * 24 * 60 * 60 * 1000;
+    for (let offset = 0, page = 0; page < maxPages; page += 1) {
+      const result = await services.notificationHistory({
+        limit: pageLimit,
+        offset,
+        status: 'deleted',
+      });
+      const rows = result.notifications || [];
+      rows.forEach((row) => {
+        const deletedAt = row.deleted_at ? new Date(row.deleted_at).getTime() : NaN;
+        // Strictly older than the window, matching the confirm dialog's own
+        // "more than {days} days" wording (found in review: <= included a
+        // row deleted exactly `retentionDays` ago, which the dialog implied
+        // it would not).
+        if (!Number.isNaN(deletedAt) && deletedAt < cutoff) ids.push(row.id);
+      });
+      if (rows.length < pageLimit) {
+        truncated = false;
+        break;
+      }
+      offset += rows.length;
+    }
+    return { ids, truncated };
   }
 
   async function updatePreview() {
@@ -310,6 +532,7 @@ export async function initNotificationsTab(services) {
   document.getElementById('notification-history-body')?.addEventListener('click', async (event) => {
     const deactivateBtn = event.target.closest('[data-notif-deactivate]');
     const deleteBtn = event.target.closest('[data-notif-delete]');
+    const purgeBtn = event.target.closest('[data-notif-purge]');
     const resendBtn = event.target.closest('[data-notif-resend]');
 
     if (deactivateBtn) {
@@ -338,6 +561,19 @@ export async function initNotificationsTab(services) {
           true,
         );
       }
+    } else if (purgeBtn) {
+      const id = purgeBtn.dataset.notifPurge;
+      if (!window.confirm(I18n.t('admin.notifications.history.purgeConfirm'))) return;
+      try {
+        await services.purgeNotification(id);
+        ErrorHandler.showToast(I18n.t('admin.notifications.history.purged'));
+        loadHistory();
+      } catch (error) {
+        ErrorHandler.showToast(
+          describeHistoryActionError(error, 'admin.notifications.history.purgeFailed'),
+          true,
+        );
+      }
     } else if (resendBtn) {
       // Not a new endpoint (docs/notification-center-plan.md §3): prefill
       // the composer from the source row, mark it a resend, and let the
@@ -357,8 +593,179 @@ export async function initNotificationsTab(services) {
 
   document.getElementById('notification-history-status')?.addEventListener('change', (event) => {
     historyStatus = event.target.value;
+    updateClearAllAvailability();
+    updatePurgeToolbarVisibility();
     loadHistory();
   });
+
+  document.getElementById('notification-history-body')?.addEventListener('change', (event) => {
+    const selectAll = event.target.closest('#notification-history-select-all');
+    const rowCheckbox = event.target.closest('[data-notif-select]');
+    if (selectAll) {
+      document
+        .querySelectorAll('#notification-history-table [data-notif-select]')
+        .forEach((checkbox) => {
+          checkbox.checked = selectAll.checked;
+          if (selectAll.checked) selectedIds.add(checkbox.dataset.notifSelect);
+          else selectedIds.delete(checkbox.dataset.notifSelect);
+        });
+      updateBulkSelectionUI();
+    } else if (rowCheckbox) {
+      if (rowCheckbox.checked) selectedIds.add(rowCheckbox.dataset.notifSelect);
+      else selectedIds.delete(rowCheckbox.dataset.notifSelect);
+      updateBulkSelectionUI();
+      syncSelectAllCheckbox();
+    }
+  });
+
+  document
+    .getElementById('notification-history-clear-selected')
+    ?.addEventListener('click', async () => {
+      // Same selection as "Purge selected" reads, filtered down to the rows
+      // this action actually applies to (found in review: this filter was
+      // missing entirely, so selecting a mix of active and already-Deleted
+      // rows sent every one of them to deleteNotification, which just
+      // refuses the already-deleted ones as a partial-failure).
+      const ids = Array.from(selectedIds).filter((id) => !isRowDeleted(id));
+      if (!ids.length) {
+        ErrorHandler.showToast(I18n.t('admin.notifications.history.nothingToClear'));
+        return;
+      }
+      if (
+        !window.confirm(
+          I18n.t('admin.notifications.history.clearSelectedConfirm', { count: ids.length }),
+        )
+      )
+        return;
+      setHistoryControlsDisabled(true);
+      await bulkClear(ids);
+    });
+
+  document
+    .getElementById('notification-history-purge-selected')
+    ?.addEventListener('click', async () => {
+      // Same selection as "Clear selected" reads, filtered down to the rows
+      // this action actually applies to — see the button's own build
+      // comment in ui.js.
+      const ids = Array.from(selectedIds).filter((id) => isRowDeleted(id));
+      if (!ids.length) {
+        ErrorHandler.showToast(I18n.t('admin.notifications.history.nothingToClear'));
+        return;
+      }
+      if (
+        !window.confirm(
+          I18n.t('admin.notifications.history.purgeSelectedConfirm', { count: ids.length }),
+        )
+      )
+        return;
+      setHistoryControlsDisabled(true);
+      await bulkPurge(ids);
+    });
+
+  document
+    .getElementById('notification-purge-retention-save')
+    ?.addEventListener('click', async () => {
+      const input = document.getElementById('notification-purge-retention-days');
+      const days = Number.parseInt(input?.value ?? '', 10);
+      if (!Number.isInteger(days) || days < 1 || days > 3650) {
+        ErrorHandler.showToast(I18n.t('admin.notifications.history.purgeRetentionInvalid'), true);
+        return;
+      }
+      try {
+        const result = await services.setPurgeRetentionDays(days);
+        purgeRetentionDays = result.purge_retention_days ?? days;
+        ErrorHandler.showToast(I18n.t('admin.notifications.history.purgeRetentionSaved'));
+      } catch {
+        ErrorHandler.showToast(
+          I18n.t('admin.notifications.history.purgeRetentionSaveFailed'),
+          true,
+        );
+      }
+    });
+
+  document.getElementById('notification-purge-eligible')?.addEventListener('click', async () => {
+    if (historyStatus !== 'deleted') return;
+    setHistoryControlsDisabled(true);
+    let ids, truncated;
+    try {
+      ({ ids, truncated } = await fetchEligiblePurgeIds(purgeRetentionDays));
+    } catch {
+      setHistoryControlsDisabled(false);
+      ErrorHandler.showToast(I18n.t('admin.notifications.history.loadFailed'), true);
+      return;
+    }
+    if (truncated) {
+      setHistoryControlsDisabled(false);
+      ErrorHandler.showToast(I18n.t('admin.notifications.history.clearAllTooLarge'), true);
+      return;
+    }
+    if (!ids.length) {
+      setHistoryControlsDisabled(false);
+      ErrorHandler.showToast(I18n.t('admin.notifications.history.nothingToClear'));
+      return;
+    }
+    if (
+      !window.confirm(
+        I18n.t('admin.notifications.history.purgeEligibleConfirm', {
+          count: ids.length,
+          days: purgeRetentionDays,
+        }),
+      )
+    ) {
+      setHistoryControlsDisabled(false);
+      return;
+    }
+    await bulkPurge(ids);
+  });
+
+  document.getElementById('notification-history-clear-all')?.addEventListener('click', async () => {
+    if (historyStatus === 'deleted') return;
+    setHistoryControlsDisabled(true);
+    let ids, truncated;
+    try {
+      ({ ids, truncated } = await fetchAllIdsForClear(historyStatus));
+    } catch {
+      setHistoryControlsDisabled(false);
+      ErrorHandler.showToast(I18n.t('admin.notifications.history.loadFailed'), true);
+      return;
+    }
+    // Refuse rather than silently clear a partial set while implying it
+    // cleared everything — narrowing the filter is the operator's own way
+    // to bring the matching set under the page-fetch ceiling.
+    if (truncated) {
+      setHistoryControlsDisabled(false);
+      ErrorHandler.showToast(I18n.t('admin.notifications.history.clearAllTooLarge'), true);
+      return;
+    }
+    if (!ids.length) {
+      setHistoryControlsDisabled(false);
+      ErrorHandler.showToast(I18n.t('admin.notifications.history.nothingToClear'));
+      return;
+    }
+    if (
+      !window.confirm(
+        I18n.t('admin.notifications.history.clearAllInFilterConfirm', { count: ids.length }),
+      )
+    ) {
+      setHistoryControlsDisabled(false);
+      return;
+    }
+    await bulkClear(ids);
+  });
+
+  updateClearAllAvailability();
+  updatePurgeToolbarVisibility();
+  try {
+    const settings = await services.getPurgeRetentionDays();
+    if (typeof settings.purge_retention_days === 'number') {
+      purgeRetentionDays = settings.purge_retention_days;
+    }
+  } catch {
+    // Keep the client-side default — the input still shows a sane value,
+    // and "Purge eligible" still works against it.
+  }
+  const retentionInput = document.getElementById('notification-purge-retention-days');
+  if (retentionInput) retentionInput.value = String(purgeRetentionDays);
 
   await loadHistory();
 }
