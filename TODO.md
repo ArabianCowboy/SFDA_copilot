@@ -1,4 +1,4 @@
-STATUS: CURRENT AUTHORITY — open work only. Last verified against code 2026-08-25.
+STATUS: CURRENT AUTHORITY — open work only. Last verified against code 2026-08-27.
 Resolved entries live in `docs/archive/TODO-resolved.md`.
 
 # TODO
@@ -34,7 +34,6 @@ bottom of this file: [How this file works](#how-this-file-works).
 
 - [Leaked-password protection is disabled in Supabase Auth](#leaked-password-protection-is-disabled-in-supabase-auth) — blocked on a Pro-plan upgrade, not code.
 - [Security email is English-only](#security-email-is-english-only-on-a-product-that-is-bilingual-by-construction) — blocked in the Supabase dashboard, not code.
-- [`Services.signup()` builds its request body with metadata spread last](#servicessignup-builds-its-request-body-with-metadata-spread-last) — dormant; worth a spread-order fix before the next metadata field is added.
 - [SettingsService's two cache slots each query the settings row independently](#settingsservices-two-cache-slots-each-query-the-settings-row-independently) — not a correctness issue; recorded in case the round trip ever becomes measurable.
 - [Answer from a second provider](#answer-from-a-second-provider--and-why-the-code-is-the-easy-half) — the citation-fidelity harness is built (2026-08-22); still blocked on running it for real against the API.
 - [OpenRouter as one integration instead of several](#openrouter-as-one-integration-instead-of-several) — alternative to the entry above; same harness, same not-yet-run status.
@@ -46,7 +45,6 @@ bottom of this file: [How this file works](#how-this-file-works).
 - [Admin broadcast & Reader Notification Center](#admin-broadcast--reader-notification-center-popups-banners-and-inbox-history) — full feature, not started.
 - [The privacy policy (/privacy) is a draft, not reviewed legal text](#the-privacy-policy-privacy-is-a-draft-not-reviewed-legal-text) — consent shipped against this draft; the legal review of the text is what is still owed.
 - [Account deletion (Spec 4)](#account-deletion-spec-4--blocked-on-a-product-decision-not-on-engineering) — blocked on an unclosed product decision; both migrations written.
-- [The CSP still allows an image from any HTTPS origin](#the-csp-still-allows-an-image-from-any-https-origin) — hardening the deep-linking plan asked for and never got.
 - [A conversation id now reaches the access log](#a-conversation-id-now-reaches-the-access-log) — a verification task, possibly already fine; unverified either way.
 
 ---
@@ -111,33 +109,6 @@ change.
 section, and every template edit becomes a two-language edit from then on. Recorded at
 §14·D·26 and §17 Step 5 of `docs/archive/2026-08-23_profile-refactor.md`, where it is
 the one Step 5 item left unchecked — blocked, not attempted.
-
----
-
-### `Services.signup()` builds its request body with metadata spread last
-
-**Where:** `static/js/modules/services.js`, `Services.signup()`.
-
-**What is wrong.** The signup request body is built as `{ email, password, lang, ...metadata }`
-— `metadata` spread last, so a future metadata key literally named `email`, `password`, or
-`lang` would silently overwrite the real value client-side before the request is sent. There is
-no server-side collision guard for this: `SIGNUP_METADATA_KEYS` in `web/api/auth.py` only
-filters what gets forwarded into `raw_user_meta_data` once the request already arrived — it does
-not guard the top-level request fields this spread order can clobber.
-
-**Who it reaches.** Nobody yet — dormant, since no metadata field sent today is named `email`,
-`password`, or `lang`. Would reach every signup once a colliding metadata field is ever added,
-silently sending the wrong password/email/language with no error surfaced anywhere.
-
-**How it was found.** Surfaced as a related item by `/code-review`'s 2026-08-26 pass on the
-`SettingsService.snapshot()` race below (now `docs/archive/TODO-resolved.md`), while reviewing
-the registrations-pause feature; filed here rather than as its own review.
-
-**What fixing it would disturb.** Small: reorder the spread so explicit fields win —
-`{ ...metadata, email, password, lang }` — or add a client-side guard that rejects a metadata
-payload containing those keys before the request is built. Touches only the signup
-request-building path; wants a test asserting an explicit field survives a colliding metadata
-key.
 
 ---
 
@@ -841,37 +812,6 @@ given the audit-log retention question it raises. Once decided, the two migratio
 already written and only need re-verification against the live schema before applying.
 
 - Hybrid delivery: Supabase Realtime broadcast for active sessions + REST DB query on page load for offline/new sessions.
-
----
-
-### The CSP still allows an image from any HTTPS origin
-
-**Where:** `web/api/app.py` — Talisman's `content_security_policy`, the `img-src`
-directive, currently `["'self'", "data:", "https:"]`.
-
-**What is wrong.** `https:` is a wildcard: it permits an image request to any host on
-the internet. On its own that is an ordinary, common relaxation. It stopped being
-ordinary when the URL started carrying a conversation id. An image URL is a GET the
-browser makes automatically, carrying a `Referer`, and the deep-linking work made
-`/c/<uuid>` the address of a reader's conversation. §6.4 of
-`docs/archive/2026-08-22_per-tab-deep-linking.md` asked for this to be tightened as
-defence in depth for exactly that reason, and the request was never carried out.
-
-**How it was found.** Reading that plan's own §6 against the code during the
-2026-08-23 documentation audit. The plan lists it; nothing else did, which is why it
-is filed here before the plan was archived.
-
-**What fixing it would disturb.** The audit did not enumerate what the three templates
-actually load, so the honest first step is to find out rather than to guess a
-replacement list. Sunny is inline SVG, every icon is inline SVG from
-`web/utils/icons.py`, and there is no avatar upload — Decision 4 of the profile plan
-declined it — so the real surface may already be `'self' data:`. If it is, the change
-is one line. If a CDN image is in use somewhere, the directive names that host instead
-of the whole web. Tighten it, then load all three pages in both languages and both
-themes and watch the console for a CSP violation.
-
-**Priority:** low severity, low cost. It is here because a hardening step a plan asked
-for and nobody did would otherwise be archived along with the plan.
 
 ---
 

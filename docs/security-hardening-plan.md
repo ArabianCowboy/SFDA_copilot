@@ -1,4 +1,5 @@
-STATUS: PLAN — proposed work, not yet executed. Written 2026-08-26.
+STATUS: PARTIALLY EXECUTED — Tasks 1 and 2 shipped 2026-08-27 (`366f1a6`, `d9e542c`);
+Tasks 3 and 4 still open, blocked as described below. Written 2026-08-26.
 
 # Security hardening plan: four TODO entries
 

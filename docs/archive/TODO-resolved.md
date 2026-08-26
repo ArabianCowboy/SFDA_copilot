@@ -865,6 +865,43 @@ whether this read's result is actually installed, so it stays true to what `snap
 
 ---
 
+### [HISTORICAL] ~~`Services.signup()` builds its request body with metadata spread last~~ — FIXED 2026-08-27
+
+**Where:** `static/js/modules/services.js`, `Services.signup()`.
+
+**What is wrong.** The signup request body is built as `{ email, password, lang, ...metadata }`
+— `metadata` spread last, so a future metadata key literally named `email`, `password`, or
+`lang` would silently overwrite the real value client-side before the request is sent. There is
+no server-side collision guard for this: `SIGNUP_METADATA_KEYS` in `web/api/auth.py` only
+filters what gets forwarded into `raw_user_meta_data` once the request already arrived — it does
+not guard the top-level request fields this spread order can clobber.
+
+**Who it reaches.** Nobody yet — dormant, since no metadata field sent today is named `email`,
+`password`, or `lang`. Would reach every signup once a colliding metadata field is ever added,
+silently sending the wrong password/email/language with no error surfaced anywhere.
+
+**How it was found.** Surfaced as a related item by `/code-review`'s 2026-08-26 pass on the
+`SettingsService.snapshot()` race above, while reviewing the registrations-pause feature; filed
+as its own entry rather than folded into that review.
+
+**What fixing it would disturb.** Small: reorder the spread so explicit fields win —
+`{ ...metadata, email, password, lang }` — or add a client-side guard that rejects a metadata
+payload containing those keys before the request is built. Touches only the signup
+request-building path; wants a test asserting an explicit field survives a colliding metadata
+key.
+
+**Fixed 2026-08-27** (`d9e542c`). Reordered to `{ ...metadata, email, password, lang }`, exactly
+as this entry proposed. The JSDoc above `Services.signup()` now states the precedence
+explicitly. Regression test:
+`test_explicit_signup_fields_survive_a_colliding_metadata_key`
+(`web/tests/test_signup_identity_capture.py`) drives `Services.signup` directly with a crafted
+colliding metadata key and asserts the explicit arguments win — verified to fail against the old
+spread order and pass against the new one. `ASSET_VERSION` bumped `warm57` → `warm58` in the same
+commit. No server-side change: `web/api/auth.py` reads `email`/`password`/`lang` from the request
+top level and forwards metadata separately, so there was nothing for a server-side guard to
+protect — confirmed as part of the same review rather than assumed. Full analysis in
+`docs/security-hardening-plan.md` (Task 2).
+
 ---
 
 ## [HISTORICAL] Resolved planned work
@@ -2123,5 +2160,49 @@ regenerated.
 once: **stop quoting the value at all.** "Bump `ASSET_VERSION` in
 `web/api/app.py`" is the durable instruction; naming the current value adds
 nothing and goes stale on the very next commit that follows the instruction.
+
+---
+
+### [HISTORICAL] ~~The CSP still allows an image from any HTTPS origin~~ — FIXED 2026-08-27
+
+**Where:** `web/api/app.py` — Talisman's `content_security_policy`, the `img-src`
+directive, currently `["'self'", "data:", "https:"]`.
+
+**What is wrong.** `https:` is a wildcard: it permits an image request to any host on
+the internet. On its own that is an ordinary, common relaxation. It stopped being
+ordinary when the URL started carrying a conversation id. An image URL is a GET the
+browser makes automatically, carrying a `Referer`, and the deep-linking work made
+`/c/<uuid>` the address of a reader's conversation. §6.4 of
+`docs/archive/2026-08-22_per-tab-deep-linking.md` asked for this to be tightened as
+defence in depth for exactly that reason, and the request was never carried out.
+
+**How it was found.** Reading that plan's own §6 against the code during the
+2026-08-23 documentation audit. The plan lists it; nothing else did, which is why it
+was filed as its own entry before the plan was archived.
+
+**What fixing it would disturb.** The audit did not enumerate what the three templates
+actually load, so the honest first step was to find out rather than guess a
+replacement list. Sunny is inline SVG, every icon is inline SVG from
+`web/utils/icons.py`, and there is no avatar upload — Decision 4 of the profile plan
+declined it — so the real surface may already be `'self' data:`. If it is, the change
+is one line. If a CDN image is in use somewhere, the directive names that host instead
+of the whole web. Tighten it, then load all three pages in both languages and both
+themes and watch the console for a CSP violation.
+
+**Priority:** low severity, low cost. It is here because a hardening step a plan asked
+for and nobody did would otherwise be archived along with the plan.
+
+**Fixed 2026-08-27** (`366f1a6`). Tightened to `"img-src": ["'self'", "data:"]`. **The
+`Referer` premise above turned out not to hold**, and the record should say so rather than
+let a wrong diagnosis stand corrected only in the commit: Talisman already sets
+`referrer_policy="strict-origin-when-cross-origin"`, which strips path and query from every
+cross-origin referrer — the conversation id was never in that header. The actual unmitigated
+vector was that model output renders through a DOMPurify profile that permits `<img>`
+(`static/js/modules/stream-render.js`), so a markdown image in an answer was a live outbound
+beacon under the old `'self' data: https:` policy. The image surface was swept across all five
+templates (three assumed here undercounted `web/templates/partials/_sidebar.html`) plus
+`static/js/` and `static/css/`: nothing loads an image from any external origin. New test:
+`web/tests/test_security_headers.py`, verified to fail against the old policy and pass against
+the new one. Full inventory and reasoning in `docs/security-hardening-plan.md` (Task 1).
 
 ---
