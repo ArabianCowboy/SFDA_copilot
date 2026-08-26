@@ -8,6 +8,8 @@ isolation, and that a refusal says which field and by how much.
 
 from __future__ import annotations
 
+from unittest.mock import patch
+
 import pytest
 
 from web.api.app import create_app
@@ -200,6 +202,44 @@ def test_a_failed_read_during_an_update_does_not_delete_the_other_overrides():
     assert backend._settings == {"model": "gpt-4o", "temperature": 0.7}, (
         "a refused write must leave the stored overrides untouched"
     )
+
+
+def test_a_slow_snapshot_read_in_flight_does_not_clobber_a_concurrent_publish(service):
+    """Regression: `snapshot()`'s store read happens outside the lock
+    (deliberately — I/O must not block every other reader). A read that
+    started before an `update()` published a newer value, but finishes
+    after, used to overwrite that fresh value with the stale one it started
+    with. Same race as `signup_enabled()` fixed in
+    test_registrations_pause.py::test_a_slow_read_in_flight_does_not_clobber_a_concurrent_publish.
+    """
+    service.update({"temperature": 0.7}, actor=ACTOR)
+    assert service.snapshot()["temperature"] == 0.7
+
+    # Force the next snapshot to miss the cache and go to the backend.
+    with service._lock:
+        service._loaded_at = 0.0
+
+    real_get_settings = service._backend.get_settings
+    raced = False
+
+    def racing_get_settings():
+        # "Another thread" wins the race and publishes a fresh value while
+        # THIS read is already in flight, reading the OLD stored value.
+        nonlocal raced
+        value = real_get_settings()
+        if not raced:
+            raced = True
+            service.update({"temperature": 0.3}, actor=ACTOR)
+        return value
+
+    with patch.object(service._backend, "get_settings", side_effect=racing_get_settings):
+        result = service.snapshot()
+
+    # Whichever of the two calls returns last, the cache must end up holding
+    # the value that was actually published LAST (0.3), never clobbered back
+    # to the stale 0.7 the slow read started with.
+    assert result["temperature"] == 0.3
+    assert service.snapshot()["temperature"] == 0.3
 
 
 def test_an_unknown_key_set_to_null_is_still_refused(service):

@@ -342,6 +342,14 @@ class SettingsService:
             if fresh:
                 assert self._cached is not None  # `fresh` already checked this
                 return dict(self._cached)
+            # Captured under the SAME lock as the freshness check, before any
+            # I/O starts — same reasoning as `signup_enabled`. If `update`'s
+            # `_publish` lands while the unlocked read below is in flight, the
+            # `_loaded_at` it wrote will be strictly newer than this snapshot,
+            # which is how the write-back below can tell it would be
+            # clobbering a fresher value with a stale one, and defer to it
+            # instead.
+            baseline_loaded_at = self._loaded_at
 
         overrides = self._overrides()
         defaults = deployed_defaults()
@@ -353,14 +361,29 @@ class SettingsService:
             if key in overrides:
                 effective[key] = overrides[key]
 
-        if validate(effective, defaults):
-            logger.error(
-                "Stored settings are invalid; serving deployed defaults instead: %r",
-                overrides,
-            )
+        invalid = bool(validate(effective, defaults))
+        if invalid:
             effective = defaults
 
         with self._lock:
+            if self._loaded_at > baseline_loaded_at:
+                # Someone else — `update`'s `_publish`, or another concurrent
+                # `snapshot()` read — already installed a newer value while
+                # this read was in flight. Trust that one instead of
+                # overwriting it with what we just read.
+                assert self._cached is not None
+                return dict(self._cached)
+            if invalid:
+                # Logged here, not at the point `validate` failed above: this
+                # branch is the only one that actually installs `effective`.
+                # Logging unconditionally would fire even on a read the guard
+                # above is about to discard for a fresher published value —
+                # a false "serving deployed defaults instead" for a read that,
+                # in fact, was never served.
+                logger.error(
+                    "Stored settings are invalid; serving deployed defaults instead: %r",
+                    overrides,
+                )
             self._cached = dict(effective)
             self._loaded_at = self._now()
         return dict(effective)

@@ -799,6 +799,72 @@ reads" below.
 
 ---
 
+### [HISTORICAL] ~~`SettingsService.snapshot()` can publish a stale value over a fresher one~~ — FIXED 2026-08-26
+
+**Where:** `web/services/settings_service.py`, `snapshot()` and `_publish()`. `snapshot()`
+reads the store via `self._overrides()` (I/O) with no lock held, then unconditionally
+writes the result into `self._cached` / `self._loaded_at` under `self._lock`, with no check
+for whether a write landed in between.
+
+**What is wrong.** Two threads (production runs `--threads 8`) can interleave: thread A's
+`snapshot()` starts its unlocked read while the settings are still old, thread B calls
+`update()` (a genuine settings save), which writes the new value and calls `_publish()`
+to install it — then thread A's read finishes, using the value it read before B's write, and
+unconditionally overwrites `_cached`/`_loaded_at` with that stale copy. For up to `ttl_seconds`
+(60s default), every reader sees the value **before** the save that just succeeded, even
+though the store and the save's own HTTP response both say the new one is live.
+
+**Who it reaches.** Any concurrent `GET /admin/api/settings` (or an internal `snapshot()`
+call from `apply_generation_settings`) racing a `PUT` from another operator, or from the
+same operator opening a second tab. Narrow window, plausible on a console two people share.
+
+**How it was found.** An adversarial security review (agy, `gemini-3.7-flash-high`, its
+default model, 2026-08-25)
+of the registrations-pause feature (`docs/registrations-pause-plan.md`) found the identical
+shape in the NEW code this feature added — `SettingsService.signup_enabled()`'s operational
+cache had the same unlocked-read-then-unconditional-write race, fixed in that commit with a
+"did a newer value get published while I was reading" check before the write-back
+(`settings_service.py`, `signup_enabled()`'s `baseline_loaded_at` guard). Checking whether
+`snapshot()` — the pattern `signup_enabled()` was modelled on — had the same problem found
+that it does, and predates this feature.
+
+**What fixing it would disturb.** The fix is the same shape already proven for
+`signup_enabled()`: capture `self._loaded_at` under the lock before starting the unlocked
+read, and on write-back check whether it advanced past that baseline before overwriting —
+if it did, a concurrent writer already published something newer, so defer to it instead.
+Needs a regression test in the shape of `test_a_slow_read_in_flight_does_not_clobber_a_
+concurrent_publish` (`web/tests/test_registrations_pause.py`), which proves the equivalent
+fix for the operational cache without relying on real thread scheduling — that test's
+own docstring explains the deterministic-interleaving technique. Touches the generation
+settings path every chat request depends on for its model/temperature/token ceiling, so
+it deserves its own commit and its own careful review rather than folding into an unrelated
+change.
+
+**Confirmed independently 2026-08-26** by `/code-review` (a forked session with real
+repository access, reviewing the built registrations-pause feature), which found the same
+gap without being told about it. That pass also surfaced two smaller, related items, filed
+here rather than each earning a separate entry — both lifted into their own open `TODO.md`
+entries rather than archived here, since neither is fixed by this commit: **`Services.signup()`
+builds its request body with metadata spread last**, and **SettingsService's two cache slots
+each query the settings row independently**.
+
+**Fixed 2026-08-26.** `snapshot()` gained the same `baseline_loaded_at` guard already proven in
+`signup_enabled()`: the lock captures `self._loaded_at` before the unlocked `_overrides()` read
+starts, and the write-back checks whether it advanced past that baseline before installing —
+if a concurrent `update()`'s `_publish()` (or another `snapshot()` call) already landed, this
+read defers to the cached value instead of overwriting it with the stale one it started with.
+Regression test: `test_a_slow_snapshot_read_in_flight_does_not_clobber_a_concurrent_publish`
+(`web/tests/test_admin_settings.py`), using the same deterministic-interleaving technique as
+`signup_enabled()`'s sibling test. The same `/code-review` pass that applied this fix also found
+and fixed one more thing the fix itself introduced: `snapshot()`'s "stored settings are invalid"
+error log used to fire unconditionally on a validation failure, even when the new guard was
+about to discard that exact read because a fresher, valid value had already been published
+concurrently — logging "serving deployed defaults instead" for a read that, in fact, was not
+what ended up being served. The log now fires only inside the same locked block that decides
+whether this read's result is actually installed, so it stays true to what `snapshot()` returns.
+
+---
+
 ---
 
 ## [HISTORICAL] Resolved planned work

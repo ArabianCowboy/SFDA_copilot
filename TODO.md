@@ -34,7 +34,8 @@ bottom of this file: [How this file works](#how-this-file-works).
 
 - [Leaked-password protection is disabled in Supabase Auth](#leaked-password-protection-is-disabled-in-supabase-auth) — blocked on a Pro-plan upgrade, not code.
 - [Security email is English-only](#security-email-is-english-only-on-a-product-that-is-bilingual-by-construction) — blocked in the Supabase dashboard, not code.
-- [`SettingsService.snapshot()` can publish a stale value over a fresher one](#settingsservicesnapshot-can-publish-a-stale-value-over-a-fresher-one) — diagnosed, unfixed; the fix shape is already proven elsewhere in the same file.
+- [`Services.signup()` builds its request body with metadata spread last](#servicessignup-builds-its-request-body-with-metadata-spread-last) — dormant; worth a spread-order fix before the next metadata field is added.
+- [SettingsService's two cache slots each query the settings row independently](#settingsservices-two-cache-slots-each-query-the-settings-row-independently) — not a correctness issue; recorded in case the round trip ever becomes measurable.
 - [Answer from a second provider](#answer-from-a-second-provider--and-why-the-code-is-the-easy-half) — the citation-fidelity harness is built (2026-08-22); still blocked on running it for real against the API.
 - [OpenRouter as one integration instead of several](#openrouter-as-one-integration-instead-of-several) — alternative to the entry above; same harness, same not-yet-run status.
 - [Refactor the profile page](#refactor-the-profile-page) — Steps 0-5 and most of Step 7 shipped 2026-08-23; the three remaining items each have their own entry below.
@@ -113,68 +114,56 @@ the one Step 5 item left unchecked — blocked, not attempted.
 
 ---
 
-### `SettingsService.snapshot()` can publish a stale value over a fresher one
+### `Services.signup()` builds its request body with metadata spread last
 
-**Where:** `web/services/settings_service.py`, `snapshot()` and `_publish()`. `snapshot()`
-reads the store via `self._overrides()` (I/O) with no lock held, then unconditionally
-writes the result into `self._cached` / `self._loaded_at` under `self._lock`, with no check
-for whether a write landed in between.
+**Where:** `static/js/modules/services.js`, `Services.signup()`.
 
-**What is wrong.** Two threads (production runs `--threads 8`) can interleave: thread A's
-`snapshot()` starts its unlocked read while the settings are still old, thread B calls
-`update()` (a genuine settings save), which writes the new value and calls `_publish()`
-to install it — then thread A's read finishes, using the value it read before B's write, and
-unconditionally overwrites `_cached`/`_loaded_at` with that stale copy. For up to `ttl_seconds`
-(60s default), every reader sees the value **before** the save that just succeeded, even
-though the store and the save's own HTTP response both say the new one is live.
+**What is wrong.** The signup request body is built as `{ email, password, lang, ...metadata }`
+— `metadata` spread last, so a future metadata key literally named `email`, `password`, or
+`lang` would silently overwrite the real value client-side before the request is sent. There is
+no server-side collision guard for this: `SIGNUP_METADATA_KEYS` in `web/api/auth.py` only
+filters what gets forwarded into `raw_user_meta_data` once the request already arrived — it does
+not guard the top-level request fields this spread order can clobber.
 
-**Who it reaches.** Any concurrent `GET /admin/api/settings` (or an internal `snapshot()`
-call from `apply_generation_settings`) racing a `PUT` from another operator, or from the
-same operator opening a second tab. Narrow window, plausible on a console two people share.
+**Who it reaches.** Nobody yet — dormant, since no metadata field sent today is named `email`,
+`password`, or `lang`. Would reach every signup once a colliding metadata field is ever added,
+silently sending the wrong password/email/language with no error surfaced anywhere.
 
-**How it was found.** An adversarial security review (agy, `gemini-3.7-flash-high`, its
-default model, 2026-08-25)
-of the registrations-pause feature (`docs/registrations-pause-plan.md`) found the identical
-shape in the NEW code this feature added — `SettingsService.signup_enabled()`'s operational
-cache had the same unlocked-read-then-unconditional-write race, fixed in that commit with a
-"did a newer value get published while I was reading" check before the write-back
-(`settings_service.py`, `signup_enabled()`'s `baseline_loaded_at` guard). Checking whether
-`snapshot()` — the pattern `signup_enabled()` was modelled on — had the same problem found
-that it does, and predates this feature.
+**How it was found.** Surfaced as a related item by `/code-review`'s 2026-08-26 pass on the
+`SettingsService.snapshot()` race below (now `docs/archive/TODO-resolved.md`), while reviewing
+the registrations-pause feature; filed here rather than as its own review.
 
-**What fixing it would disturb.** The fix is the same shape already proven for
-`signup_enabled()`: capture `self._loaded_at` under the lock before starting the unlocked
-read, and on write-back check whether it advanced past that baseline before overwriting —
-if it did, a concurrent writer already published something newer, so defer to it instead.
-Needs a regression test in the shape of `test_a_slow_read_in_flight_does_not_clobber_a_
-concurrent_publish` (`web/tests/test_registrations_pause.py`), which proves the equivalent
-fix for the operational cache without relying on real thread scheduling — that test's
-own docstring explains the deterministic-interleaving technique. Touches the generation
-settings path every chat request depends on for its model/temperature/token ceiling, so
-it deserves its own commit and its own careful review rather than folding into an unrelated
-change.
+**What fixing it would disturb.** Small: reorder the spread so explicit fields win —
+`{ ...metadata, email, password, lang }` — or add a client-side guard that rejects a metadata
+payload containing those keys before the request is built. Touches only the signup
+request-building path; wants a test asserting an explicit field survives a colliding metadata
+key.
 
-**Confirmed independently 2026-08-26** by `/code-review` (a forked session with real
-repository access, reviewing the built registrations-pause feature), which found the same
-gap without being told about it. That pass also surfaced two smaller, related items, filed
-here rather than each earning a separate entry:
+---
 
-- **`static/js/modules/services.js`'s `Services.signup()`** builds the request body as
-  `{ email, password, lang, ...metadata }` — `metadata` spread last, so a future metadata key
-  literally named `email`, `password`, or `lang` would silently overwrite the real value
-  client-side, with no server-side collision guard (`SIGNUP_METADATA_KEYS` in
-  `web/api/auth.py` only filters what gets forwarded into `raw_user_meta_data`, it does not
-  guard the top-level request fields). Dormant today — nothing sends a colliding key — but
-  worth a comment or a spread-order fix before the next metadata field is added.
-- **`SettingsService`'s operational cache (`signup_enabled`) and its generation cache
-  (`snapshot`) each independently query `admin_store.get_settings()` against the same
-  single-row JSONB document.** `static/js/admin.js` fires `initRegistrationsTab` and
-  `initSettingsTab` concurrently on every admin console open, so a cold cache on both sides
-  (e.g. right after a process restart) costs two Supabase round trips for the identical row
-  instead of one. Not a correctness issue, and not judged worth the coupling risk of merging
-  two caches this feature deliberately kept separate (§2 of
-  `docs/registrations-pause-plan.md`) — recorded in case the round trip ever becomes
-  measurable.
+### SettingsService's two cache slots each query the settings row independently
+
+**Where:** `web/services/settings_service.py` — `signup_enabled()` (the operational cache) and
+`snapshot()` (the generation cache) each independently call `admin_store.get_settings()` against
+the same single-row JSONB document; likewise their write counterparts, `set_signup_enabled()`
+and `update()`.
+
+**What is wrong.** `static/js/admin.js` fires `initRegistrationsTab` and `initSettingsTab`
+concurrently on every admin console open, so a cold cache on both sides (e.g. right after a
+process restart, or after both caches' TTLs expire together) costs two Supabase round trips for
+the identical row instead of one.
+
+**Who it reaches.** Nobody in a way that matters today — not a correctness issue, only a
+possibly-redundant round trip on an admin-only, low-frequency surface.
+
+**How it was found.** Surfaced as a related item by `/code-review`'s 2026-08-26 pass on the
+`SettingsService.snapshot()` race below (now `docs/archive/TODO-resolved.md`), while reviewing
+the registrations-pause feature; filed here rather than as its own review.
+
+**What fixing it would disturb.** Judged not worth it today: merging the two cache slots would
+couple two caches the registrations-pause feature deliberately kept separate (§2 of
+`docs/registrations-pause-plan.md`), to remove a round trip that isn't currently measurable.
+Recorded in case that changes.
 
 ---
 
