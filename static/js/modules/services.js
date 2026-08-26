@@ -375,13 +375,17 @@ export const Services = {
    * server allow-lists which of these keys it forwards, so this is no longer
    * the only validation the way the docstring here used to warn — but keep
    * sending only what belongs in `raw_user_meta_data` regardless.
+   *
+   * `metadata` spreads FIRST so the explicit arguments win a collision. A
+   * metadata key named `email`, `password` or `lang` would otherwise overwrite
+   * the real value with no error surfaced anywhere.
    */
   async signup(email, password, metadata = {}, lang) {
     const response = await fetch('/auth/signup', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'same-origin',
-      body: JSON.stringify({ email, password, lang, ...metadata }),
+      body: JSON.stringify({ ...metadata, email, password, lang }),
     });
 
     const body = await response.json().catch(() => ({}));

@@ -98,6 +98,38 @@ def test_signup_sends_both_names_as_signup_metadata(browser_page: Page, signup_c
     assert sent["email"] == "amina@example.com"
 
 
+def test_explicit_signup_fields_survive_a_colliding_metadata_key(
+    browser_page: Page, signup_capture
+):
+    """A metadata key named `email`, `password` or `lang` must lose to the real
+    argument. The signup form cannot produce such a key — handlers.js:249-265
+    sends six literal keys — so this drives Services.signup directly, which is
+    where a future caller would introduce the collision."""
+    browser_page.goto("/")
+
+    browser_page.evaluate(
+        """async () => {
+            const { Services } = await import('/static/js/modules/services.js');
+            await Services.signup(
+              'real@example.com',
+              'RealPass1',
+              { email: 'attacker@example.com',
+                password: 'wrong',
+                lang: 'zz',
+                first_name: 'Amina' },
+              'ar',
+            );
+        }"""
+    )
+
+    assert len(signup_capture) == 1
+    sent = signup_capture[0]
+    assert sent["email"] == "real@example.com"
+    assert sent["password"] == "RealPass1"
+    assert sent["lang"] == "ar"
+    assert sent["first_name"] == "Amina"  # metadata still arrives
+
+
 def test_terms_acceptance_is_required_by_the_form(browser_page: Page, signup_capture):
     """A separate, required tick (docs/profile-refactor-plan.md §12.4) —
     never bundled with marketing consent, which stays optional."""
