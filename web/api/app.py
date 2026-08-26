@@ -1361,7 +1361,12 @@ def _init_extensions(app: Flask, testing: bool) -> Limiter:
             "https://cdnjs.cloudflare.com",
             "https://fonts.googleapis.com",
         ],
-        "img-src": ["'self'", "data:", "https:"],
+        # No external image is loaded anywhere: favicons are same-origin, every
+        # icon is inline SVG (web/utils/icons.py), and Bootstrap's control art is
+        # data: URIs. The wildcard mattered because model output renders through a
+        # DOMPurify profile that permits <img> (stream-render.js:24), which made a
+        # markdown image in an answer an outbound beacon.
+        "img-src": ["'self'", "data:"],
         "font-src": [
             "'self'",
             "https://cdn.jsdelivr.net",
