@@ -35,9 +35,11 @@ def test_img_src_admits_only_same_origin_and_data_uris():
 
 def test_the_debug_branch_does_not_loosen_img_src():
     """testing=True takes the permissive branch (app.py:1376-1382). That branch is
-    font-src and connect-src only, deliberately."""
+    font-src and connect-src only, deliberately. Equality, not just an absence
+    check for `https:` — so a future debug relaxation adding `blob:` or `http:`
+    to img-src fails this test too, rather than sliding past it."""
     client = create_app(testing=True).test_client()
 
     directives = _directives(client.get("/"))
 
-    assert "https:" not in directives["img-src"]
+    assert directives["img-src"] == "'self' data:"

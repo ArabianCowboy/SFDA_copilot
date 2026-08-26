@@ -17,6 +17,17 @@ def test_services_module_has_no_view_or_state_dependencies():
     assert "DOMCache" not in source
 
 
+def test_signup_spreads_metadata_before_the_explicit_fields():
+    """A cheap companion to
+    test_explicit_signup_fields_survive_a_colliding_metadata_key
+    (test_signup_identity_capture.py), which proves the behaviour at runtime
+    but only runs in the browser CI job. This pins the source text itself so
+    the fast job also fails on a reverted spread order."""
+    source = (MODULES / "services.js").read_text(encoding="utf-8")
+
+    assert "{ ...metadata, email, password, lang }" in source
+
+
 def test_handlers_own_user_facing_service_failures():
     source = (MODULES / "handlers.js").read_text(encoding="utf-8")
 
