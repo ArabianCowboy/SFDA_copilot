@@ -111,10 +111,14 @@ all writes through `security definer` RPCs filtered on `p_owner_id`. Do not "fix
 adding a policy. `profiles` is the one browser-direct table, and its column protection is a
 `REVOKE` plus a trigger because RLS restricts rows, not columns.
 
-**Identity is two layers.** Enforcement lives in `app.py` (`_get_token_from_request`,
-`_authenticate_request`, `@auth_required`); `web/services/identity_cache.py` caches the result
-process-locally for 30 seconds. An outage is a 503, never a 401 — a Supabase blip must not sign
-anyone out.
+**Identity is three layers.** Enforcement lives in `app.py` (`_get_token_from_request`,
+`_authenticate_request`, `@auth_required`); `web/services/token_verification_cache.py`
+single-flights every request's GoTrue call (collapsing a concurrent burst on one bearer
+token to one round trip, on every route including `/admin/*`) and, on reader routes only,
+may reuse a successful result for a short TTL — `0` as shipped, never applied to the
+console; `web/services/identity_cache.py` then caches the resolved role/tier/disabled
+flags process-locally for 30 seconds. An outage is a 503, never a 401 — a Supabase blip
+must not sign anyone out.
 
 **Config comes from three places**, in order: `web/config.yaml` (models, rate limits, search
 engine), the `app_settings` table (runtime overrides of a subset), and `.env` (secrets only).
@@ -207,3 +211,7 @@ replaced, and the cleanup that followed had to archive 8,000 lines to undo it.
   the old code before you believe it.
 - **Record a reversal, do not silently edit it away.** When a decision changes, say that it
   changed and why. Most of the value in `docs/archive/` is in the corrections.
+- **Default `/agy-delegate` dispatch:** unless the user names a different model or effort,
+  run it as `agy --model gemini-3.7-flash-high --dangerously-skip-permissions`. The user has
+  standing-authorized the permission bypass for this repo — don't re-ask before every
+  dispatch — but still verify the resulting diff yourself per the rule above.

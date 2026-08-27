@@ -331,6 +331,32 @@ def test_the_identity_cache_is_invalidated_so_the_change_takes_effect(client, ap
     assert cache.get("test-user-id") is None
 
 
+def _seed_token_cache(app, token: str, user_id: str) -> None:
+    """Reach into the token cache directly — it has no public "put" (publish
+    is deliberately entangled with single-flight), so this is how a test puts
+    an entry there without also faking a whole GoTrue round trip."""
+    from web.services.token_verification_cache import VerifiedIdentity
+
+    cache = app.config["token_verification"]
+    identity = VerifiedIdentity(user_id=user_id, email=f"{user_id}@example.com", token_exp=None)
+    key = cache._key(token)
+    with cache._lock:
+        cache._data[key] = (cache._now() + 30, cache._now(), identity)
+        cache._by_user.setdefault(user_id, set()).add(key)
+
+
+def test_a_role_change_invalidates_the_token_cache_too(client, app):
+    """The flags cache is not the only thing a role change must drop — the
+    token cache separately remembers "GoTrue said this credential is good"
+    and must not let a demoted reader's session outlive its TTL."""
+    _seed_token_cache(app, "some-live-token", "test-user-id")
+    assert len(app.config["token_verification"]) == 1
+
+    client.patch("/admin/api/users/test-user-id", json={"role": "user"}, headers=ADMIN)
+
+    assert len(app.config["token_verification"]) == 0
+
+
 # ── Payload validation ────────────────────────────────────────────────────────
 
 
@@ -709,6 +735,42 @@ def test_a_failed_revoke_is_recorded_as_failed_not_accepted(app, client):
     assert "user.sessions_revoke_accepted" not in actions
 
 
+def test_revoking_sessions_drops_the_token_cache(client, app):
+    """The sharpest of the invalidation call sites: this route's entire
+    purpose is ending sessions right now, and a warm token cache is exactly
+    what would let a revoked session keep authenticating anyway."""
+    _seed_token_cache(app, "some-live-token", "test-user-id")
+    assert len(app.config["token_verification"]) == 1
+
+    client.post("/admin/api/users/test-user-id/revoke-sessions", headers=ADMIN)
+
+    assert len(app.config["token_verification"]) == 0
+
+
+def test_an_ambiguous_revoke_failure_still_drops_the_token_cache(app, client):
+    """A transport failure does not prove the revocation failed — GoTrue may
+    have already committed it. The cache must resolve that ambiguity in the
+    safe direction: assume it happened."""
+    _seed_token_cache(app, "some-live-token", "test-user-id")
+    app.config["_testing_auth_admin_dispatcher"].refuse_with = "auth_admin_unreachable"
+    app.config["_testing_auth_admin_dispatcher"].refuse_ambiguous = True
+
+    client.post("/admin/api/users/test-user-id/revoke-sessions", headers=ADMIN)
+
+    assert len(app.config["token_verification"]) == 0
+
+
+def test_a_definitive_revoke_failure_leaves_the_token_cache_alone(app, client):
+    """The opposite case: a definitive, non-ambiguous refusal means nothing
+    actually happened at GoTrue, so there is nothing to evict."""
+    _seed_token_cache(app, "some-live-token", "test-user-id")
+    app.config["_testing_auth_admin_dispatcher"].refuse_with = "auth_admin_failed"
+
+    client.post("/admin/api/users/test-user-id/revoke-sessions", headers=ADMIN)
+
+    assert len(app.config["token_verification"]) == 1
+
+
 def test_an_ambiguous_revoke_failure_is_recorded_as_outcome_unknown_not_failed(app, client):
     """A transport failure does not prove the mutation failed — GoTrue may
     have already committed it. Recording that as an ordinary "failed" would
@@ -809,6 +871,44 @@ def test_a_successful_email_change_is_visible_on_the_next_load(client):
     account = client.get("/admin/api/users/test-user-id", headers=ADMIN).get_json()["user"]
     assert account["email"] == "new-address@example.com"
     assert account["email_identity_verified"] is False
+
+
+def test_an_email_change_drops_the_token_cache(client, app):
+    """The token cache holds "GoTrue said this credential is good"; it must
+    not keep answering for a token verified against the account's old
+    identity."""
+    _seed_token_cache(app, "some-live-token", "test-user-id")
+    assert len(app.config["token_verification"]) == 1
+
+    client.post(
+        "/admin/api/users/test-user-id/change-email",
+        json={"email": "new-address@example.com"},
+        headers=ADMIN,
+    )
+
+    assert len(app.config["token_verification"]) == 0
+
+
+def test_an_email_change_drops_the_identity_flags_cache_too(client, app):
+    """`session["user_email"]` is set from `resolve_identity_flags`'s result
+    (app.py's `_authenticate_request`), which returns a flags-cache HIT
+    verbatim — ignoring whatever fresh email the token carried. The token
+    cache alone does not keep this fresh; `identity_flags` must be dropped
+    too, or a reader keeps seeing their old address in their own session for
+    up to that cache's TTL."""
+    from web.services.identity_cache import IdentityFlags
+
+    flags_cache = app.config["identity_flags"]
+    flags_cache.put(IdentityFlags("test-user-id", "test@example.com", "user", "free", False))
+    assert flags_cache.get("test-user-id") is not None
+
+    client.post(
+        "/admin/api/users/test-user-id/change-email",
+        json={"email": "new-address@example.com"},
+        headers=ADMIN,
+    )
+
+    assert flags_cache.get("test-user-id") is None
 
 
 def test_a_failed_email_change_is_recorded_as_failed_not_accepted(app, client):

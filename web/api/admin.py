@@ -26,7 +26,6 @@ is silent.
 
 from __future__ import annotations
 
-import hashlib
 import logging
 import re
 from collections.abc import Callable, Sequence
@@ -86,13 +85,15 @@ def _admin_notification_rate_key() -> str:
     behind one office NAT sharing one budget) without a second
     `supabase.auth.get_user` round trip just to compute a rate key.
     """
+    from web.utils.hashing import sha256_hex
+
     header = request.headers.get("Authorization", "")
     if not header.startswith("Bearer "):
         return get_remote_address()
     token = header[len("Bearer ") :].strip()
     if not token:
         return get_remote_address()
-    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+    return sha256_hex(token)
 
 
 @admin_bp.before_request
@@ -561,6 +562,37 @@ def _actor_still_admin(backend) -> str | None:
     return None
 
 
+def _evict_token_cache(user_id: str) -> None:
+    """Drop this reader's cached "GoTrue said this credential is good".
+
+    Call after anything that ends or invalidates a session/credential
+    without necessarily changing role, tier, disabled state, or email —
+    revoking sessions is the case this exists for. A route that changes one
+    of those other four wants `_evict_identity_caches` below instead, which
+    covers this cache too.
+    """
+    current_app.config["token_verification"].invalidate_user(user_id)
+
+
+def _evict_identity_caches(user_id: str) -> None:
+    """Drop every cache this reader's identity feeds: the token-verification
+    cache above, and the flags cache (role/tier/disabled — and the email
+    `session["user_email"]` is actually drawn from; `_authenticate_request`
+    reads it from `resolve_identity_flags`'s result, which returns a
+    flags-cache HIT verbatim, ignoring whatever fresh email the token
+    carried).
+
+    Call after any admin action that changes role, disabled state, or
+    email — anything the operator must not watch fail to take effect, or
+    the reader must not keep seeing stale in their own session for up to
+    the flags TTL. One chokepoint instead of two separate cache lookups
+    repeated at every call site, so a future identity-mutating route
+    cannot pass every test while silently forgetting one of the two caches.
+    """
+    _evict_token_cache(user_id)
+    current_app.config["identity_flags"].invalidate(user_id)
+
+
 @admin_bp.route("/api/users/<user_id>/revoke-sessions", methods=["POST"])
 def revoke_sessions(user_id: str) -> Response | tuple[Response, int]:
     """End every session this account holds, right now.
@@ -633,6 +665,12 @@ def revoke_sessions(user_id: str) -> Response | tuple[Response, int]:
         dispatcher.revoke_sessions(user_id)
     except AuthAdminRefused as refusal:
         outcome = "outcome_unknown" if refusal.ambiguous else "failed"
+        if refusal.ambiguous:
+            # GoTrue may already have committed the revocation despite the
+            # transport failure — the whole reason this outcome is recorded
+            # as "unknown" rather than "failed". The cache must resolve that
+            # ambiguity in the safe direction: assume it happened.
+            _evict_token_cache(user_id)
         backend.append_audit(
             action=f"user.sessions_revoke_{outcome}",
             target_type="user",
@@ -648,6 +686,11 @@ def revoke_sessions(user_id: str) -> Response | tuple[Response, int]:
         }.get(refusal.code, 502)
         return jsonify({"error": refusal.code, "outcome_unknown": refusal.ambiguous}), status
 
+    # Unconditional and before the audit write: this is the one route whose
+    # entire purpose is ending sessions right now, and the token cache is
+    # exactly the thing that would otherwise let a revoked session keep
+    # authenticating on reader routes for its TTL.
+    _evict_token_cache(user_id)
     backend.append_audit(
         action="user.sessions_revoke_accepted",
         target_type="user",
@@ -746,6 +789,11 @@ def change_email(user_id: str) -> Response | tuple[Response, int]:
         dispatcher.change_email(user_id, new_email)
     except AuthAdminRefused as refusal:
         outcome = "outcome_unknown" if refusal.ambiguous else "failed"
+        if refusal.ambiguous:
+            # Same reasoning as revoke_sessions above: a transport failure
+            # does not prove the mutation failed. Both caches, for the same
+            # reason as the success path below — see `_evict_identity_caches`.
+            _evict_identity_caches(user_id)
         backend.append_audit(
             action=f"user.email_change_{outcome}",
             target_type="user",
@@ -762,6 +810,10 @@ def change_email(user_id: str) -> Response | tuple[Response, int]:
         }.get(refusal.code, 502)
         return jsonify({"error": refusal.code, "outcome_unknown": refusal.ambiguous}), status
 
+    # Both caches — see `_evict_identity_caches`'s own docstring for why an
+    # email change specifically needs the flags cache too, not just the
+    # token cache.
+    _evict_identity_caches(user_id)
     backend.append_audit(
         action="user.email_change_accepted",
         target_type="user",
@@ -903,10 +955,10 @@ def patch_user(user_id: str) -> Response | tuple[Response, int]:
         )
         return jsonify({"error": refused.code}), 409
 
-    # Before returning, not after: the cache is a latency optimisation and an
-    # operator must never watch their own change fail to take effect. Chat
-    # requests re-read within the TTL; console requests never use the cache.
-    current_app.config["identity_flags"].invalidate(user_id)
+    # Before returning, not after: an operator must never watch their own
+    # change fail to take effect. Chat requests re-read within the TTL;
+    # console requests never use either cache.
+    _evict_identity_caches(user_id)
 
     logger.info(
         "%s changed %s (role=%s disabled=%s)",

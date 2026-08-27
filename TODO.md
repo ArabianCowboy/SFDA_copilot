@@ -41,7 +41,7 @@ bottom of this file: [How this file works](#how-this-file-works).
 - [Give readers a quota, and limits worth having](#give-readers-a-quota-and-limits-worth-having) — rate limiting is IP-keyed, not reader-keyed; not started.
 - [The browser suite flakes intermittently in test_source_panel.py](#the-browser-suite-flakes-intermittently-in-test_source_panelpy) — undiagnosed; resource-contention evidence only.
 - [Know what people actually ask](#know-what-people-actually-ask--without-reading-anyones-conversation) — an identity-free question log; not started, gated on scale.
-- [Every authenticated request pays a network round trip to verify its token](#every-authenticated-request-pays-a-network-round-trip-to-verify-its-token) — deliberately not done quietly; needs a stated revocation-window trade-off.
+- [Enable the token-verification cache once production numbers justify it](#enable-the-token-verification-cache-once-production-numbers-justify-it) — single-flight (the worker-starvation fix) shipped 2026-08-27 at no revocation cost; the optional positive cache stays off, gated on measurement.
 - [Admin broadcast & Reader Notification Center](#admin-broadcast--reader-notification-center-popups-banners-and-inbox-history) — full feature, not started.
 - [The privacy policy (/privacy) is a draft, not reviewed legal text](#the-privacy-policy-privacy-is-a-draft-not-reviewed-legal-text) — consent shipped against this draft; the legal review of the text is what is still owed.
 - [Account deletion (Spec 4)](#account-deletion-spec-4--blocked-on-a-product-decision-not-on-engineering) — blocked on an unclosed product decision; both migrations written.
@@ -697,41 +697,43 @@ answers, which on a regulatory surface is the more expensive mistake.
 
 ---
 
-### Every authenticated request pays a network round trip to verify its token
+### Enable the token-verification cache once production numbers justify it
 
-**Where:** `web/api/app.py`, `_authenticate_request` calls
-`supabase.auth.get_user(token)` on every request that is not the public
-landing. Surfaced 2026-08-15 by the audit of the outage bug above.
+**Where:** `web/config.yaml`, `server.auth_token_cache.ttl_seconds` (currently
+`0`); the cache itself is `web/services/token_verification_cache.py`.
 
-**What is wrong.** Nothing is cached. Opening the console costs **four** GoTrue
-verifications — identity, settings, users, audit — before an operator has
-clicked anything, and opening one account costs **two more**. There is an
-identity-flags cache (`web/services/identity_cache.py`, 30s TTL) but it covers
-the _profile_ lookup that follows, and console requests deliberately pass
-`fresh=True` to bypass even that, for a documented and correct reason: being
-thirty seconds behind a demotion is unacceptable on the surface that can disable
-an account.
+**What is wanted.** The worker-starvation problem is already fixed by
+single-flight (previous entry) at no revocation cost. What remains on the
+table is reusing a _successful_ verification across sequential reader
+requests within a short window, which would save GoTrue round trips single-
+flight does not — a chat session sending several turns in a row, for
+example — at the cost of a real, if small, revocation window: a session
+revoked at GoTrue by a path this application cannot observe — a password
+change or "sign out other sessions," both performed browser-direct against
+Supabase, see `docs/archive/2026-08-27_token-verification-cache.md` §4.6 —
+could keep authenticating on reader routes for up to the TTL. **Logout is
+not part of that exposure**: `POST /auth/logout` is server-mediated and
+already evicts the token cache on every call (`web/api/auth.py`), regardless
+of `ttl_seconds`. `/admin/*` is exempt in every configuration.
 
-**Who it reaches.** Everyone, as latency; and it is the reason the timeout bug
-above had such a wide blast radius. Production runs `--workers 1 --threads 8`,
-so a slow GoTrue holds one of eight request threads per in-flight verification
-and eight concurrent stalls exhaust the only worker for every reader.
+**Why it is not done.** There is no measurement in this repository showing
+the trade is worth taking — no hit-rate, no GoTrue latency distribution, no
+QPS figure. Raising the TTL on the strength of an unrelated observation (an
+earlier draft did exactly this, using the browser-direct PostgREST path's own
+~3600s exposure to justify widening this one) was tried and reversed during
+review; existing exposure elsewhere is not a license for more here.
 
-**What fixing it costs — and why it is not obviously worth paying.** The obvious
-move, caching token→user for a short TTL, buys latency at the price of a revoked
-session staying valid for that TTL. That is a real security trade and it is not
-the same trade as the identity-flags cache, which only ever caches _flags_ for
-an already-verified caller. The alternative is verifying the JWT locally against
-the project's signing key, which removes the round trip entirely and keeps
-revocation semantics honest for expiry — but not for revocation, and it means
-holding key material and tracking Supabase's move to asymmetric keys.
+**What turning it on requires**, per §1.4 of the archived plan:
 
-**Do not do this quietly.** It is a deliberate weakening of a check that
-currently asks the authority on every request. Whoever picks it up should write
-down the revocation window they are choosing, and say it out loud in this file.
-The mitigations already shipped — a 5s ceiling, correct outage classification,
-and a client-side guard against double-opening an account — address the harm
-this caused without touching the trade.
+1. Deploy with `ttl_seconds: 0` (already shipped) and watch `get_user` call
+   volume and the cache's `len()` in production for a while.
+2. Show, from those numbers, what fraction of reader verifications are
+   sequential repeats within a candidate window, and what that costs in
+   GoTrue latency today.
+3. Only if that fraction is material, set `ttl_seconds` to a small positive
+   number (5 seconds was the figure reasoned through, not derived from
+   measurement) — and record that window here, in this entry, in the same
+   commit, per this file's standing instruction.
 
 ---
 

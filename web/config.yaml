@@ -151,6 +151,26 @@ server:
     # this fans a message out to every targeted reader at once.
     notification_broadcast_api: "10 per hour"
 
+  # How long a successful GoTrue token verification may be reused, in seconds.
+  #
+  # THIS IS THE STATED REVOCATION WINDOW. Raising it lengthens the time a
+  # revoked reader session keeps working. It applies to reader routes only —
+  # /admin/* bypasses this cache entirely and is verified live on every
+  # request, because the console can disable accounts and end sessions. Every
+  # entry is additionally capped at the token's own `exp`, so this can shorten
+  # a credential's life and never extend it.
+  #
+  # See docs/archive/2026-08-27_token-verification-cache.md §1 for the trade this represents, and
+  # §1.4 for why 0 — not a positive number — is the shipped default.
+  auth_token_cache:
+    # 0 = OFF, and the shipped default. Single-flight still collapses
+    # concurrent same-token verification at any value, including 0 — that
+    # part is a concurrency control, not a cache, and it costs nothing in
+    # freshness. Raising this above 0 takes the revocation trade in §1.4 and
+    # must not be done without the measurement and the TODO.md entry that
+    # section requires.
+    ttl_seconds: 0
+
   # CORS origins (only used when debug=false)
   allowed_origins:
     - https://sfda-copilot.aifoudahub.com

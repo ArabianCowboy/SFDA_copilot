@@ -13,10 +13,13 @@ os.environ.setdefault("OMP_NUM_THREADS", "1")
 os.environ.setdefault("MKL_NUM_THREADS", "1")
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 
-import hashlib
+import base64
+import json
 import logging
+import math
 import sys
 import threading
+import time
 import uuid
 from collections.abc import Callable, Sequence
 from contextlib import contextmanager
@@ -190,7 +193,13 @@ from web.services.search_engine import ImprovedSearchEngine, SearchResult
 from web.services.search_exceptions import ManifestValidationError, SearchEngineError
 from web.services.settings_service import SettingsService
 from web.services.sse import sse, sse_headers
+from web.services.token_verification_cache import (
+    TokenVerificationCache,
+    TokenVerificationTimeout,
+    VerifiedIdentity,
+)
 from web.utils.config_loader import config
+from web.utils.hashing import sha256_hex
 from web.utils.i18n import (
     load_catalog,
     make_translator,
@@ -200,7 +209,7 @@ from web.utils.i18n import (
     text_direction,
 )
 from web.utils.icons import CATEGORY_ICONS, icon, runtime_icons
-from web.utils.supabase_client import get_supabase
+from web.utils.supabase_client import _auth_timeout, get_supabase
 
 # ──────────────────────────────────────────────────────────
 # Constants
@@ -246,11 +255,11 @@ SUPPORTED_FAQ_LANGS = ("en", "ar")
 # that mixes a fresh template with a stale module is worse than a stale page —
 # post-icon-migration it would render an <i class="bi"> with no icon font behind
 # it, or print a glyph NAME as text. MODULE_IMPORT_MAP below closes that.
-ASSET_VERSION = "warm59"
+ASSET_VERSION = "warm60"
 
 # Product release, rendered in the landing footer. Kept as one constant so
 # the number cannot drift between the page and the module headers.
-APP_VERSION = "0.5.3 (Beta)"
+APP_VERSION = "0.5.4 (Beta)"
 
 # The privacy policy's own version, recorded on every consent grant
 # (docs/profile-refactor-plan.md §16·3, Spec 3) so a consent record stays
@@ -476,7 +485,15 @@ def _is_upstream_outage(exception: BaseException) -> bool:
     anything. Landing that in the refusal branch would sign an administrator out
     for being busy. The cost of counting it here is that the console retries the
     GET once, which is a rounding error against the fan-out that provoked it.
+
+    **`TokenVerificationTimeout` counts too.** It means a waiter gave up
+    waiting for another thread's in-flight verification, not that anyone's
+    credential was judged bad — see
+    `web/services/token_verification_cache.py`. Treating it as anything but an
+    outage would turn a busy process into a stream of reader sign-outs.
     """
+    if isinstance(exception, TokenVerificationTimeout):
+        return True
     if isinstance(exception, httpx.TransportError):
         return True
     if AuthRetryableError is not None and isinstance(exception, AuthRetryableError):
@@ -527,6 +544,104 @@ def _is_auth_refusal(exception: BaseException) -> bool:
     return isinstance(getattr(exception, "status", None), int)
 
 
+class _ProviderResponseUnusable(Exception):
+    """GoTrue answered, but not in a shape this app understands.
+
+    Not a refusal and not an outage — a response in a shape we do not
+    understand. Raising a distinct type keeps it out of BOTH classifiers, so
+    it lands on the 500 branch that already exists for our own faults rather
+    than telling the reader their credential is bad.
+    """
+
+
+# The 60-second grace on `exp` below is for OUR clock, not the token's: a VPS
+# with drifting NTP must not start refusing valid credentials, and being 60
+# seconds generous about a bound GoTrue enforces itself costs nothing.
+_CLOCK_LEEWAY_SECONDS = 60
+
+
+def _decode_jwt_payload(token: str) -> dict[str, Any] | None:
+    """Best-effort, UNVERIFIED decode of a JWT's payload segment.
+
+    The signature is never inspected — this cannot possibly confirm a token is
+    good, only that it cannot possibly be. Every parse failure is swallowed
+    and answered with None; this must never raise into the auth path.
+
+    `RecursionError` is caught alongside the obvious parse errors, not just
+    `ValueError`/`TypeError`/`UnicodeDecodeError`: `json.loads` recurses per
+    nesting level, and a payload segment of a few thousand nested `[` — well
+    within an ordinary header's size — raises it instead of `ValueError`.
+    Without this, that one crafted (not even forged — no signature is ever
+    checked here) token would propagate uncaught out of an unauthenticated
+    call and past every classifier in `_authenticate_request`.
+    """
+    parts = token.split(".")
+    if len(parts) != 3:
+        return None
+    padded = parts[1] + "=" * (-len(parts[1]) % 4)
+    try:
+        payload = json.loads(base64.urlsafe_b64decode(padded))
+    except (ValueError, TypeError, UnicodeDecodeError, RecursionError):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _valid_exp(payload: dict[str, Any]) -> float | None:
+    """The payload's `exp` claim, or None if it is absent or unusable.
+
+    Shared by both callers below so "what counts as a usable `exp`" has one
+    definition. `math.isfinite` matters, not just the `isinstance` check:
+    JSON's own grammar has no `Infinity`/`NaN` literals, but `json.loads`
+    accepts them anyway (a de facto extension every stdlib implementation
+    ships), and `float("inf") + _CLOCK_LEEWAY_SECONDS > time.time()` is
+    trivially true. A payload of `{"exp": Infinity}` would otherwise be
+    treated as "structurally live" by the fast-reject filter whose entire
+    documented purpose is rejecting garbage in microseconds — defeating that
+    optimisation for exactly the crafted input it exists to catch.
+    """
+    exp = payload.get("exp")
+    if isinstance(exp, bool) or not isinstance(exp, (int, float)):
+        return None
+    if not math.isfinite(exp):
+        return None
+    return float(exp)
+
+
+def _is_structurally_live(token: str) -> bool:
+    """Reject input that cannot possibly be a live token — before any network call.
+
+    NOT authentication. A structural check that costs no network and can only
+    ever say "this cannot possibly be live" — three segments,
+    base64url-decodable, and an `exp` that has not already passed. A token
+    that clears it is not thereby trusted; it still goes to GoTrue, which
+    remains the only authority.
+
+    It exists because the one attack a token-verification cache does NOT help
+    with is a flood of DISTINCT invalid tokens: every one is a cache miss, and
+    concurrent misses each hold a request thread for a network round trip.
+    Garbage is rejected in microseconds instead.
+    """
+    payload = _decode_jwt_payload(token)
+    if payload is None:
+        return False
+    exp = _valid_exp(payload)
+    if exp is None:
+        return False
+    return exp + _CLOCK_LEEWAY_SECONDS > time.time()
+
+
+def _token_exp(token: str) -> float | None:
+    """The token's own (unverified) `exp` claim, or None if absent/malformed.
+
+    Used only to cap how long a verified result may be cached — never to
+    grant trust. See `TokenVerificationCache._publish`.
+    """
+    payload = _decode_jwt_payload(token)
+    if payload is None:
+        return None
+    return _valid_exp(payload)
+
+
 def _authenticate_request() -> tuple[IdentityFlags | None, Any | None]:
     """Resolve the caller. Returns (flags, early_response); exactly one is None.
 
@@ -543,30 +658,51 @@ def _authenticate_request() -> tuple[IdentityFlags | None, Any | None]:
         if not token:
             return None, _handle_unauthorized(_is_page_request())
 
+        if not _is_structurally_live(token):
+            logger.warning("Malformed or expired token at %s.", request.endpoint)
+            return None, _handle_unauthorized(_is_page_request())
+
         try:
-            supabase = get_supabase()
-            response = supabase.auth.get_user(token)
-            # Robustly get the user object, which might be nested differently
-            user = getattr(response, "user", None) or getattr(
-                getattr(response, "data", None), "user", None
+
+            def _verify() -> VerifiedIdentity:
+                supabase = get_supabase()
+                response = supabase.auth.get_user(token)
+                # Robustly get the user object, which might be nested differently
+                user = getattr(response, "user", None) or getattr(
+                    getattr(response, "data", None), "user", None
+                )
+                if not user:
+                    raise _ProviderResponseUnusable(request.endpoint)
+                # The user id is the stable identity; email can be changed by
+                # the account holder and is only a fallback for a provider
+                # that omits it.
+                return VerifiedIdentity(
+                    user_id=str(getattr(user, "id", None) or user.email),
+                    email=getattr(user, "email", None),
+                    token_exp=_token_exp(token),
+                )
+
+            # Single-flight always, on every route including the console.
+            # Remembering the result only off the console — see
+            # `web/services/token_verification_cache.py`'s module docstring
+            # for why those are two decisions and not one.
+            is_console = request.blueprint == "admin"
+            verified = current_app.config["token_verification"].get_or_verify(
+                token, _verify, use_cache=not is_console
             )
-
-            if not user:
-                logger.warning("Token validation failed for %s – no user found.", request.endpoint)
-                return None, _handle_unauthorized(_is_page_request())
-
-            # The user id is the stable identity; email can be changed by the
-            # account holder and is only a fallback for a provider that omits it.
-            user_id = str(getattr(user, "id", None) or user.email)
+            user_id = verified.user_id
             identity = resolve_identity_flags(
                 current_app.config["identity_flags"],
                 user_id,
-                user.email,
+                verified.email,
                 # Console requests re-read the database rather than trusting the
                 # TTL. Being thirty seconds behind a demotion is free on the
                 # chat path and unacceptable on the one that can change a model
-                # or disable an account.
-                fresh=(request.blueprint == "admin"),
+                # or disable an account. Same predicate as the token cache
+                # above, deliberately read from one variable rather than
+                # recomputed: two expressions meant to agree eventually will
+                # not.
+                fresh=is_console,
             )
         except Exception as exception:
             if _is_upstream_outage(exception):
@@ -690,7 +826,7 @@ def _account_rate_key() -> str:
     token = header[len("Bearer ") :].strip()
     if not token:
         return get_remote_address()
-    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+    return sha256_hex(token)
 
 
 def _load_history(
@@ -1623,6 +1759,34 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
     # Process-local, same scope contract as ConversationStore above: a cache,
     # never the authority. The database decides who is an administrator.
     app.config["identity_flags"] = IdentityFlagsCache()
+    # A SECOND, separate cache — see token_verification_cache's module
+    # docstring for why merging it into the one above is not possible in the
+    # direction that matters (this one is keyed by token digest, that one by
+    # user id). `ttl_seconds` defaults to 0 — single-flight only, nothing
+    # remembered. Raising it is the deliberate revocation-window trade
+    # described in docs/archive/2026-08-27_token-verification-cache.md §1.4, and it must not be
+    # done without the measurement that section requires.
+    #
+    # `wait_timeout_seconds` is derived from the SAME auth timeout the actual
+    # GoTrue call runs under, rather than a second, independently chosen
+    # number — a hardcoded literal here would silently drift from
+    # `SUPABASE_AUTH_TIMEOUT` the moment someone changed that env var without
+    # knowing this constant existed, turning a legitimate slow-but-successful
+    # verification into a false 503 for every waiter.
+    # `or 5.0` would be a falsy-zero bug here: `SUPABASE_AUTH_TIMEOUT=0` is a
+    # degenerate config elsewhere (every GoTrue call would time out
+    # instantly), but this specific line still owes it the actual configured
+    # value rather than silently substituting a default — that substitution
+    # is exactly the "drift" the comment above says this derivation exists to
+    # prevent. `.read` is never `None` for a `Timeout` built the way
+    # `_auth_timeout()` builds it (a single positional value sets every leg);
+    # the `is None` check is defensive, not expected to trigger.
+    _configured_read_timeout = _auth_timeout().read
+    _auth_read_timeout = 5.0 if _configured_read_timeout is None else _configured_read_timeout
+    app.config["token_verification"] = TokenVerificationCache(
+        ttl_seconds=config.get("server", "auth_token_cache", {}).get("ttl_seconds", 0),
+        wait_timeout_seconds=_auth_read_timeout + 0.5,
+    )
 
     # One in-memory backend per process under TESTING, so a setting changed by
     # a request is visible to the next one within the same test — and nothing
@@ -1942,9 +2106,13 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
     workers = os.getenv("WEB_CONCURRENCY", "1")
     if workers != "1":
         logger.warning(
-            "WEB_CONCURRENCY=%s but ConversationStore is process-local — conversations "
-            "will split across workers and users will randomly lose context. This app "
-            "must run single-worker anyway (in-RAM FAISS index); use --workers 1 --threads 8.",
+            "WEB_CONCURRENCY=%s but ConversationStore, IdentityFlagsCache and "
+            "TokenVerificationCache are all process-local — conversations will split "
+            "across workers, users will randomly lose context, and an admin "
+            "invalidation (disable, demote, revoke sessions) will only take effect on "
+            "the worker that served it, leaving the others serving stale or revoked "
+            "credentials for their full TTL. This app must run single-worker anyway "
+            "(in-RAM FAISS index); use --workers 1 --threads 8.",
             workers,
         )
 

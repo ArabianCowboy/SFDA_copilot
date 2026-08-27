@@ -2206,3 +2206,62 @@ templates (three assumed here undercounted `web/templates/partials/_sidebar.html
 the new one. Full inventory and reasoning in `docs/security-hardening-plan.md` (Task 1).
 
 ---
+
+### [HISTORICAL] ~~Every authenticated request pays a network round trip to verify its token~~ — FIXED 2026-08-27
+
+> The worker-starvation mechanism this entry is actually about — a burst of
+> concurrent requests on one bearer token exhausting all eight threads — is
+> closed with **no revocation trade at all**:
+> `web/services/token_verification_cache.py` single-flights every
+> authenticated request, on every route including `/admin/*`, so a console
+> boot's fan-out collapses to one live GoTrue call regardless of how many
+> requests fire together. A structural pre-check rejects a malformed or
+> already-expired token before any network call, closing the one thing
+> single-flight cannot: a flood of _distinct_ invalid tokens.
+>
+> The revocation-window decision this entry demanded, written down: the
+> positive cache — reusing a verified result across _sequential_, not
+> concurrent, requests — ships disabled (`ttl_seconds: 0` in
+> `web/config.yaml`, reader routes only, `/admin/*` always exempt). Enabling
+> it is a separate, smaller, deliberately deferred decision — see
+> _Enable the token-verification cache once production numbers justify it_
+> in `TODO.md`. The original diagnosis's "four" console verifications was
+> also undercounted — it is six to seven. Full plan, adversarial review, and
+> file-by-file implementation in
+> `docs/archive/2026-08-27_token-verification-cache.md`.
+
+**Where:** `web/api/app.py`, `_authenticate_request` calls
+`supabase.auth.get_user(token)` on every request that is not the public
+landing. Surfaced 2026-08-15 by the audit of the outage bug above.
+
+**What is wrong.** Nothing is cached. Opening the console costs **four** GoTrue
+verifications — identity, settings, users, audit — before an operator has
+clicked anything, and opening one account costs **two more**. There is an
+identity-flags cache (`web/services/identity_cache.py`, 30s TTL) but it covers
+the _profile_ lookup that follows, and console requests deliberately pass
+`fresh=True` to bypass even that, for a documented and correct reason: being
+thirty seconds behind a demotion is unacceptable on the surface that can disable
+an account.
+
+**Who it reaches.** Everyone, as latency; and it is the reason the timeout bug
+above had such a wide blast radius. Production runs `--workers 1 --threads 8`,
+so a slow GoTrue holds one of eight request threads per in-flight verification
+and eight concurrent stalls exhaust the only worker for every reader.
+
+**What fixing it costs — and why it is not obviously worth paying.** The obvious
+move, caching token→user for a short TTL, buys latency at the price of a revoked
+session staying valid for that TTL. That is a real security trade and it is not
+the same trade as the identity-flags cache, which only ever caches _flags_ for
+an already-verified caller. The alternative is verifying the JWT locally against
+the project's signing key, which removes the round trip entirely and keeps
+revocation semantics honest for expiry — but not for revocation, and it means
+holding key material and tracking Supabase's move to asymmetric keys.
+
+**Do not do this quietly.** It is a deliberate weakening of a check that
+currently asks the authority on every request. Whoever picks it up should write
+down the revocation window they are choosing, and say it out loud in this file.
+The mitigations already shipped — a 5s ceiling, correct outage classification,
+and a client-side guard against double-opening an account — address the harm
+this caused without touching the trade.
+
+---

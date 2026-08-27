@@ -159,6 +159,38 @@ def test_search_engine_construction_failure_keeps_app_available():
     assert app.config["search_engine"] is None
 
 
+def test_logout_drops_the_token_even_when_gotrue_fails():
+    """Invalidation is local and unconditional, and must run before the
+    GoTrue call rather than depend on it succeeding — whether the provider is
+    reachable has no bearing on whether this process should keep trusting the
+    token that is being signed out of."""
+    from web.services.token_verification_cache import VerifiedIdentity
+
+    application = create_app(testing=True)
+    application.config["TESTING"] = False
+    test_client = application.test_client()
+
+    cache = application.config["token_verification"]
+    token = "the-readers-live-token"
+    key = cache._key(token)
+    identity = VerifiedIdentity(user_id="reader-1", email="reader@example.com", token_exp=None)
+    with cache._lock:
+        cache._data[key] = (cache._now() + 30, cache._now(), identity)
+        cache._by_user.setdefault("reader-1", set()).add(key)
+    assert len(cache) == 1
+
+    with test_client.session_transaction() as session:
+        session["supabase_access_token"] = token
+
+    with patch("web.api.auth.get_supabase", side_effect=RuntimeError("GoTrue unreachable")):
+        response = test_client.post("/auth/logout")
+
+    assert len(cache) == 0
+    # The route still answers the request; a downstream provider failure is
+    # not the caller's problem once the local session state is gone.
+    assert response.status_code in (200, 400)
+
+
 def test_search_engine_initialization_failure_keeps_app_available():
     from flask import Flask
 

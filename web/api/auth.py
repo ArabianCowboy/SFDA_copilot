@@ -422,11 +422,26 @@ def recover():
 
 @auth_bp.route("/logout", methods=["POST"])
 def logout():
+    # Read before the clear below: `_get_token_from_request` falls back to
+    # `session["supabase_access_token"]`, so clearing the session first would
+    # lose the only handle on the cache entry that needs dropping. Imported
+    # inline — `web.api.app` imports this module's blueprint at load time, so
+    # a top-level import here would be a cycle.
+    from web.api.app import _get_token_from_request
+
+    token = _get_token_from_request()
+
     # Before anything that can fail. Whether Supabase is reachable, whether the
     # token was already expired, whether sign_out raises — none of it may leave
     # this browser session still holding the previous reader's conversation.
     purge_conversation_state()
     session.clear()
+
+    # Local and unconditional, deliberately before the GoTrue call below and
+    # outside its try: whether the provider is reachable has no bearing on
+    # whether this process should keep trusting this token.
+    if token:
+        current_app.config["token_verification"].invalidate_token(token)
 
     if current_app.config.get("TESTING"):
         return jsonify({"message": "Logged out successfully"})
