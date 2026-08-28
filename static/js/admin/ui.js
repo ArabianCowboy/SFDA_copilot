@@ -733,7 +733,7 @@ export function renderUsers({
 
   const head = document.createElement('thead');
   const headRow = document.createElement('tr');
-  ['columnEmail', 'columnRole', 'columnAccess', 'columnLastSeen', 'columnActions'].forEach(
+  ['columnEmail', 'columnRole', 'columnAccess', 'columnLastSignIn', 'columnActions'].forEach(
     (key) => {
       const th = document.createElement('th');
       th.scope = 'col';

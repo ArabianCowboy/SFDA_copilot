@@ -15,12 +15,12 @@ directly; the fourth, `rpc_behaviour.test.sql`, calls the hardened RPCs and
 checks what they do — because six of the twelve hardening migrations changed a
 function BODY, and a body is not visible in any catalogue assertion.
 
-| File                     | What it protects                                                                |
-| ------------------------ | ------------------------------------------------------------------------------- |
-| `privileges.test.sql`    | Table and column grants, in both directions, plus both default-ACL layers       |
-| `function_acls.test.sql` | The five-part RPC contract: who may execute what, and `search_path`             |
-| `rls_chat.test.sql`      | Reader-to-reader isolation, and that no browser-direct write path exists        |
-| `rpc_behaviour.test.sql` | The actor gate, receipt lifecycle, replay, source normalisation, question clamp |
+| File                     | What it protects                                                                                        |
+| ------------------------ | ------------------------------------------------------------------------------------------------------- |
+| `privileges.test.sql`    | Table and column grants, in both directions, plus both default-ACL layers                               |
+| `function_acls.test.sql` | The five-part RPC contract: who may execute what, and `search_path`                                     |
+| `rls_chat.test.sql`      | Reader-to-reader isolation, and that no browser-direct write path exists                                |
+| `rpc_behaviour.test.sql` | The actor gate, receipt lifecycle, replay, source normalisation, question clamp, the last-seen throttle |
 
 `rpc_behaviour.test.sql` is the one that would otherwise rot: every behaviour it
 covers was verified once, by hand, on the day it was written. A manual

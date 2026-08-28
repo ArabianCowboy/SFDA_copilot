@@ -64,7 +64,26 @@ declare
     -- The dead table, still present pending the drop-or-use decision.
     ['anon','chatbot_settings','SELECT'], ['anon','chatbot_settings','INSERT'],
     ['anon','chatbot_settings','TRUNCATE'],
-    ['authenticated','chatbot_settings','SELECT'], ['authenticated','chatbot_settings','UPDATE']
+    ['authenticated','chatbot_settings','SELECT'], ['authenticated','chatbot_settings','UPDATE'],
+
+    -- profile_last_seen: no role holds anything on it, service_role included —
+    -- every access path is touch_last_seen/admin_get_user, both security
+    -- definer running as the table owner. See docs/data-policy-decisions.md's §4.
+    -- The full seven-privilege set per role, not a subset: the migration does
+    -- `revoke all`, and a test asserting only SELECT/INSERT/UPDATE/DELETE would
+    -- pass against an accidental `grant truncate` or `grant references`.
+    ['anon','profile_last_seen','SELECT'], ['anon','profile_last_seen','INSERT'],
+    ['anon','profile_last_seen','UPDATE'], ['anon','profile_last_seen','DELETE'],
+    ['anon','profile_last_seen','TRUNCATE'], ['anon','profile_last_seen','REFERENCES'],
+    ['anon','profile_last_seen','TRIGGER'],
+    ['authenticated','profile_last_seen','SELECT'], ['authenticated','profile_last_seen','INSERT'],
+    ['authenticated','profile_last_seen','UPDATE'], ['authenticated','profile_last_seen','DELETE'],
+    ['authenticated','profile_last_seen','TRUNCATE'], ['authenticated','profile_last_seen','REFERENCES'],
+    ['authenticated','profile_last_seen','TRIGGER'],
+    ['service_role','profile_last_seen','SELECT'], ['service_role','profile_last_seen','INSERT'],
+    ['service_role','profile_last_seen','UPDATE'], ['service_role','profile_last_seen','DELETE'],
+    ['service_role','profile_last_seen','TRUNCATE'], ['service_role','profile_last_seen','REFERENCES'],
+    ['service_role','profile_last_seen','TRIGGER']
   ];
 
   -- Triples that MUST be granted. Just as important: a test that only asserts

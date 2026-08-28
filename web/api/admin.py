@@ -1446,8 +1446,24 @@ def identity() -> Response | tuple[Response, int]:
     Reaching this at all is the answer; the body just names who. The console
     calls it before rendering anything privileged, so a reader who somehow
     loaded the shell is told nothing and shown nothing.
+
+    Also touches ``last_seen_at`` (docs/data-policy-decisions.md §4). The
+    console does not import `static/js/modules/services.js` — that boundary
+    is a security property this repo enforces on purpose, not an oversight —
+    so an administrator who only ever uses `/admin` never calls the *other*
+    `/api/identity` in `web/api/app.py`, and without this call their own
+    presence would never be recorded. Best-effort and in its own `try`, the
+    same shape as the reader-facing route: a touch failure must never turn
+    an otherwise-successful console load into a 5xx.
     """
     flags = g.identity
+    backend = current_app.config["admin_backend"]()
+    if backend is not None:
+        try:
+            backend.touch_last_seen(flags.user_id)
+        except Exception:
+            logger.exception("Could not touch last_seen for %s", flags.user_id)
+
     return jsonify(
         {
             "user_id": flags.user_id,

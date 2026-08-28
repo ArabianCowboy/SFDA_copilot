@@ -468,6 +468,24 @@ def test_a_profile_less_account_is_shown_as_broken_rather_than_ordinary(client):
     assert account["is_disabled"] is None
 
 
+def test_touch_last_seen_updates_the_seeded_row_and_the_detail_reflects_it(app, client):
+    before = client.get("/admin/api/users/test-user-id", headers=ADMIN).get_json()["user"]
+    assert before["last_seen_at"] is None
+
+    app.config["_testing_admin_backend"].touch_last_seen("test-user-id")
+
+    after = client.get("/admin/api/users/test-user-id", headers=ADMIN).get_json()["user"]
+    assert after["last_seen_at"] is not None
+
+
+def test_touch_last_seen_does_not_raise_for_an_unknown_or_profile_less_account(backend):
+    """Every method on this Protocol must not raise for "not found" — the one
+    method here with no natural not-found value to fall back on instead, so the
+    contract is that it silently does nothing."""
+    backend.touch_last_seen("test-nobody-id")  # no such account
+    backend.touch_last_seen("test-orphan-id")  # exists, but has_profile is False
+
+
 def test_an_unknown_account_is_a_404_not_a_500(client):
     response = client.get("/admin/api/users/test-nobody-id", headers=ADMIN)
 

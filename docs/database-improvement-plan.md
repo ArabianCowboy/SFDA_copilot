@@ -1,5 +1,7 @@
 STATUS: LARGELY APPLIED — waves 1, 2, 3 and 5 landed on 2026-08-28 as twelve
-migrations. Wave 4 remains open and its four items are now entries in `TODO.md`.
+migrations. Wave 4 needed a decision first; three of its four items are still open and
+are entries in `TODO.md`, and the fourth (finding 13, `last_seen_at`) was resolved
+2026-08-28 by [`docs/data-policy-decisions.md`'s §4](data-policy-decisions.md#4-profileslast_seen_at).
 Audited against the live project `yjjuudnsnjzhyqllsqrd` on 2026-08-28.
 **Read [What actually happened](#what-actually-happened-when-this-was-applied) first** —
 three of the findings below turned out to be partly wrong at apply time, and that
@@ -201,7 +203,7 @@ statistics procedure in `supabase/README.md` (finding 12).
 | 8 (retention, `audit_log` bounds, assistant bound) | Blocked on numbers and a retention period nobody owns. Now a `TODO.md` entry.                                                                                                                                                                                                                                           |
 | 1 (`supabase_admin` grantor)                       | Blocked: `ALTER DEFAULT PRIVILEGES` needs membership in the grantor role and `postgres` is not a member of `supabase_admin` (`42501`). It governs nothing in `public` today — all eleven tables and every function there are `postgres`-owned — so the practical impact is nil, but "nil today" is not "cannot happen". |
 | 11                                                 | Needs a measurement through PostgREST. Procedure in `docs/OPERATIONS.md`.                                                                                                                                                                                                                                               |
-| 13                                                 | Blocked on write-it-or-drop-it. Now a `TODO.md` entry.                                                                                                                                                                                                                                                                  |
+| 13                                                 | ~~Blocked on write-it-or-drop-it.~~ **Resolved 2026-08-28** — written. See `docs/data-policy-decisions.md`'s §4.                                                                                                                                                                                                        |
 
 ### A second review pass, and what it changed
 
@@ -263,26 +265,26 @@ closed by recognising the class rather than the line.
 Ordered by cost. The numbers are stable identifiers, not positions — findings 14–18 came
 from the fourth pass and are placed here by severity.
 
-| #         | Finding                                                                  | Mistake class                            | Severity | Advisors? |
-| --------- | ------------------------------------------------------------------------ | ---------------------------------------- | -------- | --------- |
-| [1](#1)   | `public`'s default privileges grant ALL to `anon` on every future table  | Trusting RLS instead of grants           | High     | No        |
-| [14](#14) | `service_role` can write around the RPCs on five tables                  | Two standards for the same invariant     | High     | No        |
-| [2](#2)   | `profiles` carries `DELETE` and `TRUNCATE` for `anon`/`authenticated`    | `TRUNCATE` is not covered by RLS         | High     | No        |
-| [15](#15) | A NULL `p_actor_id` skips every admin check; audit email is unverified   | Authorization guarded only when present  | Medium   | No        |
-| [3](#3)   | `chatbot_settings` is fully writable by `anon` at the grant layer        | Dead table keeping live privileges       | Medium   | No        |
-| [4](#4)   | Two notification list RPCs write a dead tuple on every read              | Unconditional `ON CONFLICT DO UPDATE`    | Medium   | No        |
-| [16](#16) | Reader receipt writes ignore the notification lifecycle                  | Mutations that skip the read filter      | Medium   | No        |
-| [5](#5)   | `chat_sessions.owner_id` has no FK, for a reason that is factually wrong | Assuming an FK implies `CASCADE`         | Medium   | No        |
-| [6](#6)   | `profiles` policies do not gate on `is_active_account()`                 | Deactivation that skips the direct table | Medium   | No        |
-| [7](#7)   | No database-level test proves any grant or policy holds                  | Mock-only test suites                    | Medium   | No        |
-| [8](#8)   | Unbounded text columns, and no retention anywhere                        | Append-only with no lifecycle            | Medium   | No        |
-| [17](#17) | Notification replay races, and its payload hash omits `resend_of`        | A unique index mistaken for idempotency  | Medium   | No        |
-| [9](#9)   | Two notification FKs make purge ordering load-bearing                    | Delete order held in one function body   | Low      | No        |
-| [10](#10) | The `all`-target broadcast fetches every enabled profile id              | Unbounded fan-out query                  | Low      | No        |
-| [18](#18) | `chat_append_turn` validates the sources array but not its elements      | Shape check that stops one level short   | Low      | No        |
-| [11](#11) | Liveness bounds on the write path are unverified, not absent             | Measuring the wrong connection path      | Low      | No        |
-| [12](#12) | Three standing advisor findings are missing from the register            | Register drift                           | Low      | Partly    |
-| [13](#13) | `profiles.last_seen_at` is written by nothing                            | Ghost column                             | Low      | No        |
+| #         | Finding                                                                  | Mistake class                            | Severity | Advisors?                                   |
+| --------- | ------------------------------------------------------------------------ | ---------------------------------------- | -------- | ------------------------------------------- |
+| [1](#1)   | `public`'s default privileges grant ALL to `anon` on every future table  | Trusting RLS instead of grants           | High     | No                                          |
+| [14](#14) | `service_role` can write around the RPCs on five tables                  | Two standards for the same invariant     | High     | No                                          |
+| [2](#2)   | `profiles` carries `DELETE` and `TRUNCATE` for `anon`/`authenticated`    | `TRUNCATE` is not covered by RLS         | High     | No                                          |
+| [15](#15) | A NULL `p_actor_id` skips every admin check; audit email is unverified   | Authorization guarded only when present  | Medium   | No                                          |
+| [3](#3)   | `chatbot_settings` is fully writable by `anon` at the grant layer        | Dead table keeping live privileges       | Medium   | No                                          |
+| [4](#4)   | Two notification list RPCs write a dead tuple on every read              | Unconditional `ON CONFLICT DO UPDATE`    | Medium   | No                                          |
+| [16](#16) | Reader receipt writes ignore the notification lifecycle                  | Mutations that skip the read filter      | Medium   | No                                          |
+| [5](#5)   | `chat_sessions.owner_id` has no FK, for a reason that is factually wrong | Assuming an FK implies `CASCADE`         | Medium   | No                                          |
+| [6](#6)   | `profiles` policies do not gate on `is_active_account()`                 | Deactivation that skips the direct table | Medium   | No                                          |
+| [7](#7)   | No database-level test proves any grant or policy holds                  | Mock-only test suites                    | Medium   | No                                          |
+| [8](#8)   | Unbounded text columns, and no retention anywhere                        | Append-only with no lifecycle            | Medium   | No                                          |
+| [17](#17) | Notification replay races, and its payload hash omits `resend_of`        | A unique index mistaken for idempotency  | Medium   | No                                          |
+| [9](#9)   | Two notification FKs make purge ordering load-bearing                    | Delete order held in one function body   | Low      | No                                          |
+| [10](#10) | The `all`-target broadcast fetches every enabled profile id              | Unbounded fan-out query                  | Low      | No                                          |
+| [18](#18) | `chat_append_turn` validates the sources array but not its elements      | Shape check that stops one level short   | Low      | No                                          |
+| [11](#11) | Liveness bounds on the write path are unverified, not absent             | Measuring the wrong connection path      | Low      | No                                          |
+| [12](#12) | Three standing advisor findings are missing from the register            | Register drift                           | Low      | Partly                                      |
+| [13](#13) | `profiles.last_seen_at` is written by nothing                            | Ghost column                             | Low      | Yes (2026-08-28, differently — see finding) |
 
 Not one of these is on the advisor output. That is the point of reading the database
 rather than the linter.
@@ -1248,6 +1250,15 @@ The cleaner design, if the feature is genuinely wanted, is to keep last-seen off
 `profiles` entirely rather than add a per-request write to the one table every request
 already reads.
 
+**Resolved 2026-08-28**, exactly along the "cleaner design" line above: the operator
+decided to write the field, and `docs/data-policy-decisions.md`'s §4 keeps
+`last_seen_at` off `profiles` entirely — a new `profile_last_seen` table, a throttled
+`touch_last_seen(uuid)` RPC called from `/api/identity`, and `admin_get_user` reading it
+through a new `left join`. `profiles.last_seen_at` itself is untouched, still unwritten,
+and now permanently dead rather than merely neglected; dropping it is a separate,
+still-open `TODO.md` entry ("Drop `profiles.last_seen_at`, the column this feature
+replaced"), deferred to the next migration that touches `profiles` for another reason.
+
 ---
 
 <a id="14"></a>
@@ -1886,7 +1897,8 @@ re-opened by the next table.
 1. Finding 6 — `is_active_account()` on the `profiles` UPDATE policy. _Blocked on what
    "disabled" means._
 2. Finding 8's retention job. _Blocked on a retention period._
-3. Finding 13 — `last_seen_at`. _Blocked on write-it-or-drop-it._
+3. ~~Finding 13 — `last_seen_at`. _Blocked on write-it-or-drop-it._~~ **Resolved
+   2026-08-28** — written, via `docs/data-policy-decisions.md`'s §4. See finding 13.
 4. Finding 5 — the `chat_sessions.owner_id` FK. _Blocked on, and sequenced behind, the
    account-deletion saga. Correct the migration comment's claim about `ON DELETE CASCADE`
    now, in `supabase/README.md`, even if the constraint waits._
@@ -2262,7 +2274,8 @@ These are decisions, not engineering, and each blocks a wave-4 item:
    account-deletion question in `TODO.md`.
 3. **Is `chatbot_settings` dropped or finally used?** Already open in `TODO.md`. Blocks
    finding 3's second half.
-4. **Is `last_seen_at` written or removed?** Blocks finding 13.
+4. ~~Is `last_seen_at` written or removed?~~ **Resolved 2026-08-28 — written.** See
+   finding 13.
 5. **Is reader self-deletion permitted?** Already open in `TODO.md` as the blocker on
    Account deletion (Spec 4). It now also blocks finding 5, because the FK's
    `ON DELETE RESTRICT` is only safe once a path exists to delete a reader's

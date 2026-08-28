@@ -40,8 +40,16 @@ declare
   r text; upd_before bigint; upd_after bigint;
   a jsonb; b jsonb;
   kept text; qlen int; alen int;
-  ts timestamptz;
+  ts timestamptz; ts3 timestamptz;
+  -- Captured once. now() is transaction-stable — every call to it inside this
+  -- one `do` block returns the identical value — which the profile_last_seen
+  -- assertions below rely on twice: to prove a write landed at exactly the
+  -- right instant (not merely "later than before"), and, combined with
+  -- pg_stat_xact_user_tables, to prove a *second* touch performed no write at
+  -- all rather than merely writing the same-looking value again.
+  tx_now timestamptz;
 begin
+  tx_now := now();
   select id into admin_a from public.profiles where role = 'admin' and not is_disabled order by id limit 1;
   select id into admin_b from public.profiles where role = 'admin' and not is_disabled and id <> admin_a order by id limit 1;
   select id into reader  from public.profiles where role <> 'admin' and not is_disabled order by id limit 1;
@@ -276,6 +284,105 @@ begin
     raise exception 'FAIL rpc_behaviour — a 30,000-character answer stored as %; the answer '
       'must NOT be clamped — truncating it makes durable history disagree with what the '
       'reader was streamed', alen;
+  end if;
+
+  -- ── touch_last_seen's throttle, and admin_get_user's new left join
+  -- (20260828135721 / 20260828135732 / 20260828135749) ─────────────────────
+  -- Cleared first rather than assumed empty: `reader` is a live account, and
+  -- this feature may already have touched it in production. Deterministic
+  -- regardless, because the whole block rolls back — the same convention
+  -- every other assertion in this file already uses against admin_a/admin_b/
+  -- reader, not a seeded fixture unique to this feature.
+  delete from public.profile_last_seen where user_id = reader;
+
+  n := n + 1;
+  perform public.touch_last_seen(reader);
+  select last_seen_at into ts from public.profile_last_seen where user_id = reader;
+  -- Exact equality to tx_now, not merely "not null": now() is transaction-
+  -- stable, so this is a real assertion about what got written, not a weaker
+  -- "something happened" check.
+  if ts is distinct from tx_now then
+    raise exception 'FAIL rpc_behaviour — touch_last_seen on a first touch wrote % '
+      '(want %)', ts, tx_now;
+  end if;
+
+  -- The within-the-hour branch, proven by absence of a write, not by
+  -- comparing timestamps. now() is transaction-stable, so an UNTHROTTLED
+  -- `on conflict do update set last_seen_at = excluded.last_seen_at` would
+  -- ALSO leave the read-back value looking unchanged inside this one
+  -- transaction — comparing two timestamps here would pass against a
+  -- completely missing throttle predicate. pg_stat_xact_user_tables' tuple-
+  -- update counter is what 20260828001636's own throttle test already uses
+  -- for the identical reason, reused here rather than a second technique.
+  select n_tup_upd into upd_before from pg_stat_xact_user_tables
+   where relname = 'profile_last_seen';
+  perform public.touch_last_seen(reader);
+  select n_tup_upd into upd_after from pg_stat_xact_user_tables
+   where relname = 'profile_last_seen';
+  n := n + 1;
+  if coalesce(upd_after, 0) <> coalesce(upd_before, 0) then
+    raise exception 'FAIL rpc_behaviour — an immediate repeat touch performed % row '
+      'update(s); the within-the-hour throttle predicate is missing', upd_after - upd_before;
+  end if;
+
+  -- The stale-but-not-null branch. Exact equality to tx_now again — a
+  -- predicate that advances a two-hour-old row by one second, or to 90
+  -- minutes ago rather than to now, would pass a merely-"did it move" check
+  -- while leaving the row still stale.
+  n := n + 1;
+  update public.profile_last_seen set last_seen_at = tx_now - interval '2 hours'
+   where user_id = reader;
+  perform public.touch_last_seen(reader);
+  select last_seen_at into ts3 from public.profile_last_seen where user_id = reader;
+  if ts3 is distinct from tx_now then
+    raise exception 'FAIL rpc_behaviour — touch_last_seen advanced a stale row to % '
+      '(want %); it moved, but not to the correct value', ts3, tx_now;
+  end if;
+
+  -- No privilege round-trip here: function_acls.test.sql already sweeps every
+  -- function in `public`, touch_last_seen included, so a named re-check here
+  -- would just be a second, weaker copy of the same fact.
+  n := n + 1;
+  if (select last_seen_at from public.admin_get_user(reader)) is distinct from ts3 then
+    raise exception 'FAIL rpc_behaviour — admin_get_user did not return '
+      'profile_last_seen''s last_seen_at through the new left join';
+  end if;
+
+  -- No profile_last_seen row at all: admin_get_user must still return the
+  -- account's row, with last_seen_at null — proving a LEFT join, not merely
+  -- "the scalar subquery below reads as null either way". A regression to an
+  -- inner join would make admin_get_user return NO row for this account, and
+  -- `(select last_seen_at from admin_get_user(reader))` — a scalar subquery
+  -- over zero rows — ALSO evaluates to NULL in Postgres, which the null-check
+  -- alone cannot tell apart from a present row with a null column. The
+  -- `exists` check below is what actually distinguishes them.
+  delete from public.profile_last_seen where user_id = reader;
+  n := n + 1;
+  if not exists (select 1 from public.admin_get_user(reader)) then
+    raise exception 'FAIL rpc_behaviour — admin_get_user returned no row at all for a '
+      'known account with no profile_last_seen row; a left join regressed to an inner one';
+  end if;
+  n := n + 1;
+  if (select last_seen_at from public.admin_get_user(reader)) is not null then
+    raise exception 'FAIL rpc_behaviour — admin_get_user returned a non-null last_seen_at '
+      'for an account with no profile_last_seen row';
+  end if;
+
+  -- An id with no matching public.profiles row at all — an auth.users row with
+  -- no profile, or simply an id nobody has ever seen (20260828143044). The
+  -- first version of this RPC did `insert ... values (...)` unconditionally,
+  -- which raised a foreign-key violation here; /api/identity's try/except
+  -- swallowed it, so this regressed silently — logged noise on every request
+  -- from an orphaned account, forever, with no test catching it.
+  n := n + 1;
+  r := 'ACCEPTED';
+  begin
+    perform public.touch_last_seen(gen_random_uuid());
+  exception when others then r := sqlstate; end;
+  if r <> 'ACCEPTED' then
+    raise exception 'FAIL rpc_behaviour — touch_last_seen raised % for an id with no '
+      'matching profiles row; it must silently insert nothing (23503 means the '
+      'orphan-tolerance fix in 20260828143044 regressed)', r;
   end if;
 
   summary := format('PASS rpc_behaviour.test.sql — %s assertions', n);

@@ -167,6 +167,48 @@ def test_an_administrator_is_admitted(client):
     assert response.get_json()["is_admin"] is True
 
 
+def test_console_only_activity_still_touches_last_seen(app, client):
+    """The gap a harsh review caught: `/admin/api/identity` is a *separate*
+    route from `web/api/app.py`'s `/api/identity`, and the console does not
+    import `static/js/modules/services.js` (that boundary is a security
+    property, not an oversight — see `test_the_console_does_not_import_the_
+    chat_shell`). Without its own touch, an administrator who only ever uses
+    `/admin` would never have their own presence recorded — the exact account
+    an operator most wants fresh "last seen" data for, from the one surface
+    least likely to give it.
+    """
+    before = app.config["_testing_admin_backend"].get_user("test-admin-id")
+    assert before["last_seen_at"] is None
+
+    response = client.get("/admin/api/identity", headers=ADMIN)
+
+    assert response.status_code == 200
+    after = app.config["_testing_admin_backend"].get_user("test-admin-id")
+    assert after["last_seen_at"] is not None
+
+
+def test_a_failing_touch_does_not_break_the_console_identity_check(app, client):
+    """Best-effort, same as the reader-facing route: a touch failure must
+    never turn an otherwise-successful console load into a 5xx.
+
+    `app.config["admin_backend"]` always resolves to `_testing_admin_backend`
+    under TESTING (`web/api/app.py`'s `admin_backend()` closure) — never
+    `get_admin_backend()` — so the fake replaces that config entry directly
+    rather than monkeypatching a function this route's call path never calls.
+    """
+
+    class Backend:
+        def touch_last_seen(self, user_id):
+            raise RuntimeError("touch_last_seen is down")
+
+    app.config["_testing_admin_backend"] = Backend()
+
+    response = client.get("/admin/api/identity", headers=ADMIN)
+
+    assert response.status_code == 200
+    assert response.get_json()["is_admin"] is True
+
+
 def test_every_admin_api_route_is_gated(app, client):
     """The gate is a before_request precisely so a route added later inherits it.
 

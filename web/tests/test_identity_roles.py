@@ -363,3 +363,78 @@ def test_identity_says_nothing_about_anyone_else(client):
     }
     assert body["created_at"] is None
     assert body["conversation_count"] is None
+
+
+# ── touch_last_seen: its own try, never sharing the standing-line facts one ───
+
+
+def test_identity_touches_last_seen_when_a_backend_is_present(monkeypatch, client):
+    """The write half of docs/data-policy-decisions.md's §4, from the route."""
+    from web.services import admin_store
+
+    touched = []
+
+    class Backend:
+        def touch_last_seen(self, user_id):
+            touched.append(user_id)
+
+        def get_standing_line_facts(self, user_id):
+            return {"created_at": "2026-01-01T00:00:00+00:00", "conversation_count": 3}
+
+    monkeypatch.setattr(admin_store, "get_admin_backend", lambda: Backend())
+
+    body = client.get("/api/identity", headers=AUTH).get_json()
+
+    assert touched == ["test-user-id"]
+    assert body["created_at"] == "2026-01-01T00:00:00+00:00"
+    assert body["conversation_count"] == 3
+
+
+def test_a_failing_touch_last_seen_does_not_blank_out_standing_line_facts(monkeypatch, client):
+    """The regression two separate `try` blocks exist to prevent.
+
+    A shared `try` would let a throttled-write failure suppress facts that
+    loaded fine and have nothing to do with it — caught independently by both
+    delegate reviews of the plan (see "What the review changed").
+    """
+    from web.services import admin_store
+
+    class Backend:
+        def touch_last_seen(self, user_id):
+            raise RuntimeError("touch_last_seen is down")
+
+        def get_standing_line_facts(self, user_id):
+            return {"created_at": "2026-01-01T00:00:00+00:00", "conversation_count": 3}
+
+    monkeypatch.setattr(admin_store, "get_admin_backend", lambda: Backend())
+
+    response = client.get("/api/identity", headers=AUTH)
+
+    assert response.status_code == 200
+    body = response.get_json()
+    assert body["created_at"] == "2026-01-01T00:00:00+00:00"
+    assert body["conversation_count"] == 3
+
+
+def test_a_failing_standing_line_lookup_does_not_skip_the_touch(monkeypatch, client):
+    """The other half of the same guarantee, in the other direction."""
+    from web.services import admin_store
+
+    touched = []
+
+    class Backend:
+        def touch_last_seen(self, user_id):
+            touched.append(user_id)
+
+        def get_standing_line_facts(self, user_id):
+            raise RuntimeError("get_standing_line_facts is down")
+
+    monkeypatch.setattr(admin_store, "get_admin_backend", lambda: Backend())
+
+    response = client.get("/api/identity", headers=AUTH)
+
+    assert response.status_code == 200
+    assert touched == ["test-user-id"]
+    body = response.get_json()
+    assert body["created_at"] is None
+    assert body["conversation_count"] is None

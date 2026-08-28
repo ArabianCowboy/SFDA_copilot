@@ -255,11 +255,11 @@ SUPPORTED_FAQ_LANGS = ("en", "ar")
 # that mixes a fresh template with a stale module is worse than a stale page —
 # post-icon-migration it would render an <i class="bi"> with no icon font behind
 # it, or print a glyph NAME as text. MODULE_IMPORT_MAP below closes that.
-ASSET_VERSION = "warm61"
+ASSET_VERSION = "warm63"
 
 # Product release, rendered in the landing footer. Kept as one constant so
 # the number cannot drift between the page and the module headers.
-APP_VERSION = "0.5.4 (Beta)"
+APP_VERSION = "0.6.0 (Beta)"
 
 # The privacy policy's own version, recorded on every consent grant
 # (docs/profile-refactor-plan.md §16·3, Spec 3) so a consent record stays
@@ -2356,6 +2356,13 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
         path. A lookup failure degrades to `null` for both rather than
         failing the whole response: the role/tier/is_admin answer above is
         the one thing this endpoint must not fail to give.
+
+        Also records presence via `touch_last_seen` — throttled to one write
+        per account per hour in the database, so calling it here on every hit
+        needs no in-process debounce. In its own `try`/`except`, deliberately
+        separate from the standing-line-facts lookup below: a failed touch
+        must never blank out facts that loaded fine, and a facts failure must
+        not skip the touch.
         """
         from web.services.admin_store import get_admin_backend
 
@@ -2364,6 +2371,11 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
         conversation_count = None
         backend = get_admin_backend()
         if backend is not None:
+            try:
+                backend.touch_last_seen(flags.user_id)
+            except Exception:
+                logger.exception("Could not touch last_seen for %s", flags.user_id)
+
             try:
                 facts = backend.get_standing_line_facts(flags.user_id)
             except Exception:

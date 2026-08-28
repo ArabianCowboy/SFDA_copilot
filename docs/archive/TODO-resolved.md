@@ -962,6 +962,56 @@ protect — confirmed as part of the same review rather than assumed. Full analy
 
 ---
 
+### [HISTORICAL] `profiles.last_seen_at` is written by nothing
+
+**Where:** `public.profiles.last_seen_at`; read at `web/services/admin_store.py` into the
+admin account-detail payload and rendered by `static/js/admin/ui.js`.
+
+**What is wrong.** Nothing anywhere writes it. `grep -rn "last_seen_at" web/` returns one
+production reference and it is a read. The column is guarded as server-owned by
+`profiles_guard_privilege_columns` — a trigger defending a column that never changes — and
+the admin console shows an empty field for every account.
+
+**Who it reaches.** Any operator looking at an account. The cost is a contract lie: they
+learn to ignore the field, and when a real "last seen" is wanted later, a column full of
+NULLs will be misread as "nobody ever used the product".
+
+**How it was found.** The 2026-08-28 database review
+(`docs/database-improvement-plan.md`, finding 13).
+
+**What fixing it would disturb.** Two honest resolutions and the choice is a product one.
+**Drop it** — and its guard clause, its store field and its admin view; three files plus a
+migration. **Or write it**, carefully, for two reasons that are easy to miss:
+`handle_profile_update` sets `updated_at = now()` on every update to `profiles`, and
+`admin_update_profile` uses `p_expected_updated_at` for optimistic concurrency against
+that same column — so a background `last_seen_at` write would bump `updated_at` and make
+an administrator's in-flight edit fail with a spurious `AD005` conflict. And a per-request
+write to `profiles` is `20260828001636`'s write-amplification problem on a much bigger
+table; it would need throttling (`where last_seen_at is null or last_seen_at < now() -
+interval '1 hour'`) and a once-per-page-load path such as `/api/identity`, never
+`/api/chat/stream`. If the feature is genuinely wanted, the cleaner design keeps last-seen
+off `profiles` entirely rather than adding a per-request write to the one table every
+request already reads.
+
+**Written 2026-08-28.** The operator decided: write it. A first design did exactly what
+this entry warned against — writing straight to `profiles` and editing the undiscoverable
+legacy `handle_profile_update()` trigger — and was reversed after an adversarial review
+(`opencode`, `openai/gpt-5.6-terra`, `xhigh`) named the real problem: that trigger's live
+body was not in the checkout, so the design depended on an object nobody could read. The
+shipped design is the "cleaner design" this entry already named: a new
+`public.profile_last_seen` table (migrations `20260828135721`/`20260828135732`/
+`20260828135749`), written by a throttled `touch_last_seen(uuid)` RPC called from
+`/api/identity` (its own `try`/`except`, independently flagged by two reviewers so it
+cannot suppress the unrelated standing-line facts also loaded there), and read into the
+admin payload through `admin_get_user`'s new `left join` — so the `updated_at`/
+`admin_update_profile` collision this entry warned about never occurs; nothing in the
+shipped design writes to `profiles` at all. Full design and review trail:
+`docs/data-policy-decisions.md`'s §4. `profiles.last_seen_at` itself is untouched and
+still unwritten — dropping it is now its own, separate, still-open `TODO.md` entry: "Drop
+`profiles.last_seen_at`, the column this feature replaced."
+
+---
+
 ## [HISTORICAL] Resolved planned work
 
 ### [HISTORICAL] ~~Registrations pause — let an operator pause new signups~~ — BUILT 2026-08-25

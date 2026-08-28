@@ -129,6 +129,15 @@ class AdminBackend(Protocol):
         """
         ...
 
+    def touch_last_seen(self, user_id: str) -> None:
+        """Record presence in ``profile_last_seen``. Best-effort.
+
+        Throttled in the database (``touch_last_seen(uuid)``); callers do not
+        need to. Must not raise for "not found" — an id that resolves to no
+        account is simply nothing to touch.
+        """
+        ...
+
     def get_settings(self) -> dict:
         """The stored override document. Empty when nothing has been changed."""
         ...
@@ -274,6 +283,9 @@ class SupabaseAdminBackend:
             "created_at": row.get("created_at"),
             "conversation_count": row.get("conversation_count") or 0,
         }
+
+    def touch_last_seen(self, user_id: str) -> None:
+        self._client.rpc("touch_last_seen", {"p_user_id": user_id}).execute()
 
     # ── Settings ──────────────────────────────────────────────────────────────
 
@@ -788,6 +800,23 @@ class InMemoryAdminBackend:
         for key in ("role", "tier", "is_disabled", "disabled_at", "disabled_reason"):
             detail[key] = row.get(key) if has_profile else None
         return detail
+
+    def touch_last_seen(self, user_id: str) -> None:
+        # Mirrors touch_last_seen(uuid)'s "not found" contract: silently does
+        # nothing for an id that matches no seeded row, or one with no
+        # profile — the same rule every other method on this Protocol
+        # follows. Does NOT mirror its throttle, deliberately: this fake
+        # always writes. A test that touches twice and asserts the second
+        # timestamp moved would pass here and fail against the real RPC
+        # (silent for an hour) — the throttle itself is proven only by
+        # supabase/tests/rpc_behaviour.test.sql, against the live function,
+        # not by anything routed through this fake.
+        row = next((r for r in self._users if r["id"] == user_id), None)
+        if row is None or not row.get("has_profile", True):
+            return
+        from datetime import datetime
+
+        row["last_seen_at"] = datetime.now(UTC).isoformat()
 
     def set_user_flags(
         self, user_id: str, *, role=None, is_disabled=None, reason=None, actor

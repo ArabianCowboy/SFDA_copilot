@@ -216,3 +216,17 @@ def test_arabic_catalogue_covers_every_runtime_key():
     for root in ("runtime", "page"):
         missing = flatten(en[root]) - flatten(ar[root])
         assert not missing, f"Arabic catalogue['{root}'] is missing: {sorted(missing)}"
+
+
+def test_no_stale_reference_to_the_renamed_last_seen_column_key():
+    """`columnLastSeen` was renamed to `columnLastSignIn` (it rendered "Last
+    signed in" and was bound to `last_sign_in_at`, not to anything "seen" —
+    docs/data-policy-decisions.md's §4, design piece 5).
+
+    This is the guard the parity test above cannot be: `I18n.t()` does not
+    throw on a missing key (web/utils/i18n.py's JS counterpart logs a console
+    warning and renders the raw key string instead), so a stale reference left
+    in `ui.js` after the rename would ship silently rather than fail loudly.
+    """
+    text = (ADMIN / "ui.js").read_text(encoding="utf-8")
+    assert "columnLastSeen" not in text
