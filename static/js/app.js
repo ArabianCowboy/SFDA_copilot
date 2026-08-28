@@ -3,9 +3,6 @@
  *
  * AI-powered regulatory guidance for pharmaceutical regulations.
  * This file wires the ES modules together; logic lives under ./modules/.
- *
- * @version 0.6.0 (Beta) — kept in step with APP_VERSION in web/api/app.py, which is
- * the single source the landing footer renders from.
  */
 
 import { CONFIG } from './modules/config.js';

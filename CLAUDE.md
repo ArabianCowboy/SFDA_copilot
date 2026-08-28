@@ -172,6 +172,13 @@ issues, not this repo's specific product/architecture contracts. These bite most
 7. **RLS restricts rows, not columns.** Column protection needs a `REVOKE` plus a trigger.
 8. **Never pass `preferences` to `Services.updateProfile`** — it upserts the whole row and will
    silently delete every other stored preference. Use the merge RPC.
+9. **Any edit to this file bumps `APP_VERSION` in `web/api/app.py`**, scaled to the change's
+   complexity: patch (`0.6.0` → `0.6.1`) for a wording fix or clarification, minor (`0.6.x` →
+   `0.7.0`) for a new rule or a changed workflow, major (`x.0.0` → `(x+1).0.0`) for a structural
+   rewrite of how agents work in this repo. `APP_VERSION` is the single source for the release
+   number — do not also hand-type it into a comment or docstring elsewhere; that duplication is
+   exactly what caused it to drift out of `static/js/app.js` and `admin.js` before both were
+   cleaned up.
 
 ---
 

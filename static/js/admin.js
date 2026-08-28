@@ -16,9 +16,6 @@
  *
  * Step 3 is the authority. Step 2 cannot be, because a token is just a claim,
  * and step 4 never runs on the strength of anything the page already held.
- *
- * @version 0.6.0 (Beta) — kept in step with APP_VERSION in web/api/app.py, same as
- * app.js. Was 0.4.1 and untouched since; brought back in sync rather than left stale.
  */
 
 import { Services } from './modules/services.js';
