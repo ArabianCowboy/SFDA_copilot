@@ -339,9 +339,10 @@ project gates.
 > §4's original "What to implement" steps (a column drop, a `ui.js` edit, an
 > `admin_store.py` payload change) were never performed and do not apply.
 
-This closes the `TODO.md` entry that originally read ["`profiles.last_seen_at` is written
-by nothing"](../TODO.md#drop-profileslast_seen_at-the-column-this-feature-replaced) — now
-retitled to track the column's disposal instead — and finding 13 in
+This closes the `TODO.md` entry that originally read "`profiles.last_seen_at` is written
+by nothing" — retitled to track the column's disposal instead, and itself closed
+2026-08-28 when the column was dropped; both entries are now in
+[`docs/archive/TODO-resolved.md`](archive/TODO-resolved.md) — and finding 13 in
 [`docs/database-improvement-plan.md`](database-improvement-plan.md), by writing the field
 rather than dropping it: the operator's call, made after seeing the admin console still
 show "Never" next to a working "Last Signed In" (2026-08-28 screenshot).
@@ -639,25 +640,32 @@ layer moved to agree with it, and one unrelated wrong key was corrected on the w
   key mismatch, so a renamed key left stale in one file is caught mechanically, not just by
   review.
 
-#### What happens to the old column
+#### What happened to the old column
 
-`profiles.last_seen_at` still exists, is still guarded by
-`profiles_guard_privilege_columns`, and after this design shipped is still never written by
-anything — the write moved to a different table entirely. Two things distinguish this from
-the original problem rather than just relocating it:
+**Update 2026-08-28 — dropped.** `profiles.last_seen_at` no longer exists.
+`20260828222859_profiles_guard_stops_checking_last_seen_at.sql` first removed the column
+from `profiles_guard_privilege_columns`'s INSERT/UPDATE checks (the last thing in the
+schema still referencing it), then `20260828222917_drop_profiles_last_seen_at.sql`
+dropped the column itself — its own migration, per `supabase/README.md` rule 2. This
+closed the `TODO.md` entry this section originally deferred to. The paragraph below is
+kept for the record of what was decided at the time; it no longer describes the live
+schema.
+
+Originally, after this design shipped, `profiles.last_seen_at` still existed, was still
+guarded by `profiles_guard_privilege_columns`, and was still never written by anything —
+the write had moved to a different table entirely. Two things distinguished this from the
+original problem rather than just relocating it:
 
 - **Nothing that reaches a human reads it anymore.** `admin_get_user` stopped selecting it;
   the only remaining reader of `profiles.last_seen_at` the column (as opposed to the output
   field of the same name) would be someone running a raw query against `profiles` directly.
   The "contract lie" `TODO.md`'s note on this entry warned about was specifically that the
   admin console shows it as real data — that stopped being true.
-- **It is not free to leave, and this is not pretended.** It is the same category of object
-  as `chatbot_settings` (§3 above): a dead artifact, safe to leave, not urgent to remove.
-  It is tracked as a follow-up in `TODO.md` — [drop `profiles.last_seen_at` and trim
-  `profiles_guard_privilege_columns`'s reference to
-  it](../TODO.md#drop-profileslast_seen_at-the-column-this-feature-replaced) — to be done
-  the next time `profiles` is migrated for another reason, exactly the sequencing already
-  recommended for `chatbot_settings` in §3. Not done as part of this change; it is unrelated
+- **It was not free to leave, and that was not pretended.** It was the same category of
+  object as `chatbot_settings` (§3 above): a dead artifact, safe to leave, not urgent to
+  remove — tracked as a follow-up in `TODO.md`, deferred to the next migration that touched
+  `profiles` for another reason, exactly the sequencing recommended for `chatbot_settings`
+  in §3. Not done as part of this change originally; it was unrelated
   to making "last active" work and would just be a second destructive migration riding on
   the same release.
 

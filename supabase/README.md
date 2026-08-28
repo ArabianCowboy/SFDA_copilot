@@ -1,6 +1,11 @@
 STATUS: CURRENT AUTHORITY — migration process and current schema shape.
 Last verified against the live project 2026-08-28.
 
+`profiles.last_seen_at` was dropped 2026-08-28
+(`20260828222859_profiles_guard_stops_checking_last_seen_at.sql`,
+`20260828222917_drop_profiles_last_seen_at.sql`) — closing the `TODO.md` entry that had
+deferred it. `profile_last_seen`, below, is the only place "last active" lives now.
+
 # Supabase schema
 
 The database is part of this application, so its schema lives here in version control.

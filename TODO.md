@@ -1,4 +1,4 @@
-STATUS: CURRENT AUTHORITY — open work only. Last verified against code 2026-08-28.
+STATUS: CURRENT AUTHORITY — open work only. Last verified against code 2026-08-29.
 Resolved entries live in `docs/archive/TODO-resolved.md`.
 
 # TODO
@@ -47,7 +47,6 @@ bottom of this file: [How this file works](#how-this-file-works).
 - [Account deletion (Spec 4)](#account-deletion-spec-4--blocked-on-a-product-decision-not-on-engineering) — blocked on an unclosed product decision; both migrations written.
 - [A conversation id now reaches the access log](#a-conversation-id-now-reaches-the-access-log) — a verification task, possibly already fine; unverified either way.
 - [Six of the seven admin RPCs validate the actor without holding a lock](#six-of-the-seven-admin-rpcs-validate-the-actor-without-holding-a-lock) — a check-then-act window; pre-existing, not introduced by the actor gate.
-- [Drop `profiles.last_seen_at`, the column this feature replaced](#drop-profileslast_seen_at-the-column-this-feature-replaced) — not urgent; ride along next time `profiles` is migrated for another reason.
 - [A retention policy, and the bounds that depend on one](#a-retention-policy-and-the-bounds-that-depend-on-one) — blocked on a retention period nobody owns; covers the assistant-message and audit_log text bounds too.
 - [`chat_sessions.owner_id` still has no foreign key](#chat_sessionsowner_id-still-has-no-foreign-key) — sequenced behind account deletion; the migration is small and the header's reasoning is already corrected.
 - [Does "disabled" freeze an account's own profile edits?](#does-disabled-freeze-an-accounts-own-profile-edits-or-only-its-use-of-the-product) — blocked on a product decision, not on engineering.
@@ -1093,7 +1092,7 @@ is idle, and a PL/pgSQL function still executing is not idle.
 
 **Where:** `supabase/tests/` (four files), and the absence of a database in CI.
 
-**What is wrong.** Those four files hold 176 assertions about grants, column privileges,
+**What is wrong.** Those four files hold 175 assertions about grants, column privileges,
 the default ACL, function ACLs, `search_path` and reader-to-reader RLS isolation. They are
 the only thing in this repository that can fail because of a privilege — every Python test
 mocks the Supabase client, and the advisors do not check grants at all, which is why the
@@ -1121,40 +1120,6 @@ Converting the files to pgTAP is **not** part of this. `pgtap` is available and 
 installed, and installing a few hundred functions into the production database to run
 three assertion files is a bigger change than the files are. They are plain `do` blocks
 that need no extension and convert mechanically if that ever changes.
-
----
-
-### Drop `profiles.last_seen_at`, the column this feature replaced
-
-**Where:** `public.profiles.last_seen_at`, its guard clause in
-`profiles_guard_privilege_columns` (`20260822224942`/`20260823014034`), and its entry in
-`supabase/tests/privileges.test.sql`'s `guarded_columns` array.
-
-**What is wrong.** `docs/data-policy-decisions.md`'s §4 shipped "last active" on a new
-`public.profile_last_seen` table instead, deliberately keeping `profiles.last_seen_at`
-untouched — so the column is now not merely unwritten (the state
-`docs/archive/TODO-resolved.md` records as fixed) but permanently dead: nothing will ever
-write or read it again. It still exists, still costs a column, and its guard trigger still
-runs on every profile write for a column no path touches.
-
-**Who it reaches.** Nobody today — the console reads `last_seen_at` from
-`admin_get_user`'s output field of that name, not from the column, since the same plan's
-`left join` to `profile_last_seen`. A future reader of `profiles`'s raw schema is the only
-one who would be misled, into thinking this column is live.
-
-**How it was found.** `docs/data-policy-decisions.md`'s §4, "What happens to the old
-column" subsection, written the same day the table-based design replaced it.
-
-**What fixing it would disturb.** Smaller than it first looks, and worth being precise
-about: `admin_get_user`'s `RETURNS TABLE` signature does **not** need to change.
-`20260828135749_admin_get_user_reads_profile_last_seen.sql` already stopped selecting
-`p.last_seen_at`; the function's body reads `pls.last_seen_at` from `profile_last_seen`
-now, so nothing in it references the column being dropped, and the output column of the
-same name stays exactly as it is. Dropping the column touches only
-`profiles_guard_privilege_columns` (both the 2026-08-22 and 2026-08-23 revisions reference
-it) and `privileges.test.sql`'s `guarded_columns` array. Small, but a destructive migration
-with its own review, not worth doing on its own — ride it along the next time `profiles` is
-migrated for another reason, the same sequencing already applied to `chatbot_settings`.
 
 ---
 

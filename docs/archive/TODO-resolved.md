@@ -1006,9 +1006,10 @@ cannot suppress the unrelated standing-line facts also loaded there), and read i
 admin payload through `admin_get_user`'s new `left join` — so the `updated_at`/
 `admin_update_profile` collision this entry warned about never occurs; nothing in the
 shipped design writes to `profiles` at all. Full design and review trail:
-`docs/data-policy-decisions.md`'s §4. `profiles.last_seen_at` itself is untouched and
-still unwritten — dropping it is now its own, separate, still-open `TODO.md` entry: "Drop
-`profiles.last_seen_at`, the column this feature replaced."
+`docs/data-policy-decisions.md`'s §4. `profiles.last_seen_at` itself was left untouched and
+still unwritten at first — dropping it became its own, separate `TODO.md` entry ("Drop
+`profiles.last_seen_at`, the column this feature replaced"), closed the same day: see
+"Drop `profiles.last_seen_at`, the column this feature replaced" below.
 
 ---
 
@@ -2371,5 +2372,58 @@ down the revocation window they are choosing, and say it out loud in this file.
 The mitigations already shipped — a 5s ceiling, correct outage classification,
 and a client-side guard against double-opening an account — address the harm
 this caused without touching the trade.
+
+---
+
+### [HISTORICAL] ~~Drop `profiles.last_seen_at`, the column this feature replaced~~ — DROPPED 2026-08-28
+
+**Where:** `public.profiles.last_seen_at`, its guard clause in
+`profiles_guard_privilege_columns` (`20260822224942`/`20260823014034`), and its entry in
+`supabase/tests/privileges.test.sql`'s `guarded_columns` array.
+
+**What was wrong.** `docs/data-policy-decisions.md`'s §4 shipped "last active" on a new
+`public.profile_last_seen` table instead, deliberately keeping `profiles.last_seen_at`
+untouched — so the column was not merely unwritten (the state above records as fixed) but
+permanently dead: nothing would ever write or read it again. It still existed, still cost a
+column, and its guard trigger still ran on every profile write for a column no path touched.
+
+**How it was found.** `docs/data-policy-decisions.md`'s §4, "What happens to the old
+column" subsection, written the same day the table-based design replaced it.
+
+**Fixed 2026-08-28, same day as opened**, via the Supabase MCP `apply_migration` tool,
+following `supabase/README.md`'s rules (destructive changes get their own migration; a
+destructive drop states what it checked). Two migrations, in order:
+
+1. `20260828222859_profiles_guard_stops_checking_last_seen_at.sql` — `create or replace`
+   on `profiles_guard_privilege_columns`, removing the `last_seen_at` clause from both its
+   INSERT and UPDATE branches. Non-destructive; had to land first because a `DROP COLUMN`
+   with the old trigger body left in place would abort on the next write with a 42703.
+2. `20260828222917_drop_profiles_last_seen_at.sql` — `alter table public.profiles drop
+column last_seen_at`, under `set local lock_timeout = '5s'` (Supabase's own guidance
+   for a `DROP COLUMN` on a table with concurrent traffic — it is metadata-only but still
+   takes `ACCESS EXCLUSIVE`). The migration header records what was checked first: row
+   count (4), the three FK constraints touching `profiles` (none reference the column),
+   no index on it, no other trigger referencing it, and a grep confirming
+   `admin_get_user` had already moved to reading `profile_last_seen` via a `left join`
+   (`20260828135749`) — so nothing in `web/` still reads the dropped column, only the RPC's
+   unrelated output column of the same name.
+
+`supabase/tests/privileges.test.sql`'s `guarded_columns` array lost its `last_seen_at`
+entry (a `has_column_privilege` check against a column that no longer exists would error,
+not merely fail) and the file's own assertion count dropped from 129 to 128, re-run live
+against the project via `execute_sql` and confirmed `PASS`. `get_advisors` (security and
+performance) showed no new finding — the standing-findings table in `supabase/README.md`
+matched exactly, and the drop added nothing to the unused-index list because the column was
+never indexed. `docs/data-policy-decisions.md` §4 and `docs/database-improvement-plan.md`
+finding 13 were both updated in the same pass to stop describing the column as still live;
+`TODO.md` and `docs/ARCHITECTURE.md`'s "176 assertions" figure for the four `supabase/tests/`
+files became 175.
+
+**What fixing it disturbed.** Nothing outside the three files above.
+`admin_get_user`'s `RETURNS TABLE` signature did not change — it already sourced
+`last_seen_at` from `profile_last_seen`, not from the column being dropped, since
+`20260828135749`. No Python code changed: `web/services/admin_store.py` and the test
+doubles read/write a `last_seen_at` dict key that mirrors the RPC's output shape, not the
+raw table column.
 
 ---

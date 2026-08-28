@@ -1254,10 +1254,12 @@ already reads.
 decided to write the field, and `docs/data-policy-decisions.md`'s §4 keeps
 `last_seen_at` off `profiles` entirely — a new `profile_last_seen` table, a throttled
 `touch_last_seen(uuid)` RPC called from `/api/identity`, and `admin_get_user` reading it
-through a new `left join`. `profiles.last_seen_at` itself is untouched, still unwritten,
-and now permanently dead rather than merely neglected; dropping it is a separate,
-still-open `TODO.md` entry ("Drop `profiles.last_seen_at`, the column this feature
-replaced"), deferred to the next migration that touches `profiles` for another reason.
+through a new `left join`. `profiles.last_seen_at` itself was left untouched, still
+unwritten, at first — but the same day, the follow-up TODO.md entry this created ("Drop
+`profiles.last_seen_at`, the column this feature replaced") was also closed:
+`20260828222859_profiles_guard_stops_checking_last_seen_at.sql` removed the column from
+`profiles_guard_privilege_columns`, and `20260828222917_drop_profiles_last_seen_at.sql`
+dropped it. The column no longer exists.
 
 ---
 

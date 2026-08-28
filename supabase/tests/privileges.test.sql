@@ -124,7 +124,7 @@ declare
   -- never have been there in the first place.
   guarded_columns text[] := array[
     'role','tier','is_disabled','disabled_at','disabled_by','disabled_reason',
-    'updated_at','full_name','last_seen_at',
+    'updated_at','full_name',
     'marketing_consent_granted_at','marketing_consent_withdrawn_at',
     'marketing_consent_granted_while_unconfirmed'
   ];
