@@ -1,0 +1,138 @@
+-- Flip schema `public` from born-open to born-closed.
+-- ===========================================================================
+-- Plan: docs/database-improvement-plan.md finding 1.
+--
+-- WHAT WAS WRONG. `pg_default_acl` granted every table privilege there is
+-- (arwdDxt — insert, select, update, delete, TRUNCATE, references, trigger) to
+-- anon and authenticated on every future table in `public`, and EXECUTE on
+-- every future function. So each new object was born fully open and stayed
+-- that way until its own migration remembered to revoke. supabase/README.md's
+-- five-part RPC contract (points 3 and 4) exists solely to undo this, by hand,
+-- forever — and two functions already prove the failure mode:
+-- `audit_log_is_append_only` and `handle_profile_update` both still carry
+-- `anon=X`. Both are trigger functions and therefore unreachable through
+-- PostgREST, so the exposure is nil; the discipline gap is not. The next
+-- `security definer` function whose revoke line is forgotten is browser-
+-- callable at /rest/v1/rpc/<name> on the day it is applied.
+--
+-- After this, the contract inverts: forgetting a line yields a 404 in testing
+-- rather than an open endpoint in production.
+--
+-- THE service_role SPLIT IS DELIBERATE, and it is the only interesting
+-- decision here.
+--   * Functions and sequences — service_role keeps its default. Every RPC in
+--     this schema is granted to it, so revoking would just trade one act of
+--     remembering for another.
+--   * Tables — service_role is revoked too. Finding 14 (next migration) shows
+--     it holding ALL, TRUNCATE included, on five tables whose invariants are
+--     supposed to live in their RPCs. 20260820131914:245-251 already writes
+--     `revoke all … from service_role` then `grant select` explicitly and its
+--     line 219 states why; 20260823202130, 20260823202146 and 20260814022601
+--     contain no service_role line at all and simply inherited ALL. Revoking
+--     the default makes the tables that forget impossible rather than merely
+--     unlucky. Cost: one `grant select … to service_role` line per future
+--     table Flask genuinely reads directly.
+--
+-- ONE GRANTOR, NOT TWO — AND THE OTHER ONE IS BLOCKED, NOT SKIPPED.
+-- A default ACL is per (grantor role, schema, object type). `pg_default_acl`
+-- carries an identical wide-open entry for grantor `supabase_admin` on schema
+-- public. It cannot be revoked from here:
+--
+--   select pg_has_role('postgres', 'supabase_admin', 'MEMBER');  -- false
+--   alter default privileges for role supabase_admin … ;         -- 42501
+--
+-- ALTER DEFAULT PRIVILEGES requires membership in the grantor role, and on a
+-- hosted Supabase project `postgres` is not a member of `supabase_admin`.
+-- This is the same class of limit 20260817161427 hit with auth.users.
+--
+-- Why that is acceptable rather than a half-fix: a default ACL only applies to
+-- objects created BY that grantor, and every table in public is owned by
+-- postgres — all eleven, `chatbot_settings` included, which is the one created
+-- through the dashboard before the migration discipline existed. Migrations
+-- and the SQL editor both connect as postgres. So the postgres entry is the
+-- one that governs everything this project creates, and the supabase_admin
+-- entry governs nothing here today. Recorded rather than silently dropped: if
+-- an object ever does appear in public owned by supabase_admin, it will be
+-- born open and this migration will not have stopped it.
+--
+-- NOT REVERSIBLE FROM A HEADER COMMENT. Do not paste a `grant all on tables to
+-- anon` rollback here. Re-granting a broad default is exactly the trap
+-- described in the plan's rejected-proposals section; if this must be undone,
+-- state the intended end-state and derive the statements from it.
+
+alter default privileges for role postgres in schema public
+  revoke all on tables from anon, authenticated, service_role;
+
+alter default privileges for role postgres in schema public
+  revoke all on functions from anon, authenticated, public;
+
+alter default privileges for role postgres in schema public
+  revoke all on sequences from anon, authenticated;
+
+-- ---------------------------------------------------------------------------
+-- POST-APPLY CORRECTION, verified immediately after this migration landed.
+-- ---------------------------------------------------------------------------
+-- The table and sequence halves do what the header claims. THE FUNCTION HALF
+-- DOES NOT, and the difference matters enough to record here rather than only
+-- in the plan.
+--
+-- The stored default ACL is now `{postgres=X/postgres, service_role=X/postgres}`
+-- — anon, authenticated and PUBLIC are all absent, exactly as written. But a
+-- function created afterwards still comes out as:
+--
+--   {=X/postgres, postgres=X/postgres, service_role=X/postgres}
+--
+-- `=X` is PUBLIC. Postgres merges the BUILT-IN default (owner, plus EXECUTE to
+-- PUBLIC for functions) with the stored one rather than letting the stored one
+-- replace it, so the built-in PUBLIC grant on functions cannot be removed this
+-- way. Every role inherits PUBLIC's privileges, so `has_function_privilege
+-- ('anon', <new function>, 'EXECUTE')` is still true.
+--
+-- Probed in a rolled-back transaction:
+--
+--   create table public._acl_probe (id int);
+--   create function public._acl_probe_fn() returns int language sql as $f$ select 1 $f$;
+--   -- tables:    anon.SELECT=f  authenticated.INSERT=f  service_role.INSERT=f
+--   -- functions: anon.EXECUTE=t  public.EXECUTE=t
+--
+-- CONSEQUENCE, stated plainly so nobody relies on a guarantee that is not
+-- here: for TABLES and SEQUENCES the contract really has inverted and a
+-- forgotten revoke now fails safe. For FUNCTIONS it has not. Point 3 of the
+-- RPC contract — `revoke execute … from anon, authenticated, public` on every
+-- new function — remains mandatory and remains enforced only by remembering.
+--
+-- A per-function REVOKE does still work; it is only the DEFAULT that cannot
+-- drop PUBLIC. The migration applied straight after this one demonstrates it:
+-- public.admin_actor_email ends up `{postgres=X/postgres}` with PUBLIC gone.
+--
+-- The durable fix would be an event trigger revoking EXECUTE from PUBLIC on
+-- every function created in public, and creating an event trigger requires
+-- superuser, which `postgres` is not on a hosted project. Tracked in TODO.md
+-- rather than worked around here.
+--
+-- ---------------------------------------------------------------------------
+-- THE PARAGRAPH ABOVE IS WRONG. Superseded by 20260828100816.
+-- ---------------------------------------------------------------------------
+-- Left standing rather than edited away, because the mistake is the useful
+-- part: the observation was right, the diagnosis was wrong, and the wrong
+-- diagnosis was confident enough to be copied into four other documents.
+--
+-- Postgres does NOT merge the built-in default with the stored one in the way
+-- described. It consults TWO pg_default_acl rows — a GLOBAL one
+-- (`defaclnamespace = 0`) and a schema-specific one — and falls back to the
+-- hard-wired `acldefault()` as the base ONLY when there is no global row. A
+-- per-schema entry is then merged onto that base, and a merge cannot subtract
+-- what the base supplies. So `IN SCHEMA public` was operating one layer too low
+-- to reach PUBLIC's built-in EXECUTE grant.
+--
+-- The same statement WITHOUT `IN SCHEMA` replaces the base instead of layering
+-- on it, and does exactly what this migration set out to do. Verified in a
+-- rolled-back transaction: a function created afterwards comes out
+-- `{postgres=X/postgres, service_role=X/postgres}` — no `=X`, and
+-- `has_function_privilege('anon', …, 'EXECUTE')` is false.
+--
+-- No event trigger, no superuser, no gap. See 20260828100816.
+--
+-- What survives from the note above: the TABLE and SEQUENCE halves work as
+-- described and are unaffected, and the `supabase_admin` grantor is still out
+-- of reach and still governs nothing in `public`.

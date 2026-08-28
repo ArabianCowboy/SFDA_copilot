@@ -43,6 +43,64 @@ recording.
 
 ## [HISTORICAL] Resolved bugs
 
+### [HISTORICAL] ~~A new `security definer` function is born callable by anyone signed in~~ — FIXED 2026-08-28
+
+**Closed the same day it was opened, by an adversarial review that refused the diagnosis.**
+The entry below was written on the strength of a probe that was correctly run and wrongly
+interpreted. `20260828100816` fixes it in one statement, with no event trigger and no
+superuser: a per-schema `ALTER DEFAULT PRIVILEGES` is merged onto the hard-wired base and
+cannot subtract from it, so `IN SCHEMA public … revoke all on functions from public` applied
+cleanly and changed nothing. The **global** form, with no `IN SCHEMA`, replaces that base.
+A function created afterwards comes out `{postgres=X, service_role=X}` — no PUBLIC, and
+`has_function_privilege('anon', …, 'EXECUTE')` is false.
+
+The correction is recorded at the foot of `20260828000737`, as collision #10 in
+`docs/ARCHITECTURE.md`, and asserted by `supabase/tests/privileges.test.sql`. The lesson
+worth keeping: **`IN SCHEMA` adds, global replaces** — and a probe that confirms a symptom
+is not a probe that confirms a cause.
+
+### A new `security definer` function is born callable by anyone signed in
+
+**Where:** Schema `public`'s default privileges, and
+`supabase/migrations/20260828000737_default_privileges_fail_closed_in_public.sql`, whose
+post-apply correction records this.
+
+**What is wrong.** That migration was meant to make point 3 of the RPC contract —
+`revoke execute from anon, authenticated, public` — unnecessary, by flipping the schema's
+default privileges from open to closed. It does that for **tables** and **sequences**. It
+does not, and cannot, do it for **functions**: Postgres merges the built-in default, which
+grants `EXECUTE` to `PUBLIC`, with whatever `ALTER DEFAULT PRIVILEGES` stores, so PUBLIC's
+grant survives a `revoke all on functions from public` on the default ACL. Verified in a
+rolled-back transaction: the stored default is `{postgres=X, service_role=X}` and a
+function created immediately afterwards still comes out `{=X/postgres, postgres=X,
+service_role=X}`, where `=X` is PUBLIC. Every role inherits PUBLIC's privileges, so
+`has_function_privilege('anon', <new function>, 'EXECUTE')` is true.
+
+**Who it reaches.** Nobody today — every existing function has an explicit revoke, and
+`supabase/tests/function_acls.test.sql` asserts it. It reaches the next `security definer`
+function whose migration forgets the line: that one is callable at `/rest/v1/rpc/<name>` by
+any signed-in session on the day it is applied, and nothing in CI notices. This is exactly
+how `audit_log_is_append_only` and `handle_profile_update` stayed `anon`-executable for
+months (harmless, being trigger functions — `20260828004228` closed them anyway, because
+the mechanism that missed them is the mechanism that would miss a consequential one).
+
+**How it was found.** By probing after applying `20260828000737`, rather than by trusting
+that the migration did what its own header claimed. The table half was verified at the
+same time and does work.
+
+**What fixing it would disturb.** The durable fix is an event trigger on
+`ddl_command_end` that revokes `EXECUTE` from `PUBLIC` on every function created in
+`public`. **Creating an event trigger requires superuser, and `postgres` is not superuser
+on a hosted Supabase project** — the same class of limit that makes a trigram index on
+`auth.users` impossible (`20260817161427`). So this is blocked on Supabase support, a
+self-hosted stack, or accepting it. Until then the mitigation is the test file, which is
+run by hand; making it automatic is the same "a database in CI" decision as the entry
+below.
+
+---
+
+---
+
 ### [HISTORICAL] ~~A late profile read has no identity guard~~ — FIXED 2026-08-23
 
 **Where:** `static/js/app.js:407` — the `.then` that calls `AppState.set('userProfile', profile)`

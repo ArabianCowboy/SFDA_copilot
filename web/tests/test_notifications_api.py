@@ -229,6 +229,91 @@ def test_a_deactivated_notification_drops_out_of_active_for_everyone(client):
     assert active["notifications"] == []
 
 
+def test_dismissing_a_withdrawn_notification_is_refused(client):
+    """A stale tab must not be able to dismiss what the operator retracted.
+
+    The count is the reason. For a `requires_ack` modal — the type that exists
+    so somebody can later demonstrate readers saw something — an
+    acknowledgement count that includes acknowledgements of a withdrawn notice
+    is worse than no count. `notifications_mark_read` therefore refuses
+    dismissal and acknowledgement once the notification is deactivated, deleted
+    or expired (RN003), and takes FOR SHARE on the row so the retraction cannot
+    commit between the check and the write.
+    """
+    notification = _send(client, target_kind="all")
+    client.post(f"/admin/api/notifications/{notification['id']}/deactivate", headers=ADMIN)
+
+    response = client.post(
+        "/api/notifications/mark-read",
+        json={"notification_id": notification["id"], "action": "dismissed"},
+        headers=READER_A,
+    )
+
+    assert response.status_code == 409
+    assert response.get_json() == {"error": "notification_no_longer_active"}
+
+
+def test_a_deleted_notification_refuses_every_action_including_read(client):
+    """Deleted is stricter than deactivated, and the difference is deliberate.
+
+    `notifications_list_history_for_reader` filters `deleted_at is null`, so a
+    soft-deleted notification is in NO reader surface — a `read` receipt on one
+    cannot be the reader action it claims to be, and it still counts, because
+    `admin_purge_notification` reports read/dismissed/acknowledged totals in the
+    audit row it writes before erasing everything. So engagement figures on a
+    withdrawn notice could move between the delete and the purge, permanently,
+    in the audit record.
+    """
+    notification = _send(client, target_kind="all")
+    client.delete(f"/admin/api/notifications/{notification['id']}", headers=ADMIN)
+
+    for action in ("read", "dismissed"):
+        response = client.post(
+            "/api/notifications/mark-read",
+            json={"notification_id": notification["id"], "action": action},
+            headers=READER_A,
+        )
+        assert response.status_code == 409, action
+        assert response.get_json() == {"error": "notification_no_longer_active"}
+
+
+def test_an_acknowledgement_of_a_withdrawn_modal_is_refused(client):
+    """The case the whole lifecycle check exists for: `requires_ack` modals are
+    the type that exists so somebody can later demonstrate readers saw
+    something, so an acknowledgement count that includes a retracted notice is
+    worse than no count."""
+    notification = _send(client, type="modal", target_kind="all")
+    client.post(f"/admin/api/notifications/{notification['id']}/deactivate", headers=ADMIN)
+
+    response = client.post(
+        "/api/notifications/mark-read",
+        json={"notification_id": notification["id"], "action": "acknowledged"},
+        headers=READER_A,
+    )
+
+    assert response.status_code == 409
+    assert response.get_json() == {"error": "notification_no_longer_active"}
+
+
+def test_a_withdrawn_notification_can_still_be_marked_read(client):
+    """The deliberate asymmetry, so nobody "fixes" it into symmetry later.
+
+    Marking an item read in a history list is reasonable long after it stopped
+    being active — `notifications_list_history_for_reader` exists to show
+    exactly that. Only the two display actions on a live notice are refused.
+    """
+    notification = _send(client, target_kind="all")
+    client.post(f"/admin/api/notifications/{notification['id']}/deactivate", headers=ADMIN)
+
+    response = client.post(
+        "/api/notifications/mark-read",
+        json={"notification_id": notification["id"], "action": "read"},
+        headers=READER_A,
+    )
+
+    assert response.status_code == 200
+
+
 def test_history_still_shows_a_dismissed_notification(client):
     notification = _send(client, target_kind="all")
     client.post(

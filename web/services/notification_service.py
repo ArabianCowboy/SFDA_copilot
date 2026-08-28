@@ -27,6 +27,8 @@ from __future__ import annotations
 
 import logging
 import os
+from collections.abc import Iterable, Iterator
+from itertools import islice
 
 import httpx
 
@@ -58,7 +60,7 @@ def _service_key() -> str | None:
 
 
 def publish_notification_event(
-    recipient_ids: list[str],
+    recipient_ids: Iterable[str],
     *,
     notification_id: str,
     revision: str,
@@ -72,10 +74,18 @@ def publish_notification_event(
     history"). Publishing only on create would leave a deactivated modal
     blocking an already-open tab until its next reload or reconnect, which
     defeats the entire point of an early deactivation.
-    """
-    if not recipient_ids:
-        return
 
+    ``recipient_ids`` is an ITERABLE, not a list, and that is load-bearing.
+    ``recipients_for_publish`` streams the audience a page at a time; consuming
+    it with ``islice`` means a broadcast to a hundred thousand accounts holds
+    one chunk in memory rather than the whole audience. A ``len()`` or a
+    ``list()`` anywhere on this path silently undoes that — which is exactly
+    what the first version of this change did while claiming otherwise.
+    """
+    # Credentials first, and deliberately BEFORE the audience is touched. The
+    # previous order tested `if not recipient_ids` first, which on a generator
+    # is always truthy and would have pulled the first page out of the database
+    # for a deployment that has nowhere to send it.
     url = _broadcast_url()
     key = _service_key()
     if not url or not key:
@@ -91,9 +101,14 @@ def publish_notification_event(
     headers = {"apikey": key, "Authorization": f"Bearer {key}"}
 
     try:
+        recipients = iter(recipient_ids)
+        first_chunk = list(islice(recipients, _CHUNK_SIZE))
+        if not first_chunk:
+            return
+
         with httpx.Client(timeout=_BROADCAST_TIMEOUT) as client:
-            for start in range(0, len(recipient_ids), _CHUNK_SIZE):
-                chunk = recipient_ids[start : start + _CHUNK_SIZE]
+            chunk = first_chunk
+            while chunk:
                 messages = [
                     {
                         "topic": f"notify:user:{user_id}",
@@ -111,6 +126,7 @@ def publish_notification_event(
                         notification_id,
                         response.status_code,
                     )
+                chunk = list(islice(recipients, _CHUNK_SIZE))
     except httpx.TransportError:
         # The same outage family web/api/app.py's _is_upstream_outage treats
         # as "could not reach the thing that knows" — here it just means the
@@ -129,7 +145,7 @@ def publish_notification_event(
         )
 
 
-def recipients_for_publish(backend, notification: dict) -> list[str]:
+def recipients_for_publish(backend, notification: dict) -> Iterator[str]:
     """Resolve who to push to for one notification's create/deactivate/delete.
 
     'all' targets have no recipient snapshot (delivery stays dynamic — see
@@ -137,7 +153,13 @@ def recipients_for_publish(backend, notification: dict) -> list[str]:
     account; role/tier/user targets read back the snapshot taken at send
     time, which is what "who saw this modal" must agree with regardless of a
     later role change.
+
+    Returns an ITERATOR, and both branches stream. `all_enabled_profile_ids`
+    was the branch the plan named, but `recipient_ids_for` — the role, tier and
+    user targets, which are the more common send — was on exactly the same
+    unbounded path. The in-memory doubles return plain lists, which iterate
+    fine; only the Supabase backend has pages to stream.
     """
     if notification.get("target_kind") == "all":
-        return backend.all_enabled_profile_ids()
-    return backend.recipient_ids_for(notification["id"])
+        return iter(backend.all_enabled_profile_ids())
+    return iter(backend.recipient_ids_for(notification["id"]))

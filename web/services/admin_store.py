@@ -298,18 +298,31 @@ class SupabaseAdminBackend:
         now sets it, matching how public.profiles has always done it, and the
         column is not in any payload.
         """
-        response = self._client.rpc(
-            "admin_write_settings",
-            {
-                "p_settings": settings,
-                "p_actor_id": actor.user_id,
-                "p_actor_email": actor.email,
-                "p_before": before,
-                "p_after": after,
-                "p_request_ip": actor.request_ip,
-                "p_user_agent": actor.user_agent,
-            },
-        ).execute()
+        try:
+            response = self._client.rpc(
+                "admin_write_settings",
+                {
+                    "p_settings": settings,
+                    "p_actor_id": actor.user_id,
+                    "p_actor_email": actor.email,
+                    "p_before": before,
+                    "p_after": after,
+                    "p_request_ip": actor.request_ip,
+                    "p_user_agent": actor.user_agent,
+                },
+            ).execute()
+        except Exception as exception:
+            # admin_write_settings had no refusal to raise until the migration
+            # that made an enabled administrator mandatory, so this method was
+            # the one writer with no `except` — the same shape update_profile
+            # and set_user_flags have carried since they were written. Without
+            # it a demoted or disabled administrator saving settings gets an
+            # unconverted PostgREST exception on the generic error path
+            # instead of the AD004 refusal, and it is not one surface but
+            # three: the settings page, the registration pause control and the
+            # notification purge-retention control all reach this method.
+            raise _refusal_from(exception) from exception
+
         return getattr(response, "data", None) or {}
 
     def list_audit(
@@ -496,10 +509,41 @@ class InMemoryAdminBackend:
             "conversation_count": row.get("conversation_count", 0),
         }
 
+    def _require_admin_actor(self, actor) -> None:
+        """Mirror public.admin_actor_email, which every mutating RPC now calls.
+
+        Three cases, one refusal, because the database makes no distinction
+        between them either: no actor id at all, an id that matches no account,
+        and an account that is not an enabled administrator.
+
+        The absent case is the one this replaces. Every double here used to be
+        written as ``if actor.user_id:`` — guarding only when an actor was
+        supplied, and so reporting "authorized" for the one input the database
+        now refuses outright. A double that accepts what production rejects is
+        a green suite asserting the opposite of production.
+        """
+        if not actor.user_id:
+            raise AdminActionRefused("actor_no_longer_administrator")
+        acting = next((r for r in self._users if r["id"] == actor.user_id), None)
+        # `has_profile` is part of the gate, not decoration. The SQL joins
+        # public.profiles to auth.users, so an account that exists in auth with
+        # no profile row matches nothing and is refused. Without this the double
+        # would authorize the seeded orphan fixture — an actor production can
+        # never produce.
+        if acting is None or not acting.get("has_profile", True):
+            raise AdminActionRefused("actor_no_longer_administrator")
+        if acting.get("role") != "admin" or acting.get("is_disabled"):
+            raise AdminActionRefused("actor_no_longer_administrator")
+
     def get_settings(self) -> dict:
         return dict(self._settings)
 
     def put_settings(self, settings: dict, *, actor, before: dict, after: dict) -> dict:
+        # admin_write_settings had no actor check at all until the database
+        # migration that added one, and this double faithfully mirrored that
+        # absence. Both now check.
+        self._require_admin_actor(actor)
+
         # Both writes together, mirroring the RPC — so a test that asserts the
         # audit row exists is asserting the same property production relies on.
         self._settings = dict(settings)
@@ -658,10 +702,7 @@ class InMemoryAdminBackend:
         # Mirrors admin_update_profile, including the parts that are easy to
         # leave out of a double and then never test: the actor revalidation, the
         # stale-write refusal, and writing NO audit row for an empty diff.
-        if actor.user_id:
-            acting = next((r for r in self._users if r["id"] == actor.user_id), None)
-            if not acting or acting.get("role") != "admin" or acting.get("is_disabled"):
-                raise AdminActionRefused("actor_no_longer_administrator")
+        self._require_admin_actor(actor)
 
         row = next((r for r in self._users if r["id"] == user_id), None)
         if row is None or not row.get("has_profile", True):
@@ -751,20 +792,29 @@ class InMemoryAdminBackend:
     def set_user_flags(
         self, user_id: str, *, role=None, is_disabled=None, reason=None, actor
     ) -> dict:
-        if actor.user_id and actor.user_id == user_id:
+        # Unconditional now, matching the function: the `actor.user_id and`
+        # half was there only because a null actor was permitted.
+        if actor.user_id == user_id:
             raise AdminActionRefused("cannot_change_own_access")
 
         # Mirrors the actor revalidation the database does inside its
         # serialized transaction: an actor demoted or disabled in the meantime
         # cannot act, and that is what actually catches two administrators
         # removing each other at the same moment.
-        if actor.user_id:
-            acting = next((r for r in self._users if r["id"] == actor.user_id), None)
-            if acting is not None and (acting["role"] != "admin" or acting["is_disabled"]):
-                raise AdminActionRefused("actor_no_longer_administrator")
+        #
+        # This was additionally `if acting is not None and (…)`, so an actor id
+        # matching no account passed as well as an absent one. The database
+        # joins profiles to auth.users and refuses when the join finds nothing,
+        # which covers both.
+        self._require_admin_actor(actor)
 
         row = next((r for r in self._users if r["id"] == user_id), None)
-        if row is None:
+        # A profile-less account is `no_such_account` here too, matching
+        # admin_set_user_flags: its `select ... from public.profiles where id =
+        # p_user_id for update` finds nothing and raises AD003. update_profile
+        # already checked this; set_user_flags did not, so the double would let
+        # the orphan fixture be promoted to administrator.
+        if row is None or not row.get("has_profile", True):
             raise AdminActionRefused("no_such_account")
 
         was_enabled_admin = row["role"] == "admin" and not row["is_disabled"]

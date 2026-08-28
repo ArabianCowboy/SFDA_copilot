@@ -244,7 +244,19 @@ def put_settings() -> Response | tuple[Response, int]:
     def apply_now() -> None:
         outcome["applied"] = apply_settings()
 
-    errors = service.update(payload, actor=actor_from_request(g.identity), on_committed=apply_now)
+    from web.services.admin_store import AdminActionRefused
+
+    try:
+        errors = service.update(
+            payload, actor=actor_from_request(g.identity), on_committed=apply_now
+        )
+    except AdminActionRefused as refused:
+        # admin_write_settings now refuses an actor who is not an enabled
+        # administrator (AD004), which it could not do before. 409 rather than
+        # 422, matching patch_user and patch_user_profile: the request was
+        # understood and conflicts with a rule, it is not malformed.
+        logger.warning("Refused settings update by %s: %s", g.identity.email, refused.code)
+        return jsonify({"error": refused.code}), 409
 
     if errors:
         return jsonify(
@@ -317,12 +329,23 @@ def put_registrations() -> Response | tuple[Response, int]:
     if not isinstance(payload, dict) or "signup_enabled" not in payload:
         return jsonify({"error": "invalid_payload"}), 400
 
+    from web.services.admin_store import AdminActionRefused
     from web.services.audit import actor_from_request
 
     service = current_app.config["settings_service"]
-    errors = service.set_signup_enabled(
-        payload["signup_enabled"], actor=actor_from_request(g.identity)
-    )
+    try:
+        errors = service.set_signup_enabled(
+            payload["signup_enabled"], actor=actor_from_request(g.identity)
+        )
+    except AdminActionRefused as refused:
+        # Must not fall through to the `errors` branch below: that would report
+        # a demoted administrator as `invalid_signup_enabled`, blaming the
+        # payload for an authorization refusal.
+        logger.warning(
+            "Refused registrations-pause update by %s: %s", g.identity.email, refused.code
+        )
+        return jsonify({"error": refused.code}), 409
+
     if errors:
         # `errors[0].code` is always `not_a_boolean` or `storage_unavailable`
         # here — `set_signup_enabled` only ever validates the one
@@ -1389,6 +1412,7 @@ def notifications_purge_settings() -> Response | tuple[Response, int]:
 
 @admin_bp.route("/api/notifications/purge-settings", methods=["PUT"])
 def update_notifications_purge_settings() -> Response | tuple[Response, int]:
+    from web.services.admin_store import AdminActionRefused
     from web.services.audit import actor_from_request
     from web.services.notification_store import set_purge_retention_days
 
@@ -1406,6 +1430,11 @@ def update_notifications_purge_settings() -> Response | tuple[Response, int]:
         )
     except ValueError:
         return jsonify({"error": "invalid_purge_retention_days"}), 422
+    except AdminActionRefused as refused:
+        # set_purge_retention_days reaches admin_write_settings, so it inherits
+        # the same AD004 refusal as the two settings routes above.
+        logger.warning("Refused purge-settings update by %s: %s", g.identity.email, refused.code)
+        return jsonify({"error": refused.code}), 409
 
     return jsonify({"purge_retention_days": days})
 

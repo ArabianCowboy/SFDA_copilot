@@ -1210,9 +1210,20 @@ export const Handlers = {
     try {
       await Services.notifications.markRead(notificationId, action);
     } catch (error) {
-      logError(error, `markNotificationRead:${action}`);
-      ErrorHandler.showToast(I18n.t('chat.notifications.markReadFailed'), true);
-      return;
+      /* The operator withdrew, deleted or expired this notice between the poll
+         that delivered it and the click. The server refuses the receipt
+         (RN003) so a retracted modal cannot keep accruing acknowledgements —
+         but from the reader's side the notice IS gone, and showing them an
+         error while leaving it on screen would loop: every dismissal fails,
+         and the banner never clears. Treat it as the removal it is.
+
+         `error.message` carries the refusal code because sessionRequest builds
+         the Error from the response body's `error` field. */
+      if (error?.status !== 409 || error?.message !== 'notification_no_longer_active') {
+        logError(error, `markNotificationRead:${action}`);
+        ErrorHandler.showToast(I18n.t('chat.notifications.markReadFailed'), true);
+        return;
+      }
     }
     // Drop it from the cached active list so a reopened inbox and the badge
     // agree without waiting for the next poll tick.

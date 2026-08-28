@@ -1,0 +1,30 @@
+-- Take the browser roles off a table nothing reads.
+-- ===========================================================================
+-- Plan: docs/database-improvement-plan.md finding 3.
+--
+-- chatbot_settings held every table privilege there is — INSERT, SELECT,
+-- UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER — for anon and authenticated
+-- both. RLS is enabled with zero policies, which blocks the four DML verbs and
+-- leaves TRUNCATE unguarded, on a table with zero rows, so truncating it is a
+-- no-op and there is no live exposure.
+--
+-- It is here because it is the receipt for the default-privileges migration
+-- that opened this wave: a table created through the dashboard before the
+-- migration discipline existed, carrying the default ACL untouched ever since.
+-- It is what every future table looked like until that default was closed.
+--
+-- THIS IS THE REVERSIBLE HALF OF A DECISION THAT IS STILL OPEN. TODO.md owns
+-- the question of whether this table is dropped or finally used, and the
+-- tier-quota entry has already argued that a global rate_limit_per_minute
+-- scalar belongs on a tier rather than on the instance. Dropping it is the
+-- honest end state and it is not this migration's to make — a drop belongs in
+-- its own migration, per supabase/README.md rule 2, recording the row count,
+-- the (absent) foreign keys in both directions, the (absent) triggers and the
+-- grep that proves nothing reads it.
+--
+-- Revoking costs nothing if the drop happens later and removes the table from
+-- PostgREST's exposed schema entirely in the meantime. service_role is left
+-- alone: it holds no meaningful access to a table with no rows and no reader,
+-- and touching it would imply a usage that does not exist.
+
+revoke all on public.chatbot_settings from anon, authenticated;

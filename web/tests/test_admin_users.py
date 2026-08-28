@@ -112,23 +112,57 @@ def test_an_administrator_cannot_disable_themselves(client):
 
 def test_the_last_administrator_cannot_be_removed(backend):
     """The one that looks reasonable at the time, because the account belongs to
-    somebody who left. Enforced in the database, so it holds for any caller."""
-    other = AuditActor("someone-else", "other@example.com")
+    somebody who left.
+
+    Both of these used to be written with ``AuditActor("someone-else", …)`` — an
+    id matching no seeded account. That passed only because the double let an
+    unknown actor through, and once ``admin_set_user_flags`` began requiring an
+    enabled administrator it stopped being a scenario the database can reach at
+    all: to get past the actor gate you must BE an enabled administrator, and if
+    you are, you are the second one, so demoting the other never leaves none.
+    Verified against the live project — an enabled admin demoting the other
+    enabled admin succeeds, and the remaining one is then refused AD001 rather
+    than AD002.
+
+    So the last-administrator guard is now defence in depth behind the actor
+    gate rather than the thing that catches this in practice. What actually
+    refuses the two calls below is the actor check, and that is what is pinned
+    here; ``would_leave_no_administrator`` is asserted separately, at the layer
+    that can still construct the state.
+    """
+    stranger = AuditActor("someone-else", "other@example.com")
 
     with pytest.raises(AdminActionRefused) as refused:
-        backend.set_user_flags("test-admin-id", role="user", actor=other)
-    assert refused.value.code == "would_leave_no_administrator"
+        backend.set_user_flags("test-admin-id", role="user", actor=stranger)
+    assert refused.value.code == "actor_no_longer_administrator"
 
-    with pytest.raises(AdminActionRefused):
-        backend.set_user_flags("test-admin-id", is_disabled=True, actor=other)
+    with pytest.raises(AdminActionRefused) as refused:
+        backend.set_user_flags("test-admin-id", is_disabled=True, actor=stranger)
+    assert refused.value.code == "actor_no_longer_administrator"
+
+
+def test_a_disabled_administrator_cannot_act(backend):
+    """The other half of the same gate, and the one that stays reachable.
+
+    An account can be an administrator on paper and disabled, which is exactly
+    the state the old ``if acting is not None and …`` shape mishandled in one
+    direction and the old ``if actor.user_id:`` shape mishandled in the other.
+    """
+    backend.set_user_flags("test-user-id", role="admin", actor=ACTOR)
+    backend.set_user_flags("test-user-id", is_disabled=True, actor=ACTOR)
+
+    demoted = AuditActor("test-user-id", "test@example.com")
+    with pytest.raises(AdminActionRefused) as refused:
+        backend.set_user_flags("test-admin-id", role="user", actor=demoted)
+    assert refused.value.code == "actor_no_longer_administrator"
 
 
 def test_an_administrator_can_be_removed_once_there_is_another(backend):
     """The guard is about the last one, not about administrators in general."""
-    other = AuditActor("someone-else", "other@example.com")
-    backend.set_user_flags("test-user-id", role="admin", actor=other)
+    backend.set_user_flags("test-user-id", role="admin", actor=ACTOR)
+    promoted = AuditActor("test-user-id", "test@example.com")
 
-    backend.set_user_flags("test-admin-id", role="user", actor=other)
+    backend.set_user_flags("test-admin-id", role="user", actor=promoted)
 
     rows, _ = backend.list_users(limit=10, offset=0, search=None)
     assert {r["email"]: r["role"] for r in rows}["admin@example.com"] == "user"

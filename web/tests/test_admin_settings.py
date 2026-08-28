@@ -24,7 +24,11 @@ ADMIN = {"Authorization": "Bearer fake_admin_token"}
 
 # Settings writes now carry who made them, because the change and its audit
 # row are written together — there is no way to store one without the other.
-ACTOR = AuditActor("admin-id", "admin@example.com", "127.0.0.1", "pytest")
+# `test-admin-id` is the seeded enabled administrator in InMemoryAdminBackend.
+# It was "admin-id" — an id matching no seeded account, which passed only
+# because the double waved an unknown actor through. admin_write_settings now
+# requires an enabled administrator (AD004), and the double mirrors that.
+ACTOR = AuditActor("test-admin-id", "admin@example.com", "127.0.0.1", "pytest")
 AUTH = {"Authorization": "Bearer fake_token"}
 
 

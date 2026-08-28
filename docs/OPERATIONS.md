@@ -1,16 +1,19 @@
-STATUS: CURRENT AUTHORITY — state this repository cannot hold. Last verified 2026-08-25.
+STATUS: CURRENT AUTHORITY — state this repository cannot hold. Last verified 2026-08-28.
 
 This file records configuration that lives in the Supabase dashboard, in DNS, and in a
 third-party mail provider — none of it in version control, some of it write-only once saved.
 That is why it is written down at all: six months from now the only other way to recover any
 of it is to go and look.
 
-Two things belong here and are not yet written up, both filed as open entries in `TODO.md`:
-**bilingual GoTrue email templates**, and **whether this deployment's access logs retain full
-`/c/<uuid>` paths**. When either is settled, the answer goes in this file.
+Three things belong here and are not yet written up, all filed as open entries in `TODO.md`:
+**bilingual GoTrue email templates**; **whether this deployment's access logs retain full
+`/c/<uuid>` paths**; and **the actual backup schedule and PITR status**, which the last
+section below records as an assumption precisely because nobody has looked. When any of
+them is settled, the answer goes in this file.
 
-Everything below concerns transactional email. As other out-of-repo state gets documented,
-add it as a sibling section rather than a new file.
+Three sections follow: transactional email, the registrations pause, and database
+recovery. As other out-of-repo state gets documented, add it as a sibling section rather
+than a new file.
 
 ---
 
@@ -288,3 +291,96 @@ check-your-mail panel — today's behaviour. Turning Confirm email **off** would
 have GoTrue return a session to the _server_, which does not forward it, and a
 reader would be told to check mail that never arrives while holding no
 session. That would need a code change first, not just a dashboard toggle.
+
+---
+
+# Database recovery, and the timeouts nobody has measured
+
+Added 2026-08-28, when `docs/database-improvement-plan.md` was applied and the
+database's recovery position turned out to be written down nowhere.
+
+## Backups and point-in-time recovery — an assumption, not a fact
+
+**Somebody must confirm this in the dashboard and replace this paragraph with what
+they found.** The MCP `get_project` response reports status, region and Postgres
+version and says nothing about backup schedule or PITR, so it cannot be answered from
+the repository or from an agent session. The advisor's standing
+`auth_leaked_password_protection` finding tells us the project is below the Pro tier,
+and PITR is a paid add-on — so the working assumption is **daily backups, no PITR**,
+and that assumption has never been tested.
+
+For a database whose entire content is user-generated and unreproducible — reader
+conversations, an audit log of administrative action, consent records — the recovery
+point objective is a fact the operator should be able to state without logging in.
+
+Two actions, in order:
+
+1. **Read Database → Backups** and write the schedule and retention here.
+2. **Rehearse a restore into a scratch project, once.** That is what turns a setting
+   into a known-good procedure. The database is roughly 14 MB; this is the cheapest it
+   will ever be to practise, and the cost only ever rises.
+
+## Before any migration that could touch data
+
+The MCP tools cannot produce a backup — there is no `pg_dump` and no direct
+connection. **A restorable copy has to come from the dashboard (Database → Backups) or
+a `pg_dump` run from a machine holding the connection string.** Take one before
+applying anything that is not purely a grant or a function body.
+
+For migrations that are _supposed_ to touch no rows — grants, policies, function
+bodies — a content-hash baseline is the cheap check that they did not. The query is in
+[`supabase/README.md`](../supabase/README.md#checking-that-a-migration-touched-no-rows).
+Capture it before, compare after; expect drift only on `audit_log` and
+`user_notification_reads`.
+
+Store the baseline **outside this repository**. It names real account ids and the live
+runtime configuration.
+
+## `service_role` has no `lock_timeout`, and its statement timeout is unverified
+
+`pg_roles` gives `anon` `statement_timeout=3s`, `authenticated` and `authenticator`
+`8s` (plus `lock_timeout=8s` on `authenticator`), and **`service_role` nothing at all**.
+So exactly one role sets a `lock_timeout` — `authenticator` — and **`service_role` and the
+cluster default set none**, which is the gap that matters because `service_role` is the
+role Flask's writes execute as. Nothing anywhere sets an
+`idle_in_transaction_session_timeout`.
+
+Do not read the cluster's `statement_timeout = 120000` as service_role's effective
+value. That figure was observed from an MCP session, which is not how Flask reaches the
+database: Flask calls PostgREST, which logs in as `authenticator` and switches role per
+request, reading each role's `rolconfig` as it goes — this database's own
+`pg_stat_statements` records it doing so. With no `rolconfig` on `service_role` there is
+nothing to apply, so a service-role request most likely inherits `authenticator`'s 8s.
+**That is a deduction from the mechanism, not a measurement.**
+
+Why it matters: `chat_append_turn` takes `select … for update` on the session row and
+holds it until the function returns. A stalled transaction holding that lock has no
+`lock_timeout` bounding the waiters, so every subsequent turn in that conversation
+blocks until whatever the statement timeout really is fires. The app is single-worker,
+which narrows this considerably — it is a gap in the layer below the app, not an active
+incident.
+
+**Measure before setting anything.** Add a temporary reporter, call it as `service_role`
+through `/rest/v1/rpc/`, read what comes back, then drop it in its own migration:
+
+```sql
+create function public._timeout_probe()
+returns table (stmt text, lock text, idle text)
+language sql security definer set search_path = ''
+as $$ select current_setting('statement_timeout'),
+             current_setting('lock_timeout'),
+             current_setting('idle_in_transaction_session_timeout') $$;
+revoke execute on function public._timeout_probe() from anon, authenticated, public;
+grant execute on function public._timeout_probe() to service_role;
+```
+
+Only then decide the numbers. `alter role service_role set lock_timeout = '8s'` mirrors
+`authenticator` and is the safe half. **Tightening `statement_timeout` on `service_role`
+changes the operator's own environment as well as the app's** — it is what the Supabase
+MCP tools and any administrative script connect as, so a long maintenance query would be
+aborted. That is usually the right trade and it should be a decision, not a side effect.
+
+An `idle_in_transaction_session_timeout` would **not** bound the lock above. It acts on a
+transaction that is idle, and a PL/pgSQL function still executing is not idle. It is worth
+setting as a backstop against a client that dies mid-transaction; it is not a fix for that
+lock, and an earlier draft of the plan wrongly implied it was.

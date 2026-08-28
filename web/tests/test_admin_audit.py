@@ -23,7 +23,11 @@ from web.services.settings_service import SettingsService
 
 ADMIN = {"Authorization": "Bearer fake_admin_token"}
 AUTH = {"Authorization": "Bearer fake_token"}
-ACTOR = AuditActor("admin-id", "admin@example.com", "127.0.0.1", "pytest")
+# `test-admin-id` is the seeded enabled administrator in InMemoryAdminBackend.
+# It was "admin-id" — an id matching no seeded account, which passed only
+# because the double waved an unknown actor through. admin_write_settings now
+# requires an enabled administrator (AD004), and the double mirrors that.
+ACTOR = AuditActor("test-admin-id", "admin@example.com", "127.0.0.1", "pytest")
 
 
 @pytest.fixture

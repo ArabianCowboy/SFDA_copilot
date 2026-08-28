@@ -55,7 +55,21 @@ _REFUSAL_CODES = {
     "AN009": "not_yet_deleted",
     "RN001": "not_a_recipient",
     "RN002": "action_type_mismatch",
+    # Raised by notifications_mark_read when a reader dismisses or acknowledges
+    # a notification the operator has since withdrawn or that has expired. It
+    # must stay mapped: an unmapped SQLSTATE escapes _refusal_from as a raw
+    # exception and the route falls through to a 503 "mark_read_failed", which
+    # is a server-error shape for a deliberate refusal.
+    "RN003": "notification_no_longer_active",
 }
+
+# One fetch page for the unbounded-audience queries below. Deliberately equal
+# to notification_service._CHUNK_SIZE: the broadcast's memory bound is the
+# chunk rather than the audience, and a page larger than the chunk would put
+# that back. Note this is only the page SIZE REQUESTED — PostgREST's own
+# `db-max-rows` can return fewer, which is why `_keyset_ids` walks until an
+# empty page rather than until a short one.
+_FETCH_PAGE = 500
 
 
 def _refusal_from(exception: Exception) -> Exception:
@@ -403,20 +417,80 @@ class SupabaseNotificationBackend:
         data = getattr(response, "data", None)
         return data if isinstance(data, int) else 0
 
+    def _keyset_ids(self, build_query, column: str):
+        """Stream a whole audience in pages, keyed on `column`.
+
+        A generator, not a list, and that is the point: `publish_notification_event`
+        consumes it with `islice`, so a broadcast to a hundred thousand accounts
+        holds one `_CHUNK_SIZE` batch in memory rather than the whole audience.
+        Returning a list here would bound the number of HTTP requests and leave
+        peak memory at O(audience) — which is what the first version of this did
+        while its own comment claimed otherwise.
+
+        A keyset cursor rather than `.range()` offsets: both queries below are
+        ordered by a column with a unique index, so `> last_seen` is exact and
+        costs the same on page one thousand as on page one. An offset walk
+        re-scans everything it has already returned.
+
+        The reason this exists at all is that both branches of
+        `recipients_for_publish` used to fetch the entire audience in one
+        response. At four accounts that was optimal; at a hundred thousand it
+        is a hundred-thousand-row fetch on a single operator action, and the
+        only cap would have been whatever PostgREST's `db-max-rows` happens to
+        be — which, if set, TRUNCATES the audience silently rather than
+        erroring. Quietly sending to a fraction of the intended readers is the
+        worse of the two failures.
+
+        **Which is also why a short page does not end the walk.** `db-max-rows`
+        caps a response server-side, so if it is set below `_FETCH_PAGE` then
+        EVERY page comes back short and a `len(rows) < _FETCH_PAGE` termination
+        would stop after the first one — reintroducing the exact silent
+        truncation this method exists to remove, and doing it invisibly. The
+        loop therefore continues until a page is genuinely empty. The cost of
+        being wrong in this direction is one extra request per send; the cost of
+        being wrong in the other direction is an audience quietly cut to the
+        server cap.
+        """
+        cursor = None
+        while True:
+            query = build_query().order(column).limit(_FETCH_PAGE)
+            if cursor is not None:
+                query = query.gt(column, cursor)
+            rows = getattr(query.execute(), "data", None) or []
+            if not rows:
+                return
+
+            for row in rows:
+                value = row.get(column)
+                if value:
+                    yield value
+
+            # The cursor must advance or the same page is requested forever.
+            # `notification_recipients.user_id` IS nullable — the FK is
+            # `on delete set null` for reader anonymisation — so a null key is
+            # reachable here, not merely defensive. A null in the last row of a
+            # page means the walk cannot continue safely, and stopping is the
+            # only correct option: continuing would loop, and skipping would
+            # need an ordering that null keys do not have.
+            cursor = rows[-1].get(column)
+            if not cursor:
+                return
+
     def recipient_ids_for(self, notification_id: str) -> list:
-        response = (
-            self._client.table("notification_recipients")
-            .select("user_id")
-            .eq("notification_id", notification_id)
-            .execute()
+        return self._keyset_ids(
+            lambda: (
+                self._client.table("notification_recipients")
+                .select("user_id")
+                .eq("notification_id", notification_id)
+            ),
+            "user_id",
         )
-        rows = getattr(response, "data", None) or []
-        return [row["user_id"] for row in rows if row.get("user_id")]
 
     def all_enabled_profile_ids(self) -> list:
-        response = self._client.table("profiles").select("id").eq("is_disabled", False).execute()
-        rows = getattr(response, "data", None) or []
-        return [row["id"] for row in rows]
+        return self._keyset_ids(
+            lambda: self._client.table("profiles").select("id").eq("is_disabled", False),
+            "id",
+        )
 
 
 class InMemoryNotificationBackend:
@@ -441,8 +515,14 @@ class InMemoryNotificationBackend:
         self._reads: dict[tuple, dict] = {}
 
     def _actor_ok(self, actor) -> bool:
+        # Was `if not actor.user_id: return True` — the double explicitly
+        # reported "authorized" for an absent actor, mirroring the production
+        # gap that the admin RPCs only checked p_actor_id when it was present.
+        # The database now refuses a null actor outright (AD004/AN005), so
+        # leaving this as it was would make the suite assert the opposite of
+        # what production does.
         if not actor.user_id:
-            return True
+            return False
         acting = next((u for u in self._users if u["id"] == actor.user_id), None)
         return bool(acting) and acting.get("role") == "admin" and not acting.get("is_disabled")
 
@@ -669,15 +749,24 @@ class InMemoryNotificationBackend:
             "acknowledged_at": read.get("acknowledged_at"),
         }
 
+    @staticmethod
+    def _is_active(notification: dict) -> bool:
+        """The three lifecycle conditions, in one place.
+
+        Named because two callers now need them: the active list, which has
+        always filtered on all three, and `mark_read`, which until the RN003
+        migration checked none of them.
+        """
+        if notification["deactivated_at"] is not None or notification["deleted_at"] is not None:
+            return False
+        expires = _parse_iso(notification["expires_at"])
+        return expires is None or expires > datetime.now(UTC)
+
     def list_active_for_reader(self, user_id: str) -> list:
-        now = datetime.now(UTC)
-        now_iso = now.isoformat()
+        now_iso = datetime.now(UTC).isoformat()
         out = []
         for n in self._notifications:
-            if n["deactivated_at"] is not None or n["deleted_at"] is not None:
-                continue
-            expires = _parse_iso(n["expires_at"])
-            if expires is not None and expires <= now:
+            if not self._is_active(n):
                 continue
             if not self._eligible(n, user_id):
                 continue
@@ -718,6 +807,21 @@ class InMemoryNotificationBackend:
             raise AdminActionRefused("action_type_mismatch")
         if action == "acknowledged" and n["type"] != "modal":
             raise AdminActionRefused("action_type_mismatch")
+        # Mirrors the RN003 lifecycle checks notifications_mark_read makes, and
+        # the three conditions are NOT interchangeable — the difference is which
+        # reader surface can still show the row.
+        #
+        # Deleted: no receipts of any kind. The history RPC filters
+        # `deleted_at is null`, so a soft-deleted notification is in no reader
+        # surface and any receipt is spurious by construction — yet it still
+        # counts, because the purge audit row reports read/dismissed/acknowledged
+        # totals before erasing everything.
+        if n["deleted_at"] is not None:
+            raise AdminActionRefused("notification_no_longer_active")
+        # Deactivated or expired: still visible in history, so plain `read` stays
+        # legal and only the two live-notice display actions are refused.
+        if action in ("dismissed", "acknowledged") and not self._is_active(n):
+            raise AdminActionRefused("notification_no_longer_active")
         if not self._eligible(n, user_id):
             raise AdminActionRefused("not_a_recipient")
 

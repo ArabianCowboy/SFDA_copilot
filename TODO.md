@@ -1,4 +1,4 @@
-STATUS: CURRENT AUTHORITY — open work only. Last verified against code 2026-08-27.
+STATUS: CURRENT AUTHORITY — open work only. Last verified against code 2026-08-28.
 Resolved entries live in `docs/archive/TODO-resolved.md`.
 
 # TODO
@@ -20,7 +20,7 @@ place.**
 
 When two documents disagree about how this system works, the order that settles it
 is in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). Rules that are individually
-correct but collide at one specific point — and there are eight known ones — are listed
+correct but collide at one specific point — and there are eleven known ones — are listed
 there too, under
 [_Rules that collide_](docs/ARCHITECTURE.md#rules-that-collide). Read that section
 before your next migration or your first RTL component.
@@ -46,6 +46,14 @@ bottom of this file: [How this file works](#how-this-file-works).
 - [The privacy policy (/privacy) is a draft, not reviewed legal text](#the-privacy-policy-privacy-is-a-draft-not-reviewed-legal-text) — consent shipped against this draft; the legal review of the text is what is still owed.
 - [Account deletion (Spec 4)](#account-deletion-spec-4--blocked-on-a-product-decision-not-on-engineering) — blocked on an unclosed product decision; both migrations written.
 - [A conversation id now reaches the access log](#a-conversation-id-now-reaches-the-access-log) — a verification task, possibly already fine; unverified either way.
+- [Six of the seven admin RPCs validate the actor without holding a lock](#six-of-the-seven-admin-rpcs-validate-the-actor-without-holding-a-lock) — a check-then-act window; pre-existing, not introduced by the actor gate.
+- [`profiles.last_seen_at` is written by nothing](#profileslast_seen_at-is-written-by-nothing) — blocked on write-it-or-drop-it.
+- [A retention policy, and the bounds that depend on one](#a-retention-policy-and-the-bounds-that-depend-on-one) — blocked on a retention period nobody owns; covers the assistant-message and audit_log text bounds too.
+- [`chat_sessions.owner_id` still has no foreign key](#chat_sessionsowner_id-still-has-no-foreign-key) — sequenced behind account deletion; the migration is small and the header's reasoning is already corrected.
+- [Does "disabled" freeze an account's own profile edits?](#does-disabled-freeze-an-accounts-own-profile-edits-or-only-its-use-of-the-product) — blocked on a product decision, not on engineering.
+- [Confirm the backup schedule, and rehearse a restore once](#confirm-the-backup-schedule-and-rehearse-a-restore-once) — dashboard task; the recovery position is currently an assumption.
+- [Measure the real statement and lock timeouts on the write path](#measure-the-real-statement-and-lock-timeouts-on-the-write-path) — needs a call through PostgREST, not MCP.
+- [Run the database assertions somewhere other than by hand](#run-the-database-assertions-somewhere-other-than-by-hand) — `supabase/tests/` exists and runs by hand only.
 
 ---
 
@@ -135,6 +143,76 @@ the registrations-pause feature; filed here rather than as its own review.
 couple two caches the registrations-pause feature deliberately kept separate (§2 of
 `docs/registrations-pause-plan.md`), to remove a round trip that isn't currently measurable.
 Recorded in case that changes.
+
+### Six of the seven admin RPCs validate the actor without holding a lock
+
+**Where:** `public.admin_actor_email`, called at the top of `admin_write_settings`,
+`admin_update_profile`, `admin_create_notification`, `admin_deactivate_notification`,
+`admin_delete_notification` and `admin_purge_notification`
+(`supabase/migrations/20260828001543_admin_rpcs_require_an_enabled_actor.sql`).
+
+**What is wrong.** The gate is an ordinary unlocked read of `public.profiles` joined to
+`auth.users`. Six of the seven callers then mutate without holding anything that would stop
+the actor's own row changing underneath them, so this interleaving is legal:
+
+1. T1 calls `admin_actor_email` and sees administrator A as enabled.
+2. T2 takes the membership advisory lock, demotes or disables A, and commits.
+3. T1 proceeds and commits its mutation, attributed to A as an authorized administrator.
+
+`admin_set_user_flags` is the exception and shows what the fix looks like: it takes
+`pg_advisory_xact_lock(hashtext('sfda.admin_membership'))` first and validates the actor
+**inside** the lock, which is what `20260814110722` was written to provide.
+
+**Who it reaches.** An administrator whose access is revoked while they have an action in
+flight. The window is one statement wide and the console is used by two accounts, so nobody
+has hit it. Note the honest scope: this is not privilege escalation and not a regression —
+the old `if p_actor_id is not null then …` guard had exactly the same property in exactly
+the same six functions. The actor migration made the check mandatory, not atomic.
+
+**How it was found.** An adversarial review of the applied implementation
+(`openai/gpt-5.6-sol`, 2026-08-28), which was asked to find what the implementer's own
+verification had missed.
+
+**What fixing it would disturb.** Serialising all seven on one advisory lock would make
+every settings save, profile edit and notification send contend on a single lock that today
+only guards administrator-membership changes — a real throughput cost on the console's
+common paths to close a window nobody can currently reach. The cheaper alternative is to
+have `admin_actor_email` take `for share` on the actor's `profiles` row, which conflicts
+with the `for update` that `admin_set_user_flags` already takes on a demotion target and
+costs nothing on the uncontended path. That is probably the right answer, and it should be
+measured rather than assumed: `for share` on `profiles` sits on the hot path of every admin
+mutation, and `profiles` is also the table every reader request reads.
+
+### `profiles.last_seen_at` is written by nothing
+
+**Where:** `public.profiles.last_seen_at`; read at `web/services/admin_store.py` into the
+admin account-detail payload and rendered by `static/js/admin/ui.js`.
+
+**What is wrong.** Nothing anywhere writes it. `grep -rn "last_seen_at" web/` returns one
+production reference and it is a read. The column is guarded as server-owned by
+`profiles_guard_privilege_columns` — a trigger defending a column that never changes — and
+the admin console shows an empty field for every account.
+
+**Who it reaches.** Any operator looking at an account. The cost is a contract lie: they
+learn to ignore the field, and when a real "last seen" is wanted later, a column full of
+NULLs will be misread as "nobody ever used the product".
+
+**How it was found.** The 2026-08-28 database review
+(`docs/database-improvement-plan.md`, finding 13).
+
+**What fixing it would disturb.** Two honest resolutions and the choice is a product one.
+**Drop it** — and its guard clause, its store field and its admin view; three files plus a
+migration. **Or write it**, carefully, for two reasons that are easy to miss:
+`handle_profile_update` sets `updated_at = now()` on every update to `profiles`, and
+`admin_update_profile` uses `p_expected_updated_at` for optimistic concurrency against
+that same column — so a background `last_seen_at` write would bump `updated_at` and make
+an administrator's in-flight edit fail with a spurious `AD005` conflict. And a per-request
+write to `profiles` is `20260828001636`'s write-amplification problem on a much bigger
+table; it would need throttling (`where last_seen_at is null or last_seen_at < now() -
+interval '1 hour'`) and a once-per-page-load path such as `/api/identity`, never
+`/api/chat/stream`. If the feature is genuinely wanted, the cleaner design keeps last-seen
+off `profiles` entirely rather than adding a per-request write to the one table every
+request already reads.
 
 ---
 
@@ -845,6 +923,237 @@ the deployment, not the repository.
 log formatter, not in Flask, so no application code changes either way. Whatever the
 answer turns out to be, write it down in `docs/OPERATIONS.md`, which exists precisely
 for state this repository cannot hold.
+
+### A retention policy, and the bounds that depend on one
+
+**Where:** `public.audit_log`, `public.chat_messages`, `public.chat_message_sources`,
+`public.user_notification_reads`, and `public.chat_archive` once its salts are set.
+
+**What is wrong.** There is no `pg_cron`, no scheduled job, no partition and no retention
+policy on any table, and four of them grow forever. `chat_archive` is designed to be
+append-only with **no delete path at all** — deliberately, and documented — so when the
+salts are set it starts growing at roughly one `question` + `answer` + `sources jsonb` per
+turn with no way to stop it.
+
+Two column-level bounds are missing for the same reason. `20260828002253` bounded
+`chat_messages.content` for `role = 'user'` at 8,000 characters, derived from Flask's
+`MAX_CHAT_QUERY_CHARS`. It deliberately left two things alone:
+
+- **Assistant content is unbounded**, and inventing a bound would corrupt history. There is
+  no answer-length check anywhere in `web/api/app.py`; a model answer routinely exceeds the
+  question limit (live rows: user content maxes at 250 characters, assistant at 4,462).
+  Clamping it to the question's limit would store a truncated copy of an answer the reader
+  had already been streamed in full — durable history quietly disagreeing with what was on
+  screen, the worst failure available in a citation product. The number has to come from
+  the model's `max_tokens` times a safe character ratio, plus a matching pre-persistence
+  policy. **That number does not exist yet.**
+- **`audit_log`'s text columns are unbounded** — `action`, `target_id`, `user_agent`,
+  `note`, `actor_email`. `user_agent` is attacker-controlled and is the one that most wants
+  a cap. A `CHECK` is the wrong shape here for the reason `20260820131914:44-47` gives for
+  `title`: it would fire inside a `SECURITY DEFINER` function and abort an administrative
+  action, surfacing a client mistake as a 500. The right shape is a clamp in the seven
+  admin writers plus `admin_store.py`'s direct insert — a different concern, in a different
+  set of functions, and it needs numbers picked from what those writers actually produce.
+
+**Who it reaches.** Nobody, for a long time. The database is roughly 14 MB and Postgres
+does not care about a million-row `audit_log`. **It bites as a compliance question before
+it bites as a performance one**: an application that records which regulatory guidance
+named professionals asked about, keyed to real accounts, with an audit log of
+administrative action, in a jurisdiction with data-protection law, and no answer to "how
+long do you keep it".
+
+**How it was found.** The 2026-08-28 database review
+(`docs/database-improvement-plan.md`, finding 8).
+
+**What fixing it would disturb.** **Do not build a purge before somebody owns the
+retention period** — a job that deletes before a legal hold is defined is worse than no
+job. The predecessor is a documented policy, and it overlaps the account-deletion question
+already open below. When it exists, `user_notification_reads` is the table where a rolling
+delete is uncontroversial and `audit_log` is the one where it is not. Adding the remaining
+`NOT VALID` CHECKs is cheap at today's row counts and expensive at five million, which is
+an argument for settling the numbers sooner rather than later.
+
+---
+
+### `chat_sessions.owner_id` still has no foreign key
+
+**Where:** `supabase/migrations/20260820131914_chat_session_persistence.sql:37-42`, and
+rule 8 of `supabase/README.md`, which records the correction.
+
+**What is wrong.** `profiles.id → auth.users(id)` cascades. So deleting an account today
+succeeds, removes the profile, and leaves that reader's `chat_sessions`, `chat_messages`
+and `chat_message_sources` behind with an `owner_id` that resolves to nothing — forever,
+with no detector and no purge path. For an application that records which regulatory
+guidance named professionals asked about, "the erasure request completed and the
+transcripts are still there" is the failure mode.
+
+The reason there is no FK is **factually wrong**, and that half is already fixed:
+the migration header says "an FK brings ON DELETE CASCADE with it, and deleting one account
+would take a year of retained conversation with it". A `REFERENCES` clause with no
+`ON DELETE` action defaults to `NO ACTION` — the parent delete is refused while children
+exist. `CASCADE` is opt-in and has to be typed. So the stated trade-off is a false choice,
+and a third option was never considered: an FK with `RESTRICT`, which keeps every
+conversation and makes an orphan impossible.
+
+**Who it reaches.** Nobody yet — no account has been deleted. Note what this is _not_: it
+is not a live leak. Those rows would be unreachable through RLS (no `auth.uid()` will ever
+match a deleted user's id) and unreachable through the RPCs (every one filters
+`p_owner_id`). They would be invisible and permanent, which is the shape of a retention
+problem rather than an access problem.
+
+**How it was found.** The 2026-08-28 database review
+(`docs/database-improvement-plan.md`, finding 5).
+
+**What fixing it would disturb.** `ON DELETE RESTRICT` **changes an existing operator
+capability**: deleting a user from the Supabase dashboard or through GoTrue's admin API
+succeeds today, and would afterwards fail with `23503` until that user's conversations are
+dealt with. That is the point — it converts silent orphaning into a loud refusal — but it
+is a behaviour change to a path that is used. **Sequence it behind the account-deletion
+entry below, not ahead of it:** landing the constraint before there is any path to delete
+a reader's conversations makes account deletion impossible rather than explicit. The
+migration itself is small (an orphan check that aborts, then one `add constraint`) and
+needs no new index: `chat_sessions_owner_updated_idx` leads with `owner_id`.
+
+---
+
+### Does "disabled" freeze an account's own profile edits, or only its use of the product?
+
+**Where:** The three RLS policies on `public.profiles`; `web/api/app.py`'s
+`if identity.is_disabled:` refusal; `docs/PRODUCT.md`, which does not say.
+
+**What is wrong.** Every chat policy gates on `is_active_account()`. None of the three
+`profiles` policies does. Flask refuses a disabled account, so no Flask route is affected —
+but `profiles` is the one browser-direct table, and a disabled account holding an unexpired
+JWT can `GET` and `PATCH` its own row against PostgREST with Flask nowhere in the path. A
+GoTrue access token stays cryptographically valid until its `exp` regardless of what the
+operator did to the account.
+
+**Who it reaches.** A disabled reader, for the remaining life of their token. The privilege
+columns are safe — `profiles_guard_privilege_columns` raises `42501` for `authenticated` on
+`role`, `tier`, `is_disabled` and the consent timestamps — so this is not privilege
+escalation. It is a disabled user still able to change their name, organization,
+specialization, age and marketing consent.
+
+**How it was found.** The 2026-08-28 database review
+(`docs/database-improvement-plan.md`, finding 6).
+
+**What fixing it would disturb.** Whether it matters at all is a product question, and
+that is why this is open rather than fixed: "disabled" might reasonably mean "cannot use
+the product" rather than "is frozen". Right now it is an asymmetry nobody chose. If the
+answer is _frozen_, the change is one statement — `alter policy "Users can update own
+profile" … using (((select auth.uid()) = id) and (select public.is_active_account()))` —
+and the two policies it must **not** touch are worth stating: **leave `SELECT` alone** or a
+locked-out reader cannot be shown why they are locked out, and **leave `INSERT` alone**
+because it is the browser's fallback path at signup, at which point no profile row exists
+for `is_active_account()` to consult. There is no recursion risk in calling it from a
+policy on `profiles`: it is `security definer` owned by `postgres`, which holds
+`BYPASSRLS`. Testing it needs a disabled account's live JWT, which the browser suite
+cannot mint — so the gate is `supabase/tests/`, extended.
+
+---
+
+### Confirm the backup schedule, and rehearse a restore once
+
+**Where:** The Supabase dashboard (Database → Backups). Written up as an assumption in
+`docs/OPERATIONS.md`.
+
+**What is wrong.** The database's recovery position is written down nowhere and has never
+been tested. The MCP `get_project` response says nothing about backup schedule or
+point-in-time recovery, so it cannot be answered from an agent session. The advisor's
+standing `auth_leaked_password_protection` finding tells us the project is below the Pro
+tier and PITR is a paid add-on, so the working assumption is daily backups with no PITR —
+an assumption, stated as one.
+
+**Who it reaches.** Everyone, once. The entire content of this database is user-generated
+and unreproducible: reader conversations, an audit log of administrative action, consent
+records with timestamps and policy versions. There is no re-derivation path for any of it.
+
+**How it was found.** Writing Wave 0 of `docs/database-improvement-plan.md`, which asked
+for a pre-migration export and discovered the question had no answer. A row-count and
+content-hash baseline was taken instead — that is a verification baseline, not a backup,
+and it is stored outside this repository because it names real account ids.
+
+**What fixing it would disturb.** Nothing in the codebase. Two steps: read the dashboard
+and replace the assumption in `docs/OPERATIONS.md` with what is actually configured, then
+restore into a scratch project once, to turn a setting into a known-good procedure. At 14
+MB this is the cheapest it will ever be to rehearse; the cost only rises.
+
+---
+
+### Measure the real statement and lock timeouts on the write path
+
+**Where:** `pg_roles.rolconfig`; the procedure and the probe function are in
+`docs/OPERATIONS.md`.
+
+**What is wrong.** `service_role` has no role-level `statement_timeout`, and **no role and
+no cluster default sets a `lock_timeout` or an `idle_in_transaction_session_timeout`
+anywhere**. `chat_append_turn` takes `select … for update` on the session row and holds it
+until the function returns; a transaction that stalls while holding it has nothing bounding
+the waiters, so every subsequent turn in that conversation blocks until the statement
+timeout — whatever it actually is — fires.
+
+What it actually is, is the open question. The cluster's `statement_timeout = 120000` was
+observed from an MCP session, which is not how Flask reaches the database: Flask calls
+PostgREST, which logs in as `authenticator` (`statement_timeout=8s`, `lock_timeout=8s`) and
+switches role per request, applying each role's `rolconfig` as it goes — this database's
+own `pg_stat_statements` records that happening. With no `rolconfig` on `service_role`
+there is nothing to apply, so a service-role request most likely inherits `authenticator`'s
+8s rather than two minutes. **That is a deduction from the mechanism, not a measurement.**
+
+**Who it reaches.** Nobody observed. The app is single-worker
+(`gunicorn --workers 1 --threads 8`), which narrows it considerably — it is a gap in the
+layer below the app, not an active incident.
+
+**How it was found.** The 2026-08-28 database review
+(`docs/database-improvement-plan.md`, finding 11), whose first two drafts both got the
+premise wrong in opposite directions before it was reduced to "measure it".
+
+**What fixing it would disturb.** The measurement is the deliverable and it needs a call
+path an agent session does not have: the probe must be invoked as `service_role` through
+`/rest/v1/rpc/`, not through MCP, or it measures the wrong connection again. Setting
+`lock_timeout` afterwards is the safe half. **Tightening `statement_timeout` on
+`service_role` changes the operator's own environment as well as the application's** — it
+is what the MCP tools and any administrative script connect as, so a long maintenance query
+would be aborted. An `idle_in_transaction_session_timeout` is worth setting as a backstop
+against a dead client but would **not** bound the lock above: it acts on a transaction that
+is idle, and a PL/pgSQL function still executing is not idle.
+
+---
+
+### Run the database assertions somewhere other than by hand
+
+**Where:** `supabase/tests/` (four files), and the absence of a database in CI.
+
+**What is wrong.** Those four files hold 147 assertions about grants, column privileges,
+the default ACL, function ACLs, `search_path` and reader-to-reader RLS isolation. They are
+the only thing in this repository that can fail because of a privilege — every Python test
+mocks the Supabase client, and the advisors do not check grants at all, which is why the
+four grant-layer defects the 2026-08-28 review opens with sat under a green CI run
+indefinitely. **They run only when somebody remembers to paste them into `execute_sql`.**
+
+**Who it reaches.** The next person to write a migration that forgets a revoke line — and
+specifically the next `security definer` function, which is born `PUBLIC`-executable
+whatever the default ACL says (see the entry under Known bugs).
+
+**How it was found.** Writing them, on 2026-08-28, as the deliverable of the review's
+finding 7.
+
+**What fixing it would disturb.** Two honest options with very different sizes. **Adopt
+the Supabase CLI and a local stack**, which gets `supabase test db` in CI — a structural
+change to a project that has deliberately never had a CLI, and it deserves its own
+decision rather than arriving as a rider. **Or point a CI job at a scratch Supabase
+project** and run the files through it, which needs a second project and a service key in
+CI secrets, and tests a database that is not the one that matters. A third, cheaper move
+that is worth doing either way: fail a check if `get_advisors` returns any finding not in
+`supabase/README.md`'s standing-findings table — that turns the register from a convention
+into a gate, and it needs no database at all.
+
+Converting the files to pgTAP is **not** part of this. `pgtap` is available and not
+installed, and installing a few hundred functions into the production database to run
+three assertion files is a bigger change than the files are. They are plain `do` blocks
+that need no extension and convert mechanically if that ever changes.
+
+---
 
 ## How this file works
 

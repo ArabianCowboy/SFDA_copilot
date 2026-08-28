@@ -1,0 +1,72 @@
+-- The half of finding 1 that was wrongly declared impossible.
+-- ===========================================================================
+-- Plan: docs/database-improvement-plan.md finding 1. Supersedes the post-apply
+-- correction at the foot of 20260828000737, which is WRONG and is corrected
+-- there and here.
+--
+-- WHAT THAT MIGRATION CONCLUDED, AND WHY IT WAS WRONG. It ran
+--
+--   alter default privileges for role postgres in schema public
+--     revoke all on functions from anon, authenticated, public;
+--
+-- observed that a function created afterwards still came out
+-- `{=X/postgres, postgres=X, service_role=X}` — `=X` being PUBLIC — and
+-- concluded that Postgres "merges the built-in default with the stored one",
+-- that PUBLIC therefore cannot be revoked from a function default, and that
+-- the only durable fix was an event trigger requiring superuser. Two of those
+-- three statements are false.
+--
+-- The real mechanism is the layering. `get_user_default_acl` consults TWO
+-- pg_default_acl rows — a GLOBAL one (`defaclnamespace = 0`) and a
+-- schema-specific one — and the hard-wired `acldefault()` is used as the base
+-- **only when there is no global row**. A per-schema entry is then merged onto
+-- that base, and a merge cannot subtract what the base supplies. So the
+-- `IN SCHEMA public` revoke was operating one layer too low to reach PUBLIC's
+-- built-in grant. The fix is the same statement WITHOUT `IN SCHEMA`, which
+-- replaces the base rather than layering on top of it.
+--
+-- Verified in a rolled-back transaction before applying:
+--
+--   alter default privileges for role postgres revoke execute on functions from public;
+--   create function public._g_probe() returns int language sql as $f$ select 1 $f$;
+--   -- proacl:        {postgres=X/postgres,service_role=X/postgres}   <- no =X
+--   -- global defacl: {postgres=X/postgres}
+--
+-- And after applying, on a fresh probe object:
+--
+--   anon.EXECUTE = f   authenticated.EXECUTE = f   service_role.EXECUTE = t
+--
+-- So a `security definer` function whose migration forgets its `revoke execute`
+-- line is now inaccessible rather than callable at /rest/v1/rpc/<name> by any
+-- signed-in session. That is what finding 1 was for, and until now it had only
+-- been achieved for tables and sequences.
+--
+-- THIS IS BROADER THAN SCHEMA public, AND THAT IS THE POINT AND THE COST.
+-- A global default ACL applies to every function created by `postgres` in any
+-- schema. The cost is a future extension or helper installed by `postgres`
+-- whose functions genuinely want PUBLIC execute: it will need an explicit
+-- grant, and until it gets one the symptom is a permission error in testing.
+-- That is the failure direction finding 1 asks for — "remember to open it"
+-- rather than "remember to close it" — and it is why this is acceptable
+-- despite reaching outside `public`. Supabase's own extensions are installed
+-- by `supabase_admin`, not `postgres`, so they are unaffected.
+--
+-- service_role IS DELIBERATELY UNTOUCHED, exactly as in 20260828000737: every
+-- RPC in this schema is granted to it, so revoking its default would trade one
+-- act of remembering for another. Its grant comes from the per-schema entry,
+-- which still applies — this migration removes only PUBLIC from the base.
+--
+-- Existing functions are unaffected: a default ACL governs creation, not
+-- objects that already exist. Confirmed after applying — zero functions in
+-- `public` are executable by `anon`, and the only two executable by
+-- `authenticated` are the documented exemptions.
+--
+-- The `supabase_admin` grantor remains out of reach (`42501`, `postgres` is not
+-- a member) and remains a tracked gap. It governs nothing in `public` today:
+-- all eleven tables and every function there are owned by `postgres`.
+--
+-- `supabase/tests/privileges.test.sql` asserts both halves — that the global
+-- function default exists at all, and that it does not name PUBLIC.
+
+alter default privileges for role postgres
+  revoke execute on functions from public;

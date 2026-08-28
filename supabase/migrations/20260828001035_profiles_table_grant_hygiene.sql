@@ -1,0 +1,48 @@
+-- Take back the table-level privileges 20260814005509 never revoked.
+-- ===========================================================================
+-- Plan: docs/database-improvement-plan.md finding 2.
+--
+-- 20260814005509_lock_profile_privileges_and_repair_signup.sql revoked INSERT
+-- and UPDATE at the table level and re-granted them per column — eleven
+-- reader-writable columns, with role, tier and is_disabled excluded. That part
+-- was correct and is untouched here. What it did not do was revoke the *other*
+-- table privileges left over from the default ACL, so anon and authenticated
+-- both still held DELETE, TRUNCATE, REFERENCES, TRIGGER and SELECT on the
+-- identity and authorization table.
+--
+-- Three distinct problems, in descending order of how much they matter:
+--
+--   * TRUNCATE IS NOT SUBJECT TO ROW-LEVEL SECURITY. RLS covers SELECT,
+--     INSERT, UPDATE, DELETE and MERGE. It does not cover TRUNCATE. Every
+--     other dangerous privilege on this table is stopped by a policy; this one
+--     was stopped by nothing but PostgREST's inability to emit the statement.
+--     "No route today" is not a boundary on the table that decides who is an
+--     administrator.
+--   * DELETE WAS STOPPED ONLY BY THE ABSENCE OF A POLICY. profiles has three
+--     policies — SELECT, UPDATE, INSERT — and no DELETE policy, so
+--     DELETE /rest/v1/profiles affected zero rows. Correct behaviour arrived
+--     at by omission, with the grant already in place for the day somebody
+--     adds a DELETE policy for an unrelated reason.
+--   * SELECT FOR anon PUT profiles IN PostgREST'S SCHEMA FOR UNAUTHENTICATED
+--     CALLERS. PostgREST exposes a table when any role holds any privilege on
+--     it. The rows were protected (the SELECT policy is TO authenticated) but
+--     the shape was not: an unauthenticated GET /rest/v1/ disclosed that this
+--     application stores role, tier, is_disabled, disabled_reason and six
+--     marketing_consent_* columns.
+--
+-- THIS CANNOT BE A BLANKET `revoke all`. A table-level grant supersedes
+-- narrower column grants, and revoking ALL takes the column grants with it —
+-- which would break the account page save, the signup insert and the
+-- preferences merge in one statement. Only the named table verbs are revoked.
+--
+-- SELECT STAYS FOR authenticated. The browser reads its own profile row
+-- directly; that is Decision 6 in docs/ARCHITECTURE.md, not an oversight, and
+-- it is also how the disabled state is rendered to the reader who is locked
+-- out. profiles remains the one browser-direct table.
+--
+-- VERIFICATION IS THE BROWSER SUITE, NOT A GRANT ASSERTION. What is at risk
+-- here is the interaction between the table revoke and the surviving column
+-- grants, which only the signup and account flows exercise end to end.
+
+revoke delete, truncate, references, trigger on public.profiles from anon, authenticated;
+revoke select on public.profiles from anon;
