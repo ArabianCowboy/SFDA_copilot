@@ -42,7 +42,7 @@ bottom of this file: [How this file works](#how-this-file-works).
 - [The browser suite flakes intermittently in test_source_panel.py](#the-browser-suite-flakes-intermittently-in-test_source_panelpy) — undiagnosed; resource-contention evidence only.
 - [Know what people actually ask](#know-what-people-actually-ask--without-reading-anyones-conversation) — an identity-free question log; not started, gated on scale.
 - [Enable the token-verification cache once production numbers justify it](#enable-the-token-verification-cache-once-production-numbers-justify-it) — single-flight (the worker-starvation fix) shipped 2026-08-27 at no revocation cost; the optional positive cache stays off, gated on measurement.
-- [Admin broadcast & Reader Notification Center](#admin-broadcast--reader-notification-center-popups-banners-and-inbox-history) — full feature, not started.
+- [Admin broadcast & Reader Notification Center](#admin-broadcast--reader-notification-center-popups-banners-and-inbox-history) — implemented 2026-08-24; live login/session smoke-tested against production 2026-08-29 (by hand), which also surfaced and closed a real `mark-read` 500 the same day ([fix write-up](docs/notification-mark-read-500-fix.md)); still owes a live Realtime-push check, the sign-out/reauthenticate paths, and a clean `mypy web` run (unrelated numpy/Python-3.14 stub issue).
 - [The privacy policy (/privacy) is a draft, not reviewed legal text](#the-privacy-policy-privacy-is-a-draft-not-reviewed-legal-text) — consent shipped against this draft; the legal review of the text is what is still owed.
 - [Account deletion (Spec 4)](#account-deletion-spec-4--blocked-on-a-product-decision-not-on-engineering) — blocked on an unclosed product decision; both migrations written.
 - [A conversation id now reaches the access log](#a-conversation-id-now-reaches-the-access-log) — a verification task, possibly already fine; unverified either way.
@@ -788,6 +788,57 @@ review; existing exposure elsewhere is not a license for more here.
 **Full implementation plan:** [`docs/notification-center-plan.md`](docs/notification-center-plan.md) — schema, RLS/RPC design, Realtime security model, backend/frontend file plan, i18n, security checklist, rollout order, and test plan. Went through direct codebase verification, a comparison against two independently-drafted alternative plans, and an adversarial OpenCode review that found and fixed 17 real defects (a schema bug that would have broken account deletion, a security gap letting a reader forge their own read receipts, a missing actor-revalidation race, and more). This entry stays here as the short version.
 
 **Status (2026-08-24): implemented, including the Realtime hybrid leg.** Schema (6 migrations plus 2 follow-up fixes, all applied and advisor-clean), the reader and admin RPCs, `web/services/notification_store.py` and `notification_service.py`, every reader/admin route, rate limits, the full reader UI (bell/badge, toast/banner/acknowledgement-modal, session-snoozed inbox, private-channel Realtime subscribe) and admin UI (composer with audience preview, send history, deactivate/delete/resend), and bilingual i18n are all built and wired. `@supabase/supabase-js` is upgraded to `2.74.0` (from `2.39.7`, which verifiably lacked the `private` channel option this feature needs) after a full read of `auth-js`'s changelog across that span found no breaking change to this app's own fragile auth behaviors. The private-channel RLS boundary was verified directly against the live Postgres project (a session-variable simulation of two distinct readers, confirming the policy admits one and refuses the other) — a mock cannot prove that property, so it was proven where it actually lives. Coverage: 45 backend tests, 9 Playwright browser tests for the feature itself, and the full pre-existing 252-test browser suite still green against the new SDK pin. `mypy web` could not be run to verify this pass locally — it fails on an unrelated, pre-existing numpy/mypy stub incompatibility in this dev environment (reproduced identically on a clean `main`, before this feature's changes), and no tool in this session could log into a real Supabase project to exercise the upgraded auth flow end-to-end — that one check is still owed before this ships to production.
+
+**Re-checked 2026-08-29 — both caveats still stand, feature otherwise confirmed live.** Every
+file, route and i18n key this entry names still exists and is wired; the `supabase-js` pin is
+still `2.74.0` (`static/js/modules/services.js:6`); the backend suite now counts 77 passing
+tests across the four notification test files (grown from 45, from unrelated later work), all
+green. `python -m mypy web` still fails on the identical `numpy/__init__.pyi` error — this dev
+environment runs Python 3.14, and the error is "Type statement is only supported in Python 3.12
+and greater," which is a numpy-stub/interpreter mismatch, not this feature. That caveat is
+unchanged.
+
+**Live-SDK login — partially closed 2026-08-29, by hand, not by a new automated test.** The
+operator ran the app against the live Supabase project (no `testing=true`) with
+`supabase-js@2.74.0` in place, signed in, and navigated `/` → `/account/` → `/admin/` in one
+session. Server log shows real authenticated `200`s throughout: `/api/identity`,
+`/admin/api/identity`, `/admin/api/notifications/history`,
+`/admin/api/notifications/purge-settings`, and the admin identity panel rendering a real
+`LAST SEEN` value sourced through `admin_get_user`'s `profile_last_seen` join (screenshot).
+One transient `httpcore.ReadError: [WinError 10035]` on the Flask→PostgREST leg self-resolved
+on retry — a Windows non-blocking-socket read glitch, unrelated to `auth-js` or the SDK bump.
+
+This confirms **session persistence and every reader/admin RPC route work under the upgraded
+SDK against production** — the exact gap this entry flagged for basic sign-in. It does **not**
+exercise the specific reason the SDK was bumped: the log cannot show whether a broadcast
+actually arrives live over the `private: true` Realtime channel (that leg is browser↔Supabase
+directly, invisible to Flask's log), and no one has exercised sign-out, "sign out everywhere
+else," or the password-change reauthenticate flow since the bump. Narrowed, not closed: what's
+still owed before production is a live Realtime-push check and those three auth-mutation paths
+— not a login smoke test in general, which is now done.
+
+**Correction, same day — that live check surfaced a real bug the "confirmed live" line above
+should not have implied was fully covered.** The operator clicked a notification in the inbox
+during that same session and hit **"Could not update that notification"** — a genuine,
+unconditional 500 on every real call to `/api/notifications/mark-read`
+(`TypeError: flask.json.jsonify() got multiple values for keyword argument 'notification_id'`).
+This session's first guess was that it was the same transient Windows socket glitch seen
+elsewhere in the log; the traceback proved that guess wrong. Root cause: the real backend's
+`row` (from `notifications_mark_read`'s `to_jsonb(v_row)`) already carries its own
+`notification_id` column, colliding with the route's explicit `notification_id=notification_id`
+keyword — and `InMemoryNotificationBackend`'s `mark_read` never included that key, so all 22
+tests in `test_notifications_api.py`, three of them exercising this exact route, passed against
+genuinely broken production code throughout. **Fixed 2026-08-29** in both the route (build the
+response dict explicitly rather than via colliding kwargs) and the in-memory double (made its
+return shape match the real RPC's, so this class of bug fails a test from now on). Full
+diagnosis, root cause and verification:
+[`docs/notification-mark-read-500-fix.md`](docs/notification-mark-read-500-fix.md). 864-test
+non-browser suite green afterward, and the operator independently confirmed it live the same
+day after restarting the server: four `mark-read` calls and one `mark-all-read` call all `200`,
+toast/banner/modal/inbox all rendering correctly, no further `TypeError`. This is the second
+same-day correction to a "confirmed live" claim on this entry — both live checks were genuinely
+useful, and both turned out narrower than they first read; take that as read for the two items
+still open above.
 
 **Where:**
 

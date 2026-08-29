@@ -3011,7 +3011,20 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
             )
             return jsonify(error="mark_read_failed"), 503
 
-        return _no_store(jsonify(ok=True, notification_id=notification_id, **row))
+        # Not jsonify(ok=True, notification_id=notification_id, **row): the real
+        # backend's `row` is notifications_mark_read's `to_jsonb(v_row)`, and
+        # `public.user_notification_reads` has its own `notification_id` column
+        # — that RPC's return shape is a superset of what the in-memory testing
+        # double happened to return, so this collided (TypeError: got multiple
+        # values for keyword argument 'notification_id') on every call against
+        # the real database while every test, running against the double, saw
+        # no collision at all and could not have caught it. Building the dict
+        # explicitly makes `notification_id` always the requested one, whether
+        # or not the backend's row already carries it.
+        payload = dict(row)
+        payload["notification_id"] = notification_id
+        payload["ok"] = True
+        return _no_store(jsonify(payload))
 
     @app.route("/api/notifications/mark-all-read", methods=["POST"])
     @auth_required

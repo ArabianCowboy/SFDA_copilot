@@ -990,7 +990,20 @@ def patch_user(user_id: str) -> Response | tuple[Response, int]:
         role,
         is_disabled,
     )
-    return jsonify({"user": {"id": user_id, **updated}})
+    # Explicit dict, not {"id": user_id, **updated}: a dict literal silently lets
+    # a later key win, so if admin_set_user_flags's returned row ever gained its
+    # own `id` column, this would quietly report *that* value instead of
+    # crashing — the same "explicit key merged with a backend dict" shape as the
+    # jsonify() collision fixed in handle_notifications_mark_read
+    # (docs/notification-mark-read-500-fix.md), just failing silently here
+    # instead of loudly. Not live-broken today (admin_set_user_flags selects
+    # only role/tier/is_disabled — supabase/migrations/
+    # 20260828001543_admin_rpcs_require_an_enabled_actor.sql), but building the
+    # payload explicitly closes the whole pattern rather than leaving the one
+    # remaining instance of it.
+    user_payload = dict(updated)
+    user_payload["id"] = user_id
+    return jsonify({"user": user_payload})
 
 
 @admin_bp.route("/api/audit")

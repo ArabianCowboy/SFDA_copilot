@@ -1013,6 +1013,66 @@ still unwritten at first — dropping it became its own, separate `TODO.md` entr
 
 ---
 
+### [HISTORICAL] ~~Every real call to `/api/notifications/mark-read` crashed with a 500~~ — FIXED 2026-08-29
+
+**Full diagnosis and fix:** [`docs/notification-mark-read-500-fix.md`](../notification-mark-read-500-fix.md).
+
+**Where:** `web/api/app.py`'s `handle_notifications_mark_read` (the `/api/notifications/mark-read`
+route), and `web/services/notification_store.py`'s `InMemoryNotificationBackend.mark_read`.
+
+**What was wrong.** The route built its response as
+`jsonify(ok=True, notification_id=notification_id, **row)`. Against the real Supabase backend,
+`row` is `notifications_mark_read`'s `to_jsonb(v_row)` — the full `user_notification_reads` row,
+which has its own `notification_id` column — so every real call raised
+`TypeError: flask.json.jsonify() got multiple values for keyword argument 'notification_id'` and
+returned a 500. The reader-facing symptom was the generic "Could not update that notification"
+toast on every inbox click and every toast/banner dismissal or modal acknowledgement.
+
+**Who it reached.** Every reader, on every mark-read action, against the real database — 100%
+reproducible, not intermittent. The Notification Center's "implemented 2026-08-24" status in
+`TODO.md` had never actually been exercised against the real backend for this one route; the
+2026-08-24 build and the 2026-08-29 re-check both ran the claim through `FLASK_TESTING`'s
+in-memory double, where it happened not to collide (see below).
+
+**How it was found.** The operator ran the app against the real Supabase project, clicked a test
+notification in the inbox, saw the toast, and supplied the exact server traceback on request —
+this session had already speculated it was the unrelated transient Windows `WinError 10035`
+socket glitch seen elsewhere in the same log, and was wrong; the traceback settled it.
+
+**Why the test suite never caught it — the more important half.** `InMemoryNotificationBackend.mark_read`
+returned `dict(read)`, and `read` never carried a `notification_id` key, so the same
+keyword-argument collision never occurred under `FLASK_TESTING`. All 22 of
+`test_notifications_api.py`'s tests, including three that exercise this exact route, passed
+throughout. This is exactly the class of defect `CLAUDE.md` warns about — "a test that mocks the
+function under test proves nothing" — except here the mock's shape, not its behaviour, was the
+part that diverged from reality.
+
+**The fix, in two parts, both required.** (1) The route now builds the response as an explicit
+dict — `payload = dict(row); payload["notification_id"] = notification_id` — so
+`notification_id` is always the requested one regardless of whether the backend's row already
+carries that key. (2) `InMemoryNotificationBackend.mark_read` now returns
+`{"notification_id": notification_id, "user_id": user_id, **read}`, matching the real RPC's row
+shape, so this class of bug is caught by the test suite from now on rather than only by a human
+clicking the real UI.
+
+**Verified, not assumed.** Fix (2) alone, with fix (1) reverted, reproduces the reader's exact
+traceback and fails three tests (`test_the_actual_recipient_can_mark_it_read`,
+`test_an_all_targeted_notification_can_be_marked_by_any_reader`,
+`test_a_withdrawn_notification_can_still_be_marked_read`) — proving the old code was genuinely
+broken and the new test would have caught it. With both fixes applied: the same three tests pass,
+all 77 notification tests pass, and the full 864-test non-browser suite is green.
+
+**What fixing it disturbed.** Nothing outside the two files above. No schema change, no i18n
+change, no `ASSET_VERSION` bump (no CSS/JS touched). The response payload's shape on success is
+unchanged for any caller that was working before — this only changes what happens when `row`
+already contains `notification_id`, which used to be an unconditional crash.
+
+**Confirmed live, same day.** The operator restarted the server and re-tested against the real
+Supabase project: four `mark-read` calls and one `mark-all-read` call, all `200`, no further
+`TypeError` — toast, banner, modal acknowledgement and inbox list all rendering correctly.
+
+---
+
 ## [HISTORICAL] Resolved planned work
 
 ### [HISTORICAL] ~~Registrations pause — let an operator pause new signups~~ — BUILT 2026-08-25

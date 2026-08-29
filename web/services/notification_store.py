@@ -832,7 +832,14 @@ class InMemoryNotificationBackend:
             action
         ]
         read.setdefault(key, now_iso)
-        return dict(read)
+        # notification_id/user_id included, not just `dict(read)`: the real
+        # RPC returns `to_jsonb(v_row)` over the full user_notification_reads
+        # row, which carries its own notification_id column — a shape this
+        # double must mirror (see the module docstring) or a Flask-side bug
+        # that only collides against that extra column, as
+        # handle_notifications_mark_read's did, passes every test here and
+        # only shows up against the real database.
+        return {"notification_id": notification_id, "user_id": user_id, **read}
 
     def mark_all_read(self, user_id: str) -> int:
         now_iso = datetime.now(UTC).isoformat()
