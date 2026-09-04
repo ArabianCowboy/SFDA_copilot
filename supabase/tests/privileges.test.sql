@@ -61,10 +61,51 @@ declare
     ['anon','notifications','SELECT'], ['authenticated','notifications','SELECT'],
     ['authenticated','user_notification_reads','SELECT'],
 
-    -- The dead table, still present pending the drop-or-use decision.
-    ['anon','chatbot_settings','SELECT'], ['anon','chatbot_settings','INSERT'],
-    ['anon','chatbot_settings','TRUNCATE'],
-    ['authenticated','chatbot_settings','SELECT'], ['authenticated','chatbot_settings','UPDATE'],
+    -- chatbot_settings was DROPPED by 20260903200806. Its three assertion rows
+    -- are gone with it: they named grants on a table that no longer exists, so
+    -- leaving them would fail this suite against a correct database.
+
+    -- The three quota tables. No role holds anything on any of them,
+    -- service_role included -- every access path is a security definer function
+    -- running as the table owner, the same posture as profile_last_seen below.
+    -- Full seven-privilege set per role, for the reason that comment gives.
+
+    ['anon','tiers','SELECT'], ['anon','tiers','INSERT'],
+    ['anon','tiers','UPDATE'], ['anon','tiers','DELETE'],
+    ['anon','tiers','TRUNCATE'], ['anon','tiers','REFERENCES'],
+    ['anon','tiers','TRIGGER'],
+    ['authenticated','tiers','SELECT'], ['authenticated','tiers','INSERT'],
+    ['authenticated','tiers','UPDATE'], ['authenticated','tiers','DELETE'],
+    ['authenticated','tiers','TRUNCATE'], ['authenticated','tiers','REFERENCES'],
+    ['authenticated','tiers','TRIGGER'],
+    ['service_role','tiers','SELECT'], ['service_role','tiers','INSERT'],
+    ['service_role','tiers','UPDATE'], ['service_role','tiers','DELETE'],
+    ['service_role','tiers','TRUNCATE'], ['service_role','tiers','REFERENCES'],
+    ['service_role','tiers','TRIGGER'],
+    ['anon','reader_quota_overrides','SELECT'], ['anon','reader_quota_overrides','INSERT'],
+    ['anon','reader_quota_overrides','UPDATE'], ['anon','reader_quota_overrides','DELETE'],
+    ['anon','reader_quota_overrides','TRUNCATE'], ['anon','reader_quota_overrides','REFERENCES'],
+    ['anon','reader_quota_overrides','TRIGGER'],
+    ['authenticated','reader_quota_overrides','SELECT'], ['authenticated','reader_quota_overrides','INSERT'],
+    ['authenticated','reader_quota_overrides','UPDATE'], ['authenticated','reader_quota_overrides','DELETE'],
+    ['authenticated','reader_quota_overrides','TRUNCATE'], ['authenticated','reader_quota_overrides','REFERENCES'],
+    ['authenticated','reader_quota_overrides','TRIGGER'],
+    ['service_role','reader_quota_overrides','SELECT'], ['service_role','reader_quota_overrides','INSERT'],
+    ['service_role','reader_quota_overrides','UPDATE'], ['service_role','reader_quota_overrides','DELETE'],
+    ['service_role','reader_quota_overrides','TRUNCATE'], ['service_role','reader_quota_overrides','REFERENCES'],
+    ['service_role','reader_quota_overrides','TRIGGER'],
+    ['anon','usage_daily','SELECT'], ['anon','usage_daily','INSERT'],
+    ['anon','usage_daily','UPDATE'], ['anon','usage_daily','DELETE'],
+    ['anon','usage_daily','TRUNCATE'], ['anon','usage_daily','REFERENCES'],
+    ['anon','usage_daily','TRIGGER'],
+    ['authenticated','usage_daily','SELECT'], ['authenticated','usage_daily','INSERT'],
+    ['authenticated','usage_daily','UPDATE'], ['authenticated','usage_daily','DELETE'],
+    ['authenticated','usage_daily','TRUNCATE'], ['authenticated','usage_daily','REFERENCES'],
+    ['authenticated','usage_daily','TRIGGER'],
+    ['service_role','usage_daily','SELECT'], ['service_role','usage_daily','INSERT'],
+    ['service_role','usage_daily','UPDATE'], ['service_role','usage_daily','DELETE'],
+    ['service_role','usage_daily','TRUNCATE'], ['service_role','usage_daily','REFERENCES'],
+    ['service_role','usage_daily','TRIGGER'],
 
     -- profile_last_seen: no role holds anything on it, service_role included —
     -- every access path is touch_last_seen/admin_get_user, both security

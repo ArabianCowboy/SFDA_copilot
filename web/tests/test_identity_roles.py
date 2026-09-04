@@ -228,7 +228,7 @@ def test_an_unresolved_identity_is_never_an_administrator(monkeypatch, app):
     from web.services import admin_store
 
     cache = IdentityFlagsCache(ttl_seconds=0)
-    cache.put(IdentityFlags("u1", "u1@example.com", "admin", "internal", False))
+    cache.put(IdentityFlags("u1", "u1@example.com", "admin", "staff", False))
 
     class Broken:
         def fetch_identity(self, user_id, email):
@@ -360,9 +360,42 @@ def test_identity_says_nothing_about_anyone_else(client):
         # the honest answer, not an omission of the key.
         "created_at",
         "conversation_count",
+        # The daily allowance. Present under TESTING because `quota_backend()`
+        # resolves to the in-memory double rather than None -- deliberately, so
+        # a regression in this field cannot hide behind a null.
+        "quota",
     }
     assert body["created_at"] is None
     assert body["conversation_count"] is None
+
+
+def test_identity_quota_reports_only_this_reader(client):
+    """The quota block carries counts and labels — never operator notes."""
+    quota = client.get("/api/identity", headers=ADMIN).get_json()["quota"]
+    assert set(quota) == {
+        "used",
+        "limit",
+        "remaining",
+        "resets_at",
+        "tier",
+        "override",
+        "override_expires_at",
+    }
+    assert set(quota["tier"]) == {"key", "label_en", "label_ar"}
+    # `reason` and `set_by` live on reader_quota_overrides and are an operator's
+    # private note about an account. `get_reader_quota` does not select them, and
+    # this asserts the shape stays that way.
+    assert "reason" not in quota
+    assert "set_by" not in quota
+
+
+def test_identity_quota_starts_from_this_readers_own_usage(client):
+    """A fresh reader has spent nothing, and `remaining` agrees with `limit`."""
+    quota = client.get("/api/identity", headers=ADMIN).get_json()["quota"]
+    assert quota["used"] == 0
+    assert quota["remaining"] == quota["limit"]
+    assert quota["limit"] > 0
+    assert quota["resets_at"]
 
 
 # ── touch_last_seen: its own try, never sharing the standing-line facts one ───

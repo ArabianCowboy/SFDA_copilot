@@ -37,6 +37,16 @@ runtime:
     # there is no undo action, no restored/resetFailed/restoreFailed string,
     # and no resumed-conversation disclosure to catalogue here any more.
     cleared: "Conversation cleared"
+    # The daily allowance (docs/reader-quota-plan.md §6). {limit} is ALWAYS
+    # interpolated, never written into the string: the tier limit is
+    # operator-editable from the console, so a hardcoded number would rot
+    # silently inside this file the first time somebody changes it.
+    quota:
+      title: "Today's questions are used up."
+      body: "You've asked all {limit} of today's questions. Your allowance resets at {resets_at}."
+      dismiss: "Dismiss"
+      counter: "{remaining} of {limit} questions left today · resets {resets_at}"
+      counterOne: "1 question left today · resets {resets_at}"
     # Distinct from an empty transcript on purpose. Rendering nothing would
     # claim the reader has no stored history; this says the history could not
     # be read, which is a different fact.
@@ -236,7 +246,10 @@ runtime:
       roleAdmin: "Administrator"
       roleUser: "Reader"
       tierFree: "Free"
-      tierInternal: "Internal"
+      tierStaff: "Staff"
+      quotaToday: "{used} of {limit} questions today"
+      quotaResets: "Resets {resets_at}"
+      quotaUntil: "{limit} questions a day until {date}"
       standingEnabled: "Active"
       standingDisabled: "Disabled"
       conversationOne: "{count} conversation"
@@ -441,6 +454,26 @@ runtime:
       actionNotificationDelete: "Deleted a notification"
       actionNotificationPurge: "Purged a notification"
     account:
+      quotaHeading: "Daily allowance"
+      tierLabel: "Tier"
+      overrideLabel: "Override for this account"
+      overrideHint: "Leave empty to use the tier's allowance."
+      overrideStartsLabel: "In force from (optional)"
+      overrideExpiresLabel: "In force until (optional)"
+      overrideWindowHint: "Leave both empty for an allowance that stays until you clear it."
+      overrideStandingLabel: "Override"
+      overrideInForce: "In force now"
+      overrideScheduled: "Scheduled — starts {date}"
+      overrideExpired: "Expired {date} — now using the tier's allowance"
+      reasonLabel: "Reason"
+      usageLabel: "Asked today"
+      resetsLabel: "Allowance resets"
+      quotaReasonHint: "Required when you set an override, and recorded with it."
+      quotaHint: "The tier is a group's allowance; the override is this account's alone. Every change is recorded with what it said before."
+      saveQuota: "Save allowance"
+      quotaSaved: "Allowance saved."
+      quotaSaveFailed: "Could not save that allowance."
+      quota_reason_required: "A reason is required to set an allowance for one account."
       back: "Back to all users"
       identityHeading: "Identity"
       profileHeading: "Profile"
@@ -566,6 +599,38 @@ runtime:
       of: "of"
       pageSize: "Rows per page"
     # docs/notification-center-plan.md. The admin composer and send history.
+    tiers:
+      key: "Key"
+      keyHint: "The key is permanent. Lower-case letters, digits and underscores; it is what the database and the notification composer both name."
+      label: "Label"
+      labelEn: "Label (English)"
+      labelAr: "Label (Arabic)"
+      labelsHint: "Both labels are stored. Each reader sees the one for their own language, and the table above shows yours."
+      dailyLimit: "Questions a day"
+      members: "Readers"
+      ordering: "Order"
+      actions: "Actions"
+      addHeading: "Add a tier"
+      editHeading: "Edit tier"
+      edit: "Edit"
+      delete: "Delete"
+      save: "Save"
+      cancel: "Cancel"
+      saved: "Tier saved."
+      deleted: "Tier deleted."
+      loadFailed: "Could not load the tiers."
+      saveFailed: "Could not save that tier."
+      deleteFailed: "Could not delete that tier."
+      confirmDelete: "Delete the tier \"{key}\"?"
+      confirmDeleteMembers: "The tier \"{key}\" has {count} reader(s). Move them to another tier before deleting it."
+      duplicate_key: "A tier with that key already exists."
+      no_such_tier: "That tier no longer exists."
+      tier_in_use: "That tier still has readers in it."
+      default_tier_protected: "The Free tier cannot be deleted — new accounts are created in it."
+      invalid_limit: "The daily allowance must be zero or more."
+      invalid_labels: "Both labels are required, up to 40 characters."
+      invalid_key: "A key must start with a letter and use only lower-case letters, digits and underscores."
+      invalid_window: "The end of the window must be in the future, and after its start."
     notifications:
       heading: "Notifications"
       hint: "Send a message to targeted readers as a toast, banner, or blocking modal."
@@ -590,7 +655,7 @@ runtime:
         targetUser: "One account"
         targetRoleUser: "User"
         targetRoleAdmin: "Administrator"
-        tierPlaceholder: "Tier name"
+        tierSelectEmpty: "Choose a tier"
         userIdPlaceholder: "Account ID"
         expiresLabel: "Expires"
         audiencePreviewLabel: "Reaches {count} accounts"
@@ -806,6 +871,7 @@ page:
     standingAria: "Account standing"
     role: "Role"
     tier: "Tier"
+    quota: "Daily questions"
     since: "Since"
     conversations: "Conversations"
     standing: "Standing"
@@ -894,6 +960,7 @@ page:
     contactBody: "Questions about this policy, or a request to exercise a right not yet self-service, can be sent through the product's usual support channel."
 
   chat:
+    quotaCounterAria: "Questions remaining today"
     welcomeLead: "Welcome to"
     welcomeRest: "! Your AI assistant for pharmaceutical regulations in Saudi Arabia. You can:"
     bullet1: "Ask specific questions about regulatory requirements"
@@ -921,6 +988,7 @@ page:
   # the browser (test_rtl.py asserts it), so anything JS must draw belongs
   # under runtime.admin instead.
   admin:
+    tiersHint: "A tier is a group of readers who share one daily allowance. Changes take effect on each reader's next question."
     title: "Administration · SFDA Copilot"
     consoleLabel: "Administration"
     skipToContent: "Skip to console"
@@ -933,4 +1001,5 @@ page:
       people: "Users"
       audit: "Activity"
       notifications: "Notifications"
+      tiers: "Tiers"
     searchLabel: "Search by email"

@@ -1,5 +1,6 @@
-STATUS: PROPOSAL for questions 1-3 — recommended, none taken, awaiting the operator's
-sign-off and, for question 1, a lawyer's. **Question 4 is IMPLEMENTED, 2026-08-28** — the
+STATUS: PROPOSAL for questions 1-2 — recommended, none taken, awaiting the operator's
+sign-off and, for question 1, a lawyer's. **Question 3 is IMPLEMENTED, 2026-09-03** — the
+table was dropped exactly as §3 recommends; see the notice at the top of §3. **Question 4 is IMPLEMENTED, 2026-08-28** — the
 operator decided the opposite of this document's original recommendation, and §4 now
 carries the full buildable design, its review history, and its shipped migrations, code
 and tests in place of that recommendation. Applied and verified against the live
@@ -284,6 +285,17 @@ Three migrations and one frontend change, in order — schema before code, per t
 
 ## 3. `chatbot_settings`
 
+> **IMPLEMENTED 2026-09-03.** `public.chatbot_settings` was dropped by migration
+> `20260903200806_drop_chatbot_settings.sql`, as the reader-quota work (`docs/reader-quota-plan.md`)
+> was the "next time somebody is in the schema with a reason" this section was waiting for.
+> The evidence rule 7 asks for was gathered immediately before applying and is recorded in the
+> migration header: 0 rows, 0 inbound and 0 outbound foreign keys, 0 triggers, 0 RLS policies,
+> 0 dependent views, 0 functions naming it, and no match for `chatbot_settings` anywhere in
+> `web/`, `static/` or `scripts/`. Its three assertion rows were removed from
+> `supabase/tests/privileges.test.sql` and its row from the standing-findings register in
+> `supabase/README.md` in the same commit. The recommendation below is kept as written, because
+> the reasoning is the record of why it was safe.
+
 ### The recommendation
 
 **Drop it — in its own migration, the next time the schema is being touched anyway. It is not
@@ -307,10 +319,11 @@ there is no cost to waiting for the next time somebody is in the schema with a r
 
 ### What to implement
 
-One migration, when convenient: `..._drop_chatbot_settings.sql`, recording the row count, the
-absent foreign keys in both directions, the absent triggers, and the grep that proves nothing
-reads it — as rule 7 requires. Then delete its row from the standing-findings register in
-`supabase/README.md` and close the `TODO.md` entry.
+~~One migration, when convenient~~ — **done, 2026-09-03**, as
+`20260903200806_drop_chatbot_settings.sql`: the row count, the absent foreign keys in both
+directions, the absent triggers and the grep that proves nothing reads it are all recorded in
+its header, as rule 7 requires. Its row is out of the standing-findings register in
+`supabase/README.md` and the `TODO.md` entry is closed.
 
 ---
 

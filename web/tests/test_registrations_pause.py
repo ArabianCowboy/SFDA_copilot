@@ -406,15 +406,26 @@ def test_a_missing_or_null_lang_is_still_accepted(client):
     assert response.status_code == 201
 
 
-# No `test_signup_is_rate_limited` here. `create_app` sets
-# `RATELIMIT_ENABLED=not testing` (app.py, `_configure_app`), and
-# Flask-Limiter reads that once at `init_app` and binds it to `self.enabled`
-# — there is no live app.config it re-reads per request, and the extension
-# instance itself is never retained anywhere `create_app`'s caller can reach
-# to flip it back on for one test. That is a real gap (recover_api's own
-# rate limit has never had a test either, for the same reason), not
-# something this migration introduces; noted rather than worked around with
-# something that reaches into flask_limiter's private state.
+# No `test_signup_is_rate_limited` here, but the reason has been narrowed since
+# this comment was first written (2026-09-03).
+#
+# The conclusion still holds: `create_app` sets `RATELIMIT_ENABLED=not testing`
+# (app.py, `_configure_app`), Flask-Limiter reads that once at `init_app` and
+# binds it to `self.enabled`, and there is no live app.config it re-reads per
+# request. What is NOT true is the old claim that the extension instance "is
+# never retained anywhere `create_app`'s caller can reach" — it is, at
+# `app.config["_LIMITER_INSTANCE"]`. Flipping it there still does not work,
+# though, and for a better reason: `init_app` RETURNS EARLY when the flag is
+# false, before it builds storage or registers its `before_request` hook, so a
+# later `enabled = True` enforces nothing and `reset()` raises on the storage
+# that was never created. The app has to be BUILT with the limiter on.
+#
+# `create_app(testing=True, enforce_rate_limits=True)` now does exactly that,
+# and web/tests/test_rate_limit_keys.py uses it to cover the chat limit, the
+# decorator order, and the five route limits that turned out to be registered
+# and never enforced. Signup and recover_api still have no such test — that gap
+# is real and unchanged — but it is now a gap somebody could close in an
+# afternoon rather than one the harness forbids.
 
 
 def test_only_allow_listed_metadata_keys_are_forwarded(client):

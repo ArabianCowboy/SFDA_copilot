@@ -466,6 +466,12 @@ const App = {
               return;
             }
             AuthView.renderAdminAffordance(!!identity?.is_admin);
+            /* Seeds the counter at sign-in, guarded by the same checkId and
+               user_id checks that guard the admin affordance above — a stale
+               answer must not paint another reader's allowance. Every later
+               update rides a `done` frame; identity is never re-fetched to
+               refresh a number. */
+            UI.updateQuotaCounter(identity?.quota ?? null);
           })
           .catch((err) => {
             if ((AppState.get('identityCheckId') || 0) !== checkId) return;

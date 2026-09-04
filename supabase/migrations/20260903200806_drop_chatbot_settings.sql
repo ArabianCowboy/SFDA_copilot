@@ -1,0 +1,25 @@
+-- DESTRUCTIVE, AND ALONE IN ITS OWN MIGRATION (supabase/README.md rule 2).
+--
+-- public.chatbot_settings is a dead artifact of an abandoned design. The
+-- decision to drop it is docs/data-policy-decisions.md §3 ("Drop it, in its own
+-- migration, next time the schema is touched. Not urgent."), and this feature is
+-- that next time.
+--
+-- EVIDENCE GATHERED IMMEDIATELY BEFORE APPLYING (README rule 7 -- record the
+-- state a destructive migration destroys):
+--   * rows                        = 0
+--   * inbound foreign keys        = 0   (nothing references it)
+--   * outbound foreign keys       = 0
+--   * triggers (non-internal)     = 0
+--   * RLS policies                = 0
+--   * dependent views/rules       = 0
+--   * functions naming it in body = 0
+--   * grep over web/, static/, scripts/ for "chatbot_settings" = no matches
+-- The only reference anywhere in the repository was supabase/tests/privileges.test.sql,
+-- whose three assertion rows are removed in this same commit -- otherwise the
+-- suite fails against a table that no longer exists.
+--
+-- No `cascade`: with zero dependents it is unnecessary, and a bare `drop table`
+-- FAILS LOUDLY if that assessment is somehow wrong, which is the behaviour worth
+-- having on a destructive change. Recoverable from git history if ever needed.
+drop table public.chatbot_settings;

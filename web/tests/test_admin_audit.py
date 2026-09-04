@@ -260,7 +260,7 @@ def test_a_rejected_identity_publication_does_not_authorize_its_own_request(monk
             # While "this" lookup was in flight, a newer one published a
             # demotion. Publication must reject us, and so must the answer.
             cache.put(IdentityFlags(user_id, email, "user", "free", False))
-            return IdentityFlags(user_id, email, "admin", "internal", False)
+            return IdentityFlags(user_id, email, "admin", "staff", False)
 
     monkeypatch.setattr(admin_store, "get_admin_backend", lambda: SlowStaleAdmin())
 

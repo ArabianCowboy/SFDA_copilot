@@ -118,3 +118,94 @@ def test_report_current_violation_count(capsys):
         for name, count in total.items():
             print(f"    {name:<18} {count}")
         print(f"    {'TOTAL':<18} {sum(total.values())}")
+
+
+# ── Every class the console names has to exist ───────────────────────────────
+#
+# The Tiers tab and the daily-allowance card shipped referencing `admin-btn`,
+# `admin-btn-quiet` and `admin-hint`, none of which any stylesheet defined. The
+# browser does not complain about a class that matches no rule, so the console
+# rendered raw user-agent buttons and full-size body text beside the styled
+# controls it was meant to match, and 80 passing browser tests said nothing —
+# they assert what is on the page, and an unstyled button is still on the page.
+#
+# Scoped to the `admin-` prefix on purpose: this repo owns every one of those
+# names, so an unmatched one is always a typo or an invention, never a class
+# from Bootstrap or a CDN.
+
+JS_DIR = Path(__file__).resolve().parents[2] / "static" / "js" / "admin"
+ADMIN_TEMPLATE = Path(__file__).resolve().parents[1] / "templates" / "admin.html"
+
+# `className = '…'`, `classList.add('…')`, and a template literal's static head.
+_JS_CLASS_SITES = re.compile(
+    r"""className\s*=\s*[`'"]([^`'"$]*)|classList\.(?:add|toggle|remove)\(([^)]*)\)"""
+)
+_HTML_CLASS_SITES = re.compile(r'class="([^"]*)"')
+_ADMIN_CLASS = re.compile(r"\badmin-[a-z0-9-]+")
+
+
+def _referenced_admin_classes() -> dict[str, set[str]]:
+    """Every `admin-*` class named from a class attribute or assignment."""
+    found: dict[str, set[str]] = {}
+    for path in sorted(JS_DIR.glob("*.js")):
+        text = path.read_text(encoding="utf-8")
+        names: set[str] = set()
+        for head, listed in _JS_CLASS_SITES.findall(text):
+            # A name cut short by an interpolation (`admin-status-${…}`) is a
+            # fragment, not a class. Its concrete forms are checked when they
+            # appear in the stylesheet, which is where they are written out.
+            names.update(n for n in _ADMIN_CLASS.findall(f"{head} {listed}") if not n.endswith("-"))
+        if names:
+            found[path.name] = names
+    template = ADMIN_TEMPLATE.read_text(encoding="utf-8")
+    names = set()
+    for value in _HTML_CLASS_SITES.findall(template):
+        names.update(_ADMIN_CLASS.findall(value))
+    if names:
+        found[ADMIN_TEMPLATE.name] = names
+    return found
+
+
+# Names that are hooks, not styling: a JS or test selector, or a semantic
+# marker on an element the browser is already told what to do with. Each is
+# listed with why it draws nothing, so the next unmatched class is read as the
+# defect it almost always is rather than waved through as "probably another
+# one of those".
+STRUCTURAL_ONLY = {
+    # Duplicates `#admin-console`, whose only behaviour is the `hidden`
+    # attribute `ui.js` removes once identity comes back.
+    "admin-console",
+    # Every panel is laid out by `.admin-panel-body` inside it and shown or
+    # hidden by `hidden`; the section itself needs no box of its own.
+    "admin-panel",
+    # Inherits the brand's own type. It exists so the wordmark can be found.
+    "admin-brand-name",
+}
+
+
+def _defined_class_selectors() -> set[str]:
+    body = "\n".join(p.read_text(encoding="utf-8") for p in CSS_DIR.glob("*.css"))
+    body = BLOCK_COMMENTS.sub("", body)
+    return set(re.findall(r"\.(admin-[a-z0-9-]+)", body))
+
+
+def test_the_class_scan_finds_something_to_check():
+    """A regex that matched nothing would pass the test below vacuously."""
+    referenced = _referenced_admin_classes()
+    assert referenced, "no admin-* classes found; the extraction is broken"
+    assert len(_defined_class_selectors()) > 40
+
+
+def test_every_admin_class_named_in_the_console_has_a_rule():
+    defined = _defined_class_selectors()
+    known = defined | STRUCTURAL_ONLY
+    missing = {
+        source: sorted(names - known)
+        for source, names in _referenced_admin_classes().items()
+        if names - known
+    }
+    assert not missing, (
+        "these classes are applied but no stylesheet defines them, so they "
+        "render as nothing at all:\n"
+        + "\n".join(f"  {source}: {', '.join(names)}" for source, names in missing.items())
+    )

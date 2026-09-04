@@ -400,6 +400,29 @@ export const Handlers = {
         return;
       }
 
+      /* The day's allowance is spent. Like account_disabled and unlike every
+         other failure here: the server understood perfectly and the answer is
+         "not today", so the reader gets an explanation rather than
+         "something went wrong" — which would send them retrying a thing that
+         cannot work until midnight. No error toast, no error mascot. */
+      if (error?.code === 'quota_exhausted') {
+        /* Remove the bubble addMessage drew before the request left. Left in
+           place it is an unanswered turn that isTranscriptTurn counts, and it
+           duplicates the text about to go back into the composer. */
+        UI.removePendingUserTurn(queryText);
+        UI.showQuotaNotice(error.quota);
+        UI.updateQuotaCounter({ ...error.quota, remaining: 0 });
+        /* The question is not lost — but a draft the reader has typed SINCE is
+           newer than this one and must not be overwritten by it. */
+        const composer = DOMCache.get(CONFIG.SELECTORS.QUERY_INPUT);
+        if (composer && !composer.value.trim()) {
+          composer.value = queryText;
+          UI.autoResizeInput?.(composer);
+        }
+        RobotStateManager.resetToIdle();
+        return;
+      }
+
       UI.addMessage(I18n.t('chat.genericError'), 'bot');
       ErrorHandler.showToast(I18n.t('chat.sendFailed'), true);
       RobotStateManager.showError();
@@ -1066,6 +1089,10 @@ export const Handlers = {
     // turns out incomplete — so it needs an explicit hide here, or reader A's
     // strip survives on screen for reader B if B's own profile is complete.
     UI.hideProfileCompletionNotice();
+    // Reader A's allowance is not reader B's business, and `clearTranscript`
+    // only detaches turns -- this notice carries `data-non-turn`.
+    UI.hideQuotaNotice();
+    UI.updateQuotaCounter(null);
     /* The sidebar moves with everything else scoped to the reader who left.
        These rows are their own opening questions, and the app lives at "/" so
        nothing reloads on the way out — leaving them drawn behind the landing
@@ -1390,8 +1417,10 @@ export const Handlers = {
           error: (d) => {
             failed = failed || d;
           },
-          done: () => {
-            /* terminal; the reader loop ends on its own */
+          done: (d) => {
+            /* The counter rides the frame the stream already sends — no extra
+               round trip, and never a re-fetch of identity after an answer. */
+            UI.updateQuotaCounter(d?.quota ?? null);
           },
         },
         requestId,
@@ -1565,6 +1594,9 @@ export const Handlers = {
          reply that already landed cannot be called back. What this declines is
          appending it to a conversation that no longer exists. */
       if (generation !== resetGeneration) return;
+
+      /* Same field, same renderer, the blocking twin of the `done` frame. */
+      UI.updateQuotaCounter(data?.quota ?? null);
 
       UI.toggleTypingIndicator(false);
       RobotStateManager.startTalking();

@@ -15,10 +15,17 @@
 import { I18n } from '../modules/i18n.js';
 import { iconElement, iconMarkup } from '../modules/icons.js';
 
+/* IN TEMPLATE ORDER, and this list is load-bearing: `selectTab` hides every
+   panel it knows about and unhides the one it was given, so a tab present in
+   admin.html but MISSING here renders as a completely blank console — the
+   heading and the hint vanish with the panel, which reads as a broken page
+   rather than a missing entry. `test_admin_page.py` pins this list against the
+   template's own buttons so the two cannot drift again. */
 const TABS = [
   { tab: 'tab-overview', panel: 'panel-overview' },
   { tab: 'tab-settings', panel: 'panel-settings' },
   { tab: 'tab-people', panel: 'panel-people' },
+  { tab: 'tab-tiers', panel: 'panel-tiers' },
   { tab: 'tab-audit', panel: 'panel-audit' },
   { tab: 'tab-notifications', panel: 'panel-notifications' },
 ];
@@ -1136,7 +1143,11 @@ function emailVerifiedKey(value) {
   return 'admin.account.emailVerifiedUnknown';
 }
 
-function fact(list, label, { when = null, text = null, machine = false } = {}) {
+function fact(
+  list,
+  label,
+  { when = null, text = null, node = null, machine = false, tone = '' } = {},
+) {
   const cell = document.createElement('div');
   cell.className = 'admin-fact';
 
@@ -1144,6 +1155,7 @@ function fact(list, label, { when = null, text = null, machine = false } = {}) {
   dt.textContent = label;
 
   const dd = document.createElement('dd');
+  if (tone) dd.classList.add(tone);
   if (when) {
     dd.textContent = relativeWhen(when) || '';
     const exact = document.createElement('span');
@@ -1151,6 +1163,8 @@ function fact(list, label, { when = null, text = null, machine = false } = {}) {
     exact.setAttribute('dir', 'ltr');
     exact.textContent = exactWhen(when);
     dd.appendChild(exact);
+  } else if (node) {
+    dd.appendChild(node);
   } else if (machine && text) {
     dd.appendChild(machineValue(text));
   } else {
@@ -1263,7 +1277,224 @@ const PROFILE_FIELDS = [
 
 let currentSelfId = null;
 
-export function renderAccountDetail(account, entries, selfId = null) {
+/**
+ * A labelled control inside a card.
+ *
+ * `.admin-profile-field`, never `.admin-field`. Both exist and they are not
+ * interchangeable: `.admin-field` is the settings tab's page-width row, closed
+ * by its own hairline, and inside a bordered card it draws a rule under every
+ * control and turns the card into a table nobody asked for. The card idiom is
+ * a plain flex column, and it is what the profile form two zones up already
+ * uses — so an operator who has learned to edit a profile has learned to edit
+ * an allowance and a tier as well.
+ */
+function cardField(id, labelText, control, { hints = [], wide = false } = {}) {
+  const wrap = document.createElement('div');
+  wrap.className = wide ? 'admin-profile-field is-wide' : 'admin-profile-field';
+
+  const label = document.createElement('label');
+  label.className = 'admin-label';
+  label.htmlFor = id;
+  label.textContent = labelText;
+
+  control.id = id;
+  wrap.append(label, control);
+  for (const hint of hints) if (hint) wrap.append(hint);
+  return wrap;
+}
+
+/** A quiet line under a control. `.admin-form-hint`, the one hint class this
+    stylesheet actually defines — `admin-hint` was invented by the quota work
+    and matched no rule anywhere, so every hint it labelled rendered as plain
+    body text at full size. */
+function cardHint(text, variant = '') {
+  const line = document.createElement('p');
+  line.className = variant ? `admin-form-hint ${variant}` : 'admin-form-hint';
+  line.textContent = text;
+  return line;
+}
+
+/** A row of controls inside a card, on the profile form's own grid. */
+function cardRow(...fields) {
+  const row = document.createElement('div');
+  row.className = 'admin-profile-fields';
+  row.append(...fields);
+  return row;
+}
+
+/** The Save bar every editor card ends with: one primary action, one note. */
+function cardActions(save, note = null) {
+  const actions = document.createElement('div');
+  actions.className = 'admin-profile-actions';
+  actions.append(save);
+  if (note) actions.append(note);
+  return actions;
+}
+
+/**
+ * Zone 2b: the account's daily allowance.
+ *
+ * Two levels in one form and one Save, because they are one decision: which
+ * group this reader is in, and whether they get something different from it.
+ * Above them, and separated by a rule, is what those two levels currently add
+ * up to — today's count and the moment it goes back to zero. That readout was
+ * the last line of the card before, under the reason field, which put the one
+ * fact an operator opens this zone to read below every control that changes
+ * it.
+ *
+ * The window fields render what is STORED, which is why `admin_get_user`
+ * returns the override row unfiltered. A window that has passed shows as
+ * "Expired {date} — now using the tier's allowance" rather than as a live
+ * number: the row is still there (nothing sweeps it; it simply stops matching
+ * the claim), and printing its value would tell the operator it is in force
+ * when it is not. That line takes `.admin-form-hint.is-warning`, which exists
+ * for exactly this — "the form describes what is stored; this line is for when
+ * that is not what is answering" — and never the alert ramp, because nothing
+ * has malfunctioned.
+ */
+function quotaForm(account, tiers) {
+  const form = document.createElement('form');
+  form.className = 'admin-card admin-editor-card';
+  form.id = 'account-quota-form';
+  form.noValidate = true;
+  form.dataset.userId = account.id;
+
+  /* What is true now, above what may be changed. The same label-over-value
+     cells Zone 1 draws: the count in the mono face because it is a machine
+     tally, the reset as a human reading with the exact stamp beneath it. */
+  const readout = document.createElement('dl');
+  readout.className = 'admin-facts admin-editor-readout';
+  readout.id = 'account-quota-usage';
+  fact(readout, I18n.t('admin.account.usageLabel'), {
+    text: `${account.used_today ?? 0} / ${account.effective_daily_limit ?? 0}`,
+    machine: true,
+  });
+  fact(readout, I18n.t('admin.account.resetsLabel'), { when: account.quota_resets_at });
+
+  /* What is actually in force RIGHT NOW, which is not always what is stored.
+     A window that has passed takes the warn ramp and never the alert one:
+     nothing has malfunctioned, the row simply stopped matching the claim. */
+  if (
+    account.daily_message_limit_override !== null &&
+    account.daily_message_limit_override !== undefined
+  ) {
+    const now = Date.now();
+    const starts = account.override_starts_at ? Date.parse(account.override_starts_at) : null;
+    const expires = account.override_expires_at ? Date.parse(account.override_expires_at) : null;
+    let standing = { text: I18n.t('admin.account.overrideInForce') };
+    if (expires !== null && expires <= now) {
+      standing = {
+        node: stampedSentence('admin.account.overrideExpired', account.override_expires_at),
+        tone: 'is-warning',
+      };
+    } else if (starts !== null && starts > now) {
+      standing = {
+        node: stampedSentence('admin.account.overrideScheduled', account.override_starts_at),
+      };
+    }
+    fact(readout, I18n.t('admin.account.overrideStandingLabel'), standing);
+  }
+  form.append(readout);
+
+  const select = document.createElement('select');
+  select.className = 'admin-input';
+  select.name = 'tier';
+  for (const tier of tiers || []) {
+    const option = document.createElement('option');
+    option.value = tier.key;
+    /* The operator's own label, in their console language — data, not a
+       catalogue key, because a tier they create cannot have one. */
+    option.textContent = I18n.lang === 'ar' ? tier.label_ar : tier.label_en;
+    if (tier.key === account.tier) option.selected = true;
+    select.append(option);
+  }
+
+  const override = document.createElement('input');
+  override.className = 'admin-input';
+  override.name = 'override';
+  override.type = 'number';
+  override.min = '0';
+  override.value =
+    account.daily_message_limit_override === null ||
+    account.daily_message_limit_override === undefined
+      ? ''
+      : String(account.daily_message_limit_override);
+
+  form.append(
+    cardRow(
+      cardField('account-tier', I18n.t('admin.account.tierLabel'), select),
+      cardField('account-quota-override', I18n.t('admin.account.overrideLabel'), override, {
+        hints: [cardHint(I18n.t('admin.account.overrideHint'))],
+      }),
+    ),
+  );
+
+  /* The window, as its own row: two halves of one span, with the note that
+     covers both underneath rather than attached to whichever came last. */
+  const windowFields = [];
+  for (const [name, id, labelKey, value] of [
+    ['starts_at', 'account-quota-starts', 'overrideStartsLabel', account.override_starts_at],
+    ['expires_at', 'account-quota-expires', 'overrideExpiresLabel', account.override_expires_at],
+  ]) {
+    const input = document.createElement('input');
+    input.className = 'admin-input';
+    input.name = name;
+    input.type = 'datetime-local';
+    /* datetime-local wants `YYYY-MM-DDTHH:mm` with no zone or seconds. */
+    input.value = value ? String(value).slice(0, 16) : '';
+    windowFields.push(cardField(id, I18n.t(`admin.account.${labelKey}`), input));
+  }
+  form.append(cardRow(...windowFields), cardHint(I18n.t('admin.account.overrideWindowHint')));
+
+  const reason = document.createElement('input');
+  reason.className = 'admin-input';
+  reason.name = 'reason';
+  reason.type = 'text';
+  reason.maxLength = 500;
+  form.append(
+    cardRow(
+      cardField('account-quota-reason', I18n.t('admin.account.reasonLabel'), reason, {
+        wide: true,
+        hints: [cardHint(I18n.t('admin.account.quotaReasonHint'))],
+      }),
+    ),
+  );
+
+  const save = document.createElement('button');
+  save.type = 'submit';
+  save.className = 'btn btn-primary btn-sm';
+  save.id = 'account-quota-save';
+  save.textContent = I18n.t('admin.account.saveQuota');
+  form.append(cardActions(save, cardHint(I18n.t('admin.account.quotaHint'))));
+  return form;
+}
+
+/**
+ * A sentence with a date isolated inside it.
+ *
+ * This replaced a `toLocaleString(I18n.lang, { dateStyle: 'medium' })` helper,
+ * and in Arabic that was not a cosmetic problem. Intl separates the fields of
+ * an `ar` date with U+200F RIGHT-TO-LEFT MARK — `toLocaleString` returns
+ * `01‏/08‏/2026` for the first of August — and the bidi algorithm reorders
+ * the run around those marks, so the line RENDERED as `2026/08/01`. A date that
+ * says the wrong thing, not one that merely looks odd, in the one sentence on
+ * this card whose whole job is to say when a window closed.
+ *
+ * It is the same trap `exactWhen` was written for one zone up, so this takes
+ * the same way out: build the stamp from parts, with no localised characters in
+ * it at all, and give it its own `dir="ltr"` isolate inside the prose. The
+ * catalogue string is split on its own `{date}` placeholder rather than
+ * interpolated, because interpolation can only produce a string and an isolate
+ * has to be an element.
+ */
+function stampedSentence(key, value) {
+  const [before, after = ''] = String(I18n.t(key)).split('{date}');
+  const line = document.createDocumentFragment();
+  line.append(before, machineValue(dayStamp(value)), after);
+  return line;
+}
+
+export function renderAccountDetail(account, entries, selfId = null, tiers = []) {
   currentSelfId = selfId ?? currentSelfId;
   const detail = openDetailPanel();
   if (!detail) return;
@@ -1420,6 +1651,16 @@ export function renderAccountDetail(account, entries, selfId = null) {
     const profileSection = section(I18n.t('admin.account.profileHeading'));
     profileSection.appendChild(profileForm(account));
     detail.appendChild(profileSection);
+  }
+
+  /* ── Zone 2b: the daily allowance ────────────────────────────────────────
+     Between the facts and the actions: it is a fact about this reader that the
+     operator edits, not an action taken against them. Hidden without a profile,
+     which the RPC refuses anyway (AD003). */
+  if (account.has_profile) {
+    const quotaSection = section(I18n.t('admin.account.quotaHeading'));
+    quotaSection.appendChild(quotaForm(account, tiers));
+    detail.appendChild(quotaSection);
   }
 
   /* ── Zone 3: actions, in increasing severity ─────────────────────────────
@@ -1893,11 +2134,17 @@ function buildComposerForm() {
   roleRow.hidden = true;
   form.appendChild(roleRow);
 
-  const tierInput = document.createElement('input');
-  tierInput.type = 'text';
+  /* A SELECT, not a free-text box. Tiers are rows an operator creates, so a
+     typed key that matches none of them used to send a broadcast to an audience
+     of nobody and report success. Populated by initNotificationsTab; empty until
+     then, which is why the empty option carries its own string. */
+  const tierInput = document.createElement('select');
   tierInput.id = 'notif-target-tier';
   tierInput.className = 'admin-input';
-  tierInput.placeholder = I18n.t('admin.notifications.composer.tierPlaceholder');
+  const emptyOption = document.createElement('option');
+  emptyOption.value = '';
+  emptyOption.textContent = I18n.t('admin.notifications.composer.tierSelectEmpty');
+  tierInput.appendChild(emptyOption);
   const tierRow = notifField('admin.notifications.composer.targetLabel', tierInput);
   tierRow.id = 'notif-target-tier-row';
   tierRow.hidden = true;
@@ -2182,6 +2429,180 @@ export function setBulkSelectionState(count) {
 
 /** The Notifications panel shell: composer at the top, history below. Built
  * once; renderNotificationHistory repaints the table body on its own. */
+/**
+ * The Tiers tab: the operator's view of who shares which daily allowance.
+ *
+ * ONE label column, resolved against the console's own language — not the two
+ * it shipped with. Every other surface in this app that prints an operator's
+ * tier label already picks one (`populateComposerTiers`, the allowance card's
+ * select), and a table that prints both is the only place in the product where
+ * toggling to English still shows you Arabic. Both labels are still stored and
+ * both are still edited, in the form below: what changes here is only what a
+ * reader of this table is shown.
+ *
+ * Labels go in through `textContent`, never `innerHTML` — they are operator
+ * input that every reader will see, and they reach the account page too.
+ *
+ * `free` shows no delete control at all rather than a disabled one: it is
+ * structural (the column default, the literal inside
+ * profiles_guard_privilege_columns, what handle_new_user relies on), so there
+ * is no state in which deleting it is a thing the operator may do.
+ */
+export function renderTiers(tiers, { editingKey = null } = {}) {
+  const body = document.getElementById('tiers-body');
+  if (!body) return;
+  body.textContent = '';
+
+  const table = document.createElement('table');
+  table.className = 'admin-table';
+
+  const head = document.createElement('thead');
+  const headRow = document.createElement('tr');
+  for (const key of ['key', 'label', 'dailyLimit', 'members', 'ordering']) {
+    const th = document.createElement('th');
+    th.scope = 'col';
+    th.textContent = I18n.t(`admin.tiers.${key}`);
+    headRow.append(th);
+  }
+  const actionsTh = document.createElement('th');
+  actionsTh.scope = 'col';
+  actionsTh.textContent = I18n.t('admin.tiers.actions');
+  headRow.append(actionsTh);
+  head.append(headRow);
+  table.append(head);
+
+  const tbody = document.createElement('tbody');
+  for (const tier of tiers || []) {
+    const row = document.createElement('tr');
+    row.dataset.tierKey = tier.key;
+
+    /* The key and the three counts are machine-reported: mono with tabular
+       figures, so a column of numbers does not jitter row to row and the key
+       reads as the identifier it is rather than as a second name. The label is
+       the only human string in the row, and it takes the body face. */
+    const keyCell = document.createElement('td');
+    keyCell.append(machineValue(tier.key));
+    row.append(keyCell);
+
+    const labelCell = document.createElement('td');
+    labelCell.textContent = (I18n.lang === 'ar' ? tier.label_ar : tier.label_en) || '';
+    row.append(labelCell);
+
+    for (const value of [
+      String(tier.daily_message_limit),
+      String(tier.member_count ?? 0),
+      String(tier.ordering ?? 0),
+    ]) {
+      const td = document.createElement('td');
+      td.append(machineValue(value));
+      row.append(td);
+    }
+
+    const actions = document.createElement('td');
+    const group = document.createElement('div');
+    group.className = 'admin-row-actions';
+
+    const edit = document.createElement('button');
+    edit.type = 'button';
+    edit.className = 'btn btn-sm btn-ghost admin-row-action';
+    edit.dataset.tierAction = 'edit';
+    edit.textContent = I18n.t('admin.tiers.edit');
+    group.append(edit);
+
+    if (tier.key !== 'free') {
+      const del = document.createElement('button');
+      del.type = 'button';
+      del.className = 'btn btn-sm btn-ghost admin-row-action is-destructive';
+      del.dataset.tierAction = 'delete';
+      del.textContent = I18n.t('admin.tiers.delete');
+      group.append(del);
+    }
+    actions.append(group);
+    row.append(actions);
+    tbody.append(row);
+  }
+  table.append(tbody);
+  body.append(table);
+
+  // One inline form, reused for create and edit. `editingKey` decides which,
+  // and the key field is read-only while editing: renaming a key would have to
+  // cascade through profiles.tier and every notification targeting it, and the
+  // console deliberately offers no rename.
+  const editing = (tiers || []).find((t) => t.key === editingKey) || null;
+  const zone = section(I18n.t(editing ? 'admin.tiers.editHeading' : 'admin.tiers.addHeading'));
+
+  const form = document.createElement('form');
+  form.className = 'admin-card admin-editor-card is-measured';
+  form.id = 'tier-form';
+  if (editing) form.dataset.editingKey = editing.key;
+
+  const controls = [];
+  for (const [labelKey, name, type, value] of [
+    ['key', 'key', 'text', editing ? editing.key : ''],
+    ['labelEn', 'label_en', 'text', editing ? editing.label_en : ''],
+    ['labelAr', 'label_ar', 'text', editing ? editing.label_ar : ''],
+    ['dailyLimit', 'daily_message_limit', 'number', editing ? editing.daily_message_limit : ''],
+    ['ordering', 'ordering', 'number', editing ? (editing.ordering ?? 0) : 0],
+  ]) {
+    const input = document.createElement('input');
+    input.className = 'admin-input';
+    input.name = name;
+    input.type = type;
+    input.value = value === null || value === undefined ? '' : String(value);
+    if (type === 'number') input.min = '0';
+    if (name === 'key' && editing) input.readOnly = true;
+    /* Two labels, one per script, each typed in its own. `dir="auto"` keeps an
+       Arabic label from being laid out left-to-right in an English console and
+       an English one from being flipped in an Arabic console. */
+    if (name === 'label_en' || name === 'label_ar') input.dir = 'auto';
+
+    controls.push(cardField(`tier-${name}`, I18n.t(`admin.tiers.${labelKey}`), input));
+  }
+  form.append(
+    cardRow(...controls),
+    cardHint(I18n.t('admin.tiers.labelsHint')),
+    cardHint(I18n.t('admin.tiers.keyHint')),
+  );
+
+  const save = document.createElement('button');
+  save.type = 'submit';
+  save.className = 'btn btn-primary btn-sm';
+  save.textContent = I18n.t('admin.tiers.save');
+
+  const actions = cardActions(save);
+  if (editing) {
+    const cancel = document.createElement('button');
+    cancel.type = 'button';
+    cancel.className = 'btn btn-sm btn-ghost';
+    cancel.dataset.tierAction = 'cancel';
+    cancel.textContent = I18n.t('admin.tiers.cancel');
+    actions.append(cancel);
+  }
+  form.append(actions);
+
+  zone.append(form);
+  body.append(zone);
+}
+
+/** Fill the composer's tier select from the live catalogue. */
+export function populateComposerTiers(tiers) {
+  const select = document.getElementById('notif-target-tier');
+  if (!select) return;
+  const chosen = select.value;
+  select.textContent = '';
+  const empty = document.createElement('option');
+  empty.value = '';
+  empty.textContent = I18n.t('admin.notifications.composer.tierSelectEmpty');
+  select.appendChild(empty);
+  for (const tier of tiers || []) {
+    const option = document.createElement('option');
+    option.value = tier.key;
+    option.textContent = I18n.lang === 'ar' ? tier.label_ar : tier.label_en;
+    select.appendChild(option);
+  }
+  if (chosen) select.value = chosen;
+}
+
 export function renderNotificationsPanel() {
   const body = el('notifications-body');
   if (!body) return;

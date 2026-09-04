@@ -41,9 +41,12 @@ from flask import (
     render_template,
     request,
 )
-from flask_limiter.util import get_remote_address
 
 logger = logging.getLogger(__name__)
+
+# The same shape public.tiers.key enforces in SQL. Named here so the route
+# refuses a bad key with a mapped 422 before the RPC ever sees it.
+TIER_KEY_RE = re.compile(r"[a-z][a-z0-9_]{0,31}")
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
 
@@ -70,30 +73,6 @@ def _bearer_token() -> str | None:
         return None
     token = header[len("Bearer ") :].strip()
     return token or None
-
-
-def _admin_notification_rate_key() -> str:
-    """Per-administrator, not per-IP, and not `g.identity.user_id` either.
-
-    Flask-Limiter's own extension-level ``before_request`` runs BEFORE this
-    blueprint's own (``_gate`` below) — the same ordering
-    ``web/api/app.py``'s ``_account_rate_key`` documents and works around —
-    so `g.identity` is not populated yet when a decorator-applied rate-limit
-    key function evaluates. Hashing the bearer token itself gets the same
-    per-administrator isolation `notification_broadcast_api` needs (a
-    compromised admin account spamming via multiple IPs, or several admins
-    behind one office NAT sharing one budget) without a second
-    `supabase.auth.get_user` round trip just to compute a rate key.
-    """
-    from web.utils.hashing import sha256_hex
-
-    header = request.headers.get("Authorization", "")
-    if not header.startswith("Bearer "):
-        return get_remote_address()
-    token = header[len("Bearer ") :].strip()
-    if not token:
-        return get_remote_address()
-    return sha256_hex(token)
 
 
 @admin_bp.before_request
@@ -1006,6 +985,193 @@ def patch_user(user_id: str) -> Response | tuple[Response, int]:
     return jsonify({"user": user_payload})
 
 
+# ── Tiers and the reader quota ───────────────────────────────────────────────
+# docs/reader-quota-plan.md §5. Every route here is gated by `_gate` above
+# (bearer token, verified, is_admin) and every mutation re-validates the actor
+# INSIDE the RPC's transaction, so a demotion between the two cannot be raced.
+
+
+def _tier_payload():
+    """Shared validation for create and update. Returns (fields, error)."""
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return None, (jsonify({"error": "invalid_payload"}), 400)
+
+    label_en = payload.get("label_en")
+    label_ar = payload.get("label_ar")
+    limit = payload.get("daily_message_limit")
+    ordering = payload.get("ordering")
+
+    for label in (label_en, label_ar):
+        if label is not None and (not isinstance(label, str) or not 1 <= len(label.strip()) <= 40):
+            return None, (jsonify({"error": "invalid_labels"}), 422)
+    # `bool` is a subclass of `int`, so True would otherwise become a limit of 1.
+    if limit is not None and (isinstance(limit, bool) or not isinstance(limit, int) or limit < 0):
+        return None, (jsonify({"error": "invalid_limit"}), 422)
+    if ordering is not None and (isinstance(ordering, bool) or not isinstance(ordering, int)):
+        return None, (jsonify({"error": "invalid_payload"}), 400)
+
+    return {
+        "label_en": label_en.strip() if isinstance(label_en, str) else None,
+        "label_ar": label_ar.strip() if isinstance(label_ar, str) else None,
+        "daily_message_limit": limit,
+        "ordering": ordering,
+    }, None
+
+
+@admin_bp.route("/api/tiers", methods=["GET"])
+def list_tiers() -> Response | tuple[Response, int]:
+    backend = current_app.config["admin_backend"]()
+    if backend is None:
+        return jsonify({"error": "storage_unavailable"}), 503
+    return jsonify({"tiers": backend.list_tiers()})
+
+
+@admin_bp.route("/api/tiers", methods=["POST"])
+def create_tier() -> Response | tuple[Response, int]:
+    from web.services.admin_store import AdminActionRefused
+    from web.services.audit import actor_from_request
+
+    fields, error = _tier_payload()
+    if error:
+        return error
+    payload = request.get_json(silent=True) or {}
+    key = payload.get("key")
+    if not isinstance(key, str) or not TIER_KEY_RE.fullmatch(key):
+        return jsonify({"error": "invalid_key"}), 422
+    if fields["label_en"] is None or fields["label_ar"] is None:
+        return jsonify({"error": "invalid_labels"}), 422
+    if fields["daily_message_limit"] is None:
+        return jsonify({"error": "invalid_limit"}), 422
+
+    backend = current_app.config["admin_backend"]()
+    if backend is None:
+        return jsonify({"error": "storage_unavailable"}), 503
+    try:
+        tier = backend.create_tier(key=key, actor=actor_from_request(g.identity), **fields)
+    except AdminActionRefused as refused:
+        return jsonify({"error": refused.code}), 409
+    logger.info("%s created tier %s", g.identity.email, key)
+    return jsonify({"tier": tier})
+
+
+@admin_bp.route("/api/tiers/<key>", methods=["PATCH"])
+def update_tier(key: str) -> Response | tuple[Response, int]:
+    from web.services.admin_store import AdminActionRefused
+    from web.services.audit import actor_from_request
+
+    fields, error = _tier_payload()
+    if error:
+        return error
+    backend = current_app.config["admin_backend"]()
+    if backend is None:
+        return jsonify({"error": "storage_unavailable"}), 503
+    try:
+        tier = backend.update_tier(key, actor=actor_from_request(g.identity), **fields)
+    except AdminActionRefused as refused:
+        return jsonify({"error": refused.code}), 409
+    # A limit change alters what every member of this tier may ask next, and the
+    # flags cache carries `tier`. Evicting the whole cache is the honest move:
+    # the console has just changed a fact about a GROUP, not about one account.
+    _evict_identity_caches(None)
+    logger.info("%s updated tier %s", g.identity.email, key)
+    return jsonify({"tier": tier})
+
+
+@admin_bp.route("/api/tiers/<key>", methods=["DELETE"])
+def delete_tier(key: str) -> Response | tuple[Response, int]:
+    from web.services.admin_store import AdminActionRefused
+    from web.services.audit import actor_from_request
+
+    backend = current_app.config["admin_backend"]()
+    if backend is None:
+        return jsonify({"error": "storage_unavailable"}), 503
+    try:
+        tier = backend.delete_tier(key, actor=actor_from_request(g.identity))
+    except AdminActionRefused as refused:
+        return jsonify({"error": refused.code}), 409
+    logger.info("%s deleted tier %s", g.identity.email, key)
+    return jsonify({"tier": tier})
+
+
+@admin_bp.route("/api/users/<user_id>/quota", methods=["PUT"])
+def put_user_quota(user_id: str) -> Response | tuple[Response, int]:
+    """Set an account's tier and its per-account override, in one transaction.
+
+    A PUT OF THE WHOLE QUOTA STATE, and every key must be present. The RPC's
+    nulls are asymmetric on purpose -- `tier: null` means "leave it alone",
+    `daily_message_limit_override: null` means "clear it" -- so a partial body
+    would turn "I did not send that field" into "delete it". Requiring all four
+    keys makes that impossible to do by accident.
+    """
+    from web.services.admin_store import AdminActionRefused
+    from web.services.audit import actor_from_request
+
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return jsonify({"error": "invalid_payload"}), 400
+    required = {
+        "tier",
+        "daily_message_limit_override",
+        "override_starts_at",
+        "override_expires_at",
+    }
+    if not required.issubset(payload):
+        return jsonify({"error": "invalid_payload"}), 400
+
+    tier = payload.get("tier")
+    override = payload.get("daily_message_limit_override")
+    starts_at = payload.get("override_starts_at")
+    expires_at = payload.get("override_expires_at")
+    reason = payload.get("reason")
+
+    if tier is not None and not isinstance(tier, str):
+        return jsonify({"error": "invalid_payload"}), 400
+    if override is not None and (
+        isinstance(override, bool) or not isinstance(override, int) or override < 0
+    ):
+        return jsonify({"error": "invalid_limit"}), 422
+    for stamp in (starts_at, expires_at):
+        if stamp is not None and not isinstance(stamp, str):
+            return jsonify({"error": "invalid_window"}), 422
+    if reason is not None and not isinstance(reason, str):
+        return jsonify({"error": "invalid_payload"}), 400
+    reason = (reason or "").strip() or None
+
+    # Required when SETTING an override, mirroring the disable-reason rule and
+    # enforced in the same place -- at the route, not in the RPC. Its own code:
+    # the existing `reason_required` string is hardcoded to "A reason is required
+    # to disable chat access", which would tell an operator setting an allowance
+    # that chat access cannot be disabled.
+    if override is not None and not reason:
+        return jsonify({"error": "quota_reason_required"}), 422
+
+    backend = current_app.config["admin_backend"]()
+    if backend is None:
+        return jsonify({"error": "storage_unavailable"}), 503
+    try:
+        result = backend.set_reader_quota(
+            user_id,
+            tier=tier,
+            override=override,
+            starts_at=starts_at,
+            expires_at=expires_at,
+            reason=reason,
+            actor=actor_from_request(g.identity),
+        )
+    except AdminActionRefused as refused:
+        logger.warning(
+            "Refused a quota change on %s by %s: %s", user_id, g.identity.email, refused.code
+        )
+        return jsonify({"error": refused.code}), 409
+
+    # Before returning, for the reason patch_user gives: an operator must never
+    # watch their own change fail to take effect.
+    _evict_identity_caches(user_id)
+    logger.info("%s set the quota for %s", g.identity.email, user_id)
+    return jsonify({"quota": result})
+
+
 @admin_bp.route("/api/audit")
 def audit() -> Response | tuple[Response, int]:
     """Recorded actions, newest first.
@@ -1094,6 +1260,19 @@ def _validate_notification_targeting(payload: dict) -> tuple[dict, Response | tu
         if not isinstance(target_tier, str) or not target_tier.strip():
             return None, (jsonify({"error": "invalid_target_tier"}), 422)
         target_tier = target_tier.strip()
+        # Checked against the CATALOGUE, not merely for non-emptiness. Tiers are
+        # rows now, so a typo here used to broadcast to an audience of nobody --
+        # silently, with a successful 200 and a delivery count of zero. A tier
+        # that does not exist is a mistake worth refusing.
+        backend = current_app.config["admin_backend"]()
+        if backend is not None:
+            try:
+                known = {row["key"] for row in backend.list_tiers()}
+            except Exception:
+                logger.exception("Could not read tiers to validate a broadcast target")
+                known = None
+            if known is not None and target_tier not in known:
+                return None, (jsonify({"error": "invalid_target_tier"}), 422)
         target_role = None
         target_user_id = None
     elif target_kind == "user":

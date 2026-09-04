@@ -154,6 +154,16 @@ def _history_without_stale_markers(
     ]
 
 
+class GenerationFailed(RuntimeError):
+    """The model was called and produced nothing usable.
+
+    Distinct from an empty answer, which is a legitimate (if unhelpful) result.
+    This means the call itself failed -- auth, rate limit, timeout, transport --
+    so the caller must NOT treat whatever it has as an answer, and must not
+    charge a quota for it.
+    """
+
+
 class OpenAIHandler:
     """Handles interactions with the OpenAI API for generating responses."""
 
@@ -453,12 +463,23 @@ class OpenAIHandler:
             answer = "".join(
                 self.stream_response(query, search_results, category, chat_history, lang)
             ).strip()
-        except Exception:
+        except Exception as exc:
+            # RAISES rather than returning apology prose, since 2026-09-03.
+            #
+            # This used to swallow every failure and return
+            # "I'm sorry, I encountered an error…" as though it were an answer.
+            # The caller could not tell a provider outage from a real response, so
+            # the blocking route finalized the apology, PERSISTED it into the
+            # reader's durable history as a regulatory answer, and returned 200.
+            # With a daily allowance on this path it would also have CHARGED the
+            # reader for it, and never refunded -- the refund exists precisely for
+            # "the model never answered", which is exactly this case.
+            #
+            # `handle_chat` catches this and answers 503 without spending the
+            # allowance. Nothing else calls this method; `scripts/eval_citations.py`
+            # uses `stream_response` directly.
             logger.error("Error generating OpenAI response", exc_info=True)
-            return (
-                "I'm sorry, I encountered an error while generating a response. Please try again.",
-                [],
-            )
+            raise GenerationFailed("the model did not produce an answer") from exc
 
         if answer:
             logger.info("  Actual Output Tokens: %d", len(self.tokenizer.encode(answer)))

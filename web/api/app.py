@@ -143,6 +143,8 @@ for _name in ("httpx", "httpcore", "huggingface_hub"):
 # ──────────────────────────────────────────────────────────
 # Application-Specific Imports (after logger setup)
 # ──────────────────────────────────────────────────────────
+from datetime import datetime
+
 from web.api.auth import (
     IDENTITY_MARKER_KEYS,
     auth_bp,
@@ -188,7 +190,13 @@ from web.services.notification_store import (
     InMemoryNotificationBackend,
     get_notification_backend,
 )
-from web.services.openai_app import OpenAIHandler
+from web.services.openai_app import GenerationFailed, OpenAIHandler
+from web.services.quota_store import (
+    InMemoryQuotaBackend,
+    QuotaClaim,
+    QuotaUnavailable,
+    get_quota_backend,
+)
 from web.services.search_engine import ImprovedSearchEngine, SearchResult
 from web.services.search_exceptions import ManifestValidationError, SearchEngineError
 from web.services.settings_service import SettingsService
@@ -199,7 +207,6 @@ from web.services.token_verification_cache import (
     VerifiedIdentity,
 )
 from web.utils.config_loader import config
-from web.utils.hashing import sha256_hex
 from web.utils.i18n import (
     load_catalog,
     make_translator,
@@ -255,7 +262,7 @@ SUPPORTED_FAQ_LANGS = ("en", "ar")
 # that mixes a fresh template with a stale module is worse than a stale page —
 # post-icon-migration it would render an <i class="bi"> with no icon font behind
 # it, or print a glyph NAME as text. MODULE_IMPORT_MAP below closes that.
-ASSET_VERSION = "warm63"
+ASSET_VERSION = "warm68"
 
 # Product release, rendered in the landing footer. The single source — do not
 # hand-type this value into a JS docstring or any other comment; that duplication
@@ -376,7 +383,7 @@ def _bind_session_to_identity(identity: str) -> None:
 _TESTING_IDENTITIES: tuple[tuple[str, IdentityFlags], ...] = (
     (
         "fake_admin_token",
-        IdentityFlags("test-admin-id", "admin@example.com", "admin", "internal", False),
+        IdentityFlags("test-admin-id", "admin@example.com", "admin", "staff", False),
     ),
     (
         "fake_disabled_token",
@@ -807,28 +814,142 @@ def _chat_persistence() -> Any | None:
     return factory() if factory else None
 
 
-def _account_rate_key() -> str:
-    """Per-reader, not per-IP (docs/profile-refactor-plan.md's R4 finding: an
-    office behind one NAT must not share one budget for a Data-rights action).
+def _quota() -> Any | None:
+    """The daily-allowance backend for this request, or None."""
+    factory = current_app.config.get("quota_backend")
+    return factory() if factory else None
 
-    Flask-Limiter's own `before_request` hook runs BEFORE this app's
-    blueprint-level ones — `account_bp`'s `_gate` included — so `g.identity`
-    is not set yet when this key function runs; re-authenticating here to get
-    it would be a second `supabase.auth.get_user` round trip on every rate
-    key evaluation, on top of the one `_gate` already makes. Hashing the
-    bearer token itself gets the same per-reader isolation without that cost:
-    it is unique per session and stable for the reader across requests, which
-    is all a rate-limit key needs to be. No header at all falls back to IP —
-    `_gate` refuses the request anyway once this function returns, so the key
-    only needs to be reasonable, not exact.
+
+def _default_daily_limit() -> int:
+    """The shipped default, passed to the RPC as its last-resort leg.
+
+    The tier row is the runtime authority; this only ever applies to an account
+    with no profile whose `free` tier is also missing, and the RPC logs loudly
+    when it fires.
     """
-    header = request.headers.get("Authorization", "")
-    if not header.startswith("Bearer "):
-        return get_remote_address()
-    token = header[len("Bearer ") :].strip()
-    if not token:
-        return get_remote_address()
-    return sha256_hex(token)
+    return int(config.get("server", "quota", {}).get("daily_messages_default", 200))
+
+
+def _claim_daily_message() -> QuotaClaim | None:
+    """Spend one message against today's allowance.
+
+    Returns None when the allowance could not be consulted at all, which the
+    caller treats as "stream it uncounted" (ruling 3: an allowance is not a
+    credential, and a transport blip must not take chat down).
+
+    `QuotaUnavailable` is deliberately NOT caught here. It means a
+    configuration-shaped fault -- the function is missing, or the grant is --
+    which is permanent until somebody acts, and failing open on it would turn a
+    broken deploy into unmetered access for every reader. The routes answer 503.
+    """
+    backend = _quota()
+    if backend is None:
+        return None
+    owner_id = _durable_owner()
+    if not owner_id:
+        # Non-uuid owner: `_authenticate_request` falls back to the email when a
+        # provider omits `id`, and an email cannot key a uuid column. Streams
+        # uncounted, already logged once by `_durable_owner`.
+        return None
+    try:
+        return backend.claim(owner_id, _default_daily_limit())
+    except QuotaUnavailable:
+        raise
+    except Exception:
+        logger.error("Could not claim a daily message; streaming uncounted.", exc_info=True)
+        return None
+
+
+def _release_daily_message(claim: QuotaClaim | None) -> None:
+    """Refund a claim whose request failed before the model produced a token.
+
+    ONCE PER REQUEST, enforced here rather than assumed. The RPC is deliberately
+    not idempotent -- `greatest(0, used - 1)` decrements on every call -- so a
+    second refund would hand back a message the reader actually spent. Today the
+    `spent` flag happens to make the single call site once-per-request, but that
+    is control flow, not an invariant, and it would not survive a refactor that
+    moved the refund.
+
+    Never raises: a refund failure must not turn a reported retrieval outage into
+    a second error on top of it.
+    """
+    if claim is None or not claim.allowed:
+        return
+    if getattr(g, "_quota_released", False):
+        return
+    g._quota_released = True
+    backend = _quota()
+    owner_id = _durable_owner()
+    if backend is None or not owner_id:
+        return
+    try:
+        # claim.day, never a recomputed "today": a claim at 23:59:59 whose
+        # retrieval fails at 00:00:01 must refund the day it charged.
+        backend.release(owner_id, claim.day)
+    except Exception:
+        logger.error("Could not refund a daily message (day=%s).", claim.day, exc_info=True)
+
+
+def _quota_exhausted_response(claim: QuotaClaim) -> tuple[Response, int]:
+    """429 with the numbers the reader is owed, and a real Retry-After.
+
+    The route's OWN 429, not Flask-Limiter's generic one, so the client can tell
+    an exhausted allowance from a burst refusal: this body carries
+    `error: "quota_exhausted"` and the counts, the burst refusal carries neither.
+    """
+    retry_after = 60
+    try:
+        resets = datetime.fromisoformat(claim.resets_at)
+        delta = (resets - datetime.now(resets.tzinfo)).total_seconds()
+        retry_after = max(1, math.ceil(delta))
+    except (ValueError, TypeError):
+        logger.warning("Unparseable resets_at %r; defaulting Retry-After.", claim.resets_at)
+    payload = {"error": "quota_exhausted", "tier": claim.tier_key, **claim.as_frame()}
+    response = jsonify(payload)
+    response.headers["Retry-After"] = str(retry_after)
+    response.headers["Cache-Control"] = "no-store"
+    return response, 429
+
+
+def _quota_unavailable_response() -> tuple[Response, int]:
+    """503 for a configuration-shaped quota fault. Fails CLOSED, deliberately."""
+    response = jsonify(error="The service is temporarily unavailable.", code="quota_unavailable")
+    response.headers["Retry-After"] = "30"
+    response.headers["Cache-Control"] = "no-store"
+    return response, 503
+
+
+def _rate_key() -> str:
+    """The one rate-limit key function: per ACCOUNT, falling back to the IP.
+
+    Used by the chat burst limit and — since the five discarded wrappers below
+    were reassigned — by the account Data-rights routes and the admin broadcast
+    route too. One helper, because they all want the same thing.
+
+    WHY `g.identity` IS AVAILABLE HERE, when the old per-route key functions'
+    docstrings said it was not: those were written for a limit evaluated in
+    Flask-Limiter's own `before_request`, which does run before this app's
+    blueprint-level `_gate` hooks. A limit applied as a DECORATOR is different —
+    it evaluates inside the wrapper around the view function, at dispatch, after
+    every `before_request` has run. `_authenticate_request` sets `g.identity`
+    there, so the account id is simply present, with no second GoTrue round trip.
+
+    NO TOKEN-HASH BRANCH, deliberately. An unverified bearer token must never
+    mint its own bucket: a caller sending a fresh random string per request
+    would get a fresh limit per request, which is a bypass rather than a limit.
+    The old per-session hash also gave one reader on two devices two separate
+    budgets, which `config.yaml`'s own "Keyed per reader" comment did not
+    intend. Every route this keys sits behind a gate that populates
+    `g.identity`, so reaching the fallback means a misconfiguration — a route
+    that attached the limit without `@auth_required`, or an inverted decorator
+    order — and the safe answer to a misconfiguration is the coarser key, not
+    the forgeable one.
+    """
+    identity = getattr(g, "identity", None)
+    user_id = getattr(identity, "user_id", None) if identity is not None else None
+    if user_id:
+        return f"reader:{user_id}"
+    return f"ip:{get_remote_address()}"
 
 
 def _load_history(
@@ -1373,7 +1494,7 @@ def _warn_if_archive_is_undisclosed(app: Flask) -> bool:
     return True
 
 
-def _configure_app(app: Flask, testing: bool) -> None:
+def _configure_app(app: Flask, testing: bool, enforce_rate_limits: bool = False) -> None:
     """Apply basic configuration and secret key to the Flask app."""
     app.secret_key = config.flask_secret_key or os.urandom(24)
     if not config.flask_secret_key and not testing:
@@ -1381,7 +1502,7 @@ def _configure_app(app: Flask, testing: bool) -> None:
 
     app.config.update(
         TESTING=testing,
-        RATELIMIT_ENABLED=not testing,
+        RATELIMIT_ENABLED=(not testing) or enforce_rate_limits,
         MAX_CHAT_HISTORY_MESSAGE_PAIRS=config.get(
             "server", "chat_history_length", DEFAULT_MAX_CHAT_MESSAGES_COUNT
         ),
@@ -1793,7 +1914,12 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
     # One in-memory backend per process under TESTING, so a setting changed by
     # a request is visible to the next one within the same test — and nothing
     # survives the process, which is what makes tests independent.
-    app.config["_testing_admin_backend"] = InMemoryAdminBackend()
+    app.config["_testing_quota_backend"] = InMemoryQuotaBackend()
+    # The admin double SHARES the quota double (not a copy): a tier assigned or
+    # an override set through the console must be visible to the very next claim.
+    app.config["_testing_admin_backend"] = InMemoryAdminBackend(
+        quota=app.config["_testing_quota_backend"]
+    )
     app.config["_testing_chat_backend"] = InMemoryChatBackend()
     # Shares the SAME _users list as _testing_admin_backend (not a copy) —
     # see InMemoryNotificationBackend's own docstring: a role/tier targeting
@@ -1848,6 +1974,21 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
         return get_chat_backend()
 
     app.config["chat_backend"] = chat_backend
+
+    def quota_backend():
+        """The daily allowance backend, or None when there is no database.
+
+        Resolved per call like `chat_backend`, and for the same reason. UNDER
+        TESTING it is the in-memory double rather than None: `/api/identity` and
+        both chat routes read it, and a None here would leave `quota` null
+        throughout the suite — which is exactly how a regression in this feature
+        would hide.
+        """
+        if app.config["TESTING"]:
+            return app.config["_testing_quota_backend"]
+        return get_quota_backend()
+
+    app.config["quota_backend"] = quota_backend
 
     def admin_backend():
         """Resolved per call, never at startup.
@@ -2057,20 +2198,32 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
     # token could do to many accounts through these two routes specifically.
     # Applied by endpoint name rather than at definition time in admin.py:
     # the limiter object does not exist yet when that module is imported.
-    limiter.limit("10 per minute")(app.view_functions["admin.revoke_sessions"])
-    limiter.limit("10 per minute")(app.view_functions["admin.change_email"])
-    # Keyed per-administrator (admin.py's own _admin_notification_rate_key),
-    # not per-IP or the blueprint's blanket 60/minute: a broadcast fans a
-    # message out to every targeted reader at once, and the default IP key
-    # would let a compromised admin account spam via multiple IPs or let
-    # several admins behind one office NAT share one budget.
-    from web.api.admin import _admin_notification_rate_key
-
-    limiter.limit(
+    # THE ASSIGNMENT IS LOAD-BEARING. `limiter.limit(...)(fn)` RETURNS a wrapper;
+    # discarding it marks the endpoint as having a limit (so the middleware skips
+    # it) while nothing ever enforces one. These five were unenforced from the day
+    # they were written -- proven with a throwaway app: four hits against a
+    # "1 per minute" route answered 200,200,200,200 discarded and 200,429,429,429
+    # reassigned. Flask dispatches through `view_functions`, so the replaced
+    # callable is what runs; the blueprint's `before_request` gate still runs first.
+    # Pinned by web/tests/test_rate_limit_keys.py.
+    app.view_functions["admin.revoke_sessions"] = limiter.limit("10 per minute")(
+        app.view_functions["admin.revoke_sessions"]
+    )
+    app.view_functions["admin.change_email"] = limiter.limit("10 per minute")(
+        app.view_functions["admin.change_email"]
+    )
+    # Keyed per-ADMINISTRATOR (the account, via `_rate_key`), not per-IP and not
+    # per-session: a broadcast fans a message out to every targeted reader at
+    # once, and an IP key would let a compromised admin account spam via several
+    # IPs, or make several admins behind one office NAT share one budget. It was
+    # keyed on a bearer-token HASH until 2026-09-03, which failed against the very
+    # threat its own docstring named -- an attacker holding the credentials signs
+    # in, gets a session of their own, and with it a fresh 10/hour.
+    app.view_functions["admin.create_notification"] = limiter.limit(
         lambda: config.get("server", "rate_limit", {}).get(
             "notification_broadcast_api", "10 per hour"
         ),
-        key_func=_admin_notification_rate_key,
+        key_func=_rate_key,
     )(app.view_functions["admin.create_notification"])
 
     # Imported here for the same reason admin_bp is: account.py imports back
@@ -2086,23 +2239,25 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
     # console's: the global 200/day default would lock a reader out of their
     # own record after an afternoon of visits.
     limiter.limit("60 per minute")(account_bp)
-    # Data rights (Step 7). Both stack on top of the blanket 60/minute above,
-    # the same composition admin.py's revoke_sessions/change_email already
-    # use — the specific limit is the one that actually binds. Keyed per
-    # reader rather than per IP (_account_rate_key's own docstring: R4).
-    limiter.limit(
+    # Data rights (Step 7). These do NOT stack on the blanket 60/minute above:
+    # `limit()` defaults `override_defaults=True`, so a route limit REPLACES its
+    # blueprint's rather than adding to it. Each of these carries exactly its own
+    # limit. (The comment here claimed the opposite until 2026-09-03; if stacking
+    # is ever wanted, `override_defaults=False` is the switch.) Keyed per reader
+    # rather than per IP -- see `_rate_key`.
+    app.view_functions["account.export"] = limiter.limit(
         lambda: config.get("server", "rate_limit", {}).get("export_api", "2 per 10 minutes"),
-        key_func=_account_rate_key,
+        key_func=_rate_key,
     )(app.view_functions["account.export"])
     # A destructive, irreversible action on the reader's own history — tighter
     # than the ordinary sidebar single-delete (sessions_api, 60/minute), but
     # not as tight as export: it costs one RPC round trip, not a full scan
     # and stream of every stored message.
-    limiter.limit(
+    app.view_functions["account.delete_all_conversations"] = limiter.limit(
         lambda: config.get("server", "rate_limit", {}).get(
             "account_bulk_delete_api", "10 per hour"
         ),
-        key_func=_account_rate_key,
+        key_func=_rate_key,
     )(app.view_functions["account.delete_all_conversations"])
 
     workers = os.getenv("WEB_CONCURRENCY", "1")
@@ -2387,6 +2542,24 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
                 created_at = facts.get("created_at")
                 conversation_count = facts.get("conversation_count")
 
+        # A THIRD independent try, per this docstring's own rule: one failure
+        # must not blank the others.
+        #
+        # Read through `current_app.config["quota_backend"]()`, NOT the
+        # `get_admin_backend()` above -- that one is None in every test, which
+        # would leave `quota` null throughout the suite and hide any regression
+        # in the feature. The per-call factory resolves to the in-memory double
+        # under TESTING, the same shape `chat_backend` uses.
+        quota_field = None
+        quota_backend = _quota()
+        if quota_backend is not None:
+            try:
+                quota_field = quota_backend.status(
+                    flags.user_id, _default_daily_limit()
+                ).as_identity_field()
+            except Exception:
+                logger.exception("Could not load the quota for %s", flags.user_id)
+
         return jsonify(
             {
                 "user_id": flags.user_id,
@@ -2397,14 +2570,26 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
                 "is_disabled": flags.is_disabled,
                 "created_at": created_at,
                 "conversation_count": conversation_count,
+                # Counts and the tier's own bilingual labels; never the operator's
+                # `reason` or `set_by`. Null when it could not be read.
+                "quota": quota_field,
             }
         )
 
     # Shared across both chat routes so a client cannot double its allowance by
     # alternating between the streaming and blocking endpoints.
+    # Keyed on the READER, not the IP: an office behind one NAT shared a single
+    # 15/minute budget, and one reader on two networks got two. `_rate_key` falls
+    # back to the IP only when there is no identity, which `@auth_required` makes
+    # unreachable on these two routes.
+    #
+    # The in-code fallback is "15 per minute" to MATCH config.yaml. It read
+    # "10 per minute" until 2026-09-03 -- a silent disagreement that would only
+    # ever have surfaced if the config key went missing.
     chat_limit = limiter.shared_limit(
-        lambda: config.get("server", "rate_limit", {}).get("chat_api", "10 per minute"),
+        lambda: config.get("server", "rate_limit", {}).get("chat_api", "15 per minute"),
         scope="chat",
+        key_func=_rate_key,
     )
 
     def _validate_chat_request() -> tuple[dict[str, Any] | None, tuple[Response, int] | None]:
@@ -3082,21 +3267,59 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
         hold = generations.hold(owner_id, conversation_id)
         hold.__enter__()
 
-        # `allow_create=false` says "this conversation already exists; do not
-        # create it". Refused HERE — before retrieval, before a token is
-        # generated, before any response frame — rather than discovered after
-        # the answer has already streamed. See `_preflight_conversation` and
-        # docs/per-tab-conversation-deep-linking-plan.md §3.4.
-        if not allow_create and not _preflight_conversation(persistence, owner_id, conversation_id):
-            hold.__exit__(None, None, None)
-            return jsonify(error="Unknown conversation.", code="not_found"), 404
+        # EVERYTHING from here to the Response(...) below runs inside this try,
+        # and that is a fix, not decoration. `adopt_cookie_history` and
+        # `_load_history` used to run outside any handler: an exception from
+        # either that was not PersistenceUnavailable left the hold set for the
+        # life of the process (the generator's `finally` never runs, because
+        # nothing ever iterates a Response that was never built), and every later
+        # request naming that conversation was refused as `generation_in_flight`
+        # — one transient failure freezing a conversation permanently, on a
+        # single-worker deployment. Ownership of the release transfers to the
+        # generator only once the Response has been constructed successfully.
+        quota: QuotaClaim | None = None
+        try:
+            # `allow_create=false` says "this conversation already exists; do not
+            # create it". Refused HERE — before retrieval, before a token is
+            # generated, before any response frame — rather than discovered after
+            # the answer has already streamed. See `_preflight_conversation` and
+            # docs/per-tab-conversation-deep-linking-plan.md §3.4.
+            if not allow_create and not _preflight_conversation(
+                persistence, owner_id, conversation_id
+            ):
+                hold.__exit__(None, None, None)
+                return jsonify(error="Unknown conversation.", code="not_found"), 404
 
-        store.adopt_cookie_history(
-            conversation_id, session.pop("chat_history", None), owner_id=owner_id
-        )
-        history = _load_history(store, persistence, owner_id, conversation_id, max_pairs, max_chars)
+            store.adopt_cookie_history(
+                conversation_id, session.pop("chat_history", None), owner_id=owner_id
+            )
+            history = _load_history(
+                store, persistence, owner_id, conversation_id, max_pairs, max_chars
+            )
+
+            # THE CLAIM, and its placement is the whole design. After validation
+            # (a 400 spends nothing), after the ownership preflight (a 404 spends
+            # nothing) and after the history load (either of which can raise and
+            # become a 500 — a claim taken before them would be spent on a request
+            # that never reached the generator), and immediately before the
+            # Response is built, so an exhausted allowance is a clean 429 rather
+            # than a dying SSE stream.
+            try:
+                quota = _claim_daily_message()
+            except QuotaUnavailable:
+                hold.__exit__(None, None, None)
+                return _quota_unavailable_response()
+            if quota is not None and not quota.allowed:
+                hold.__exit__(None, None, None)
+                return _quota_exhausted_response(quota)
+        except Exception:
+            hold.__exit__(None, None, None)
+            _release_daily_message(quota)
+            raise
 
         def generate():
+            # Whether the model has produced output. See the loop below.
+            spent = False
             try:
                 # `conversation_id` rides meta, final and done — never delta. A
                 # delta frame is {"t": token}; a uuid on each one adds ~29KB to
@@ -3127,9 +3350,22 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
 
                 yield sse("stage", {"stage": "drafting"})
                 parts: list[str] = []
+                # `spent` marks the point past which the allowance is NOT
+                # refundable, and it is set on the first token rather than around
+                # the call above -- `stream_response` is a GENERATOR FUNCTION, so
+                # calling it constructs a generator and executes none of its body.
+                # `_build_messages` and `client.chat.completions.create(...)` both
+                # run on the first next(), i.e. inside this loop. Setting `spent`
+                # before the loop would mark every provider auth failure, 429 and
+                # timeout as consumed -- the most likely pre-answer failure there
+                # is, and exactly the class the refund exists for.
+                #
+                # The consequence is deliberate: a provider that connects and
+                # returns an EMPTY stream is refunded. The reader got no answer.
                 for token in handler.stream_response(
                     query, llm_context, category, history, lang=lang
                 ):
+                    spent = True
                     parts.append(token)
                     yield sse("delta", {"t": token})
 
@@ -3257,6 +3493,10 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
                         "finish_reason": "stop",
                         "chars": len(answer),
                         "conversation_id": conversation_id,
+                        # The claim's own return value -- zero extra round trips.
+                        # null when the allowance could not be consulted, which the
+                        # client renders as "no counter this turn" rather than 0.
+                        "quota": quota.as_frame() if quota is not None else None,
                     },
                 )
 
@@ -3291,12 +3531,19 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
                 # would close it, at the cost of putting a database round trip
                 # in front of the frame the reader is waiting for.
                 logger.info("Client disconnected mid-stream (conv=%s)", conversation_id)
+                # Refunded only if no token ever arrived. A reader who watches
+                # most of an answer and then cancels HAS consumed the model call,
+                # and refunding that is the exploit every naive quota ships with.
+                if not spent:
+                    _release_daily_message(quota)
                 raise
             except SearchEngineError:
                 # Retrieval failed. Reported as its own code rather than folded
                 # into "internal", because the alternative — treating it as an
                 # empty result set — would render as a confident refusal.
                 logger.error("Retrieval failed (conv=%s)", conversation_id, exc_info=True)
+                if not spent:
+                    _release_daily_message(quota)
                 yield sse(
                     "error",
                     {
@@ -3306,6 +3553,10 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
                 )
             except Exception:
                 logger.error("Streaming chat failed (conv=%s)", conversation_id, exc_info=True)
+                # Covers the provider failure on the first next() -- the case the
+                # `spent`-before-the-loop placement would have silently charged.
+                if not spent:
+                    _release_daily_message(quota)
                 # The 200 status line is already sent, so failures after the
                 # first yield can only be reported in-band.
                 yield sse(
@@ -3326,8 +3577,10 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
             # The hold is released by the generator's own `finally`, and only
             # once it has started running. If constructing the response raises,
             # nothing ever iterates it, so nothing ever releases — release here
-            # instead of leaking a permanent claim on this conversation.
+            # instead of leaking a permanent claim on this conversation. The
+            # allowance is refunded for the same reason: nothing generated.
             hold.__exit__(None, None, None)
+            _release_daily_message(quota)
             raise
         return response
 
@@ -3389,6 +3642,11 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
                 hold.__exit__(None, None, None)
                 return jsonify(error="Unknown conversation.", code="not_found"), 404
 
+            quota: QuotaClaim | None = None
+            # The blocking twin of the streaming route's flag: True once the
+            # model has actually produced an answer, past which the allowance
+            # is NOT refundable.
+            spent = False
             try:
                 llm_context, retrieved = _retrieve_for_prompt(
                     search_engine, query, category, openai_handler
@@ -3401,13 +3659,43 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
                     store, persistence, owner_id, conversation_id, max_pairs, max_chars
                 )
 
-                answer, suggested_questions = openai_handler.generate_response(
-                    query,
-                    llm_context,
-                    category,
-                    chat_history,
-                    lang=lang,
-                )
+                # The claim, in the same place as the streaming route's and for
+                # the same reasons: after everything that can legitimately refuse
+                # the request, immediately before the model is invoked. The two
+                # routes share one allowance because they share one counter.
+                try:
+                    quota = _claim_daily_message()
+                except QuotaUnavailable:
+                    hold.__exit__(None, None, None)
+                    return _quota_unavailable_response()
+                if quota is not None and not quota.allowed:
+                    hold.__exit__(None, None, None)
+                    return _quota_exhausted_response(quota)
+
+                try:
+                    answer, suggested_questions = openai_handler.generate_response(
+                        query,
+                        llm_context,
+                        category,
+                        chat_history,
+                        lang=lang,
+                    )
+                except GenerationFailed:
+                    # The model never answered, so the allowance is refunded and
+                    # nothing is persisted. Before 2026-09-03 this branch could
+                    # not exist: generate_response swallowed the failure and
+                    # returned apology prose, which the route then finalized,
+                    # stored as a regulatory answer and returned 200.
+                    _release_daily_message(quota)
+                    hold.__exit__(None, None, None)
+                    return jsonify(
+                        error="The assistant is temporarily unavailable.",
+                        code="generation_failed",
+                    ), 503
+                # The model answered. Everything after this point -- finalization,
+                # the RAM append, the durable write -- happens to a real answer the
+                # reader is about to be shown, so it is no longer refundable.
+                spent = True
                 # Same contract as the streaming path's "final" frame — both
                 # routes go through `_finalize_answer`, so they cannot drift.
                 answer, cited, sources = _finalize_answer(answer, retrieved)
@@ -3448,14 +3736,25 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
                 # cabinet is shut would be a strictly worse outcome for the
                 # reader than telling them it was not filed.
                 persisted=persisted,
+                # The same object the streaming route's `done` frame carries, so
+                # one client-side renderer serves both paths.
+                quota=quota.as_frame() if quota is not None else None,
             )
 
         except SearchEngineError:
+            # Retrieval died. On this route that is always BEFORE the model was
+            # invoked, so the allowance is refunded in full.
             logger.error("Retrieval failed in /api/chat", exc_info=True)
+            _release_daily_message(quota)
             return jsonify(error="Search service is currently unavailable."), 503
 
         except Exception as exception:
             logger.error("Unhandled error in /api/chat: %s", exception, exc_info=True)
+            # Only when the model never answered. A failure in finalization or
+            # filing happens to a complete answer that WAS generated, and
+            # refunding that is the same exploit as refunding a cancelled stream.
+            if not spent:
+                _release_daily_message(quota)
             return jsonify(error="An internal server error occurred."), 500
 
     # NO /api/conversation/reset ROUTE. It used to rotate the session cookie
@@ -3472,10 +3771,27 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
 # ──────────────────────────────────────────────────────────
 # Application Factory
 # ──────────────────────────────────────────────────────────
-def create_app(testing: bool = False) -> Flask:
-    """Create and configure the Flask application instance."""
+def create_app(testing: bool = False, enforce_rate_limits: bool = False) -> Flask:
+    """Create and configure the Flask application instance.
+
+    `enforce_rate_limits` exists FOR ONE TEST FILE and is otherwise never set.
+    The limiter is disabled under TESTING, which is right for every other test —
+    but it means nothing verifies that the limits are actually wired, and this
+    app shipped five that were registered and silently unenforced for months.
+
+    It has to be a factory argument rather than a flag flipped afterwards:
+    `Limiter.init_app` returns EARLY when `RATELIMIT_ENABLED` is false, before it
+    builds storage or registers its `before_request` hook, so setting
+    `limiter.enabled = True` on the retained instance enforces nothing and
+    `reset()` raises on the missing storage. The app has to be BUILT with the
+    limiter on. See web/tests/test_rate_limit_keys.py.
+    """
     app = Flask(__name__, template_folder="../templates", static_folder="../../static")
-    _configure_app(app, testing)
+    _configure_app(app, testing, enforce_rate_limits)
+    # `testing` unchanged here: it drives CORS, Talisman and debug behaviour, and
+    # the limiter is NOT switched on through this argument. Flask-Limiter reads
+    # `RATELIMIT_ENABLED` from app.config, which `_configure_app` has already set
+    # above -- so `enforce_rate_limits` turns on the limiter and nothing else.
     limiter = _init_extensions(app, testing)
     # Flask-Limiter's disabled test wrapper keeps only a weak reference.
     # Retain the extension for the lifetime of the application factory result.

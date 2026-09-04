@@ -7,3 +7,12 @@ pytest-playwright
 ruff==0.16.4
 mypy==2.3.1
 pre-commit==4.6.2
+
+# zoneinfo (stdlib, 3.9+) resolves Asia/Riyadh -- the quota's day boundary --
+# against the SYSTEM IANA database, which Windows does not have. PEP 615's
+# fallback is this package. Linux CI and the Linux VPS have system tzdata, so
+# this is a developer-machine concern only, which is why it is here and not in
+# requirements.txt: production Python never names the zone (Postgres does the
+# day arithmetic). Without it, web/tests/test_quota.py raises
+# ZoneInfoNotFoundError on Windows while passing everywhere else.
+tzdata

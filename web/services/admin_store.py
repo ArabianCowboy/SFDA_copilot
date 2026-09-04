@@ -58,6 +58,17 @@ _REFUSAL_CODES = {
     # Raised by admin_update_profile when the row moved under the operator's
     # feet. Not a failure — a refusal to overwrite somebody else's edit.
     "AD005": "profile_changed_since_loaded",
+    # The reader-quota family (docs/reader-quota-plan.md §1.5/§1.6). Mapped here
+    # so the console meets a machine code it can translate, never a raw 23514 or
+    # 23503 surfacing as a 500.
+    "TQ001": "duplicate_key",
+    "TQ002": "no_such_tier",
+    "TQ003": "tier_in_use",
+    "TQ004": "default_tier_protected",
+    "TQ005": "invalid_limit",
+    "TQ006": "invalid_labels",
+    "TQ007": "invalid_window",
+    "TQ008": "invalid_key",
 }
 
 # The columns that describe a reader's standing. Named once so the query and
@@ -187,6 +198,35 @@ class AdminBackend(Protocol):
 
         Raises :class:`AdminActionRefused` for the guards that stop an operator
         locking everyone out.
+        """
+        ...
+
+    def list_tiers(self) -> list[dict]:
+        """Every tier with its member count, for the console's Tiers tab."""
+        ...
+
+    def create_tier(self, *, key, label_en, label_ar, daily_message_limit, ordering, actor) -> dict:
+        """Create a tier. Refuses TQ001/TQ005/TQ006/TQ008."""
+        ...
+
+    def update_tier(
+        self, key: str, *, label_en, label_ar, daily_message_limit, ordering, actor
+    ) -> dict:
+        """Edit a tier's labels, limit and ordering. The key itself is immutable."""
+        ...
+
+    def delete_tier(self, key: str, *, actor) -> dict:
+        """Delete an empty, non-structural tier. Refuses TQ002/TQ003/TQ004."""
+        ...
+
+    def set_reader_quota(
+        self, user_id: str, *, tier, override, starts_at, expires_at, reason, actor
+    ) -> dict:
+        """Set an account's tier and/or its (optionally windowed) override.
+
+        Both levels in one audited transaction, because the console saves them
+        together. ``override=None`` CLEARS the override; ``tier=None`` leaves the
+        tier alone. The asymmetry is why the route always sends every key.
         """
         ...
 
@@ -486,6 +526,90 @@ class SupabaseAdminBackend:
 
         return getattr(response, "data", None) or {}
 
+    # -- tiers and the reader quota ------------------------------------------
+
+    def _quota_rpc(self, name: str, args: dict):
+        try:
+            return self._client.rpc(name, args).execute()
+        except Exception as exception:
+            raise _refusal_from(exception) from exception
+
+    def list_tiers(self) -> list[dict]:
+        response = self._quota_rpc("admin_list_tiers", {})
+        return list(getattr(response, "data", None) or [])
+
+    def create_tier(self, *, key, label_en, label_ar, daily_message_limit, ordering, actor) -> dict:
+        response = self._quota_rpc(
+            "admin_create_tier",
+            {
+                "p_key": key,
+                "p_label_en": label_en,
+                "p_label_ar": label_ar,
+                "p_daily_message_limit": daily_message_limit,
+                "p_ordering": ordering,
+                # No p_actor_email on any of these: the functions resolve the
+                # email from the id they just validated, so a caller-supplied
+                # address can never reach the audit trail. See the migration.
+                "p_actor_id": actor.user_id,
+                "p_request_ip": actor.request_ip,
+                "p_user_agent": actor.user_agent,
+            },
+        )
+        return getattr(response, "data", None) or {}
+
+    def update_tier(
+        self, key: str, *, label_en, label_ar, daily_message_limit, ordering, actor
+    ) -> dict:
+        response = self._quota_rpc(
+            "admin_update_tier",
+            {
+                "p_key": key,
+                "p_label_en": label_en,
+                "p_label_ar": label_ar,
+                "p_daily_message_limit": daily_message_limit,
+                "p_ordering": ordering,
+                "p_actor_id": actor.user_id,
+                "p_request_ip": actor.request_ip,
+                "p_user_agent": actor.user_agent,
+            },
+        )
+        return getattr(response, "data", None) or {}
+
+    def delete_tier(self, key: str, *, actor) -> dict:
+        response = self._quota_rpc(
+            "admin_delete_tier",
+            {
+                "p_key": key,
+                "p_actor_id": actor.user_id,
+                "p_request_ip": actor.request_ip,
+                "p_user_agent": actor.user_agent,
+            },
+        )
+        return getattr(response, "data", None) or {}
+
+    def set_reader_quota(
+        self, user_id: str, *, tier, override, starts_at, expires_at, reason, actor
+    ) -> dict:
+        try:
+            uuid.UUID(str(user_id))
+        except (ValueError, AttributeError, TypeError):
+            raise AdminActionRefused("no_such_account") from None
+        response = self._quota_rpc(
+            "admin_set_reader_quota",
+            {
+                "p_user_id": user_id,
+                "p_tier": tier,
+                "p_daily_message_limit_override": override,
+                "p_reason": reason,
+                "p_actor_id": actor.user_id,
+                "p_override_starts_at": starts_at,
+                "p_override_expires_at": expires_at,
+                "p_request_ip": actor.request_ip,
+                "p_user_agent": actor.user_agent,
+            },
+        )
+        return getattr(response, "data", None) or {}
+
 
 class InMemoryAdminBackend:
     """A backend with no database behind it.
@@ -500,11 +624,190 @@ class InMemoryAdminBackend:
     change, and nothing survives a restart.
     """
 
-    def __init__(self, settings: dict | None = None) -> None:
+    def __init__(self, settings: dict | None = None, quota=None) -> None:
         self._settings = dict(settings or {})
         self._audit: list = []
         self._next_id = 1
         self._users = self._seed_users()
+        # SHARED with InMemoryQuotaBackend by injection, not copied. A test that
+        # assigns a tier or sets an override through the console must see the
+        # changed limit on the very next claim -- two separate dicts would let
+        # the console and the chat route disagree about the same account, which
+        # is the bug this feature exists to prevent.
+        self._quota = quota
+
+    def _tiers(self) -> dict:
+        """The tier catalogue this backend edits, or a local one under no quota."""
+        if self._quota is not None:
+            return self._quota.tiers
+        if not hasattr(self, "_local_tiers"):
+            self._local_tiers = {
+                "free": {
+                    "label_en": "Free",
+                    "label_ar": "مجاني",
+                    "daily_message_limit": 200,
+                    "ordering": 0,
+                },
+                "staff": {
+                    "label_en": "Staff",
+                    "label_ar": "الإداريين",
+                    "daily_message_limit": 200,
+                    "ordering": 10,
+                },
+            }
+        return self._local_tiers
+
+    # -- tiers and the reader quota ------------------------------------------
+
+    def list_tiers(self) -> list[dict]:
+        tiers = self._tiers()
+        rows = [
+            {
+                "key": key,
+                **row,
+                "member_count": sum(1 for u in self._users if u.get("tier") == key),
+            }
+            for key, row in tiers.items()
+        ]
+        return sorted(rows, key=lambda r: (r.get("ordering", 0), r["key"]))
+
+    def create_tier(self, *, key, label_en, label_ar, daily_message_limit, ordering, actor) -> dict:
+        import re as _re
+
+        if not key or not _re.fullmatch(r"[a-z][a-z0-9_]{0,31}", str(key)):
+            raise AdminActionRefused("invalid_key")
+        if daily_message_limit is None or int(daily_message_limit) < 0:
+            raise AdminActionRefused("invalid_limit")
+        if not (1 <= len(label_en or "") <= 40) or not (1 <= len(label_ar or "") <= 40):
+            raise AdminActionRefused("invalid_labels")
+        tiers = self._tiers()
+        if key in tiers:
+            raise AdminActionRefused("duplicate_key")
+        tiers[key] = {
+            "label_en": label_en,
+            "label_ar": label_ar,
+            "daily_message_limit": int(daily_message_limit),
+            "ordering": int(ordering or 0),
+        }
+        self._record(
+            action="tier.create",
+            target_type="tier",
+            target_id=key,
+            actor=actor,
+            before=None,
+            after=dict(tiers[key]),
+        )
+        return {"key": key, **tiers[key]}
+
+    def update_tier(
+        self, key: str, *, label_en, label_ar, daily_message_limit, ordering, actor
+    ) -> dict:
+        tiers = self._tiers()
+        if key not in tiers:
+            raise AdminActionRefused("no_such_tier")
+        if daily_message_limit is not None and int(daily_message_limit) < 0:
+            raise AdminActionRefused("invalid_limit")
+        for label in (label_en, label_ar):
+            if label is not None and not (1 <= len(label) <= 40):
+                raise AdminActionRefused("invalid_labels")
+        before = dict(tiers[key])
+        if label_en is not None:
+            tiers[key]["label_en"] = label_en
+        if label_ar is not None:
+            tiers[key]["label_ar"] = label_ar
+        if daily_message_limit is not None:
+            tiers[key]["daily_message_limit"] = int(daily_message_limit)
+        if ordering is not None:
+            tiers[key]["ordering"] = int(ordering)
+        after = dict(tiers[key])
+        # The diff rule: nothing changed, nothing recorded.
+        if before != after:
+            self._record(
+                action="tier.update",
+                target_type="tier",
+                target_id=key,
+                actor=actor,
+                before=before,
+                after=after,
+            )
+        return {"key": key, **after}
+
+    def delete_tier(self, key: str, *, actor) -> dict:
+        tiers = self._tiers()
+        if key == "free":
+            raise AdminActionRefused("default_tier_protected")
+        if key not in tiers:
+            raise AdminActionRefused("no_such_tier")
+        if any(u.get("tier") == key for u in self._users):
+            raise AdminActionRefused("tier_in_use")
+        before = dict(tiers.pop(key))
+        self._record(
+            action="tier.delete",
+            target_type="tier",
+            target_id=key,
+            actor=actor,
+            before=before,
+            after=None,
+        )
+        return {"key": key, **before}
+
+    def set_reader_quota(
+        self, user_id: str, *, tier, override, starts_at, expires_at, reason, actor
+    ) -> dict:
+        row = next((r for r in self._users if r["id"] == user_id), None)
+        if row is None:
+            raise AdminActionRefused("no_such_account")
+        if override is not None and int(override) < 0:
+            raise AdminActionRefused("invalid_limit")
+        if override is not None and starts_at and expires_at and expires_at <= starts_at:
+            raise AdminActionRefused("invalid_window")
+        tiers = self._tiers()
+        if tier is not None and tier not in tiers:
+            raise AdminActionRefused("no_such_tier")
+
+        if tier is not None and tier != row.get("tier"):
+            self._record(
+                action="user.tier_change",
+                target_type="user",
+                target_id=user_id,
+                actor=actor,
+                before={"tier": row.get("tier")},
+                after={"tier": tier},
+                note=reason,
+            )
+            row["tier"] = tier
+
+        # Synced UNCONDITIONALLY, not only when the tier changed. The seeded
+        # users already carry a tier, so a first save that leaves it alone would
+        # otherwise never tell the quota double which tier this account is in --
+        # and the very next claim would resolve through the `free` fallback
+        # instead of the account's actual tier.
+        if self._quota is not None and row.get("tier"):
+            self._quota.profile_tiers[user_id] = row["tier"]
+
+        if self._quota is not None:
+            before = self._quota.overrides.get(user_id)
+            if override is None:
+                self._quota.overrides.pop(user_id, None)
+                after = None
+            else:
+                after = {
+                    "daily_message_limit": int(override),
+                    "starts_at": starts_at,
+                    "expires_at": expires_at,
+                }
+                self._quota.overrides[user_id] = after
+            if before != after:
+                self._record(
+                    action="user.quota_override_change",
+                    target_type="user",
+                    target_id=user_id,
+                    actor=actor,
+                    before=before,
+                    after=after,
+                    note=reason,
+                )
+        return {"tier": row.get("tier"), "override": override}
 
     def fetch_identity(self, user_id: str, email: str | None) -> IdentityFlags | None:
         # Identity in TESTING comes from _TESTING_IDENTITIES before any backend
@@ -618,7 +921,7 @@ class InMemoryAdminBackend:
                 "id": "test-admin-id",
                 "email": "admin@example.com",
                 "role": "admin",
-                "tier": "internal",
+                "tier": "staff",
                 "is_disabled": False,
                 "disabled_at": None,
                 "disabled_reason": None,

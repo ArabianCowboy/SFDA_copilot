@@ -1063,6 +1063,107 @@ select.admin-input {
   border-block-start: 1px solid var(--hairline);
 }
 
+/* ── Editor cards: the daily allowance, and a tier ────────────────────────────
+   Both are the profile form's shape, and deliberately so: each is a set of
+   facts about one thing, grouped, with one Save. They reuse
+   `.admin-profile-fields` and `.admin-profile-actions` rather than growing a
+   second form vocabulary two zones apart — an operator who has learned to edit
+   a profile has already learned to edit an allowance.
+
+   `.admin-field` is the OTHER form idiom in this console: the settings tab's
+   full-width rows, each closed by its own hairline. Inside a card that already
+   has a border it draws a rule under every field and reads as a table nobody
+   asked for, which is what the allowance zone shipped as. The two idioms are
+   not interchangeable — `.admin-field` for a page-width settings list,
+   `.admin-profile-field` for fields inside a card. */
+
+.admin-editor-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+/* A measure, for an editor card that stands alone rather than in a column of
+   sibling cards. `.admin-profile-fields` packs `auto-fit, minmax(14rem, 1fr)`,
+   so at the console's full width the tier form laid five fields across four
+   tracks and dropped the fifth alone onto a second row; held to this width the
+   same grid resolves to three, which is what five short fields want.
+
+   NOT applied to the allowance card: that one sits between the profile card
+   and the actions card in the account column, and a card narrower than the two
+   it is stacked between reads as a mistake no matter how well it is measured.
+   Adjacent consistency beats an ideal measure. */
+.admin-editor-card.is-measured {
+  max-inline-size: 54rem;
+}
+
+/* The flex gap above already opens the space before the actions bar; the
+   shared rule carries its own margin for the profile form, which has none. */
+.admin-editor-card .admin-profile-actions {
+  margin-block-start: 0;
+}
+
+/* What the editable values below currently add up to. Above the rule is what
+   IS — today's count, when it resets — and below it is what the operator may
+   change. `.admin-facts` already draws the label-over-value cells; this only
+   separates them from the controls. */
+.admin-editor-readout {
+  /* Overrides `.admin-facts`'s grid on purpose: two or three cells in an
+     auto-fit grid stretch to fill the row, which puts a third of a card of
+     whitespace between "asked today" and when it resets and reads as a layout
+     that lost something. A flex row sizes each cell to its own content and
+     wraps when the panel narrows. */
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4) var(--space-7);
+  padding-block-end: var(--space-5);
+  border-block-end: 1px solid var(--hairline);
+}
+
+/* A stored value that is not the one answering. The warn ramp, never the alert
+   one — the same distinction the daily-allowance notice pins on the reader
+   surface: nothing has malfunctioned, this window has simply passed. */
+.admin-fact dd.is-warning {
+  color: var(--warning);
+}
+
+/* Free text takes the row. A reason beside a 6-character number column is a
+   one-word input for a sentence. */
+.admin-profile-field.is-wide {
+  grid-column: 1 / -1;
+}
+
+/* A hint that qualifies one control sits inside that control's own column, one
+   step down from the card-level notes that sit under the whole grid. */
+.admin-profile-field .admin-form-hint {
+  font-size: var(--fs-100);
+}
+
+/* A key that cannot be renamed has to look like one. `readonly` gets no
+   treatment from the browser beyond an absent caret, which left the tier
+   form's key field indistinguishable from the four editable fields beside it
+   while editing. Sunken rather than disabled-grey: the value is still real,
+   still selectable, still submitted — it is simply not yours to change. */
+.admin-input[readonly] {
+  background-color: var(--bg-sunken);
+  border-color: var(--hairline);
+  color: var(--fg-muted);
+  cursor: default;
+}
+
+.admin-input[readonly]:focus {
+  border-color: var(--hairline-strong);
+  box-shadow: none;
+}
+
+/* An action group NESTED in a cell, which is the tier table — not the
+   notifications table, where `.admin-row-actions` is the cell itself and its
+   three controls are meant to wrap. The table already scrolls sideways, so
+   wrapping here buys nothing and costs a row twice its neighbours' height. */
+.admin-table td > .admin-row-actions {
+  flex-wrap: nowrap;
+}
+
 /* ── Zone 3: what can be done ────────────────────────────────────────────── */
 
 .admin-account-hint {

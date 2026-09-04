@@ -204,6 +204,33 @@ export function createAdminServices(getToken) {
     purgeNotification: (id) =>
       request(`notifications/${encodeURIComponent(id)}/purge`, { method: 'POST' }),
 
+    /* Tiers and the reader quota (docs/reader-quota-plan.md §5). */
+
+    tiers: () => request('tiers'),
+
+    createTier: (payload) => request('tiers', { method: 'POST', body: payload }),
+
+    updateTier: (key, payload) =>
+      request(`tiers/${encodeURIComponent(key)}`, { method: 'PATCH', body: payload }),
+
+    deleteTier: (key) => request(`tiers/${encodeURIComponent(key)}`, { method: 'DELETE' }),
+
+    /* A PUT of the WHOLE quota state — every key, every time. The route refuses
+       a partial body because the RPC's nulls are asymmetric: `tier: null` leaves
+       the tier alone but a null override CLEARS it, so an omitted key would
+       silently delete somebody's allowance. */
+    setUserQuota: (userId, { tier, override, startsAt, expiresAt, reason }) =>
+      request(`users/${encodeURIComponent(userId)}/quota`, {
+        method: 'PUT',
+        body: {
+          tier: tier ?? null,
+          daily_message_limit_override: override ?? null,
+          override_starts_at: startsAt ?? null,
+          override_expires_at: expiresAt ?? null,
+          reason: reason ?? null,
+        },
+      }),
+
     getPurgeRetentionDays: () => request('notifications/purge-settings'),
 
     setPurgeRetentionDays: (days) =>

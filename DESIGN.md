@@ -147,7 +147,7 @@ components:
 ---
 
 STATUS: CURRENT AUTHORITY — the design system. Wins over every other document on
-design, tokens and RTL presentation. Last verified against code 2026-08-23.
+design, tokens and RTL presentation. Last verified against code 2026-09-04.
 (The banner sits below the frontmatter, not above it: the YAML block has to be the
 first thing in this file for the design tooling to parse it.)
 
@@ -339,6 +339,52 @@ Borders are 1px hairlines by default. 2px is the system's one _meaningful_ rule 
 - **Focus:** Teal border plus a 3px translucent teal ring; the base Bootstrap shadow is cleared first.
 - **Error:** Bootstrap's invalid feedback, with the alert ramp.
 
+### Console forms: two idioms, and which one you are in
+
+The admin console has **two** form shapes and they are not interchangeable. Reaching for
+the wrong one is invisible in a test and obvious on the page, which is how the daily-allowance
+card shipped looking like a table nobody asked for.
+
+- **`.admin-field`** `[CORRECTNESS]` — the **settings tab's** page-width row: label and origin
+  marker on one line, the control spanning beneath both, and the row closed by its own
+  hairline. It exists because that tab is a long list of independent values, each with a
+  "default or overridden" marker beside it, and the hairlines are what stop it reading as one
+  paragraph. It lives directly on the panel, never inside a card — inside a bordered card it
+  draws a rule under every control and turns the card into a second table.
+- **`.admin-profile-field`**, packed by **`.admin-profile-fields`** — the **in-card** shape: a
+  plain flex column of label over control, on an `auto-fit, minmax(14rem, 1fr)` grid, with
+  hints inside the field they qualify and `.admin-profile-actions` closing the card with one
+  primary Save and a note. This is what an editor card uses.
+- **`.admin-editor-card`** composes the second: `admin-card admin-editor-card`, an optional
+  `.admin-editor-readout` at the top for what the values below currently add up to, then the
+  field grid, then the actions bar. The account's profile, its daily allowance and the tier
+  catalogue's create/edit form are all this one shape, so an operator who has learned to edit
+  one has learned all three. `.is-measured` caps the width for a card that stands **alone**;
+  a card stacked in a column of siblings stays full width, because a card narrower than the
+  two it sits between reads as a mistake no matter how well it is measured.
+
+**Every class the console names must have a rule.** `[GATE]` The browser says nothing about a
+class that matches no selector, so an invented one renders as a raw user-agent control beside
+the styled ones it was meant to match — and a browser test still passes, because an unstyled
+button is still a button. `test_css_contract.py` scans every `admin-*` class named from a
+`class=` attribute or a `className`/`classList` assignment and fails on any the stylesheets do
+not define. Names that are genuinely hooks rather than styling are listed there with the reason.
+
+### Operator-authored bilingual data
+
+A tier's label is stored twice — `label_en` and `label_ar` — because a reader sees it on their
+own surface, in their own language. That storage shape does not reach the screen.
+
+- **Authoring writes both.** The tier form has both fields and always will; a tier with one
+  label is a tier that renders blank for half the audience.
+- **Display resolves one.** `[CORRECTNESS]` Anywhere a stored label is _shown_ —
+  the tier table, the allowance card's select, the notification composer's target list —
+  the console prints `I18n.lang === 'ar' ? label_ar : label_en` and nothing else. Printing
+  both is the one thing on this surface that ignores the language toggle, and an operator who
+  has chosen English does not expect Arabic in a column beside it.
+- The **key** is not a label. It stays as it is in both languages, in the mono face, because it
+  is what the database and the notification composer both name.
+
 ### Navigation
 
 - **Landing chrome:** A static end-aligned utility row (language toggle, theme toggle) inside the same 1180px measure as the content — deliberately in flow rather than absolutely positioned, because the page scrolls.
@@ -350,11 +396,13 @@ Borders are 1px hairlines by default. 2px is the system's one _meaningful_ rule 
 
 ### Notices
 
-Two dismissible in-transcript disclosures, sharing one shape: a sunken-porcelain fill, a `rule-200` hairline on all four sides, 3px radius, muted ink, and **an inset 2px pill on the inline-start edge** — marigold on the resumed notice, the warn ramp on the durable-history notice. That pill is the same mark the active FAQ button and the active conversation row carry, and it is a pseudo-element rather than a border for a reason worth stating: this stylesheet has three rule weights and each means something — 1px is a hairline, 2px is a mark that carries meaning, 4px is a meter — so the 3px `border-inline-start` these notices originally carried was off that vocabulary, an unclassified weight doing a job the system already had a signature for. Three components now share one mark for "this edge is telling you something".
+Three dismissible in-transcript disclosures, sharing one shape: a sunken-porcelain fill, a `rule-200` hairline on all four sides, 3px radius, muted ink, and **an inset 2px pill on the inline-start edge** — marigold on the resumed notice, the warn ramp on the durable-history notice, and `--confidence` on the daily-allowance notice. That pill is the same mark the active FAQ button and the active conversation row carry, and it is a pseudo-element rather than a border for a reason worth stating: this stylesheet has three rule weights and each means something — 1px is a hairline, 2px is a mark that carries meaning, 4px is a meter — so the 3px `border-inline-start` these notices originally carried was off that vocabulary, an unclassified weight doing a job the system already had a signature for. Three components now share one mark for "this edge is telling you something".
 
 They sit _in_ `#messages` rather than above it, so they scroll with the conversation they are about, and both are excluded from `isTranscriptTurn` so a clear, an undo or a New chat cannot sweep them into the transcript fragment. The history notice is the sharper case: it is meant to outlive a New chat, so a predicate that forgot it would delete the disclosure at exactly the moment the reader is exercising the control it describes.
 
 They are notices, not decisions — dismissible, non-blocking, and never modal. The history notice is scoped to the **reader**, not the browser: a shared machine is the ordinary case here, and one colleague dismissing it must not mark it read for the next person to sign in.
+
+**The daily-allowance notice is the third instance, and the one that pins the colour rule.** `[CORRECTNESS]` When a reader has spent the day's questions, the transcript says so in `--confidence` — never `--danger`, and never by reusing `.stream-note.error`. The distinction is the whole point: nothing has malfunctioned. The product was asked "may I ask another question today", understood the question perfectly, and the answer is no. `--danger` would tell the reader something is broken and send them retrying a thing that cannot work until the allowance resets, which is the opposite of what the notice is for. A boundary the product is deliberately enforcing is marked in `--confidence`; a failure is marked in `--danger`; the two must not be swapped for visual convenience. The counter that appears under the composer as the allowance runs low is not a notice at all — muted ink at `--fs-100`, no pill, no rule, because a number that is merely true does not need a mark.
 
 ### Notification Center (docs/notification-center-plan.md)
 
@@ -427,6 +475,7 @@ On the landing Sunny is the page's only image, sized `clamp(150px, 24vw, 232px)`
 - **Do** carry the independence notice on every surface; the landing footer holds it.
 - **Do** give a hover-revealed control a `:focus-within` sibling and a `@media (hover: none)` resting opacity in the same rule. A control that only appears under a cursor does not exist for a touch device or a keyboard reader.
 - **Do** reserve a revealed control's space at rest, so a row does not reflow under the cursor in a scrolling list.
+- **Do** set `dir="auto"` on any string an **operator** typed too, not only a reader — a tier's two label fields hold one script each, and a fixed direction lays the Arabic one out backwards in an English console.
 - **Do** set `dir="auto"` on any string a reader typed. Titles, questions and names mix scripts, and a fixed direction puts the ellipsis on the wrong end.
 - **Do** suffix every id a twice-rendered macro generates, including the ones `aria-controls` and `aria-labelledby` point at — those resolve against the whole document, so an unsuffixed pair silently wires the mobile control to the desktop panel, and only for readers using a screen reader.
 - **Do** put `overscroll-behavior: contain` on a scroll port nested inside another one.
@@ -450,4 +499,5 @@ On the landing Sunny is the page's only image, sized `clamp(150px, 24vw, 232px)`
 - **Don't** open a second drawer from inside the first. Swap the panel's contents in place — see The One Drawer Rule.
 - **Don't** let a flex row hold a truncating label. `min-width: auto` stops it shrinking below its content, so the label pushes its siblings out of the row instead of ellipsing; use a grid with `minmax(0, 1fr)`.
 - **Don't** render an empty list when a request failed. "You have nothing" is a claim about the reader; make it only when the store answered.
+- **Don't** interpolate `toLocaleString(lang)` into a sentence either, which is the same trap one step along. `new Date('2026-08-01').toLocaleString('ar', { dateStyle: 'medium' })` returns `01‏/08‏/2026` — U+200F between every field — and the bidi algorithm reorders the run around those marks, so the first of August **renders** as `2026/08/01`. Build the stamp from parts (`dayStamp`/`exactWhen`: no localised characters at all), split the catalogue string on its own `{date}` placeholder, and put the stamp in its own `dir="ltr"` isolate. Interpolation can only produce a string; an isolate has to be an element.
 - **Don't** build a relative timestamp out of `Intl.RelativeTimeFormat` or hand-rolled plurals on a bilingual surface. Arabic has six plural forms where the runtime helper knows two, `Intl` emits bidi control characters that reorder inside an RTL column, and the language toggle reloads the page — so a cached relative string is stale by construction. Fixed day buckets from the catalogue say the same thing and stay grammatical.

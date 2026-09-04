@@ -1,4 +1,4 @@
-STATUS: CURRENT AUTHORITY — open work only. Last verified against code 2026-08-29.
+STATUS: CURRENT AUTHORITY — open work only. Last verified against code 2026-09-03.
 Resolved entries live in `docs/archive/TODO-resolved.md`.
 
 # TODO
@@ -38,7 +38,7 @@ bottom of this file: [How this file works](#how-this-file-works).
 - [Answer from a second provider](#answer-from-a-second-provider--and-why-the-code-is-the-easy-half) — the citation-fidelity harness is built (2026-08-22); still blocked on running it for real against the API.
 - [OpenRouter as one integration instead of several](#openrouter-as-one-integration-instead-of-several) — alternative to the entry above; same harness, same not-yet-run status.
 - [Refactor the profile page](#refactor-the-profile-page) — Steps 0-5 and most of Step 7 shipped 2026-08-23; the three remaining items each have their own entry below.
-- [Give readers a quota, and limits worth having](#give-readers-a-quota-and-limits-worth-having) — rate limiting is IP-keyed, not reader-keyed; not started.
+- [Give readers a quota, and limits worth having](#give-readers-a-quota-and-limits-worth-having) — **BUILT 2026-09-03/04**; kept for the open follow-ups it names ([`docs/reader-quota-plan.md`](docs/reader-quota-plan.md)).
 - [The browser suite flakes intermittently in test_source_panel.py](#the-browser-suite-flakes-intermittently-in-test_source_panelpy) — undiagnosed; resource-contention evidence only.
 - [Know what people actually ask](#know-what-people-actually-ask--without-reading-anyones-conversation) — an identity-free question log; not started, gated on scale.
 - [Enable the token-verification cache once production numbers justify it](#enable-the-token-verification-cache-once-production-numbers-justify-it) — single-flight (the worker-starvation fix) shipped 2026-08-27 at no revocation cost; the optional positive cache stays off, gated on measurement.
@@ -181,6 +181,60 @@ with the `for update` that `admin_set_user_flags` already takes on a demotion ta
 costs nothing on the uncontended path. That is probably the right answer, and it should be
 measured rather than assumed: `for share` on `profiles` sits on the hot path of every admin
 mutation, and `profiles` is also the table every reader request reads.
+
+---
+
+### Five rate limits are registered but never enforced — FIXED 2026-09-03
+
+> **Closed by the reader-quota Commit A.** All five registrations now assign the wrapper
+> back into `app.view_functions[name]`, and `web/tests/test_rate_limit_keys.py` pins each
+> of them behaviourally against an app built with `create_app(testing=True,
+enforce_rate_limits=True)` — nine tests covering the five reassignments, the chat burst
+> limit firing, the two chat routes sharing one allowance, per-account keying, and the
+> decorator order. The `app.py` comments claiming the limits "stack" on the blueprint's
+> 60/minute were corrected in the same commit, `docs/ARCHITECTURE.md`'s rate-limit table
+> records the whole episode, and the chat limit plus both former token-hash keys now key on
+> the account via `_rate_key`. Kept here rather than deleted because the failure mode —
+> a line that reads as protection and removes it — is worth recognising again.
+
+**The original entry, as written:**
+
+**Where:** `web/api/app.py`, `_register_routes` — the five calls of the shape
+`limiter.limit(...)(app.view_functions["admin.revoke_sessions"])`: `admin.revoke_sessions`,
+`admin.change_email`, `admin.create_notification`, `account.export` and
+`account.delete_all_conversations`.
+
+**What is wrong.** Each call discards the wrapper Flask-Limiter returns. In the installed
+Flask-Limiter (4.1.1) a decorated limit is evaluated inside that wrapper, not in the
+extension's `before_request`, and marking the endpoint makes `before_request` skip it —
+including the blueprint's blanket 60/minute. So none of the five routes has any effective
+limit: not the per-route one, not the blueprint one. `export_api: "2 per 10 minutes"` and the
+per-administrator `notification_broadcast_api` are documented in `docs/ARCHITECTURE.md`'s
+rate-limit table and enforced nowhere.
+
+**Who it reaches.** Every reader and every administrator, silently — nothing fails, a limit
+simply never fires. The routes are still behind their blueprint gates, so this is an
+unbounded-rate problem, not an authorization one.
+
+**How it was found.** A code read during the reader-quota planning session (2026-09-03),
+then reproduced in a throwaway app on the installed version: a "1 per minute" route limit
+plus a "2 per minute" blueprint limit answered `200, 200, 200, 200` to four hits; assigning
+the returned wrapper back (`app.view_functions[name] = limiter.limit(...)(fn)`) answered
+`200, 429, 429, 429`. The suite could not have caught it: `RATELIMIT_ENABLED=not testing`
+disables the limiter under pytest, and no test exercises an enabled limiter.
+
+**What fixing it would disturb.** One-line changes to the five registrations, plus the test
+harness that can prove them — an enabled limiter for one test, which
+`docs/reader-quota-plan.md` §3.7 designs (`web/tests/test_rate_limit_keys.py`) and which
+also pins the chat routes' decorator order. Scheduled as part of that plan's Commit A rather
+than fixed alone, because the harness is the expensive half and is shared. Once fixed, each of the
+five carries exactly its own limit and **not** the blueprint's 60/minute as well: `limit()`
+defaults `override_defaults=True`, so a route limit replaces its blueprint's rather than
+stacking on it — the opposite of what `app.py`'s comments beside these registrations say
+("Both stack"), which the same commit rewrites. `web/tests/test_registrations_pause.py`'s
+comment is right that the retained instance cannot simply be switched on for one test
+(`init_app` returns before building storage when the flag is off); only its "never
+retained" clause is stale, and the plan's harness builds a separate app with the limiter on.
 
 ---
 
@@ -540,54 +594,42 @@ archived plan.
 
 ### Give readers a quota, and limits worth having
 
-**Where:** rate limiting is one global setting. `web/config.yaml` has
-`server.rate_limit` (`per_day: 200`, `per_hour: 50`, `per_minute: 10`,
-`chat_api: "15 per minute"`), and `web/api/app.py` builds a `Limiter` keyed by
-`get_remote_address` with `storage_uri="memory://"`. `chat_limit` is a _callable_
-limit, re-read per request, so the value is already live-tunable — what is not
-live is who it applies to. `public.profiles` gained a `tier` column
-(`20260814005509_lock_profile_privileges_and_repair_signup.sql`) that nothing
-reads: `IdentityFlags` carries it, and no code branches on it.
+**BUILT 2026-09-03/04.** [`docs/reader-quota-plan.md`](docs/reader-quota-plan.md) is the
+design and the record; it carries the full build note, three review rounds and the owner's
+eight decisions. What shipped: a durable daily allowance in `public.usage_daily`, counted by
+an atomic claim in `chat_claim_daily_message` and refunded when a request fails before the
+model produces a token; operator-configurable limits at two levels (a `public.tiers` default
+and a `public.reader_quota_overrides` per-account override that may carry a start and an end
+date); a Tiers tab and a per-account allowance zone in the console; a bilingual in-transcript
+notice and a quiet pre-exhaustion counter for the reader. The day boundary is `Asia/Riyadh`
+and both shipped tiers start at 200.
 
-**Why it is wanted.** Every reader gets the same allowance, keyed to an IP —
-so an office behind one NAT shares a budget, and one person on two networks gets
-two. The console can now change the model and cut off an account, which are the
-blunt instruments; a quota is the one that lets an operator say "this is fine,
-but not unlimited" without a confrontation.
+**Still open, and deliberately so:**
 
-**What it would disturb.** The limiter's key function is the change with the
-widest blast radius: `_rate_key` would return the reader rather than the address,
-and the decorator order at the chat routes is load-bearing — `auth_required` runs
-outermost, so `g.identity` exists before the limit callable is evaluated, and
-reversing those two lines silently reverts to IP keying with no error. `memory://`
-loses counters on restart, which is acceptable for a burst limit and not for a
-daily budget: a monthly allowance that resets on every deploy is not an
-allowance. That means real persistence — a `usage_daily(user_id, day, used)` row
-and one atomic `insert ... on conflict ... where used < limit returning`, taken
-in the view body _before_ the generator, so a denial is a 429 instead of an SSE
-stream that dies halfway.
-
-The reader-facing half matters as much: a quota is a normal boundary, not a
-failure, so it wants an inline transcript notice in both languages styled with
-`--confidence`, never `--danger` — and `/api/identity` already returns enough
-shape to show a quiet counter before someone hits the wall, which beats being
-stopped at it.
-
-**Deliberately deferred once already.** Two independent reviews judged the full
-tier matrix — a `tiers` table with `label_en`/`label_ar`, per-user overrides,
-time-windowed access, token credits — premature for an instance with three
-accounts and one operator. Token credits in particular need exact provider usage
-first: the OpenAI stream currently ignores usage chunks, and tokenizer estimates
-are not a billing ledger. Start with one number per reader per day.
-
-**A dormant start already exists.** `public.chatbot_settings` — `welcome_message`,
-`response_style`, `rate_limit_per_minute` — is still sitting in the database,
-RLS-enabled with zero policies and read by nothing. The admin console
-deliberately created `public.app_settings` rather than reuse it, because a
-global `rate_limit_per_minute` scalar belongs on a tier rather than on the
-instance. Worth deciding whether it is dropped or finally used.
-
----
+- **The first real number.** `free` and `staff` are both 200 — chosen well above observed
+  usage so the meter could be switched on and watched before it is tightened. Revisit once
+  `usage_daily` has a month of rows. Raising `staff` above `free` is a console edit, not a
+  migration.
+- **Claim idempotency against a replayed `client_request_id`.** The claim carries no request
+  id, so it is not idempotent the way `chat_append_turn` is. Safe today only because the
+  browser mints a fresh id per submission and has no chat retry path — while `app.py`'s own
+  validator comment and `_InFlightGenerations`' docstring both describe the id as "reused
+  across retries". **Any commit that adds a client-side retry reusing `client_request_id`
+  must ship claim idempotency with it**, or one transport failure after the model answered
+  charges a reader twice for an answer the database quietly refuses to store twice. A
+  `last_claim_request_id` column does not do it: one slot per `(user, day)` catches only an
+  immediately consecutive replay. The plan's §12 has the ledger shape that does.
+- **A fixed promo pool** of bonus messages drawn once the daily allowance is spent. Designed
+  in full, with its `42P17` index bug corrected and the "a zero daily limit blocks the grant
+  too" rule stated, in the plan's §12 — and deliberately not built, because the daily
+  allowance covers most of the same need and the pool needs real usage data to justify.
+- **Retention of `usage_daily` rows**, folded into the retention entry above.
+- **`/api/identity`'s three RPC round trips** (`touch_last_seen`, `get_identity_flags`,
+  `get_reader_quota`) could fold into one. A real optimisation for a route called once per
+  sign-in; not done, because `20260822231726` deliberately narrowed `get_identity_flags` and
+  widening it again is its own decision.
+- **Re-keying `history_api`/`sessions_api`** from IP to account, the way chat, export, bulk
+  delete and the admin broadcast now are. A separate decision about navigation reads.
 
 ### The browser suite flakes intermittently in test_source_panel.py
 

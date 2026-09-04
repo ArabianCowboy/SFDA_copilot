@@ -539,7 +539,7 @@ def test_admin_route_wiring_never_caches_and_always_asks_live(app, monkeypatch):
         app_module,
         "resolve_identity_flags",
         lambda cache, user_id, email, *, fresh=False: IdentityFlags(
-            user_id, email, "admin", "internal", False
+            user_id, email, "admin", "staff", False
         ),
     )
 

@@ -168,13 +168,47 @@ def test_create_refuses_a_role_with_no_matching_accounts(client):
 
 
 def test_create_refuses_a_tier_with_no_matching_accounts(client):
+    """A tier that EXISTS but is empty. Still a 409, still the same code.
+
+    This used to target "nonexistent-tier", which stood in for an empty audience
+    back when a tier was a free-text string and the two were indistinguishable.
+    Tiers are rows now, so the case has to be built properly: create one, target
+    it while nobody is in it. The sibling test below covers the other half.
+    """
+    client.post(
+        "/admin/api/tiers",
+        json={
+            "key": "empty_tier",
+            "label_en": "Empty",
+            "label_ar": "فارغة",
+            "daily_message_limit": 10,
+        },
+        headers=ADMIN,
+    )
+    r = client.post(
+        "/admin/api/notifications",
+        json=_payload(target_kind="tier", target_tier="empty_tier"),
+        headers=ADMIN,
+    )
+    assert r.status_code == 409
+    assert r.get_json()["error"] == "no_matching_recipients"
+
+
+def test_create_refuses_a_tier_that_does_not_exist(client):
+    """Distinct from an empty audience, and refused earlier.
+
+    Before tiers were rows a typo here broadcast to nobody and reported success
+    with a delivery count of zero. Now the key is checked against the catalogue,
+    so a mistyped tier is a 422 the composer can explain rather than a silent
+    non-event.
+    """
     r = client.post(
         "/admin/api/notifications",
         json=_payload(target_kind="tier", target_tier="nonexistent-tier"),
         headers=ADMIN,
     )
-    assert r.status_code == 409
-    assert r.get_json()["error"] == "no_matching_recipients"
+    assert r.status_code == 422
+    assert r.get_json()["error"] == "invalid_target_tier"
 
 
 def test_create_refuses_a_nonexistent_target_user(client):

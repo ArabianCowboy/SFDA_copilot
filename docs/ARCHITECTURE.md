@@ -219,7 +219,8 @@ have to.
 ## Two table-access patterns
 
 **Flask-mediated tables** — `chat_sessions`, `chat_messages`, `chat_message_sources`,
-`chat_archive`, `audit_log`, `app_settings`:
+`chat_archive`, `audit_log`, `app_settings`, and the three quota tables `tiers`,
+`reader_quota_overrides`, `usage_daily`:
 
 - RLS **on**, and for writes **no policies at all**.
 - `revoke all from anon, authenticated`.
@@ -232,12 +233,21 @@ Readers get `select` and `delete` on their own `chat_sessions` rows via RLS, and
 `select` on their own messages and sources. There is no insert or update policy on any
 chat table, and none should be added.
 
+The three quota tables go one step further than the rest: **no role holds any grant on
+them at all, `service_role` included.** Every reader and writer is a `security definer`
+function running as the table owner, which is the posture `profile_last_seen` established.
+A reader learns their own allowance through `get_reader_quota`, which returns counts and
+tier labels but deliberately not the operator's `reason` or `set_by`.
+
 **Browser-direct tables** — `profiles`, and only `profiles`:
 
 - Read and write straight from the browser to PostgREST under RLS.
 - Column protection is a **column-level `REVOKE` plus a trigger**, because RLS
   restricts rows and cannot restrict columns. `profiles.role`, `tier` and
   `is_disabled` are writable only by the service role.
+- Since 2026-09-03 `profiles.tier` is also a **foreign key** into `public.tiers`
+  (`on update cascade on delete restrict`), so a tier cannot be deleted while anyone is
+  in it and no profile can name a tier that does not exist.
 - `preferences` is written through `update_own_preferences(jsonb)`, which **merges**.
 - `anon` holds **nothing** on it since `20260828001035`. It previously held `SELECT`,
   which put `profiles` in PostgREST's schema for unauthenticated callers: the rows were
@@ -323,30 +333,61 @@ Limits on `/account/api/*` key on the **authenticated user id**, not the IP
 ## Rate limits
 
 Flask-Limiter, `memory://` storage, keyed on the remote address unless noted.
+"Keyed per account" means `_rate_key` (`app.py`), which returns `reader:<user_id>`
+from `g.identity` and falls back to the IP only where no identity is present — which
+every route below marked that way makes unreachable, because each sits behind a gate.
 
-| Scope                                               | Limit                                  |
-| --------------------------------------------------- | -------------------------------------- |
-| Global default                                      | 200/day, 50/hour, 10/minute            |
-| Chat (`/api/chat` and `/api/chat/stream`, shared)   | 15/minute                              |
-| `GET /api/chat/history`                             | 30/minute                              |
-| `/api/chat/sessions` (list, select, rename, delete) | 60/minute                              |
-| `POST /auth/recover`                                | 5/minute                               |
-| `POST /auth/signup`                                 | 5/minute                               |
-| `GET /account/api/export`                           | 2 per 10 minutes, **keyed per reader** |
-| `DELETE /account/api/conversations`                 | 10/hour, **keyed per reader**          |
-| `admin_bp` (whole blueprint)                        | 60/minute                              |
-| `admin.revoke_sessions`, `admin.change_email`       | 10/minute                              |
+| Scope                                               | Limit                                   |
+| --------------------------------------------------- | --------------------------------------- |
+| Global default                                      | 200/day, 50/hour, 10/minute             |
+| Chat (`/api/chat` and `/api/chat/stream`, shared)   | 15/minute, **keyed per account**        |
+| `GET /api/chat/history`                             | 30/minute                               |
+| `/api/chat/sessions` (list, select, rename, delete) | 60/minute                               |
+| `POST /auth/recover`                                | 5/minute                                |
+| `POST /auth/signup`                                 | 5/minute                                |
+| `GET /account/api/export`                           | 2 per 10 minutes, **keyed per account** |
+| `DELETE /account/api/conversations`                 | 10/hour, **keyed per account**          |
+| `admin_bp` (whole blueprint)                        | 60/minute                               |
+| `admin.revoke_sessions`, `admin.change_email`       | 10/minute                               |
+| `admin.create_notification`                         | 10/hour, **keyed per account**          |
+
+**Five of those route limits were registered but never enforced** until 2026-09-03 —
+`account.export`, `account.delete_all_conversations`, `admin.revoke_sessions`,
+`admin.change_email` and `admin.create_notification`. Each was written as
+`limiter.limit(...)(app.view_functions[name])`, which returns a wrapper and discards
+it: Flask-Limiter marked the endpoint as carrying a limit (so its own middleware
+skipped it) while nothing enforced one, leaving those routes **less** limited than if
+the line had been absent. The fix is to assign the wrapper back into
+`app.view_functions[name]`. `web/tests/test_rate_limit_keys.py` pins it behaviourally,
+which is the only way: `functools.wraps` copies `__dict__`, so the limiter's marker
+attribute propagates onto the outer `auth_required` wrapper and a structural check
+cannot tell the two apart.
+
+**A route limit REPLACES its blueprint's, it does not stack.** `limit()` defaults
+`override_defaults=True`, so each of the five carries exactly its own limit and not
+`admin_bp`/`account_bp`'s 60/minute as well. `override_defaults=False` is the switch
+if stacking is ever wanted.
 
 `history_api` and `sessions_api` carry their own limits **specifically so that
 ordinary navigation cannot spend the 200/day budget an office behind one NAT shares
 with chat itself.** An explicit limit replaces the defaults in Flask-Limiter; that is
 the mechanism being used deliberately.
 
-`memory://` counters are fine for a burst limit and **not** for a daily quota. A real
-per-reader quota needs a durable row and one atomic
-`insert … on conflict … where used < limit returning`, taken in the view body **before
-the generator**, so a denial is a 429 and not a dying SSE stream. Not built — see
-`TODO.md`.
+`memory://` counters are fine for a burst limit and **not** for a daily quota, because
+they do not survive a deploy. The durable daily allowance is therefore a separate
+mechanism and not a Flask-Limiter limit at all: `public.usage_daily` holds one row per
+account per day, and `chat_claim_daily_message` does one atomic
+`insert … on conflict … where used < limit returning` inside a `security definer` RPC.
+The claim is taken **in the view body, before the generator**, so exhaustion is a clean
+429 with `Retry-After` rather than a dying SSE stream, and it is refunded if the request
+fails before the model produces its first token.
+
+The allowance resolves, in order: an in-window per-account override
+(`reader_quota_overrides`) → the account's tier (`tiers.daily_message_limit`, via
+`profiles.tier`) → the live `free` tier → `web/config.yaml`'s
+`server.quota.daily_messages_default`. Tiers and overrides are operator-editable from the
+console; the calendar day is `Asia/Riyadh`. Schema and design:
+[`docs/reader-quota-plan.md`](reader-quota-plan.md).
 
 ---
 
@@ -383,7 +424,7 @@ coverage threshold**, and `-m browser --browser chromium`. Note that
 
 Two rules can both be correct, both be well written, and still meet badly at one
 specific point. These are found by hitting them, because nothing else says they will
-meet. **Append to this table when you find an eleventh.**
+meet. **Append to this table when you find a thirteenth.**
 
 | #   | The collision                                                                                                                                                                                                                               | What to do                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -398,6 +439,8 @@ meet. **Append to this table when you find an eleventh.**
 | 9   | Two caches now sit on the auth path, keyed differently, with opposite outage postures — `IdentityFlagsCache` fails open (an outage still answers, just unprivileged), `TokenVerificationCache` fails closed (an outage refuses and retries) | Never let one absorb the other. A `user_id`-keyed cache cannot be consulted before a token is verified, and giving token verification a fail-open outage posture would readmit a credential nobody could confirm. See `docs/archive/2026-08-27_token-verification-cache.md` §3.                                                                                                                                                                                                                                    |
 | 10  | `ALTER DEFAULT PRIVILEGES … IN SCHEMA x` cannot revoke a privilege the hard-wired default grants — so a per-schema revoke of `EXECUTE` from `PUBLIC` applies cleanly and changes nothing                                                    | Default ACLs have two layers. Postgres uses the hard-wired `acldefault()` as the base **only when no global row exists**; a per-schema entry is then merged onto that base, and a merge cannot subtract. Table defaults grant nothing to `PUBLIC`, so `IN SCHEMA` works there and hid the rule. Function defaults do grant it, so only the **global** form (no `IN SCHEMA`) closes them — `20260828000737` got this wrong and `20260828100816` corrected it. Rule of thumb: **`IN SCHEMA` adds, global replaces.** |
 | 11  | Requiring an enabled administrator on every mutating admin RPC (`20260828001543`) made the last-administrator guard (`AD002`) **unreachable**                                                                                               | Both are correct and the guard stays. To pass the actor gate you must be an enabled administrator; you cannot target yourself (`AD001`); so if the target is another enabled administrator there are at least two, and the count guard never fires. Verified against the live project. Do not delete `AD002` as dead code — it is the backstop if the actor gate is ever loosened. `test_admin_users.py` documents this rather than asserting a state the database can no longer reach.                            |
+| 12  | The console has two form idioms — `.admin-field` (the settings tab's page-width row, closed by its own hairline) and `.admin-profile-field` (a plain column inside a card) — and both are correct                                           | They are not interchangeable and nothing catches the swap: `.admin-field` inside a bordered card draws a rule under every control and reads as a table. Settings rows use the first, editor cards (profile, daily allowance, tier form) use the second. DESIGN.md, _Console forms_.                                                                                                                                                                                                                                |
+| 13  | Tier labels are stored in both languages, because every reader sees one in their own — but a console that prints both ignores the language toggle it just obeyed everywhere else                                                            | Author both, display one. The form keeps `label_en` and `label_ar`; every surface that _shows_ a label resolves `I18n.lang`. The key is not a label and stays as it is in both. `test_admin_browser.py` pins both directions. DESIGN.md, _Operator-authored bilingual data_.                                                                                                                                                                                                                                       |
 
 ---
 
@@ -409,3 +452,11 @@ per-message deletion; background completion; model-generated titles; a virtualis
 conversation list; browser-direct writes to the chat tables; deleting durable history
 on logout; a transcript console page for operators; and any surface that lets an
 operator read what a reader asked.
+
+On the reader quota specifically: **token credits** (the OpenAI stream ignores usage
+chunks and a tokenizer estimate is not a billing ledger), **time-windowed access** as
+such (a per-account override may be time-boxed, but sign-in itself is not), and a
+**fixed promo pool** of bonus messages drawn once the daily allowance is spent — that
+last one is designed in full, with its schema corrected, in
+[`reader-quota-plan.md`](reader-quota-plan.md) §12, and deliberately not built until
+the meter has produced real numbers to decide it on.

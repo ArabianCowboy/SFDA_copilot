@@ -161,8 +161,8 @@ class TokenVerificationCache:
 
     @staticmethod
     def _key(token: str) -> str:
-        """SHA-256, via the same `sha256_hex` `_account_rate_key` and
-        `_admin_notification_rate_key` use — one definition of "how a bearer
+        """SHA-256, via the same `sha256_hex` the rest of this app uses
+        for bearer material — one definition of "how a bearer
         token becomes a digest," not three independently written ones.
 
         A raw bearer token as a dict key is a bearer token in a heap dump, in a

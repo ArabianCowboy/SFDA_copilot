@@ -1,12 +1,15 @@
-"""One digest function, so three call sites cannot quietly drift apart.
+"""One digest function, so call sites cannot quietly drift apart.
 
-`web/api/app.py`'s `_account_rate_key`, `web/api/admin.py`'s
-`_admin_notification_rate_key`, and `web/services/token_verification_cache.py`'s
-cache key each need the same thing: turn a bearer token into something safe to
-key a dict or a rate-limit bucket by, without ever holding the raw credential
-longer than necessary. All three had reimplemented the identical one-liner
-independently. A future change to the scheme (a pepper, a different digest)
-now has exactly one place to make it.
+`web/services/token_verification_cache.py`'s cache key needs to turn a bearer
+token into something safe to key a dict by, without ever holding the raw
+credential longer than necessary. Several places had reimplemented the identical
+one-liner independently. A future change to the scheme (a pepper, a different
+digest) now has exactly one place to make it.
+
+The two rate-limit key functions that used to be listed here are gone: since
+2026-09-03 the limiter keys on the ACCOUNT (`app.py`'s `_rate_key`), because a
+per-session token hash gave one reader on two devices two budgets and let an
+attacker holding stolen credentials mint a fresh bucket by signing in again.
 """
 
 from __future__ import annotations

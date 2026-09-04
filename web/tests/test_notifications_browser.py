@@ -33,7 +33,7 @@ ADMIN_IDENTITY = {
     "user_id": "test-admin-id",
     "email": "admin@example.com",
     "role": "admin",
-    "tier": "internal",
+    "tier": "staff",
     "is_admin": True,
 }
 

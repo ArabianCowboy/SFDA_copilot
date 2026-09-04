@@ -131,6 +131,16 @@
                     id="tab-people" aria-controls="panel-people" aria-selected="false" tabindex="-1">
                     {{ icon('users', 15) }}<span>{{ t('page.admin.tabs.people') }}</span>
                 </button>
+                {# The SIXTH tab (the console already ships five). Reuses the
+                   `collection` glyph rather than adding one: a new name would
+                   have to be registered in web/utils/icons.py's ICONS dict --
+                   these buttons are server-rendered by Jinja, so
+                   ADMIN_RUNTIME_ICON_NAMES (for glyphs iconMarkup() draws in
+                   the browser) is the wrong list. #}
+                <button class="admin-tab" role="tab" type="button"
+                    id="tab-tiers" aria-controls="panel-tiers" aria-selected="false" tabindex="-1">
+                    {{ icon('collection', 15) }}<span>{{ t('page.admin.tabs.tiers') }}</span>
+                </button>
                 <button class="admin-tab" role="tab" type="button"
                     id="tab-audit" aria-controls="panel-audit" aria-selected="false" tabindex="-1">
                     {{ icon('clipboard', 15) }}<span>{{ t('page.admin.tabs.audit') }}</span>
@@ -182,6 +192,15 @@
                     <div id="people-list"></div>
                     <div id="people-detail" hidden></div>
                 </div>
+            </section>
+
+            {# Ships empty; static/js/admin/ui.js renderTiers builds the table
+               and the inline create/edit form. #}
+            <section class="admin-panel" role="tabpanel" id="panel-tiers"
+                aria-labelledby="tab-tiers" tabindex="0" hidden>
+                <h1 class="admin-heading">{{ t('page.admin.tabs.tiers') }}</h1>
+                <p class="admin-form-hint">{{ t('page.admin.tiersHint') }}</p>
+                <div id="tiers-body" class="admin-panel-body"></div>
             </section>
 
             <section class="admin-panel" role="tabpanel" id="panel-audit"

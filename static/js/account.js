@@ -86,6 +86,7 @@ const Account = {
         isDisabled: identity?.is_disabled,
         createdAt: identity?.created_at,
         conversationCount: identity?.conversation_count,
+        quota: identity?.quota,
       });
       populateIdentityForm(profile || {});
       populatePreferences(profile || {});

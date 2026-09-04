@@ -11,10 +11,13 @@ from __future__ import annotations
 
 import json
 import re
+from pathlib import Path
 
 import pytest
 
 from web.api.app import ADMIN_MODULE_FILENAMES, ASSET_VERSION, create_app
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 AUTH = {"Authorization": "Bearer fake_token"}
 ADMIN = {"Authorization": "Bearer fake_admin_token"}
@@ -327,3 +330,43 @@ def test_every_icon_the_console_js_draws_is_in_the_runtime_subset():
         f"console JS draws icon(s) absent from the runtime subset: {sorted(missing)}. "
         f"Add them to ADMIN_RUNTIME_ICON_NAMES in web/utils/icons.py."
     )
+
+
+def test_every_tab_button_has_an_entry_in_the_js_TABS_list():
+    """The template and `ui.js`'s TABS list must name the same tabs.
+
+    `selectTab` hides every panel in TABS and unhides the one it was handed, so
+    a tab button that exists in admin.html but is MISSING from TABS selects
+    nothing: the operator clicks it, every other panel hides, and the console
+    goes completely blank — heading, hint and all. It reads as a broken page,
+    not as a missing list entry, which is what makes it worth pinning.
+
+    This is exactly how the Tiers tab shipped broken on 2026-09-04: six buttons
+    in the template, five entries in TABS, and a browser suite that never
+    clicked the sixth.
+    """
+    template = (REPO_ROOT / "web" / "templates" / "admin.html").read_text(encoding="utf-8")
+    ui_js = (REPO_ROOT / "static" / "js" / "admin" / "ui.js").read_text(encoding="utf-8")
+
+    buttons = set(re.findall(r'id="(tab-[a-z]+)"', template))
+    panels = set(re.findall(r'id="(panel-[a-z]+)"', template))
+    listed_tabs = set(re.findall(r"tab: '(tab-[a-z]+)'", ui_js))
+    listed_panels = set(re.findall(r"panel: '(panel-[a-z]+)'", ui_js))
+
+    assert buttons, "no tab buttons found in admin.html — did the markup change?"
+    assert buttons == listed_tabs, (
+        f"admin.html and ui.js TABS disagree. Only in the template: "
+        f"{sorted(buttons - listed_tabs)}; only in TABS: {sorted(listed_tabs - buttons)}"
+    )
+    assert panels == listed_panels, (
+        f"panels disagree. Only in the template: {sorted(panels - listed_panels)}; "
+        f"only in TABS: {sorted(listed_panels - panels)}"
+    )
+
+
+def test_every_tab_button_points_at_a_panel_that_exists():
+    """`aria-controls` must name a real panel, or the tab is unreachable to AT."""
+    template = (REPO_ROOT / "web" / "templates" / "admin.html").read_text(encoding="utf-8")
+    controls = set(re.findall(r'aria-controls="(panel-[a-z]+)"', template))
+    panels = set(re.findall(r'id="(panel-[a-z]+)"', template))
+    assert controls <= panels, f"aria-controls names no such panel: {sorted(controls - panels)}"

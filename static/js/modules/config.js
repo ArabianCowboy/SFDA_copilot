@@ -98,6 +98,7 @@ export const CONFIG = {
     AUTH_ERROR: '#auth-error',
     AUTH_MODAL: '#authModal',
     QUERY_INPUT: '#query-input',
+    COMPOSER_QUOTA: '#composer-quota',
     SEND_BTN: '#send-button',
     CATEGORY_SELECT: '#query-category',
     // No PROFILE_MODAL/PROFILE_FORM/PROFILE_ERROR: the modal is retired

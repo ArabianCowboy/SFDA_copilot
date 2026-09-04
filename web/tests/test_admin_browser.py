@@ -27,7 +27,7 @@ ADMIN_IDENTITY = {
     "user_id": "test-admin-id",
     "email": "admin@example.com",
     "role": "admin",
-    "tier": "internal",
+    "tier": "staff",
     "is_admin": True,
 }
 
@@ -385,9 +385,20 @@ def test_machine_values_stay_left_to_right_in_arabic(browser_page: Page):
 
 
 def test_the_activity_tab_is_reachable_by_keyboard(browser_page: Page):
+    """Arrow-key travel from the first tab to Activity.
+
+    The number of presses is DERIVED from the live tablist rather than hardcoded:
+    it was `range(3)`, which silently became wrong the moment a sixth tab was
+    inserted ahead of Activity. A test that has to be edited every time a tab is
+    added is a test that will eventually be edited to whatever makes it pass.
+    """
     _with_audit(browser_page)
+    tab_ids = browser_page.eval_on_selector_all(".admin-tab", "els => els.map(el => el.id)")
+    steps = tab_ids.index("tab-audit") - tab_ids.index("tab-overview")
+    assert steps > 0, f"Activity should sit after Overview in the tablist: {tab_ids}"
+
     browser_page.locator("#tab-overview").focus()
-    for _ in range(3):
+    for _ in range(steps):
         browser_page.keyboard.press("ArrowRight")
 
     expect(browser_page.locator("#tab-audit")).to_be_focused()
@@ -730,7 +741,7 @@ ACCOUNTS = [
         "id": "test-admin-id",
         "email": "admin@example.com",
         "role": "admin",
-        "tier": "internal",
+        "tier": "staff",
         "is_disabled": False,
         "last_sign_in_at": None,
     },
@@ -1946,3 +1957,152 @@ def test_people_pager_boundary_drift_resets_to_offset_0(browser_page: Page):
     expect(browser_page.locator("#people-range-status bdi").nth(0)).to_have_text("1–4")
     assert 50 in requested_offsets
     assert requested_offsets[-1] == 0
+
+
+def test_every_tab_actually_opens_its_panel(browser_page: Page):
+    """Click EVERY tab and assert its panel appears.
+
+    The Tiers tab shipped broken because no browser test ever clicked it: the
+    template had six buttons and `ui.js`'s TABS list had five entries, so
+    `selectTab('tab-tiers')` hid every panel it knew about and unhid nothing.
+    The console went completely blank — heading, hint and all — which reads as a
+    broken page rather than a missing list entry.
+
+    Walking the tablist rather than naming tabs one by one is the point: a
+    seventh tab added later is covered the moment it exists.
+    """
+    _route_identity(browser_page, status=200, body=ADMIN_IDENTITY)
+    browser_page.goto("/admin?testing=true")
+    expect(browser_page.locator("#admin-console")).to_be_visible()
+
+    tab_ids = browser_page.eval_on_selector_all(".admin-tab", "els => els.map(el => el.id)")
+    assert len(tab_ids) >= 6, f"expected the full tablist, saw {tab_ids}"
+
+    for tab_id in tab_ids:
+        panel_id = browser_page.locator(f"#{tab_id}").get_attribute("aria-controls")
+        browser_page.locator(f"#{tab_id}").click()
+        expect(browser_page.locator(f"#{panel_id}")).to_be_visible()
+        expect(browser_page.locator(f"#{tab_id}")).to_have_attribute("aria-selected", "true")
+        # The panel must have real content, not just be un-hidden: a heading is
+        # server-rendered into every one of them.
+        expect(browser_page.locator(f"#{panel_id} .admin-heading")).to_be_visible()
+
+
+TIERS_RESPONSE = {
+    "tiers": [
+        {
+            "key": "free",
+            "label_en": "Free",
+            "label_ar": "مجاني",
+            "daily_message_limit": 200,
+            "ordering": 0,
+            "member_count": 4,
+        },
+        {
+            "key": "staff",
+            "label_en": "Staff",
+            "label_ar": "الإداريين",
+            "daily_message_limit": 200,
+            "ordering": 10,
+            "member_count": 1,
+        },
+    ]
+}
+
+
+def test_the_tiers_tab_lists_the_shipped_tiers(browser_page: Page):
+    """The tab loads on ACTIVATION, so the table only exists after the click.
+
+    The page authenticates as an ordinary reader (the console's own gate is
+    mocked by `_route_identity`), so the data route is fulfilled here rather
+    than reaching Flask — the same shape every other panel's browser test uses.
+    """
+    _route_identity(browser_page, status=200, body=ADMIN_IDENTITY)
+    browser_page.route(
+        "**/admin/api/tiers",
+        lambda route: route.fulfill(
+            status=200, content_type="application/json", body=json.dumps(TIERS_RESPONSE)
+        ),
+    )
+    browser_page.goto("/admin?testing=true")
+    expect(browser_page.locator("#admin-console")).to_be_visible()
+
+    browser_page.locator("#tab-tiers").click()
+    expect(browser_page.locator("#panel-tiers")).to_be_visible()
+
+    body = browser_page.locator("#tiers-body")
+    expect(body.locator("table")).to_be_visible()
+    expect(body.locator("tbody tr")).to_have_count(2)
+    expect(body).to_contain_text("free")
+    expect(body).to_contain_text("staff")
+
+    # `free` is structural: no delete control at all, rather than a disabled one.
+    free_row = body.locator("tr[data-tier-key='free']")
+    expect(free_row.locator("[data-tier-action='delete']")).to_have_count(0)
+    expect(free_row.locator("[data-tier-action='edit']")).to_have_count(1)
+    staff_row = body.locator("tr[data-tier-key='staff']")
+    expect(staff_row.locator("[data-tier-action='delete']")).to_have_count(1)
+
+    # The create form ships with the table, not behind another click.
+    expect(body.locator("#tier-form")).to_be_visible()
+
+
+def _tiers_console(page: Page, *, lang: str = "") -> None:
+    """The console open on the Tiers tab, with the catalogue route fulfilled."""
+    _route_identity(page, status=200, body=ADMIN_IDENTITY)
+    page.route(
+        "**/admin/api/tiers",
+        lambda route: route.fulfill(
+            status=200, content_type="application/json", body=json.dumps(TIERS_RESPONSE)
+        ),
+    )
+    page.goto(f"/admin?testing=true{lang}")
+    expect(page.locator("#admin-console")).to_be_visible()
+    page.locator("#tab-tiers").click()
+    expect(page.locator("#panel-tiers")).to_be_visible()
+
+
+def test_the_tiers_table_shows_only_the_console_language(browser_page: Page):
+    """One label column, not two.
+
+    The table shipped with `Label (English)` AND `Label (Arabic)` side by side,
+    so an operator who had toggled the console to English still read Arabic in
+    it — the only surface in the product that ignored the toggle. Every other
+    place a tier label is printed (`populateComposerTiers`, the allowance
+    card's select) already picks one. Both labels are still STORED and still
+    edited, in the form below the table; what is resolved here is only what a
+    reader of the table is shown.
+    """
+    _tiers_console(browser_page)
+
+    body = browser_page.locator("#tiers-body")
+    expect(body.locator("table")).to_be_visible()
+    rows = body.locator("tbody")
+    expect(rows).to_contain_text("Free")
+    expect(rows).not_to_contain_text("\u0645\u062c\u0627\u0646\u064a")
+
+    # One label column: key, label, limit, members, order, actions.
+    expect(body.locator("thead th")).to_have_count(6)
+
+
+def test_the_tiers_table_shows_the_arabic_label_in_arabic(browser_page: Page):
+    """The same table, the other way round. Neither language sees the other."""
+    _tiers_console(browser_page, lang="&lang=ar")
+
+    rows = browser_page.locator("#tiers-body tbody")
+    expect(rows).to_contain_text("\u0645\u062c\u0627\u0646\u064a")
+    expect(rows).not_to_contain_text("Free")
+    # The KEY is not a label and stays as it is in both: it is what the
+    # database and the notification composer both name.
+    expect(rows).to_contain_text("free")
+
+
+def test_the_tier_form_still_edits_both_labels(browser_page: Page):
+    """Resolving the TABLE must not have removed either stored label."""
+    _tiers_console(browser_page)
+    browser_page.locator("tr[data-tier-key='free'] [data-tier-action='edit']").click()
+
+    expect(browser_page.locator("#tier-label_en")).to_have_value("Free")
+    expect(browser_page.locator("#tier-label_ar")).to_have_value("\u0645\u062c\u0627\u0646\u064a")
+    # The key is permanent, and has to look it rather than merely behave it.
+    expect(browser_page.locator("#tier-key")).to_have_attribute("readonly", "")

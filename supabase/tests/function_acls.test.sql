@@ -172,7 +172,13 @@ begin
   select string_agg(x, ', ') into bad
     from unnest(array['admin_write_settings','admin_set_user_flags','admin_update_profile',
                       'admin_create_notification','admin_deactivate_notification',
-                      'admin_delete_notification','admin_purge_notification']) as x
+                      'admin_delete_notification','admin_purge_notification',
+                      -- Added 2026-09-03 with the reader-quota feature. This array is a
+                      -- HARDCODED list, so a new mutating admin RPC that forgets the actor
+                      -- gate still passes this suite unless its name is added here. Any
+                      -- future one goes in the same commit that creates it.
+                      'admin_create_tier','admin_update_tier','admin_delete_tier',
+                      'admin_set_reader_quota']) as x
    where not exists (
      select 1 from pg_proc p
       where p.pronamespace = 'public'::regnamespace and p.proname = x

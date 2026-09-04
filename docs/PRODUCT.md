@@ -119,13 +119,23 @@ OpenAI key or a built index.
   test change, not just a copy change.
 - **Asset versioning.** `ASSET_VERSION` in `web/api/app.py` must be bumped in any commit
   touching CSS or JS, or returning users get mismatched stylesheets.
-- Rate limits are per endpoint, not one global quota: 15 chat requests per minute,
-  30/minute for the transcript read, 60/minute for the sidebar, 5/minute for password
-  recovery, and 200/day + 50/hour + 10/minute as the default for everything else.
-  Navigation reads carry their own limits deliberately, so ordinary browsing cannot
-  spend the daily budget an office behind one NAT shares with chat. Account export and
-  bulk deletion are keyed per reader rather than per IP. Full table in
-  `docs/ARCHITECTURE.md`.
+- **Two different limits, doing two different jobs.** The burst limits are per endpoint
+  and stop hammering: 15 chat requests per minute, 30/minute for the transcript read,
+  60/minute for the sidebar, 5/minute for password recovery, 200/day + 50/hour +
+  10/minute as the default for everything else. Chat, account export, bulk deletion and
+  the admin broadcast are keyed per **account** rather than per IP, so an office behind
+  one NAT does not share one budget. Full table in `docs/ARCHITECTURE.md`.
+- **The daily allowance is the other one, and it is policy rather than protection.**
+  Every reader gets a number of questions per calendar day (`Asia/Riyadh`), counted in
+  the database so it survives a deploy. It is set in two places the operator controls
+  from the console: a per-**tier** default, and a per-**account** override that may
+  carry a start and an end date. Both ship at 200 a day — deliberately generous, so the
+  meter can be watched before it is tightened. A reader who runs out is told so in their
+  own language, with the number and the time their allowance returns; they keep their
+  history and can still read it. A quiet counter appears under the composer only near
+  the end of the day's allowance. Nothing here lets an operator read what anybody asked.
+- Tier names are **operator-set data in both languages**, not strings in the catalogue,
+  because a tier somebody creates in the console cannot have a translation key.
 - Model: `gpt-4o-mini`, temperature 0.1, up to 8 retrieved passages as context.
 
 **Terminology:** the four corpus categories are named exactly as above.

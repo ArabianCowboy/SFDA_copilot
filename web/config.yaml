@@ -89,6 +89,26 @@ server:
   # happen quietly; see the comment there, and TODO.md.
   archive_disclosed: false
 
+  # The durable daily message allowance (docs/reader-quota-plan.md).
+  #
+  # This number is the SEED for BOTH shipped tiers ('free' and 'staff') and the
+  # last-resort fallback for an account with no profile row whose 'free' tier is
+  # also missing. It is NOT the runtime authority: once a tier row exists, the
+  # database is, and an operator changes an allowance from the console's Tiers
+  # tab -- no migration, no deploy, no edit here.
+  #
+  # web/tests/test_quota.py::test_seed_matches_shipped_default pins BOTH seeded
+  # rows in the migration to this value, so changing one without the other fails
+  # the suite rather than drifting silently.
+  #
+  # NOTE this is a real new ceiling, not a formality: `chat_api` below is an
+  # explicit limit, and an explicit Flask-Limiter limit REPLACES the per_day
+  # default rather than adding to it -- so chat has had no daily cap at all until
+  # now. 200 is chosen well above observed usage so the meter can be watched
+  # before it is tightened.
+  quota:
+    daily_messages_default: 200
+
   # Rate limiting
   rate_limit:
     per_day: 200

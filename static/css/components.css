@@ -49,15 +49,17 @@
   color: var(--fg-on-signal);
   background: var(--signal);
   cursor: pointer;
-  box-shadow: 0 6px 18px rgb(var(--signal-rgb) / .22);
+  box-shadow: 0 6px 18px rgb(var(--signal-rgb) / 0.22);
   transition: var(--btn-transition);
 }
 .unified-button:hover {
   background: var(--signal-hover);
   transform: translateY(-1px);
-  box-shadow: 0 10px 26px rgb(var(--signal-rgb) / .28);
+  box-shadow: 0 10px 26px rgb(var(--signal-rgb) / 0.28);
 }
-.unified-button:active { transform: translateY(0); }
+.unified-button:active {
+  transform: translateY(0);
+}
 /* The arrow leans toward the reading direction, so it points "onward" in
    both scripts rather than always to the right. It also mirrors under RTL —
    an arrow is a directional glyph, unlike the rest of the set. */
@@ -75,8 +77,12 @@
 .theme-toggle-btn,
 .lang-toggle-btn,
 .utility-icon-link {
-  display: inline-flex; align-items: center; justify-content: center;
-  inline-size: 38px; block-size: 38px; padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 38px;
+  block-size: 38px;
+  padding: 0;
   border: 1px solid var(--hairline);
   border-radius: var(--radius-pill);
   color: var(--fg-muted);
@@ -110,7 +116,8 @@
    text-align box, so an inline SVG sits on the text baseline unevenly. The
    radius is stated rather than inherited from `.btn-sm`, which uses its own
    4px and left the small controls in a row disagreeing by 2px. */
-.btn-ghost, .btn-primary {
+.btn-ghost,
+.btn-primary {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
@@ -128,8 +135,7 @@
      fill. Cool, not warm: a marigold wash over warm porcelain read as the
      cream-and-terracotta default this palette exists to avoid. */
   background:
-    radial-gradient(120% 70% at 50% -18%, var(--signal-tint) 0%, transparent 62%),
-    var(--bg-page);
+    radial-gradient(120% 70% at 50% -18%, var(--signal-tint) 0%, transparent 62%), var(--bg-page);
 }
 .landing-inner {
   inline-size: 100%;
@@ -162,7 +168,9 @@
 /* The wordmark, set with its counterpart in the other script. Full EN/AR
    parity is a binding brand commitment, so the mark states it instead of the
    copy claiming it. Sized from the scale, never from a Bootstrap utility. */
-.hero-title-wrapper { margin-block: var(--space-5) var(--space-4); }
+.hero-title-wrapper {
+  margin-block: var(--space-5) var(--space-4);
+}
 .hero-title-wrapper h1 {
   margin: 0;
   font-family: var(--font-display);
@@ -212,7 +220,9 @@
 }
 
 .landing-knowledge-badge {
-  display: inline-flex; align-items: center; gap: var(--space-2);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
   padding: var(--space-2) var(--space-4);
   border: 1px solid var(--confidence);
   border-radius: var(--radius-pill);
@@ -223,7 +233,9 @@
 }
 
 /* ——————————————— Feature grid ——————————————— */
-.why-use-platform-section { padding-block: var(--space-6) var(--space-8); }
+.why-use-platform-section {
+  padding-block: var(--space-6) var(--space-8);
+}
 .why-use-platform-section h2 {
   margin: 0 0 var(--space-7);
   text-align: center;
@@ -239,12 +251,20 @@
   gap: var(--space-4);
   grid-template-columns: minmax(0, 1fr);
 }
-@media (min-width: 640px) { .feature-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 640px) {
+  .feature-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
 @media (min-width: 1000px) {
-  .feature-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .feature-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
   /* The coverage card carries the corpus claim, so it leads at double width
      rather than sitting in a row of five identical boxes. */
-  .feature-card--lead { grid-column: span 2; }
+  .feature-card--lead {
+    grid-column: span 2;
+  }
 }
 
 .feature-card {
@@ -254,9 +274,10 @@
   border-radius: var(--radius-lg);
   background: var(--bg-surface);
   text-align: start;
-  transition: transform var(--duration-m) var(--ease-soft),
-              border-color var(--duration-m) var(--ease-soft),
-              box-shadow var(--duration-m) var(--ease-soft);
+  transition:
+    transform var(--duration-m) var(--ease-soft),
+    border-color var(--duration-m) var(--ease-soft),
+    box-shadow var(--duration-m) var(--ease-soft);
 }
 .feature-card:hover {
   transform: translateY(-3px);
@@ -292,9 +313,15 @@
      pulled the eye before the CTA. The fill alone carries the lead. */
   border-color: var(--hairline);
 }
-.feature-card--lead p { max-inline-size: none; }
-.feature-card--lead .feature-icon { color: var(--confidence-strong); }
-.feature-card--lead h3 { font-size: var(--fs-600); }
+.feature-card--lead p {
+  max-inline-size: none;
+}
+.feature-card--lead .feature-icon {
+  color: var(--confidence-strong);
+}
+.feature-card--lead h3 {
+  font-size: var(--fs-600);
+}
 
 /* ——————————————— Landing footer ——————————————— */
 .landing-footer {
@@ -314,21 +341,35 @@
   color: var(--fg-muted);
   text-align: center;
 }
-.landing-notice strong { color: var(--fg-secondary); font-weight: var(--fw-display); }
+.landing-notice strong {
+  color: var(--fg-secondary);
+  font-weight: var(--fw-display);
+}
 .landing-colophon {
-  display: flex; flex-wrap: wrap; justify-content: center;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   gap: var(--space-2) var(--space-5);
   font-size: var(--fs-200);
   color: var(--fg-muted);
 }
-.landing-colophon a { color: var(--fg-secondary); }
-.landing-colophon a:hover { color: var(--signal); }
+.landing-colophon a {
+  color: var(--fg-secondary);
+}
+.landing-colophon a:hover {
+  color: var(--signal);
+}
 
 /* Armed by effects.js at runtime, never in the authored HTML: if the module
    fails to load, the cards must still be visible rather than stuck at
    opacity 0 with no observer coming to reveal them. */
-.animate-card.is-armed { opacity: 0; transform: translateY(16px); }
-.animate-card.revealed { animation: cardReveal var(--duration-l) var(--ease-out) forwards; }
+.animate-card.is-armed {
+  opacity: 0;
+  transform: translateY(16px);
+}
+.animate-card.revealed {
+  animation: cardReveal var(--duration-l) var(--ease-out) forwards;
+}
 
 /* ——————————————— Modals & forms ——————————————— */
 .modal-content {
@@ -360,7 +401,9 @@
   font-size: var(--fs-500);
   letter-spacing: var(--track-tight);
 }
-.modal-header .modal-title .icon { color: var(--signal); }
+.modal-header .modal-title .icon {
+  color: var(--signal);
+}
 
 /* The dismiss control, redrawn on-brand: Bootstrap's default `.btn-close`
    is a fixed, low-contrast grey X baked into a background-image data URI
@@ -387,7 +430,7 @@
 }
 .modal-header .btn-close::before,
 .offcanvas-header .btn-close::before {
-  content: "";
+  content: '';
   position: absolute;
   inset: 8px;
   background-color: var(--fg-faint);
@@ -418,7 +461,9 @@
 .offcanvas-header .btn-close:focus-visible::before {
   background-color: var(--fg-primary);
 }
-.nav-tabs { border-block-end: 1px solid var(--hairline); }
+.nav-tabs {
+  border-block-end: 1px solid var(--hairline);
+}
 .nav-tabs .nav-link {
   display: inline-flex;
   align-items: center;
@@ -443,11 +488,24 @@
   gap: var(--space-2);
   color: var(--fg-muted);
 }
-.form-floating > label .icon { color: var(--fg-faint); }
-.form-label { display: inline-flex; align-items: center; gap: var(--space-2); }
-.form-label .icon { color: var(--fg-faint); }
-#auth-error { display: flex; align-items: center; gap: var(--space-2); }
-.form-control, .form-select {
+.form-floating > label .icon {
+  color: var(--fg-faint);
+}
+.form-label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.form-label .icon {
+  color: var(--fg-faint);
+}
+#auth-error {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.form-control,
+.form-select {
   /* background-COLOR, not the shorthand. Bootstrap draws the select's chevron
      as a background-image, and the shorthand clears it — leaving a dropdown
      that looks exactly like a text input and gives no sign it can be opened.
@@ -458,11 +516,15 @@
   border-radius: var(--radius-sm);
   color: var(--fg-primary);
 }
-.form-control:focus, .form-select:focus {
+.form-control:focus,
+.form-select:focus {
   border-color: var(--signal);
   box-shadow: 0 0 0 3px var(--focus-ring-shadow);
 }
-.form-text { color: var(--fg-muted); font-size: var(--fs-200); }
+.form-text {
+  color: var(--fg-muted);
+  font-size: var(--fs-200);
+}
 
 /* ——————————————— New chat ———————————————
    A pill, because it reads as a control; teal on hover, because the chrome
@@ -495,7 +557,9 @@
 }
 /* The display above outranks the `hidden` attribute's UA rule, and the button
    ships hidden. Without this it is visible on every first paint. */
-.new-chat-btn[hidden] { display: none; }
+.new-chat-btn[hidden] {
+  display: none;
+}
 
 /* Deepened, NOT inverted. The citation marker this borrows its resting fill
    from goes solid teal on hover, but #send-button is already a solid --signal
@@ -508,7 +572,7 @@
      invisible. Deepening the tint through the channel triplet keeps the
      response obvious while staying a tint — and it flips with the ramp, so it
      reads as *deeper* in light and *lighter* in dark without a branch. */
-  background: rgb(var(--signal-rgb) / .24);
+  background: rgb(var(--signal-rgb) / 0.24);
   color: var(--signal-hover);
   border-color: var(--signal-hover);
   transform: translateY(-1px);
@@ -552,11 +616,14 @@
   cursor: pointer;
   /* No transform in the transition. A segment that lifts on hover would fight
      the fill sliding under it, and the fill IS the feedback. */
-  transition: color var(--duration-s) var(--ease-soft),
-              background var(--duration-m) var(--ease-soft),
-              box-shadow var(--duration-m) var(--ease-soft);
+  transition:
+    color var(--duration-s) var(--ease-soft),
+    background var(--duration-m) var(--ease-soft),
+    box-shadow var(--duration-m) var(--ease-soft);
 }
-.sidebar-tab:hover { color: var(--fg-secondary); }
+.sidebar-tab:hover {
+  color: var(--fg-secondary);
+}
 /* THE RING IS NOT DECORATION — it is what makes this control legible in dark
    mode. In light, `--bg-surface` sits above `--bg-sunken` and the selected
    segment reads as raised out of the groove. In dark the ramp inverts: sunken
@@ -567,13 +634,15 @@
 .sidebar-tab.is-active {
   color: var(--fg-primary);
   background: var(--bg-surface);
-  box-shadow: var(--shadow-sm), inset 0 0 0 1px var(--hairline);
+  box-shadow:
+    var(--shadow-sm),
+    inset 0 0 0 1px var(--hairline);
 }
 /* The count of unread-nothing: a quiet dot on Chats while the list is still
    loading, so the tab does not look empty-but-final before its content lands. */
 /* Attribute, never the id: the macro renders twice, so `#tab-chats` names only
    the desktop one and the offcanvas copy would silently never pulse. */
-.sidebar-tabs[data-loading="chats"] [data-sidebar-tab="chats"]::after {
+.sidebar-tabs[data-loading='chats'] [data-sidebar-tab='chats']::after {
   content: '';
   display: inline-block;
   inline-size: 4px;
@@ -585,13 +654,18 @@
   animation: sidebarTabPulse 1.2s var(--ease-soft) infinite;
 }
 @media (prefers-reduced-motion: reduce) {
-  .sidebar-tabs[data-loading="chats"] [data-sidebar-tab="chats"]::after {
+  .sidebar-tabs[data-loading='chats'] [data-sidebar-tab='chats']::after {
     animation: none;
   }
 }
 @keyframes sidebarTabPulse {
-  0%, 100% { opacity: .3; }
-  50%      { opacity: 1; }
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 1;
+  }
 }
 
 /* ——————————————— Conversation history ———————————————
@@ -617,8 +691,12 @@
   padding-inline-end: var(--space-2);
   margin-inline-end: calc(var(--space-2) * -1);
 }
-.history-section[hidden] { display: none; }
-.faq-section[hidden] { display: none; }
+.history-section[hidden] {
+  display: none;
+}
+.faq-section[hidden] {
+  display: none;
+}
 
 /* Date buckets, styled as the FAQ's category headings are. Sticky, because the
    answer to "when was this" must survive scrolling past its own heading — the
@@ -639,9 +717,15 @@
   /* Opaque, or rows scroll visibly through the heading text. */
   background: var(--bg-surface);
 }
-.history-group.is-first { margin-block-start: 0; }
+.history-group.is-first {
+  margin-block-start: 0;
+}
 
-.history-list { display: flex; flex-direction: column; gap: 1px; }
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
 
 /* THE ROW. A grid, not a flex row, and the reason is the middle column:
    `minmax(0, 1fr)` is what lets the title actually truncate. A flex child
@@ -660,7 +744,9 @@
   transition: background var(--duration-s) var(--ease-soft);
 }
 .history-item:hover,
-.history-item:focus-within { background: var(--bg-sunken); }
+.history-item:focus-within {
+  background: var(--bg-sunken);
+}
 
 /* The open control fills the row. A button rather than a link: this changes
    what the app is showing, it does not navigate — there is no URL to give it,
@@ -681,7 +767,9 @@
    delete buttons INSIDE this one, which is invalid HTML and leaves them
    unreachable by keyboard in practice. So the ring is moved to the row, which is
    the box the reader is actually selecting. */
-.history-open:focus-visible { outline: none; }
+.history-open:focus-visible {
+  outline: none;
+}
 .history-item:has(.history-open:focus-visible) {
   outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
@@ -690,7 +778,9 @@
   color: var(--fg-faint);
   transition: color var(--duration-s) var(--ease-soft);
 }
-.history-item:hover .history-item-icon { color: var(--fg-muted); }
+.history-item:hover .history-item-icon {
+  color: var(--fg-muted);
+}
 
 .history-item-title {
   min-inline-size: 0;
@@ -709,17 +799,23 @@
    reads as a rendering fault rather than as emphasis. The fallback already says
    "Untitled conversation" in words; the faint colour is the whole cue it needs,
    and it means the same thing in both scripts. */
-.history-item-title.is-untitled { color: var(--fg-faint); }
+.history-item-title.is-untitled {
+  color: var(--fg-faint);
+}
 
 /* The selected conversation: a rule on the reading edge and the signal colour,
    matching .faq-button.active exactly. Two lists in one column that marked
    "current" two different ways would be two systems. */
-.history-item.is-active { background: var(--signal-tint); }
+.history-item.is-active {
+  background: var(--signal-tint);
+}
 .history-item.is-active .history-item-title {
   color: var(--signal);
   font-weight: var(--fw-medium);
 }
-.history-item.is-active .history-item-icon { color: var(--signal); }
+.history-item.is-active .history-item-icon {
+  color: var(--signal);
+}
 .history-item.is-active::before {
   content: '';
   position: absolute;
@@ -742,9 +838,13 @@
 }
 .history-item:hover .history-item-actions,
 .history-item:focus-within .history-item-actions,
-.history-item.is-active .history-item-actions { opacity: 1; }
+.history-item.is-active .history-item-actions {
+  opacity: 1;
+}
 @media (hover: none) {
-  .history-item-actions { opacity: .65; }
+  .history-item-actions {
+    opacity: 0.65;
+  }
 }
 .history-action {
   display: inline-flex;
@@ -758,15 +858,24 @@
   border: none;
   border-radius: var(--radius-sm);
   cursor: pointer;
-  transition: color var(--duration-s) var(--ease-soft),
-              background var(--duration-s) var(--ease-soft);
+  transition:
+    color var(--duration-s) var(--ease-soft),
+    background var(--duration-s) var(--ease-soft);
 }
-.history-action:hover { color: var(--fg-primary); background: var(--bg-surface); }
+.history-action:hover {
+  color: var(--fg-primary);
+  background: var(--bg-surface);
+}
 /* The one destructive control in this column earns the danger colour on hover
    and not before. At rest it is as quiet as its neighbour, because a row of
    red bins down a scrolling list would read as a list of errors. */
-.history-action.is-destructive:hover { color: var(--danger); }
-.history-action[disabled] { opacity: .4; cursor: not-allowed; }
+.history-action.is-destructive:hover {
+  color: var(--danger);
+}
+.history-action[disabled] {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
 
 /* Inline rename. Replaces the title in place rather than opening a dialog: the
    reader is naming the thing they are looking at, and a modal would take them
@@ -794,7 +903,10 @@
   font-size: var(--fs-200);
   color: var(--fg-secondary);
 }
-.history-confirm-text { flex: 1; min-inline-size: 0; }
+.history-confirm-text {
+  flex: 1;
+  min-inline-size: 0;
+}
 .history-confirm button {
   padding-block: 2px;
   padding-inline: var(--space-3);
@@ -809,13 +921,19 @@
   background: transparent;
   border: 1px solid var(--danger);
 }
-.history-confirm .is-destructive:hover { color: var(--fg-on-signal); background: var(--danger); }
+.history-confirm .is-destructive:hover {
+  color: var(--fg-on-signal);
+  background: var(--danger);
+}
 .history-confirm .is-keep {
   color: var(--fg-secondary);
   background: transparent;
   border: 1px solid var(--hairline-strong);
 }
-.history-confirm .is-keep:hover { color: var(--fg-primary); background: var(--bg-surface); }
+.history-confirm .is-keep:hover {
+  color: var(--fg-primary);
+  background: var(--bg-surface);
+}
 
 /* Empty, loading and unavailable. Three states, kept visually distinct because
    collapsing them is how a sidebar ends up telling a reader they have no
@@ -835,7 +953,9 @@
   margin-block-start: var(--space-1);
   color: var(--fg-faint);
 }
-.history-status.is-error { color: var(--warning); }
+.history-status.is-error {
+  color: var(--warning);
+}
 .history-retry,
 .history-more,
 .faq-more {
@@ -855,12 +975,20 @@
 }
 .history-retry:hover,
 .history-more:hover,
-.faq-more:hover { color: var(--fg-primary); background: var(--bg-sunken); }
-.history-more[disabled] { opacity: .5; cursor: progress; }
+.faq-more:hover {
+  color: var(--fg-primary);
+  background: var(--bg-sunken);
+}
+.history-more[disabled] {
+  opacity: 0.5;
+  cursor: progress;
+}
 /* Closer to the group it belongs to than history-more sits to the list it
    ends — this one has three or four sibling questions right above it, not a
    whole scrolled section. */
-.faq-section .faq-more { margin-block-start: var(--space-1); }
+.faq-section .faq-more {
+  margin-block-start: var(--space-1);
+}
 
 /* ——————————————— FAQ rail ———————————————
    The reason the sidebar exists: a first session usually starts by clicking a
@@ -899,8 +1027,14 @@
   margin-block-start: 0;
   border-block-start: none;
 }
-.faq-section h4 .icon { color: var(--signal); }
-.faq-section .nav-pills { display: flex; flex-direction: column; gap: 1px; }
+.faq-section h4 .icon {
+  color: var(--signal);
+}
+.faq-section .nav-pills {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
 .faq-section .nav-link.faq-button {
   position: relative;
   padding: var(--space-2) var(--space-3);
@@ -913,8 +1047,9 @@
   text-align: start;
   background: transparent;
   cursor: pointer;
-  transition: background var(--duration-s) var(--ease-soft),
-              color var(--duration-s) var(--ease-soft);
+  transition:
+    background var(--duration-s) var(--ease-soft),
+    color var(--duration-s) var(--ease-soft);
 }
 .faq-section .nav-link.faq-button:hover,
 .faq-section .nav-link.faq-button:focus-visible {
@@ -968,10 +1103,19 @@
   flex-direction: column;
   max-inline-size: 100%;
 }
-.chatbot-message { align-self: stretch; align-items: stretch; }
-.user-message { align-self: flex-end; align-items: flex-end; max-inline-size: min(56ch, 100%); }
+.chatbot-message {
+  align-self: stretch;
+  align-items: stretch;
+}
+.user-message {
+  align-self: flex-end;
+  align-items: flex-end;
+  max-inline-size: min(56ch, 100%);
+}
 
-.message-bubble { position: relative; }
+.message-bubble {
+  position: relative;
+}
 .chatbot-message .message-bubble {
   display: flex;
   flex-direction: column;
@@ -988,16 +1132,25 @@
   color: var(--fg-on-signal);
   background: var(--signal);
 }
-.user-message .timestamp { color: var(--fg-on-signal); opacity: .75; }
+.user-message .timestamp {
+  color: var(--fg-on-signal);
+  opacity: 0.75;
+}
 /* An answer's timestamp is meta, not part of the prose: it sits on the same
    line as nothing else and stays out of the reading rhythm. */
-.chatbot-message .timestamp { margin-block-start: 0; }
+.chatbot-message .timestamp {
+  margin-block-start: 0;
+}
 
 /* The stage line is prepended into the bubble by UI.setStage, which would put
    "DRAFTING THE ANSWER" above the speaker it belongs to. Ordering the avatar
    first here keeps the reading order speaker → progress → answer without the
    JS needing to know where in the bubble anything else lives. */
-.avatar { display: flex; align-items: center; order: -1; }
+.avatar {
+  display: flex;
+  align-items: center;
+  order: -1;
+}
 
 .message-content {
   inline-size: 100%;
@@ -1011,17 +1164,30 @@
   font-size: var(--fs-300);
   color: var(--fg-on-signal);
 }
-.message-content > :last-child { margin-block-end: 0; }
-.message-content > :first-child { margin-block-start: 0; }
-.message-content h1, .message-content h2, .message-content h3, .message-content h4 {
+.message-content > :last-child {
+  margin-block-end: 0;
+}
+.message-content > :first-child {
+  margin-block-start: 0;
+}
+.message-content h1,
+.message-content h2,
+.message-content h3,
+.message-content h4 {
   /* More air above a heading than below it, so it binds to what it introduces
      rather than floating between two paragraphs. */
   margin-block: var(--space-6) var(--space-2);
   font-size: var(--fs-500);
 }
-.message-list { padding-inline-start: 1.25em; }
-.message-list li { margin-block-end: var(--space-2); }
-.message-list li::marker { color: var(--fg-faint); }
+.message-list {
+  padding-inline-start: 1.25em;
+}
+.message-list li {
+  margin-block-end: var(--space-2);
+}
+.message-list li::marker {
+  color: var(--fg-faint);
+}
 .message-content blockquote {
   margin: var(--space-4) 0;
   padding-inline-start: var(--space-4);
@@ -1056,7 +1222,9 @@
   text-transform: uppercase;
 }
 .user-message .message-content th,
-.user-message .message-content td { border-color: rgb(255 255 255 / .3); }
+.user-message .message-content td {
+  border-color: rgb(255 255 255 / 0.3);
+}
 
 .timestamp {
   display: block;
@@ -1084,7 +1252,7 @@
   background: var(--bg-sunken);
   color: var(--fg-primary);
   font-family: var(--font-mono);
-  font-size: .875em;
+  font-size: 0.875em;
 }
 .knowledge-cutoff-notice {
   display: flex;
@@ -1098,7 +1266,9 @@
   line-height: 1.6;
   color: var(--fg-muted);
 }
-.knowledge-cutoff-notice .icon { margin-block-start: .2em; }
+.knowledge-cutoff-notice .icon {
+  margin-block-start: 0.2em;
+}
 
 /* Same row shape as the cutoff notice above, but a genuine restriction
    rather than routine context — a --danger accent, same 2px weight as the
@@ -1118,7 +1288,11 @@
   line-height: 1.6;
   color: var(--fg);
 }
-.account-disabled-notice .account-disabled-notice-icon { flex-shrink: 0; margin-block-start: .2em; color: var(--danger); }
+.account-disabled-notice .account-disabled-notice-icon {
+  flex-shrink: 0;
+  margin-block-start: 0.2em;
+  color: var(--danger);
+}
 
 /* ——————————————— Opening state ———————————————
    Not a message: nothing was sent, so there is no bubble, no avatar row and
@@ -1145,7 +1319,10 @@
    document"; spending it on the product's own name in the greeting would
    spend the one cue the citations depend on. The heading is already the
    loudest thing here — the emphasis stays semantic. */
-.chat-intro-title strong { font-weight: inherit; color: inherit; }
+.chat-intro-title strong {
+  font-weight: inherit;
+  color: inherit;
+}
 .chat-intro-list {
   display: flex;
   flex-direction: column;
@@ -1164,7 +1341,9 @@
 /* One muted colour for all three. They used to be Bootstrap's blue, green and
    cyan utilities — three colours from outside this system, on a surface whose
    whole discipline is that teal means retrieval. */
-.chat-intro-list .icon { color: var(--fg-faint); }
+.chat-intro-list .icon {
+  color: var(--fg-faint);
+}
 .chat-intro-prompt {
   margin: 0;
   font-size: var(--fs-400);
@@ -1183,20 +1362,21 @@
   align-items: center;
   justify-content: center;
   min-inline-size: 1.15em;
-  padding: 0 .3em;
-  margin-inline-start: .15em;
+  padding: 0 0.3em;
+  margin-inline-start: 0.15em;
   border: 1px solid var(--signal);
   border-radius: var(--radius-xs);
   background: var(--signal-tint);
   color: var(--signal);
   font-family: var(--font-mono);
-  font-size: .7em;
+  font-size: 0.7em;
   font-weight: var(--fw-medium);
   line-height: 1.5;
-  vertical-align: .35em;
+  vertical-align: 0.35em;
   cursor: pointer;
-  transition: background var(--duration-s) var(--ease-soft),
-              color var(--duration-s) var(--ease-soft);
+  transition:
+    background var(--duration-s) var(--ease-soft),
+    color var(--duration-s) var(--ease-soft);
 }
 .cite-marker:hover,
 .cite-marker:focus-visible,
@@ -1228,14 +1408,16 @@
   cursor: pointer;
   transition: color var(--duration-s) var(--ease-soft);
 }
-.source-trigger:hover { color: var(--fg-primary); }
+.source-trigger:hover {
+  color: var(--fg-primary);
+}
 .source-trigger .chev {
   color: currentColor;
   /* An arrow points along the reading direction, so it mirrors. */
   transform: scaleX(var(--flip));
   transition: transform var(--duration-s) var(--ease-soft);
 }
-.source-trigger[aria-expanded="true"] .chev {
+.source-trigger[aria-expanded='true'] .chev {
   transform: scaleX(var(--flip)) rotate(90deg);
 }
 
@@ -1255,7 +1437,9 @@
   min-block-size: 0;
   background: var(--bg-surface);
 }
-.source-panel[hidden] { display: none; }
+.source-panel[hidden] {
+  display: none;
+}
 
 .source-panel-head {
   display: flex;
@@ -1300,7 +1484,7 @@
   padding-inline: var(--space-2);
   border: 1px solid rgb(var(--confidence-rgb) / 0.35);
   border-radius: var(--radius-xs);
-  background: rgb(var(--confidence-rgb) / 0.10);
+  background: rgb(var(--confidence-rgb) / 0.1);
   color: var(--confidence);
   font-size: var(--fs-050, var(--fs-100));
 }
@@ -1319,8 +1503,12 @@
   font-size: var(--fs-100);
   line-height: var(--lh-normal, 1.5);
 }
-.source-panel-dated[hidden] { display: none; }
-.source-panel.is-sheet .source-panel-dated { padding-inline: 0 var(--space-3); }
+.source-panel-dated[hidden] {
+  display: none;
+}
+.source-panel.is-sheet .source-panel-dated {
+  padding-inline: 0 var(--space-3);
+}
 
 /* "This conversation was picked up from your history."
 
@@ -1364,7 +1552,9 @@
   border-radius: var(--radius-pill);
   background: var(--confidence);
 }
-.resumed-notice-text { flex: 1 1 auto; }
+.resumed-notice-text {
+  flex: 1 1 auto;
+}
 .resumed-notice-dismiss {
   flex: none;
   display: inline-flex;
@@ -1376,7 +1566,9 @@
   cursor: pointer;
   transition: color var(--duration-s) var(--ease-soft);
 }
-.resumed-notice-dismiss:hover { color: var(--fg-primary); }
+.resumed-notice-dismiss:hover {
+  color: var(--fg-primary);
+}
 
 /* "Your chats are saved to your account."
 
@@ -1429,7 +1621,38 @@
   gap: var(--space-2);
 }
 .history-notice-text,
-.history-notice-warning { margin-block: 0; }
+.history-notice-title,
+.history-notice-warning {
+  margin-block: 0;
+}
+.history-notice-title {
+  color: var(--fg-primary);
+  font-weight: var(--fw-medium);
+}
+
+/* The daily allowance is spent.
+   ---------------------------------------------------------------------------
+   Reuses the Notices shape and changes exactly one thing: the inline-start pill
+   is --confidence, not --warning. DESIGN.md's rule is that a boundary the
+   product is deliberately enforcing is marked in --confidence and NEVER in
+   --danger; nothing has malfunctioned, the answer to "another question today"
+   is simply no. `.stream-note.error` does use --danger and must not be reused
+   here. Logical properties only. */
+.quota-notice::before {
+  background: var(--confidence);
+}
+
+/* The quiet pre-exhaustion counter, under the composer.
+   A sibling AFTER .composer, never inside it -- .composer is a flex row and
+   would lay this out as a fourth item on the input line. */
+.composer-quota {
+  margin-block: var(--space-2) 0;
+  margin-inline: 0;
+  padding-inline: var(--space-2);
+  color: var(--fg-muted);
+  font-size: var(--fs-100);
+  text-align: start;
+}
 /* The one line that asks something of the reader, so it is the one line that
    is not muted. */
 .history-notice-warning {
@@ -1447,7 +1670,9 @@
   cursor: pointer;
   transition: color var(--duration-s) var(--ease-soft);
 }
-.history-notice-dismiss:hover { color: var(--fg-primary); }
+.history-notice-dismiss:hover {
+  color: var(--fg-primary);
+}
 
 /* "New registrations are paused right now." (docs/registrations-pause-plan.md
    §6 / §9 Step 12). Same shape as .history-notice on purpose: this is the same
@@ -1486,7 +1711,9 @@
   color: var(--fg-primary);
   font-weight: var(--fw-medium);
 }
-.signup-paused-notice-lead { margin: 0; }
+.signup-paused-notice-lead {
+  margin: 0;
+}
 
 /* The dot on #signup-tab when registrations are paused — decorative only,
    see the template comment for the sr-only text that carries the fact for
@@ -1514,7 +1741,9 @@
   font-weight: var(--fw-medium);
   text-decoration: none;
 }
-.profile-notice-open:hover { text-decoration: underline; }
+.profile-notice-open:hover {
+  text-decoration: underline;
+}
 
 .source-panel-close {
   flex: none;
@@ -1525,8 +1754,9 @@
   background: none;
   color: var(--fg-faint);
   cursor: pointer;
-  transition: color var(--duration-s) var(--ease-soft),
-              background var(--duration-s) var(--ease-soft);
+  transition:
+    color var(--duration-s) var(--ease-soft),
+    background var(--duration-s) var(--ease-soft);
 }
 .source-panel-close:hover {
   color: var(--fg-primary);
@@ -1542,7 +1772,9 @@
   overflow-y: auto;
   padding: var(--space-4);
 }
-.source-panel.is-sheet .source-panel-body { padding-inline: 0; }
+.source-panel.is-sheet .source-panel-body {
+  padding-inline: 0;
+}
 .source-panel-note {
   margin: 0 0 var(--space-4);
   font-size: var(--fs-100);
@@ -1554,8 +1786,12 @@
    Grouping is where the density comes from: eight passages are typically
    three documents, and the filename is printed once per document instead of
    once per passage. */
-.source-group { margin-block-end: var(--space-5); }
-.source-group:last-of-type { margin-block-end: 0; }
+.source-group {
+  margin-block-end: var(--space-5);
+}
+.source-group:last-of-type {
+  margin-block-end: 0;
+}
 .source-group-doc {
   margin: 0 0 var(--space-3);
   font-size: var(--fs-200);
@@ -1582,11 +1818,14 @@
      panel's own colour with only its border to separate it. Sunken is the
      right one: a card recedes INTO the surface it sits on. */
   background: var(--bg-sunken);
-  transition: border-color var(--duration-s) var(--ease-soft),
-              background var(--duration-s) var(--ease-soft);
+  transition:
+    border-color var(--duration-s) var(--ease-soft),
+    background var(--duration-s) var(--ease-soft);
 }
 /* A passage the answer actually cited, versus one retrieval merely offered. */
-.source-card.is-cited { border-inline-start-color: var(--signal); }
+.source-card.is-cited {
+  border-inline-start-color: var(--signal);
+}
 /* Transient, while its marker is hovered or it was just jumped to. */
 .source-card.is-lit {
   border-color: var(--signal);
@@ -1601,7 +1840,7 @@
 .source-index {
   flex: none;
   min-inline-size: 1.5em;
-  padding: 1px .3em;
+  padding: 1px 0.3em;
   border: 1px solid var(--signal);
   border-radius: var(--radius-xs);
   color: var(--signal);
@@ -1611,7 +1850,8 @@
 }
 /* Page numbers and scores stay LTR and isolated so bidi cannot reorder them
    when they sit inside an Arabic answer's sources. */
-.source-page, .source-diag-score {
+.source-page,
+.source-diag-score {
   direction: ltr;
   unicode-bidi: isolate;
   font-family: var(--font-mono);
@@ -1658,16 +1898,22 @@
   text-align: start;
   cursor: pointer;
 }
-.source-diag-toggle:hover { color: var(--fg-muted); }
+.source-diag-toggle:hover {
+  color: var(--fg-muted);
+}
 .source-diag-toggle .chev {
   transform: scaleX(var(--flip));
   transition: transform var(--duration-s) var(--ease-soft);
 }
-.source-diag-toggle[aria-expanded="true"] .chev {
+.source-diag-toggle[aria-expanded='true'] .chev {
   transform: scaleX(var(--flip)) rotate(90deg);
 }
-.source-diag-list { margin-block-start: var(--space-3); }
-.source-diag-list[hidden] { display: none; }
+.source-diag-list {
+  margin-block-start: var(--space-3);
+}
+.source-diag-list[hidden] {
+  display: none;
+}
 .source-diag-note {
   margin: 0 0 var(--space-3);
   font-size: var(--fs-100);
@@ -1737,13 +1983,21 @@
     var(--bg-sunken) 45%,
     var(--bg-page) 100%
   );
-  transition: border-color var(--duration-m) var(--ease-soft),
-              transform var(--duration-m) var(--ease-out);
+  transition:
+    border-color var(--duration-m) var(--ease-soft),
+    transform var(--duration-m) var(--ease-out);
 }
 /* The whole document responds, not just the tab you happen to be over. */
-.shelf-spine:hover { border-color: var(--hairline-strong); transform: translateY(-2px); }
-.shelf-spine:hover .spine-label { color: var(--fg-primary); }
-.shelf-spine:has(.spine-tab.is-open) { border-color: var(--signal); }
+.shelf-spine:hover {
+  border-color: var(--hairline-strong);
+  transform: translateY(-2px);
+}
+.shelf-spine:hover .spine-label {
+  color: var(--fg-primary);
+}
+.shelf-spine:has(.spine-tab.is-open) {
+  border-color: var(--signal);
+}
 
 /* The head band. A bound book has one; here it also carries the category
    glyph, so the space above the first tab identifies the document instead of
@@ -1761,13 +2015,19 @@
   background: var(--bg-page);
   color: var(--fg-faint);
 }
-.shelf-spine:has(.spine-tab.is-open) .spine-head { color: var(--signal); }
+.shelf-spine:has(.spine-tab.is-open) .spine-head {
+  color: var(--signal);
+}
 
 /* One document is the sparse case, and the one most likely to read as a bug
    rather than a state. It gets the full width and a generous label instead of
    a lonely sliver — one exhibit, presented deliberately. */
-.source-shelf[data-spines="1"] .shelf-spine { max-inline-size: 100%; }
-.source-shelf[data-spines="1"] .spine-label { font-size: var(--fs-200); }
+.source-shelf[data-spines='1'] .shelf-spine {
+  max-inline-size: 100%;
+}
+.source-shelf[data-spines='1'] .spine-label {
+  font-size: var(--fs-200);
+}
 
 .spine-face {
   position: relative;
@@ -1798,10 +2058,11 @@
   background: var(--bg-surface);
   color: var(--fg-muted);
   cursor: pointer;
-  transition: border-color var(--duration-s) var(--ease-soft),
-              background var(--duration-s) var(--ease-soft),
-              color var(--duration-s) var(--ease-soft),
-              transform var(--duration-s) var(--ease-out);
+  transition:
+    border-color var(--duration-s) var(--ease-soft),
+    background var(--duration-s) var(--ease-soft),
+    color var(--duration-s) var(--ease-soft),
+    transform var(--duration-s) var(--ease-out);
 }
 .spine-tab:hover {
   border-block-color: var(--signal);
@@ -1809,7 +2070,7 @@
   color: var(--fg-primary);
 }
 .spine-tab.is-open,
-.spine-tab[aria-expanded="true"] {
+.spine-tab[aria-expanded='true'] {
   border-block-color: var(--signal);
   background: var(--signal-tint);
 }
@@ -1818,7 +2079,7 @@
   align-items: center;
   justify-content: center;
   min-inline-size: 1.15em;
-  padding: 0 .3em;
+  padding: 0 0.3em;
   border: 1px solid var(--signal);
   border-radius: var(--radius-xs);
   background: var(--signal-tint);
@@ -1881,7 +2142,9 @@
   background: var(--bg-surface);
   box-shadow: var(--shadow-lg);
 }
-.passage-card[hidden] { display: none; }
+.passage-card[hidden] {
+  display: none;
+}
 .passage-card-head {
   display: flex;
   align-items: center;
@@ -1891,7 +2154,7 @@
 .passage-index {
   flex: none;
   min-inline-size: 1.5em;
-  padding: 1px .3em;
+  padding: 1px 0.3em;
   border: 1px solid var(--signal);
   border-radius: var(--radius-xs);
   color: var(--signal);
@@ -1917,7 +2180,10 @@
   color: var(--fg-faint);
   cursor: pointer;
 }
-.passage-close:hover { color: var(--fg-primary); background: var(--bg-sunken); }
+.passage-close:hover {
+  color: var(--fg-primary);
+  background: var(--bg-sunken);
+}
 .passage-doc {
   margin: 0 0 var(--space-2);
   font-size: var(--fs-200);
@@ -1942,7 +2208,9 @@
 }
 
 /* The panel is the passage card's positioning context. */
-.source-panel { position: relative; }
+.source-panel {
+  position: relative;
+}
 
 /* Spines rise once the answer is complete. One authored moment, from an
    already-visible default so a dead stylesheet leaves the shelf standing. */
@@ -1950,13 +2218,25 @@
   .source-panel:not([hidden]) .shelf-spine {
     animation: spineRise var(--duration-l) var(--ease-out) backwards;
   }
-  .shelf-spine:nth-child(2) { animation-delay: 60ms; }
-  .shelf-spine:nth-child(3) { animation-delay: 120ms; }
-  .shelf-spine:nth-child(4) { animation-delay: 180ms; }
+  .shelf-spine:nth-child(2) {
+    animation-delay: 60ms;
+  }
+  .shelf-spine:nth-child(3) {
+    animation-delay: 120ms;
+  }
+  .shelf-spine:nth-child(4) {
+    animation-delay: 180ms;
+  }
 }
 @keyframes spineRise {
-  from { transform: translateY(10px); opacity: 0; }
-  to   { transform: translateY(0); opacity: 1; }
+  from {
+    transform: translateY(10px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
 }
 
 /* ——————————————— Sheet presentation ———————————————
@@ -1972,7 +2252,9 @@
   z-index: var(--z-modal);
   background: var(--scrim);
 }
-.source-panel-backdrop[hidden] { display: none; }
+.source-panel-backdrop[hidden] {
+  display: none;
+}
 .source-panel.is-sheet {
   position: fixed;
   inset-block-end: 0;
@@ -1993,7 +2275,9 @@
   margin-block-start: var(--space-3);
 }
 .suggested-question-enhanced {
-  display: inline-flex; align-items: center; gap: var(--space-2);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--hairline-strong);
   border-radius: var(--radius-pill);
@@ -2011,23 +2295,42 @@
 }
 /* The glyph is an SVG sized in the markup now, so font-size no longer reaches
    it — only the colour is the stylesheet's business. */
-.suggested-question-icon { color: var(--fg-faint); }
-.suggested-question-enhanced:hover .suggested-question-icon { color: var(--signal); }
+.suggested-question-icon {
+  color: var(--fg-faint);
+}
+.suggested-question-enhanced:hover .suggested-question-icon {
+  color: var(--signal);
+}
 
 /* ——————————————— Progress ——————————————— */
-.typing-indicator { display: inline-flex; gap: var(--space-1); padding: var(--space-1) 0; }
+.typing-indicator {
+  display: inline-flex;
+  gap: var(--space-1);
+  padding: var(--space-1) 0;
+}
 .typing-indicator .dot {
-  inline-size: 6px; block-size: 6px; border-radius: 50%;
+  inline-size: 6px;
+  block-size: 6px;
+  border-radius: 50%;
   background: var(--fg-faint);
   animation: typingBounce 1.2s infinite ease-in-out;
 }
-.typing-indicator .dot:nth-child(2) { animation-delay: .15s; }
-.typing-indicator .dot:nth-child(3) { animation-delay: .3s; }
+.typing-indicator .dot:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.typing-indicator .dot:nth-child(3) {
+  animation-delay: 0.3s;
+}
 
 /* Only the short volatile tail is ever replaced. `contain` keeps its repaint
    from invalidating the whole transcript above it. */
-.md-pending { contain: content; }
-.md-committed > :last-child, .md-pending > :last-child { margin-block-end: 0; }
+.md-pending {
+  contain: content;
+}
+.md-committed > :last-child,
+.md-pending > :last-child {
+  margin-block-end: 0;
+}
 
 /* A caret on the tail, so a paused stream reads as "still writing" rather
    than "finished". */
@@ -2042,10 +2345,14 @@
   animation: caretBlink 1s steps(2, start) infinite;
 }
 .message.is-cancelled .md-pending::after,
-.message.is-errored .md-pending::after { display: none; }
+.message.is-errored .md-pending::after {
+  display: none;
+}
 
 .stream-note {
-  display: inline-flex; align-items: center; gap: var(--space-2);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
   margin-block-start: var(--space-3);
   font-family: var(--font-mono);
   font-size: var(--fs-100);
@@ -2053,7 +2360,9 @@
   text-transform: uppercase;
   color: var(--fg-faint);
 }
-.stream-note.error { color: var(--danger); }
+.stream-note.error {
+  color: var(--danger);
+}
 
 /* ——————————————— Jump to latest ———————————————
    Sits in the same grid cell as #messages (base.css) rather than being
@@ -2078,18 +2387,26 @@
   background: var(--bg-surface);
   box-shadow: var(--shadow-md);
   cursor: pointer;
-  transition: opacity var(--duration-m) var(--ease-soft),
-              transform var(--duration-m) var(--ease-soft),
-              color var(--duration-s) var(--ease-soft),
-              border-color var(--duration-s) var(--ease-soft);
+  transition:
+    opacity var(--duration-m) var(--ease-soft),
+    transform var(--duration-m) var(--ease-soft),
+    color var(--duration-s) var(--ease-soft),
+    border-color var(--duration-s) var(--ease-soft);
 }
-.jump-to-latest:hover { color: var(--fg-primary); border-color: var(--fg-faint); }
+.jump-to-latest:hover {
+  color: var(--fg-primary);
+  border-color: var(--fg-faint);
+}
 /* [hidden] alone would be overridden by the display above. */
-.jump-to-latest[hidden] { display: none; }
+.jump-to-latest[hidden] {
+  display: none;
+}
 /* The entrance is a keyframe animation rather than a class toggled on the next
    animation frame: rAF is throttled in a background tab, which would leave the
    pill mounted at opacity 0 — visible to hit-testing but not to the reader. */
-.jump-to-latest:not([hidden]) { animation: jumpPillIn var(--duration-m) var(--ease-out); }
+.jump-to-latest:not([hidden]) {
+  animation: jumpPillIn var(--duration-m) var(--ease-out);
+}
 
 /* Unread marker: the signal colour, because something arrived below the fold. */
 .jump-dot {
@@ -2098,11 +2415,15 @@
   border-radius: 50%;
   background: var(--signal);
 }
-.jump-dot[hidden] { display: none; }
+.jump-dot[hidden] {
+  display: none;
+}
 
 /* Honest retrieval progress: names the stage the request is actually in. */
 .stage-line {
-  display: flex; align-items: center; gap: var(--space-2);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   font-family: var(--font-mono);
   font-size: var(--fs-100);
   letter-spacing: var(--track-caps);
@@ -2110,7 +2431,9 @@
   color: var(--fg-muted);
 }
 .stage-line .stage-dot {
-  inline-size: 5px; block-size: 5px; border-radius: 50%;
+  inline-size: 5px;
+  block-size: 5px;
+  border-radius: 50%;
   background: var(--signal);
 }
 
@@ -2135,8 +2458,9 @@
   border: 1px solid var(--hairline-strong);
   border-radius: var(--radius-md);
   background: var(--bg-surface);
-  transition: border-color var(--duration-s) var(--ease-soft),
-              box-shadow var(--duration-s) var(--ease-soft);
+  transition:
+    border-color var(--duration-s) var(--ease-soft),
+    box-shadow var(--duration-s) var(--ease-soft);
 }
 /* The ring goes on the composer, not on the input, so focusing the field
    lights the whole instrument rather than a box inside a box. */
@@ -2154,8 +2478,13 @@
   background: transparent;
   color: var(--fg-primary);
 }
-.composer #query-input::placeholder { color: var(--fg-faint); }
-.composer #query-input:focus { box-shadow: none; background: transparent; }
+.composer #query-input::placeholder {
+  color: var(--fg-faint);
+}
+.composer #query-input:focus {
+  box-shadow: none;
+  background: transparent;
+}
 
 #send-button {
   display: inline-flex;
@@ -2172,11 +2501,20 @@
   background: var(--signal);
   transition: var(--btn-transition);
 }
-#send-button:hover:not(:disabled) { background: var(--signal-hover); }
-#send-button:disabled { opacity: .5; cursor: not-allowed; }
+#send-button:hover:not(:disabled) {
+  background: var(--signal-hover);
+}
+#send-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 
 /* ——————————————— Scope selector ——————————————— */
-.custom-dropdown { position: relative; display: flex; flex: none; }
+.custom-dropdown {
+  position: relative;
+  display: flex;
+  flex: none;
+}
 .custom-dropdown-trigger {
   display: inline-flex;
   align-items: center;
@@ -2194,18 +2532,26 @@
   cursor: pointer;
   transition: var(--btn-transition);
 }
-.custom-dropdown-trigger:hover { color: var(--fg-primary); background: var(--bg-sunken); }
+.custom-dropdown-trigger:hover {
+  color: var(--fg-primary);
+  background: var(--bg-sunken);
+}
 .custom-dropdown-trigger .dropdown-text {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.dropdown-icon { display: inline-flex; color: var(--signal); }
+.dropdown-icon {
+  display: inline-flex;
+  color: var(--signal);
+}
 .dropdown-arrow {
   color: var(--fg-faint);
   transition: transform var(--duration-s) var(--ease-soft);
 }
-.custom-dropdown.open .dropdown-arrow { transform: rotate(180deg); }
+.custom-dropdown.open .dropdown-arrow {
+  transform: rotate(180deg);
+}
 
 /* Opens upward: the composer is pinned to the bottom of the shell, so a menu
    dropping down would land off-screen. */
@@ -2231,17 +2577,19 @@
      opening with the keyboard silently left focus on the trigger and the first
      arrow key was swallowed. Delaying the step to the END of the close, and to
      0s on open, gives an immediately focusable menu that still fades out. */
-  transition: opacity var(--duration-s) var(--ease-soft),
-              transform var(--duration-s) var(--ease-soft),
-              visibility 0s linear var(--duration-s);
+  transition:
+    opacity var(--duration-s) var(--ease-soft),
+    transform var(--duration-s) var(--ease-soft),
+    visibility 0s linear var(--duration-s);
 }
 .custom-dropdown.open .custom-dropdown-menu {
   opacity: 1;
   visibility: visible;
   transform: translateY(0);
-  transition: opacity var(--duration-s) var(--ease-soft),
-              transform var(--duration-s) var(--ease-soft),
-              visibility 0s;
+  transition:
+    opacity var(--duration-s) var(--ease-soft),
+    transform var(--duration-s) var(--ease-soft),
+    visibility 0s;
 }
 .custom-dropdown-item {
   display: flex;
@@ -2252,23 +2600,41 @@
   font-size: var(--fs-300);
   color: var(--fg-secondary);
   cursor: pointer;
-  transition: background var(--duration-s) var(--ease-soft), color var(--duration-s) var(--ease-soft);
+  transition:
+    background var(--duration-s) var(--ease-soft),
+    color var(--duration-s) var(--ease-soft);
 }
-.custom-dropdown-item .dropdown-icon { color: var(--fg-faint); }
+.custom-dropdown-item .dropdown-icon {
+  color: var(--fg-faint);
+}
 .custom-dropdown-item:hover,
-.custom-dropdown-item:focus-visible { background: var(--bg-sunken); color: var(--fg-primary); }
+.custom-dropdown-item:focus-visible {
+  background: var(--bg-sunken);
+  color: var(--fg-primary);
+}
 .custom-dropdown-item:hover .dropdown-icon,
-.custom-dropdown-item:focus-visible .dropdown-icon { color: var(--signal); }
+.custom-dropdown-item:focus-visible .dropdown-icon {
+  color: var(--signal);
+}
 /* The selected option is marked, not filled: a teal slab in a five-item menu
    is louder than the citation markers it would be competing with. */
-.custom-dropdown-item.active { color: var(--fg-primary); font-weight: var(--fw-medium); }
-.custom-dropdown-item.active .dropdown-icon { color: var(--signal); }
+.custom-dropdown-item.active {
+  color: var(--fg-primary);
+  font-weight: var(--fw-medium);
+}
+.custom-dropdown-item.active .dropdown-icon {
+  color: var(--signal);
+}
 
 /* Narrow: the scope segment takes the row above the field, because three
    segments across a 390px screen leaves no room to read the question. */
 @media (max-width: 560px) {
-  .composer { flex-wrap: wrap; }
-  .custom-dropdown { inline-size: 100%; }
+  .composer {
+    flex-wrap: wrap;
+  }
+  .custom-dropdown {
+    inline-size: 100%;
+  }
   .custom-dropdown-trigger {
     inline-size: 100%;
     max-inline-size: none;
@@ -2277,11 +2643,22 @@
     border-start-end-radius: var(--radius-md);
     border-end-start-radius: 0;
   }
-  .custom-dropdown-menu { inline-size: 100%; min-inline-size: 0; }
+  .custom-dropdown-menu {
+    inline-size: 100%;
+    min-inline-size: 0;
+  }
   /* The label is the one thing a send button can lose without losing its
      meaning — the glyph and the accessible name both survive. */
-  #send-button span { position: absolute; inline-size: 1px; block-size: 1px; overflow: hidden; clip-path: inset(50%); }
-  #send-button { padding: var(--space-2) var(--space-3); }
+  #send-button span {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  #send-button {
+    padding: var(--space-2) var(--space-3);
+  }
 }
 
 /* ——————————————— Toast ——————————————— */
@@ -2300,15 +2677,25 @@
   background: var(--bg-inverse);
   box-shadow: var(--shadow-xl);
   opacity: 1;
-  transition: opacity var(--duration-m) ease, transform var(--duration-m) ease;
+  transition:
+    opacity var(--duration-m) ease,
+    transform var(--duration-m) ease;
 }
-.toast-notification.hidden { opacity: 0; transform: translateY(16px); pointer-events: none; }
+.toast-notification.hidden {
+  opacity: 0;
+  transform: translateY(16px);
+  pointer-events: none;
+}
 /* 2px, matching the tab indicator, blockquote and cutoff notice. This rule is the
    only thing separating an error toast from a success one, so it carries meaning
    rather than decoration — but it answers to the same weight as every other
    meaningful rule in the system. */
-.toast-notification.error { border-inline-start: 2px solid var(--danger); }
-.toast-notification.success { border-inline-start: 2px solid var(--confidence); }
+.toast-notification.error {
+  border-inline-start: 2px solid var(--danger);
+}
+.toast-notification.success {
+  border-inline-start: 2px solid var(--confidence);
+}
 
 /* A toast that carries an action becomes a row rather than a line of text.
    Only the undo affordance uses this; a plain toast keeps its original
@@ -2345,7 +2732,7 @@
    reference for how much of the window it represents. */
 .toast-notification.has-action::before,
 .toast-notification.has-action::after {
-  content: "";
+  content: '';
   position: absolute;
   inset-inline-start: 0;
   inset-block-end: 0;
@@ -2353,7 +2740,7 @@
 }
 .toast-notification.has-action::before {
   inline-size: 100%;
-  background: rgb(var(--confidence-rgb) / .26);
+  background: rgb(var(--confidence-rgb) / 0.26);
 }
 /* Shrinks its inline-size from an inline-start anchor, so the remaining time
    retreats toward the start of the reading direction — and the whole thing
@@ -2366,12 +2753,16 @@
 /* Reading it, or reaching for it, stops the clock. Pausing the animation
    freezes its own elapsed time, which is what keeps the meter and the JS
    timeout in step without either one driving the other. */
-.toast-notification.is-held::after { animation-play-state: paused; }
+.toast-notification.is-held::after {
+  animation-play-state: paused;
+}
 
 /* Both bands are square-ended; the toast's own radius does the rounding. Safe
    for the action's focus ring, which sits 24px (--space-5 of inline padding)
    from the edge and extends 4px. */
-.toast-notification { overflow: hidden; }
+.toast-notification {
+  overflow: hidden;
+}
 
 /* The global focus ring is teal, and this is the one surface in the app on an
    inverse ground. currentColor reads on it in both themes. */
@@ -2392,10 +2783,12 @@
   border: none;
   border-block-end: 1px solid currentColor;
   cursor: pointer;
-  opacity: .85;
+  opacity: 0.85;
   transition: opacity var(--duration-s) var(--ease-soft);
 }
-.toast-action:hover { opacity: 1; }
+.toast-action:hover {
+  opacity: 1;
+}
 
 /* ── Recovery view ───────────────────────────────────────────────────────────
    The third view in the shell, reached only from a link in an inbox. It borrows
@@ -2469,11 +2862,11 @@
   min-block-size: 1.5rem;
 }
 
-.consent-row input[type="checkbox"] {
+.consent-row input[type='checkbox'] {
   flex-shrink: 0;
   inline-size: 1.25rem;
   block-size: 1.25rem;
-  margin-block-start: .15rem;
+  margin-block-start: 0.15rem;
   accent-color: var(--signal);
 }
 
@@ -2522,10 +2915,18 @@
    "this sentence came from a document" (see this file's own header note).
    =================================================================== */
 
-.severity-info    { --notif-accent: var(--fg-muted); }
-.severity-success { --notif-accent: var(--confidence); }
-.severity-warning { --notif-accent: var(--warning); }
-.severity-danger  { --notif-accent: var(--danger); }
+.severity-info {
+  --notif-accent: var(--fg-muted);
+}
+.severity-success {
+  --notif-accent: var(--confidence);
+}
+.severity-warning {
+  --notif-accent: var(--warning);
+}
+.severity-danger {
+  --notif-accent: var(--danger);
+}
 
 /* ── Bell + badge ─────────────────────────────────────────────────── */
 
@@ -2550,9 +2951,15 @@
 }
 /* One soft scale pulse on increment — never continuous ambient motion. */
 @keyframes notifBadgePulse {
-  0%   { transform: scale(1); }
-  40%  { transform: scale(1.35); }
-  100% { transform: scale(1); }
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.35);
+  }
+  100% {
+    transform: scale(1);
+  }
 }
 .notifications-unread-badge.is-pulsing {
   animation: notifBadgePulse var(--duration-m) var(--ease-out);
@@ -2587,15 +2994,27 @@
   animation: notifToastIn var(--duration-l) var(--ease-out);
 }
 @keyframes notifToastIn {
-  from { opacity: 0; transform: translateX(calc(24px * var(--flip))); }
-  60%  { opacity: 1; transform: translateX(calc(-4px * var(--flip))); }
-  to   { opacity: 1; transform: translateX(0); }
+  from {
+    opacity: 0;
+    transform: translateX(calc(24px * var(--flip)));
+  }
+  60% {
+    opacity: 1;
+    transform: translateX(calc(-4px * var(--flip)));
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
 }
 .broadcast-toast.is-leaving {
   animation: notifToastOut var(--duration-m) var(--ease-soft) forwards;
 }
 @keyframes notifToastOut {
-  to { opacity: 0; transform: translateX(calc(24px * var(--flip))) scale(.96); }
+  to {
+    opacity: 0;
+    transform: translateX(calc(24px * var(--flip))) scale(0.96);
+  }
 }
 .broadcast-toast-body {
   flex: 1;
@@ -2624,12 +3043,14 @@
   color: var(--fg-faint);
   border-radius: var(--radius-sm);
 }
-.broadcast-toast-dismiss:hover { color: var(--fg-secondary); }
+.broadcast-toast-dismiss:hover {
+  color: var(--fg-secondary);
+}
 /* Progress-bar countdown, on the block-end edge — the plan's own pattern,
    same construction as .toast-notification.has-action's undo meter above:
    shrinks from an inline-start anchor so it mirrors under RTL for free. */
 .broadcast-toast::after {
-  content: "";
+  content: '';
   position: absolute;
   inset-inline-start: 0;
   inset-block-end: 0;
@@ -2648,8 +3069,12 @@
    and the bar mirrors under RTL with no transform-origin (a physical
    property with no logical form) anywhere in sight. */
 @keyframes notifToastCountdown {
-  from { inline-size: 100%; }
-  to   { inline-size: 0%; }
+  from {
+    inline-size: 100%;
+  }
+  to {
+    inline-size: 0%;
+  }
 }
 
 /* ── Banner ────────────────────────────────────────────────────────── */
@@ -2674,7 +3099,9 @@
   min-block-size: 0;
   overflow: hidden;
 }
-#notifications-banner:empty { border: none; }
+#notifications-banner:empty {
+  border: none;
+}
 .broadcast-banner-body {
   display: flex;
   align-items: baseline;
@@ -2702,8 +3129,12 @@
   padding: var(--space-1);
   border-radius: var(--radius-sm);
 }
-#notifications-banner { position: relative; }
-.broadcast-banner-dismiss:hover { color: var(--fg-secondary); }
+#notifications-banner {
+  position: relative;
+}
+.broadcast-banner-dismiss:hover {
+  color: var(--fg-secondary);
+}
 
 /* ── Acknowledgement modal ────────────────────────────────────────── */
 
@@ -2717,7 +3148,9 @@
   color: var(--fg-secondary);
   line-height: var(--lh-body);
 }
-.broadcast-modal .modal-body p { margin: 0; }
+.broadcast-modal .modal-body p {
+  margin: 0;
+}
 
 /* ── Inbox ─────────────────────────────────────────────────────────── */
 
@@ -2726,7 +3159,9 @@
   overflow-y: auto;
   padding: var(--space-2);
 }
-.notifications-inbox-list.is-loading { opacity: .6; }
+.notifications-inbox-list.is-loading {
+  opacity: 0.6;
+}
 .notifications-inbox-empty {
   padding: var(--space-6) var(--space-4);
   text-align: center;
@@ -2746,10 +3181,13 @@
   text-align: start;
   /* Read-state color settle: the unread accent fades to neutral over
      ~250ms as mark-read fires, rather than an instant re-render. */
-  transition: border-color var(--duration-m) var(--ease-soft),
-              background var(--duration-s) var(--ease-soft);
+  transition:
+    border-color var(--duration-m) var(--ease-soft),
+    background var(--duration-s) var(--ease-soft);
 }
-.notifications-inbox-item:hover { background: var(--bg-sunken); }
+.notifications-inbox-item:hover {
+  background: var(--bg-sunken);
+}
 .notifications-inbox-item.is-unread {
   border-inline-start-color: var(--notif-accent);
   background: var(--bg-sunken);
@@ -2780,8 +3218,14 @@
   animation-delay: calc(var(--notif-row-index, 0) * 30ms);
 }
 @keyframes notifRowIn {
-  from { opacity: 0; transform: translateY(6px); }
-  to   { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 .notifications-inbox-load-more-row {
   display: flex;

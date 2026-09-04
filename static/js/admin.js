@@ -29,6 +29,7 @@ import {
   initPeopleTab,
   initRegistrationsTab,
   initSettingsTab,
+  initTiersTab,
   loadAudit,
   showAccessFailure,
 } from './admin/handlers.js';
@@ -76,6 +77,7 @@ const Admin = {
       initPeopleTab(services);
       loadAudit(services);
       initNotificationsTab(services);
+      initTiersTab(services);
     } catch (error) {
       showAccessFailure(error);
     }

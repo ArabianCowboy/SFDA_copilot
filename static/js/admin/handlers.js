@@ -47,6 +47,8 @@ import {
   showSettingsMessage,
   syncNotificationTargetFields,
   tabIds,
+  renderTiers,
+  populateComposerTiers,
 } from './ui.js';
 
 /**
@@ -187,6 +189,13 @@ function describeHistoryActionError(error, fallbackKey) {
 }
 
 export async function initNotificationsTab(services) {
+  /* The composer's tier select is built empty; fill it from the catalogue.
+     Allowed to fail quietly — a composer with an empty select still refuses to
+     send (the server validates the key too), which is better than no composer. */
+  services
+    .tiers()
+    .then(({ tiers }) => populateComposerTiers(tiers))
+    .catch(() => {});
   renderNotificationsPanel();
 
   const form = document.getElementById('notification-composer-form');
@@ -936,8 +945,18 @@ export async function initPeopleTab(services) {
       } catch {
         entries = null;
       }
+      // The tier list backs the quota zone's <select>. A third request, and
+      // allowed to fail on its own for the same reason the activity log is:
+      // an operator must still see who they are looking at. An empty list
+      // simply renders a select with no options rather than no account.
+      let tiers = [];
+      try {
+        tiers = (await services.tiers()).tiers || [];
+      } catch {
+        tiers = [];
+      }
       if (mine !== generation) return;
-      renderAccountDetail(user, entries, selfId);
+      renderAccountDetail(user, entries, selfId, tiers);
     } catch {
       if (mine !== generation) return;
       showAccountMessage(I18n.t('admin.account.loadFailed'));
@@ -955,7 +974,14 @@ export async function initPeopleTab(services) {
   /* Saving a profile is its own route and its own RPC, so it is its own
      listener. Delegated from the panel, because the form is rebuilt from
      scratch every time an account is opened. */
+  /* The allowance is its own route and its own RPC too, so it gets its own
+     branch on the same delegated listener. */
   body.addEventListener('submit', async (event) => {
+    if (event.target.id === 'account-quota-form') {
+      event.preventDefault();
+      await saveAccountQuota(services, event.target, openAccount);
+      return;
+    }
     if (event.target.id !== 'account-profile-form') return;
     event.preventDefault();
 
@@ -1293,6 +1319,177 @@ export async function initRegistrationsTab(services) {
       ErrorHandler.showToast(I18n.t('admin.registrations.saveFailed'), true);
     }
   });
+}
+
+/**
+ * Save an account's tier and override together.
+ *
+ * Sends EVERY key, always. The route refuses a partial body because the RPC's
+ * nulls are asymmetric — a null tier means "leave it", a null override means
+ * "clear it" — so an omitted field would delete an allowance by accident.
+ */
+export async function saveAccountQuota(services, form, reopen) {
+  const data = new FormData(form);
+  const userId = form.dataset.userId;
+  const rawOverride = String(data.get('override') || '').trim();
+  const rawReason = String(data.get('reason') || '').trim();
+
+  // Empty means "use the tier's allowance", which is a CLEAR, not a zero.
+  const override = rawOverride === '' ? null : Number(rawOverride);
+  if (override !== null && (!Number.isInteger(override) || override < 0)) {
+    ErrorHandler.showToast(I18n.t('admin.tiers.invalid_limit'), true);
+    return;
+  }
+  if (override !== null && !rawReason) {
+    ErrorHandler.showToast(I18n.t('admin.account.quota_reason_required'), true);
+    return;
+  }
+
+  const stamp = (name) => {
+    const value = String(data.get(name) || '').trim();
+    // datetime-local has no zone; the operator means their own wall clock, and
+    // the server stores an instant. Sending it unqualified would be ambiguous.
+    return value ? new Date(value).toISOString() : null;
+  };
+
+  try {
+    await services.setUserQuota(userId, {
+      tier: String(data.get('tier') || '') || null,
+      override,
+      startsAt: stamp('starts_at'),
+      expiresAt: stamp('expires_at'),
+      reason: rawReason || null,
+    });
+    ErrorHandler.showToast(I18n.t('admin.account.quotaSaved'));
+    // Re-open so the zone redraws from the SERVER's answer — including what is
+    // actually in force now, which is not always what was just typed. `reopen`
+    // is passed in because `openAccount` is a closure inside initPeopleTab, and
+    // it owns the request-generation guard that keeps a slow reopen from
+    // painting over a newer one.
+    await reopen(userId);
+    loadAudit(services);
+  } catch (error) {
+    const code = error?.code;
+    const key = code ? `admin.tiers.${code}` : null;
+    const translated = key ? I18n.t(key) : null;
+    ErrorHandler.showToast(
+      translated && translated !== key ? translated : I18n.t('admin.account.quotaSaveFailed'),
+      true,
+    );
+  }
+}
+
+export async function initTiersTab(services) {
+  const body = document.getElementById('tiers-body');
+  if (!body) return;
+
+  let tiers = [];
+  let loaded = false;
+
+  async function reload(editingKey = null) {
+    const response = await services.tiers();
+    tiers = response.tiers || [];
+    loaded = true;
+    renderTiers(tiers, { editingKey });
+  }
+
+  /* LOADED ON FIRST ACTIVATION, not on console boot.
+     An operator who never opens this tab should not pay for a request they did
+     not ask for, and a failure here must not raise a toast over whichever tab
+     they are actually looking at. The listeners below are bound immediately so
+     nothing races the first load. */
+  async function loadOnce() {
+    if (loaded) return;
+    try {
+      await reload();
+    } catch {
+      ErrorHandler.showToast(I18n.t('admin.tiers.loadFailed'), true);
+    }
+  }
+
+  document.getElementById('tab-tiers')?.addEventListener('click', loadOnce);
+  /* Already showing when the console booted (a reload with this tab selected). */
+  if (document.getElementById('panel-tiers')?.hidden === false) loadOnce();
+
+  /* Delegated, because renderTiers replaces the whole subtree on every save —
+     the same reason the settings and registrations panels bind on the body. */
+  body.addEventListener('click', async (event) => {
+    const control = event.target.closest('[data-tier-action]');
+    if (!control) return;
+    const action = control.dataset.tierAction;
+    const key = control.closest('[data-tier-key]')?.dataset.tierKey;
+
+    if (action === 'cancel') return renderTiers(tiers, { editingKey: null });
+    if (action === 'edit') return renderTiers(tiers, { editingKey: key });
+
+    if (action === 'delete') {
+      const tier = tiers.find((row) => row.key === key);
+      /* The member count is IN the confirmation, not merely nearby: "delete
+         Staff?" and "delete Staff, which 12 readers are in?" are different
+         questions, and only the second one can be answered honestly. */
+      const message =
+        tier && tier.member_count
+          ? I18n.t('admin.tiers.confirmDeleteMembers', {
+              key,
+              count: tier.member_count,
+            })
+          : I18n.t('admin.tiers.confirmDelete', { key });
+      if (!window.confirm(message)) return;
+      try {
+        await services.deleteTier(key);
+        await reload();
+        ErrorHandler.showToast(I18n.t('admin.tiers.deleted'));
+        loadAudit(services);
+      } catch (error) {
+        ErrorHandler.showToast(tierFailureMessage(error, 'deleteFailed'), true);
+      }
+    }
+  });
+
+  body.addEventListener('submit', async (event) => {
+    const form = event.target.closest('#tier-form');
+    if (!form) return;
+    event.preventDefault();
+
+    const data = new FormData(form);
+    const editingKey = form.dataset.editingKey || null;
+    const payload = {
+      label_en: String(data.get('label_en') || '').trim(),
+      label_ar: String(data.get('label_ar') || '').trim(),
+      daily_message_limit: Number(data.get('daily_message_limit')),
+      ordering: Number(data.get('ordering') || 0),
+    };
+
+    try {
+      if (editingKey) {
+        await services.updateTier(editingKey, payload);
+      } else {
+        await services.createTier({ key: String(data.get('key') || '').trim(), ...payload });
+      }
+      await reload();
+      ErrorHandler.showToast(I18n.t('admin.tiers.saved'));
+      /* The save just wrote an audit row; a stale log beside a change that is
+         already live is the one moment the record looks untrustworthy. */
+      loadAudit(services);
+    } catch (error) {
+      ErrorHandler.showToast(tierFailureMessage(error, 'saveFailed'), true);
+    }
+  });
+}
+
+/**
+ * Turn a refusal code into words.
+ *
+ * The RPC and the route both answer with machine codes (`tier_in_use`,
+ * `invalid_limit`, …) precisely so this layer can translate them; falling back
+ * to a generic message when the code is unknown keeps a new code from rendering
+ * as `undefined`.
+ */
+function tierFailureMessage(error, fallbackKey) {
+  const code = error?.code;
+  const key = code ? `admin.tiers.${code}` : null;
+  const translated = key ? I18n.t(key) : null;
+  return translated && translated !== key ? translated : I18n.t(`admin.tiers.${fallbackKey}`);
 }
 
 export async function initSettingsTab(services) {

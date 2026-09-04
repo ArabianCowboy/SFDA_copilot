@@ -128,6 +128,30 @@ function rememberHistoryNotice(identity) {
 
 /* The first-run completion strip (docs/profile-refactor-plan.md §12.6). */
 const PROFILE_NOTICE_ID = 'profile-notice';
+const QUOTA_NOTICE_ID = 'quota-notice';
+
+/**
+ * One instant, rendered in the reader's locale.
+ *
+ * Hoisted out of `UI.Notifications` (where it was `_formatTimestamp`) because
+ * the quota notice and the composer counter need it too, and reaching across
+ * sub-objects for a formatter is how two of them end up existing.
+ *
+ * `dir="auto"` on the element that carries `text` lets the browser's own bidi
+ * algorithm place the U+200F marks Intl embeds — the mitigation this file
+ * already uses rather than fighting them with an isolate.
+ */
+function formatTimestamp(iso) {
+  try {
+    const date = new Date(iso);
+    return {
+      text: date.toLocaleString(I18n.lang, { dateStyle: 'medium', timeStyle: 'short' }),
+      iso,
+    };
+  } catch {
+    return { text: '', iso };
+  }
+}
 const PROFILE_NOTICE_VERSION = 1;
 
 function profileNoticeKey(identity) {
@@ -894,6 +918,123 @@ export const UI = {
 
   hideProfileCompletionNotice() {
     document.getElementById(PROFILE_NOTICE_ID)?.remove();
+  },
+
+  /**
+   * The allowance is spent. An in-transcript notice, NOT a toast and NOT an
+   * error.
+   *
+   * DESIGN.md's Notices: a boundary the product is enforcing is marked in
+   * `--confidence`, never `--danger`. Nothing malfunctioned — the answer to
+   * "may I ask another question today" is simply no, and `.stream-note.error`
+   * (which does use --danger) must not be reused for it.
+   *
+   * `data-non-turn` keeps it out of `isTranscriptTurn`'s count, so an empty
+   * conversation still reads as empty.
+   */
+  showQuotaNotice(quota) {
+    const container = DOMCache.get(CONFIG.SELECTORS.MESSAGES);
+    if (!container || !quota) return;
+    // Replaced rather than stacked: sending three questions after exhaustion
+    // must leave one notice, not three.
+    this.hideQuotaNotice();
+
+    const notice = DOMCache.createElement('div', 'history-notice quota-notice', QUOTA_NOTICE_ID);
+    notice.id = QUOTA_NOTICE_ID;
+    notice.setAttribute('role', 'note');
+    notice.setAttribute('data-non-turn', '');
+    notice.setAttribute('aria-live', 'polite');
+
+    const body = DOMCache.createElement('div', 'history-notice-body');
+    const title = DOMCache.createElement('p', 'history-notice-title');
+    title.textContent = I18n.t('chat.quota.title');
+
+    const { text, iso } = formatTimestamp(quota.resets_at);
+    const when = DOMCache.createElement('time');
+    when.setAttribute('datetime', iso || '');
+    when.setAttribute('dir', 'auto');
+    when.textContent = text;
+
+    const message = DOMCache.createElement('p', 'history-notice-text');
+    // Built by node, not innerHTML: {resets_at} has to arrive as a <time> so the
+    // bidi isolation above survives, and the limit is a machine value.
+    const parts = I18n.t('chat.quota.body', {
+      limit: quota.limit,
+      resets_at: ' ',
+    }).split(' ');
+    message.append(document.createTextNode(parts[0] || ''), when);
+    if (parts[1]) message.append(document.createTextNode(parts[1]));
+
+    body.append(title, message);
+
+    const dismiss = DOMCache.createElement('button', 'history-notice-dismiss');
+    dismiss.type = 'button';
+    dismiss.setAttribute('aria-label', I18n.t('chat.quota.dismiss'));
+    dismiss.innerHTML = iconMarkup('close', 14);
+    dismiss.addEventListener('click', () => notice.remove());
+
+    notice.append(body, dismiss);
+    container.append(notice);
+    this.followStream?.();
+  },
+
+  hideQuotaNotice() {
+    document.getElementById(QUOTA_NOTICE_ID)?.remove();
+  },
+
+  /**
+   * Remove the reader's own bubble after a refusal.
+   *
+   * `processChatRequestInternal` draws it before the request leaves, so on a 429
+   * it would otherwise sit in the transcript as an unanswered turn — counted by
+   * `isTranscriptTurn`, and duplicating the text that is now back in the composer.
+   */
+  removePendingUserTurn(queryText) {
+    const container = DOMCache.get(CONFIG.SELECTORS.MESSAGES);
+    if (!container) return;
+    const turns = container.querySelectorAll('.message.user');
+    const last = turns[turns.length - 1];
+    if (last && last.textContent.trim() === String(queryText).trim()) last.remove();
+  },
+
+  /**
+   * The quiet pre-exhaustion counter under the composer.
+   *
+   * Shown only near the end of the allowance — `remaining <= max(3, 20% of
+   * limit)`, a CONSTANT and deliberately not a setting (a display threshold is
+   * not a product decision for four accounts). Writes `textContent` only when
+   * the numbers actually change, so the aria-live region does not re-announce
+   * an unchanged remainder after every single answer.
+   */
+  updateQuotaCounter(quota) {
+    const el = DOMCache.get(CONFIG.SELECTORS.COMPOSER_QUOTA);
+    if (!el) return;
+    if (!quota || typeof quota.remaining !== 'number' || typeof quota.limit !== 'number') {
+      el.hidden = true;
+      el.textContent = '';
+      delete el.dataset.shown;
+      return;
+    }
+    const threshold = Math.max(3, Math.ceil(quota.limit * 0.2));
+    if (quota.remaining > threshold) {
+      el.hidden = true;
+      el.textContent = '';
+      delete el.dataset.shown;
+      return;
+    }
+    const stamp = `${quota.remaining}/${quota.limit}@${quota.resets_at}`;
+    if (el.dataset.shown === stamp) return;
+    el.dataset.shown = stamp;
+    const { text } = formatTimestamp(quota.resets_at);
+    el.textContent =
+      quota.remaining === 1
+        ? I18n.t('chat.quota.counterOne', { resets_at: text })
+        : I18n.t('chat.quota.counter', {
+            remaining: quota.remaining,
+            limit: quota.limit,
+            resets_at: text,
+          });
+    el.hidden = false;
   },
 
   /** One-shot screen-reader announcement. */
@@ -1685,21 +1826,6 @@ export const UI = {
       });
     },
 
-    _formatTimestamp(iso) {
-      try {
-        const date = new Date(iso);
-        // dir="auto" lets the browser's own bidi algorithm place the U+200F
-        // marks Intl embeds, the same mitigation UI.hydrateTimestamps
-        // already uses above rather than fighting them with an isolate.
-        return {
-          text: date.toLocaleString(I18n.lang, { dateStyle: 'medium', timeStyle: 'short' }),
-          iso,
-        };
-      } catch {
-        return { text: '', iso };
-      }
-    },
-
     /**
      * The inbox list. `onOpen(notification)` fires when a row is activated
      * (marks it read); `onDismiss`/`onAcknowledge` back the per-row actions
@@ -1744,7 +1870,7 @@ export const UI = {
         const meta = document.createElement('time');
         meta.className = 'notifications-inbox-item-time';
         meta.setAttribute('dir', 'auto');
-        const { text, iso } = this._formatTimestamp(item.created_at);
+        const { text, iso } = formatTimestamp(item.created_at);
         meta.textContent = text;
         meta.dateTime = iso;
 

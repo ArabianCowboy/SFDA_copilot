@@ -729,6 +729,15 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
                         {{ icon('send', 16) }}<span>{{ t('page.chat.send') }}</span>
                     </button>
                   </div>
+                  {#
+                    The pre-exhaustion counter. A SIBLING AFTER .composer, never
+                    inside it: .composer is a flex row, so a child would be laid
+                    out as a fourth item on the input line beside the send button.
+                    Hidden until the allowance is nearly spent; UI.updateQuotaCounter
+                    owns it. aria-live, but written only when the numbers change.
+                  #}
+                  <p class="composer-quota" id="composer-quota" hidden aria-live="polite"
+                     aria-label="{{ t('page.chat.quotaCounterAria') }}"></p>
                 </footer>
             </section>
         </div>

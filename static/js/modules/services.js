@@ -219,6 +219,17 @@ export const Services = {
       const failure = new Error(errorJson.error || `Network error (${response.status})`);
       failure.status = response.status;
       failure.code = errorJson.error;
+      /* The daily-allowance body rides along on a 429 so handlers.js can tell the
+         reader their own numbers without a second round trip. Transport only —
+         this module still imports no view and no state. */
+      if (response.status === 429 && errorJson.error === 'quota_exhausted') {
+        failure.quota = {
+          used: errorJson.used,
+          limit: errorJson.limit,
+          remaining: errorJson.remaining,
+          resets_at: errorJson.resets_at,
+        };
+      }
       throw failure;
     }
     return response.json();
@@ -278,6 +289,17 @@ export const Services = {
       const failure = new Error(errorJson.error || `Network error (${response.status})`);
       failure.status = response.status;
       failure.code = errorJson.error;
+      /* The daily-allowance body rides along on a 429 so handlers.js can tell the
+         reader their own numbers without a second round trip. Transport only —
+         this module still imports no view and no state. */
+      if (response.status === 429 && errorJson.error === 'quota_exhausted') {
+        failure.quota = {
+          used: errorJson.used,
+          limit: errorJson.limit,
+          remaining: errorJson.remaining,
+          resets_at: errorJson.resets_at,
+        };
+      }
       throw failure;
     }
     if (!response.body) throw new Error('STREAM_UNSUPPORTED');
