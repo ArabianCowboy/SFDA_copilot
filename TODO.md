@@ -38,7 +38,12 @@ bottom of this file: [How this file works](#how-this-file-works).
 - [Answer from a second provider](#answer-from-a-second-provider--and-why-the-code-is-the-easy-half) — the citation-fidelity harness is built (2026-08-22); still blocked on running it for real against the API.
 - [OpenRouter as one integration instead of several](#openrouter-as-one-integration-instead-of-several) — alternative to the entry above; same harness, same not-yet-run status.
 - [Refactor the profile page](#refactor-the-profile-page) — Steps 0-5 and most of Step 7 shipped 2026-08-23; the three remaining items each have their own entry below.
-- [Give readers a quota, and limits worth having](#give-readers-a-quota-and-limits-worth-having) — **BUILT 2026-09-03/04**; kept for the open follow-ups it names ([`docs/reader-quota-plan.md`](docs/reader-quota-plan.md)).
+- [The shipped daily allowance is a placeholder number](#the-shipped-daily-allowance-is-a-placeholder-number-not-a-measured-one) — both tiers are 200; waiting on a month of `usage_daily` rows and an owner for the number.
+- [The daily-allowance claim is not idempotent](#the-daily-allowance-claim-is-not-idempotent-and-one-future-commit-would-make-that-matter) — harmless today, **mandatory** in any commit that adds a client-side chat retry.
+- [A fixed promo pool of bonus messages](#a-fixed-promo-pool-of-bonus-messages-designed-and-deliberately-not-built) — designed in full, parked by owner decision pending real usage data.
+- [`/api/identity` makes three RPC round trips](#apiidentity-makes-three-rpc-round-trips-where-one-would-do) — an optimisation that reopens a deliberate narrowing decision.
+- [`history_api` and `sessions_api` are still keyed by IP](#history_api-and-sessions_api-are-still-rate-limited-by-ip-not-by-account) — a decision about navigation reads, not a defect.
+- [The console's class-existence gate cannot see a class built from a variable](#the-consoles-class-existence-gate-cannot-see-a-class-built-from-a-variable) — a known hole in a gate that otherwise reads as total.
 - [The browser suite flakes intermittently in test_source_panel.py](#the-browser-suite-flakes-intermittently-in-test_source_panelpy) — undiagnosed; resource-contention evidence only.
 - [Know what people actually ask](#know-what-people-actually-ask--without-reading-anyones-conversation) — an identity-free question log; not started, gated on scale.
 - [Enable the token-verification cache once production numbers justify it](#enable-the-token-verification-cache-once-production-numbers-justify-it) — single-flight (the worker-starvation fix) shipped 2026-08-27 at no revocation cost; the optional positive cache stays off, gated on measurement.
@@ -225,7 +230,7 @@ disables the limiter under pytest, and no test exercises an enabled limiter.
 
 **What fixing it would disturb.** One-line changes to the five registrations, plus the test
 harness that can prove them — an enabled limiter for one test, which
-`docs/reader-quota-plan.md` §3.7 designs (`web/tests/test_rate_limit_keys.py`) and which
+`docs/archive/2026-09-04_reader-quota.md` §3.7 designs (`web/tests/test_rate_limit_keys.py`) and which
 also pins the chat routes' decorator order. Scheduled as part of that plan's Commit A rather
 than fixed alone, because the harness is the expensive half and is shared. Once fixed, each of the
 five carries exactly its own limit and **not** the blueprint's 60/minute as well: `limit()`
@@ -592,44 +597,144 @@ directly at signup/profile save? The modal-vs-page and browser-vs-Flask
 questions this entry used to carry are both answered — Decisions 1 and 8 of the
 archived plan.
 
-### Give readers a quota, and limits worth having
+### The shipped daily allowance is a placeholder number, not a measured one
 
-**BUILT 2026-09-03/04.** [`docs/reader-quota-plan.md`](docs/reader-quota-plan.md) is the
-design and the record; it carries the full build note, three review rounds and the owner's
-eight decisions. What shipped: a durable daily allowance in `public.usage_daily`, counted by
-an atomic claim in `chat_claim_daily_message` and refunded when a request fails before the
-model produces a token; operator-configurable limits at two levels (a `public.tiers` default
-and a `public.reader_quota_overrides` per-account override that may carry a start and an end
-date); a Tiers tab and a per-account allowance zone in the console; a bilingual in-transcript
-notice and a quiet pre-exhaustion counter for the reader. The day boundary is `Asia/Riyadh`
-and both shipped tiers start at 200.
+**Where:** `public.tiers`, both seeded rows — `free` and `staff` are each 200 a day; the
+same number is `server.quota.daily_messages_default` in `web/config.yaml`.
 
-**Still open, and deliberately so:**
+**What is wrong.** 200 was chosen to sit well above observed usage so the meter could be
+switched on and watched before it was tightened, not because anybody measured what a
+reader needs. A quota nobody ever reaches is a quota that has not been set; it costs the
+same to run as a real one and buys none of the protection. Two tiers holding the identical
+number also means the tier mechanism is, today, doing nothing an operator can see.
 
-- **The first real number.** `free` and `staff` are both 200 — chosen well above observed
-  usage so the meter could be switched on and watched before it is tightened. Revisit once
-  `usage_daily` has a month of rows. Raising `staff` above `free` is a console edit, not a
-  migration.
-- **Claim idempotency against a replayed `client_request_id`.** The claim carries no request
-  id, so it is not idempotent the way `chat_append_turn` is. Safe today only because the
-  browser mints a fresh id per submission and has no chat retry path — while `app.py`'s own
-  validator comment and `_InFlightGenerations`' docstring both describe the id as "reused
-  across retries". **Any commit that adds a client-side retry reusing `client_request_id`
-  must ship claim idempotency with it**, or one transport failure after the model answered
-  charges a reader twice for an answer the database quietly refuses to store twice. A
-  `last_claim_request_id` column does not do it: one slot per `(user, day)` catches only an
-  immediately consecutive replay. The plan's §12 has the ledger shape that does.
-- **A fixed promo pool** of bonus messages drawn once the daily allowance is spent. Designed
-  in full, with its `42P17` index bug corrected and the "a zero daily limit blocks the grant
-  too" rule stated, in the plan's §12 — and deliberately not built, because the daily
-  allowance covers most of the same need and the pool needs real usage data to justify.
-- **Retention of `usage_daily` rows**, folded into the retention entry above.
-- **`/api/identity`'s three RPC round trips** (`touch_last_seen`, `get_identity_flags`,
-  `get_reader_quota`) could fold into one. A real optimisation for a route called once per
-  sign-in; not done, because `20260822231726` deliberately narrowed `get_identity_flags` and
-  widening it again is its own decision.
-- **Re-keying `history_api`/`sessions_api`** from IP to account, the way chat, export, bulk
-  delete and the admin broadcast now are. A separate decision about navigation reads.
+**Who it reaches.** Nobody yet — that is the point. It reaches whoever is first to hit a
+number chosen without evidence, on the day somebody finally lowers it.
+
+**How it was found.** Recorded as a deliberate open decision when the feature was built
+(owner decision, 2026-09-03), in the archived plan's §13.
+
+**What fixing it would disturb.** Nothing in code: both levels are console edits, and
+raising `staff` above `free` is a form submission, not a migration. What it needs is a
+month of `usage_daily` rows and somebody willing to own the number. The one code-side
+cost is `test_quota.py::test_seed_matches_shipped_default`, which pins both seeded rows to
+the single `config.yaml` key and will fail the moment the two tiers are meant to differ —
+by design, so that differentiating them is a conscious edit to the test as well.
+
+### The daily-allowance claim is not idempotent, and one future commit would make that matter
+
+**Where:** `chat_claim_daily_message` in
+`supabase/migrations/20260903195102_reader_quota_claim_release_and_read_rpcs.sql`, and its
+callers `_claim_daily_message` / `_release_daily_message` in `web/api/app.py`.
+
+**What is wrong.** The claim carries no request id, so a replay charges twice.
+`chat_append_turn` is idempotent against `client_request_id`; the claim is not. This is
+safe **today** only because the browser mints a fresh id per submission and there is no
+client-side chat retry path at all. It is a latent contradiction, not a theoretical one:
+`app.py`'s own validator comment and `_InFlightGenerations`' docstring both describe
+`client_request_id` as "reused across retries", which is exactly the usage that would break
+this.
+
+**Who it reaches.** No reader today. On the day a retry path is added, it reaches any
+reader whose connection drops after the model answered: they are charged twice for one
+answer the database quietly refuses to store twice.
+
+**How it was found.** A review round during the build (archived plan, third review),
+which also established that the obvious cheap fix does not work.
+
+**What fixing it would disturb.** **Any commit that adds a client-side retry reusing
+`client_request_id` must ship claim idempotency in the same commit.** A
+`last_claim_request_id` column is not sufficient — one slot per `(user, day)` catches only
+an immediately consecutive replay. It needs the per-claim ledger shape designed in §12 of
+[`the archived plan`](docs/archive/2026-09-04_reader-quota.md), which is a second table, a second write inside the
+atomic claim, and a bucket-tagged refund.
+
+### A fixed promo pool of bonus messages, designed and deliberately not built
+
+**Where:** Designed in full in §12 of [`the archived reader-quota plan`](docs/archive/2026-09-04_reader-quota.md),
+including its corrected `42P17` immutable-predicate index bug and the "a zero daily limit
+blocks the grant too" rule.
+
+**What is wrong.** Nothing is wrong; this is wanted, not broken. A pool of N bonus
+messages drawn once the daily allowance is spent is the natural next lever after a
+per-day number, and it is the shape that also solves claim idempotency above.
+
+**Who it reaches.** Nobody yet. It matters first for whoever needs to hand one reader extra
+capacity for a fixed total rather than a fixed rate — the conference-week case the windowed
+override half-covers.
+
+**How it was found.** Brainstormed with the owner during the build, worked through to a
+complete schema, then parked by owner decision on 2026-09-03: the daily allowance covers
+most of the same need, and the pool needs real usage data to justify its second table.
+
+**What fixing it would disturb.** A second table, a second atomic path inside
+`chat_claim_daily_message`, a bucket-tagged refund so a failure returns the message to the
+bucket it came from, and a second counter on the reader surface. It also reopens the
+notice copy, which currently says one thing about one allowance.
+
+### `/api/identity` makes three RPC round trips where one would do
+
+**Where:** `web/api/app.py`'s `/api/identity` route — `touch_last_seen`,
+`get_identity_flags` and `get_reader_quota`, called in sequence.
+
+**What is wrong.** Three round trips to answer one question, on a route called once per
+sign-in and once per page load. Not a correctness issue; a real and easily-measured
+optimisation that has simply not been taken.
+
+**Who it reaches.** Every signed-in reader, once per load, at whatever the round-trip
+latency to Supabase is. Invisible at the current scale.
+
+**How it was found.** Noted while building the quota feature, which added the third call.
+
+**What fixing it would disturb.** `20260822231726` deliberately **narrowed**
+`get_identity_flags` to the columns the hot path needs. Widening it again to absorb the
+other two reopens that decision, so this is not a mechanical merge — it is a request to
+revisit a scoping choice that was made on purpose, and it should be argued on its own
+terms rather than folded in as a performance tidy-up.
+
+### `history_api` and `sessions_api` are still rate-limited by IP, not by account
+
+**Where:** The `history_api` and `sessions_api` limits registered in `web/api/app.py`.
+
+**What is wrong.** Chat, export, bulk delete and the admin broadcast are all keyed per
+account by `_rate_key`. These two are not, so they still key on the IP — which means one
+office behind one NAT shares a budget for reading their own history, while the same people
+have individual budgets for asking questions.
+
+**Who it reaches.** Any group of readers sharing an egress IP, on navigation reads rather
+than on anything expensive.
+
+**How it was found.** Left explicitly out of scope when the quota work re-keyed the other
+five limits (archived plan §3).
+
+**What fixing it would disturb.** It is a decision, not a defect: these are navigation
+reads, and an account key makes a shared-machine reader's browsing count against them
+personally. Changing it touches the limit registrations and
+`web/tests/test_rate_limit_keys.py`, which currently pins exactly which routes are
+account-keyed.
+
+### The console's class-existence gate cannot see a class built from a variable
+
+**Where:** `_JS_CLASS_SITES` in `web/tests/test_css_contract.py`.
+
+**What is wrong.** The gate that catches an `admin-*` class no stylesheet defines reads
+four literal shapes: `className =`, `className +=`, `setAttribute('class', …)` and
+`classList.add/toggle/remove(…)`. A class assembled at runtime — `classList.add(someVar)`,
+or the interpolated tail of a template literal — is invisible to it. The gate reports
+nothing, which reads identically to a clean pass.
+
+**Who it reaches.** No reader. It reaches the next person who trusts a green gate and ships
+an unstyled control, which is exactly the failure the gate was written for after
+`admin-btn`, `admin-btn-quiet` and `admin-hint` shipped defined nowhere.
+
+**How it was found.** An adversarial review of the gate itself (`gpt-5.6-terra`,
+2026-09-04) named the hole while confirming the shapes it does cover.
+
+**What fixing it would disturb.** Static analysis cannot resolve a variable, so a complete
+fix is not a wider regex — it is either a convention (every `admin-*` class is a literal at
+its use site, enforced by banning the dynamic form) or a runtime check that walks the
+rendered DOM in the browser suite and compares against the parsed stylesheets. The second
+is the honest one and costs a new browser test plus a CSS parser.
 
 ### The browser suite flakes intermittently in test_source_panel.py
 
@@ -988,10 +1093,15 @@ for state this repository cannot hold.
 ### A retention policy, and the bounds that depend on one
 
 **Where:** `public.audit_log`, `public.chat_messages`, `public.chat_message_sources`,
-`public.user_notification_reads`, and `public.chat_archive` once its salts are set.
+`public.user_notification_reads`, `public.usage_daily`, and `public.chat_archive` once its
+salts are set.
 
 **What is wrong.** There is no `pg_cron`, no scheduled job, no partition and no retention
-policy on any table, and four of them grow forever. `chat_archive` is designed to be
+policy on any table, and five of them grow forever. `usage_daily` joined the list on
+2026-09-04: it writes one row per reader per day they ask anything, forever, and the
+allowance only ever reads today's — every row older than the current Riyadh day is dead
+weight the moment midnight passes. It is the cheapest of these to sweep and the one with
+the least to argue about, since nothing reads a past day. `chat_archive` is designed to be
 append-only with **no delete path at all** — deliberately, and documented — so when the
 salts are set it starts growing at roughly one `question` + `answer` + `sources jsonb` per
 turn with no way to stop it.

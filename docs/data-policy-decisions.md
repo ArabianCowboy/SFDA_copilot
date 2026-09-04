@@ -286,7 +286,7 @@ Three migrations and one frontend change, in order — schema before code, per t
 ## 3. `chatbot_settings`
 
 > **IMPLEMENTED 2026-09-03.** `public.chatbot_settings` was dropped by migration
-> `20260903200806_drop_chatbot_settings.sql`, as the reader-quota work (`docs/reader-quota-plan.md`)
+> `20260903200806_drop_chatbot_settings.sql`, as the reader-quota work (`docs/archive/2026-09-04_reader-quota.md`)
 > was the "next time somebody is in the schema with a reason" this section was waiting for.
 > The evidence rule 7 asks for was gathered immediately before applying and is recorded in the
 > migration header: 0 rows, 0 inbound and 0 outbound foreign keys, 0 triggers, 0 RLS policies,

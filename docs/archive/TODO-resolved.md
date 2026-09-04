@@ -1075,6 +1075,55 @@ Supabase project: four `mark-read` calls and one `mark-all-read` call, all `200`
 
 ## [HISTORICAL] Resolved planned work
 
+### [HISTORICAL] ~~Give readers a quota, and limits worth having~~ — BUILT 2026-09-03/04
+
+**BUILT 2026-09-03/04.** [`docs/archive/2026-09-04_reader-quota.md`](../../docs/archive/2026-09-04_reader-quota.md) is the
+design and the record; it carries the full build note, three review rounds and the owner's
+eight decisions. What shipped: a durable daily allowance in `public.usage_daily`, counted by
+an atomic claim in `chat_claim_daily_message` and refunded when a request fails before the
+model produces a token; operator-configurable limits at two levels (a `public.tiers` default
+and a `public.reader_quota_overrides` per-account override that may carry a start and an end
+date); a Tiers tab and a per-account allowance zone in the console; a bilingual in-transcript
+notice and a quiet pre-exhaustion counter for the reader. The day boundary is `Asia/Riyadh`
+and both shipped tiers start at 200.
+
+**Still open, and deliberately so:**
+
+- **The first real number.** `free` and `staff` are both 200 — chosen well above observed
+  usage so the meter could be switched on and watched before it is tightened. Revisit once
+  `usage_daily` has a month of rows. Raising `staff` above `free` is a console edit, not a
+  migration.
+- **Claim idempotency against a replayed `client_request_id`.** The claim carries no request
+  id, so it is not idempotent the way `chat_append_turn` is. Safe today only because the
+  browser mints a fresh id per submission and has no chat retry path — while `app.py`'s own
+  validator comment and `_InFlightGenerations`' docstring both describe the id as "reused
+  across retries". **Any commit that adds a client-side retry reusing `client_request_id`
+  must ship claim idempotency with it**, or one transport failure after the model answered
+  charges a reader twice for an answer the database quietly refuses to store twice. A
+  `last_claim_request_id` column does not do it: one slot per `(user, day)` catches only an
+  immediately consecutive replay. The plan's §12 has the ledger shape that does.
+- **A fixed promo pool** of bonus messages drawn once the daily allowance is spent. Designed
+  in full, with its `42P17` index bug corrected and the "a zero daily limit blocks the grant
+  too" rule stated, in the plan's §12 — and deliberately not built, because the daily
+  allowance covers most of the same need and the pool needs real usage data to justify.
+- **Retention of `usage_daily` rows**, folded into the retention entry above.
+- **`/api/identity`'s three RPC round trips** (`touch_last_seen`, `get_identity_flags`,
+  `get_reader_quota`) could fold into one. A real optimisation for a route called once per
+  sign-in; not done, because `20260822231726` deliberately narrowed `get_identity_flags` and
+  widening it again is its own decision.
+- **Re-keying `history_api`/`sessions_api`** from IP to account, the way chat, export, bulk
+  delete and the admin broadcast now are. A separate decision about navigation reads.
+
+**Closing note, 2026-09-04.** Built as specified across five commits, with two corrections
+made after the build and recorded in §14 of the archived plan rather than edited away: the
+Tiers tab printed both language labels at once (a reversal of the plan's own §5.1), and
+three CSS classes were applied that no stylesheet defined. The plan was archived to
+[`docs/archive/2026-09-04_reader-quota.md`](../../docs/archive/2026-09-04_reader-quota.md) on
+2026-09-04 and the six items listed above as still-open were lifted into `TODO.md` as their
+own entries the same day — five of them, plus the `usage_daily` retention bullet folded
+into the retention entry — so that none of the open work stayed buried in a document
+banner-marked as history.
+
 ### [HISTORICAL] ~~Registrations pause — let an operator pause new signups~~ — BUILT 2026-08-25
 
 > Built per `docs/registrations-pause-plan.md`, which stays live (it is a design

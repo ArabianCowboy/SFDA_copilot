@@ -1,6 +1,54 @@
-STATUS: BUILT — Commits A–E applied 2026-09-03/04 and verified. Nine migrations live, the claim and refund wired into both chat routes, the reader notice and counter shipped, the Tiers tab and per-account override in the console, and the documents corrected. §§1–8 and §10 are the specification this was built from; the review sections are provenance. **§14 records two corrections made after the build, one of which reverses a line of §5.1.** Not committed to git at the time of writing.
+---
+authority: historical
+status: superseded
+do_not_implement: true
+archived: 2026-09-04
+supersedes_note: >
+  This document is a finished plan, built as written and then corrected twice
+  after the build (see the precedence note below). It is a record of what was
+  decided and what it cost, not a specification.
+live_authority:
+  - docs/ARCHITECTURE.md
+  - DESIGN.md
+  - supabase/README.md
+  - TODO.md
+---
 
-# Reader Quota: tiers, per-account overrides, and a daily allowance that survives a deploy
+> [!CAUTION]
+> **You are reading history, not a specification.** Do not implement anything found
+> in this file without first confirming it against `docs/ARCHITECTURE.md` or the code.
+> Every heading below is prefixed `[HISTORICAL]` so a search result cannot be mistaken
+> for current design.
+
+STATUS: HISTORICAL RECORD — archived 2026-09-04. Nothing here is an instruction.
+Built across five commits on 2026-09-03/04; the feature is live.
+
+## [HISTORICAL] The final position, so this file needs no reading order
+
+This document was written to be read with §§1-8 and §10 as the specification and the
+review rounds as provenance, and it then grew a §14 that reverses part of §5.1. A frozen
+document you must read in a special order has not been frozen, so the resolved positions
+are stated here once and win over anything below that disagrees:
+
+1. **The Tiers table shows ONE label, resolved against the console's language** — not the
+   "label EN, label AR" columns §5.1 specified. §14.1 reverses that line. The rule is
+   _author both, display one_, and it now lives in `DESIGN.md` under
+   _Operator-authored bilingual data_.
+2. **A date interpolated into a sentence is built from parts and isolated**, never from
+   `toLocaleString(lang)` — §14.2. Intl separates an `ar` date with U+200F and the bidi
+   algorithm reorders around it, so the first of August rendered as `2026/08/01`.
+3. **The console's two form idioms are not interchangeable.** `.admin-field` is the
+   settings tab's page-width row; `.admin-profile-field` inside `.admin-editor-card` is
+   the in-card shape. `DESIGN.md`, _Console forms_, is the authority.
+4. **The claim's `on conflict` clause names the constraint**, not the columns — see §2.
+   PL/pgSQL defers parsing, so a bare `day` is ambiguous at runtime (`42702`) against a
+   function that returns a column of that name. Do not tidy it back.
+5. Everything the plan lists as **deliberately not built** — the promo pool (§12), claim
+   idempotency, `usage_daily` retention, the `/api/identity` round trips, and re-keying
+   `history_api`/`sessions_api` — was lifted into [`TODO.md`](../../TODO.md) as its own
+   entry on 2026-09-04. Read those, not §12, for the current state of that work.
+
+# [HISTORICAL] Reader Quota: tiers, per-account overrides, and a daily allowance that survives a deploy
 
 **How to read this document if you are building it.** §§1–8 and §10 are the **specification** — build exactly what they say. The review sections (_Inputs & disagreement rulings_, _Adversarial review round_, _Second review round_, _Third review round_) are **provenance**: they record what was contested, what was found wrong and what was rejected, so that a decision you are tempted to change quietly can first be read as a decision somebody already made. If the spec and a review section disagree, the spec wins and the disagreement is a bug in this document — fix it here in the same commit.
 
@@ -12,7 +60,7 @@ STATUS: BUILT — Commits A–E applied 2026-09-03/04 and verified. Nine migrati
 
 ---
 
-## Context
+## [HISTORICAL] Context
 
 Rate limiting today is one global, IP-keyed setting: `web/config.yaml` `server.rate_limit` (200/day, 50/hour, 10/minute defaults; `chat_api: "15 per minute"`) applied by a Flask-Limiter built on `get_remote_address` with `storage_uri="memory://"` (`web/api/app.py`, `_init_extensions`). An office behind one NAT shares a budget; one person on two networks gets two; every counter dies on restart. `profiles.tier` exists (`text not null default 'free'`, `20260814005509`), rides `IdentityFlags`, and nothing branches on it. `public.chatbot_settings` sits in the database with zero rows and zero readers.
 
@@ -20,7 +68,7 @@ This plan makes four changes: the chat burst limit becomes reader-keyed; a durab
 
 ---
 
-## Ground truth this plan was verified against
+## [HISTORICAL] Ground truth this plan was verified against
 
 Read directly in the session that wrote this, 2026-09-03. Where a delegate contradicted one of these, the source was re-read and the delegate was wrong (see _What the delegates got wrong_).
 
@@ -42,7 +90,7 @@ Read directly in the session that wrote this, 2026-09-03. Where a delegate contr
 
 ---
 
-## Inputs, and where the drafts disagreed
+## [HISTORICAL] Inputs, and where the drafts disagreed
 
 Two delegated drafts, dispatched in parallel with the same verified-facts brief and neither seeing the other: a research-and-adversary pass (Antigravity, `gemini-3.7-flash-high`) and an independent design (OpenCode, `openai/gpt-5.6-luna`, xhigh effort, read-only `plan` agent). Both left the tree untouched (`git status` clean after each). Every claim below that came from a delegate was re-read in the source before being kept.
 
@@ -63,11 +111,11 @@ Where both drafts agreed and the code agrees with them, the design below simply 
 
 ---
 
-## Adversarial review round
+## [HISTORICAL] Adversarial review round
 
 The gate this repo uses before building: a read-only reviewer is handed the synthesized plan and asked to find what the drafters missed. The reviewer of record was meant to be Codex (`/codex-delegate --read-only`); it exhausted its OpenAI usage allowance a third of the way through its read and returned nothing, and an OpenCode `gpt-5.6-sol` fallback on the same account was refused at the first call for the same reason. The round therefore ran on Antigravity (`gemini-3.7-flash-high`, same brief, tree verified untouched) and a fresh Claude sub-agent with no session context (same brief). Every finding below was re-read in the source before it changed the plan; the two the reviewers did not raise but the live-database read did are in _Ground truth_.
 
-### Confirmed defects, and how each is fixed above
+### [HISTORICAL] Confirmed defects, and how each is fixed above
 
 1. **`admin_get_user` cannot be `create or replace`d.** It `returns table (…)` (`20260828135749`), and adding columns changes the return type — Postgres refuses with `42P13`. §1.7 is now drop + create.
 2. **The refund could land on the wrong day.** `chat_release_daily_message` recomputed "today"; a claim at 23:59:59 whose retrieval failed at 00:00:01 would refund nothing (no row for D+1) or decrement another day's count. The claim now returns `day`, Python carries it on `QuotaClaim`, and the release takes `p_day` (§2).
@@ -88,7 +136,7 @@ The gate this repo uses before building: a read-only reviewer is handed the synt
 16. **`privileges.test.sql` asserts `chatbot_settings` grants** and would fail after the drop (§1.8).
 17. **`composer.tierPlaceholder` would become a key read by nothing** once the input is a select (§7).
 
-### Suggestions adopted
+### [HISTORICAL] Suggestions adopted
 
 - The two token-hash key functions' docstrings, which justify the hash by saying they run before the blueprint gate, are rewritten in Commit A because that stops being true (§3.5).
 - The claim keys on the canonical uuid, never a raw email fallback (§3.2).
@@ -98,11 +146,11 @@ The gate this repo uses before building: a read-only reviewer is handed the synt
 - Restoring the draft after a 429 never overwrites a newer draft the reader has typed since (§6.1).
 - A new tab glyph must be registered in `ADMIN_RUNTIME_ICON_NAMES` or `test_admin_page.py`'s icon-subset test fails (§5.1).
 
-### Claims the reviewers checked and found correct
+### [HISTORICAL] Claims the reviewers checked and found correct
 
 Decorator evaluation inside the limiter wrapper (`_limits.py` ~315-325); the five discarded wrappers (`app.py` ~2060-2106); `Limiter.enabled` settable and the instance retained; the fail-open posture against `identity_cache.py` and ARCHITECTURE's outage rules; the zero-limit guard and row-lock behaviour of the claim; the cascade and set-null choices; `security definer` RPCs owned by `postgres` reading tables `service_role` cannot; the closed eleven-name `runtime.*` namespace; the `chatbot_settings` drop; the membership advisory lock precedent.
 
-### Second review round, 2026-09-03
+### [HISTORICAL] Second review round, 2026-09-03
 
 A fourth reviewer — the owner's own planning session, which had independently verified the same codebase and run its own Codex round — read the amended text against its notes and raised five residual gaps plus four nits. Its convergence with this round on the refund day, the limiter-test harness, `42P13`, `TQ005` and the `override_defaults` correction is recorded above; what follows is only the delta, each item re-checked in the source before it moved.
 
@@ -124,7 +172,7 @@ A fourth reviewer — the owner's own planning session, which had independently 
 
 - **"`data-policy-decisions.md` §3 says decided while its `STATUS` says proposal."** It does not. §3 is headed _The recommendation_ and the summary table reads "Drop it… Not urgent." — consistent with the `STATUS` line as written. The real item is the sequencing one taken under _Taken in full_ above.
 
-### Third review round, 2026-09-03 — three agents, one debate and one security sweep
+### [HISTORICAL] Third review round, 2026-09-03 — three agents, one debate and one security sweep
 
 Three independent read-only agents on the amended text: OpenCode `gpt-5.6-terra` briefed to **argue** rather than list, Antigravity `gemini-3.8-flash-high` on correctness and internal consistency, and a second Antigravity on security only. None saw the others. Each was told the two prior rounds' findings were already fixed and which six owner decisions were settled. Every finding below was re-read in the source before it changed anything; the false ones are listed too, because a reviewer's miss is as much a fact about this document as a hit.
 
@@ -158,11 +206,11 @@ Three independent read-only agents on the amended text: OpenCode `gpt-5.6-terra`
 
 ---
 
-## 1. Database schema and migrations
+## [HISTORICAL] 1. Database schema and migrations
 
 One concern per file; every FK states its action and gets its index in the same file; every table has RLS on, zero policies, and `revoke all … from anon, authenticated, public, service_role` (the `profile_last_seen` shape — every access path is a `security definer` RPC). Files are named here by concern; the timestamp prefix is whatever `list_migrations` reports after `apply_migration`, and the rename is a mandatory step (collision #2).
 
-### 1.1 `public.tiers` — `…_tiers_table.sql`, then `…_profiles_tier_references_tiers.sql`
+### [HISTORICAL] 1.1 `public.tiers` — `…_tiers_table.sql`, then `…_profiles_tier_references_tiers.sql`
 
 Two files, not one: the first creates and seeds the table; the second backfills `profiles.tier` and adds the constraint. They sequence cleanly (a seeded table is harmless until something references it), so README rule 1 needs no exception header. The first file's seed and the second file's backfill are what let the FK apply without a `23503`.
 
@@ -239,7 +287,7 @@ The second file's header records the live row count of `profiles` per tier value
 
 **`profiles_guard_privilege_columns` is not touched.** Its `'free'` literal stays correct because `free` is the structural default (ruling 5).
 
-### 1.2 `public.reader_quota_overrides` — `…_reader_quota_overrides_table.sql`
+### [HISTORICAL] 1.2 `public.reader_quota_overrides` — `…_reader_quota_overrides_table.sql`
 
 ```sql
 create table public.reader_quota_overrides (
@@ -273,7 +321,7 @@ revoke all on table public.reader_quota_overrides
 
 **The window expires on read, never on a timer.** An expired row is left exactly where it is and simply stops matching the claim's `where` (§2). There is no `pg_cron` job, no sweep, no "expired" flag to keep in step with the clock — the same discipline the plan already applies to the day boundary, which is also computed rather than stored. Two consequences worth stating: an expired override is still visible in the console (as "expired on {date}", not as a live value) so the operator can see what happened and re-set it, and the row's disappearance from enforcement needs no deploy, no job, and no successful background process. The account's limit falls back to its tier on the very next claim.
 
-### 1.3 `public.usage_daily` — `…_usage_daily_table.sql`
+### [HISTORICAL] 1.3 `public.usage_daily` — `…_usage_daily_table.sql`
 
 ```sql
 create table public.usage_daily (
@@ -291,7 +339,7 @@ References `auth.users`, not `profiles`, because accounts without a profile row 
 
 Rows accumulate at one per active reader per day, counts only. Retention is added to the existing `TODO.md` retention entry rather than decided here.
 
-### 1.4 Reader quota RPCs — `…_reader_quota_rpcs.sql`
+### [HISTORICAL] 1.4 Reader quota RPCs — `…_reader_quota_rpcs.sql`
 
 Three functions, all `security definer`, `set search_path = ''`, revoked from `anon`/`authenticated`/`public`, granted to `service_role`. Full text of the claim in §2; the other two are defined there too.
 
@@ -299,11 +347,11 @@ Three functions, all `security definer`, `set search_path = ''`, revoked from `a
 - `chat_release_daily_message(p_user_id uuid, p_day date)`
 - `get_reader_quota(p_user_id uuid, p_default_limit integer)` — read-only; never creates a row.
 
-### 1.5 Admin tier RPCs — `…_admin_tier_rpcs.sql`
+### [HISTORICAL] 1.5 Admin tier RPCs — `…_admin_tier_rpcs.sql`
 
 `admin_list_tiers()` (reader; returns every tier with a `member_count`), `admin_create_tier(p_key, p_label_en, p_label_ar, p_daily_message_limit, p_ordering, p_actor_id, p_request_ip default null, p_user_agent default null)`, `admin_update_tier(p_key, p_label_en, p_label_ar, p_daily_message_limit, p_ordering, p_actor_id, …)`, `admin_delete_tier(p_key, p_actor_id, …)` — **no `p_actor_email` on any of them**, for the reason §1.6 gives: these are new functions, so the compatibility argument that kept the parameter on the existing seven does not apply, and not accepting a caller-supplied email is the only way to guarantee the audit trail's attribution cannot be forged. Each mutating one takes `pg_advisory_xact_lock(hashtext('sfda.admin_membership'))` **first**, then `admin_actor_email(p_actor_id, 'AD004')`, then mutates, then writes one `audit_log` row (`tier.create`, `tier.update`, `tier.delete`; `target_type 'tier'`, `target_id` = key; before/after JSON of the row) in the same transaction. Refusals by SQLSTATE, mapped in `admin_store._refusal_from`: `TQ001 duplicate_key`, `TQ002 no_such_tier`, `TQ003 tier_in_use`, `TQ004 default_tier_protected` (delete `free`), `TQ005 invalid_limit`, `TQ006 invalid_labels`, `TQ007 invalid_window`. `admin_update_tier` writes no audit row when nothing changed (the `admin_set_user_flags` diff rule).
 
-### 1.6 `admin_set_reader_quota` — `…_admin_set_reader_quota_rpc.sql`
+### [HISTORICAL] 1.6 `admin_set_reader_quota` — `…_admin_set_reader_quota_rpc.sql`
 
 ```sql
 admin_set_reader_quota(
@@ -322,23 +370,23 @@ admin_set_reader_quota(
 
 Why the lock: `TODO.md` records that six of seven admin RPCs validate the actor without holding anything; this feature adds four mutating RPCs and takes the lock in every one of them so it adds to the one, not the six. The lock is cheap on an instance this size and is already the documented fix shape.
 
-### 1.7 `admin_get_user` — `…_admin_get_user_reports_quota.sql`
+### [HISTORICAL] 1.7 `admin_get_user` — `…_admin_get_user_reports_quota.sql`
 
 **Drop + create, not `create or replace`:** the function `returns table (…)` (`20260828135749`), and adding columns changes the return type, which Postgres refuses (`42P13`). The returned row gains `tier_label_en`, `tier_label_ar`, `daily_message_limit_override`, `override_starts_at`, `override_expires_at`, `effective_daily_limit`, `used_today`, `quota_resets_at`. Counts only, never text.
 
 **This function reads `reader_quota_overrides` WITHOUT the window clause — and that is the point.** §2's resolution join deliberately hides an override that is outside its window, because enforcement must not see it. The console has the opposite need: §5.2 has to render "scheduled, starts 1 October" and "expired on 30 September, now using the tier limit", and it cannot tell either of those from "this account has no override" if the row arrives as `null`. Worse, the operator's next save would then `PUT` a null window and silently erase a promotion that had not started yet. So `admin_get_user` joins the override plainly and returns the raw row; `effective_daily_limit` is computed **with** the window clause, so the console gets both truths side by side — what is stored, and what is actually in force right now. The two must never be collapsed into one field.
 
-### 1.8 Drop `public.chatbot_settings` — `…_drop_chatbot_settings.sql`
+### [HISTORICAL] 1.8 Drop `public.chatbot_settings` — `…_drop_chatbot_settings.sql`
 
 Its own migration, last, exactly as `data-policy-decisions.md` §3 specifies: the header records the row count (0), the foreign keys in both directions (none), the triggers (none) and the grep across `web/`, `static/`, `supabase/` that proves nothing reads it; `drop table public.chatbot_settings;` with no `cascade`. Then delete its row from `supabase/README.md`'s standing-findings table and its row from _Current shape of `public`_, remove the three `chatbot_settings` grant assertions from `supabase/tests/privileges.test.sql` (~65-67; the by-hand run would otherwise fail on a missing relation), and close the `chatbot_settings` question in `TODO.md`'s quota entry.
 
-### 1.9 `get_identity_flags` — unchanged
+### [HISTORICAL] 1.9 `get_identity_flags` — unchanged
 
 `/api/identity` calls `get_reader_quota` separately (§4), in its own `try`/`except`, rather than widening the deliberately narrowed standing-line RPC (`20260822231726`).
 
 ---
 
-## 2. Resolution semantics and the atomic claim
+## [HISTORICAL] 2. Resolution semantics and the atomic claim
 
 **Order:** `reader_quota_overrides.daily_message_limit` **(only while inside its window, if it has one)** → `tiers.daily_message_limit` (via `profiles.tier`) → **the live `free` tier's limit** → `p_default_limit` (the shipped default, passed in from `web/config.yaml` by Python). Every profile has a tier by FK, so the last two legs are reachable only by an account with no `profiles` row.
 
@@ -434,9 +482,9 @@ The RPC is deliberately **not** idempotent — `greatest(0, used - 1)` decrement
 
 ---
 
-## 3. Request lifecycle and rate-limit keys (`web/api/app.py`)
+## [HISTORICAL] 3. Request lifecycle and rate-limit keys (`web/api/app.py`)
 
-### 3.1 Where the claim runs
+### [HISTORICAL] 3.1 Where the claim runs
 
 In `handle_chat_stream`, after `_validate_chat_request` (a 400 spends nothing), after `generations.hold(...)`, after the `allow_create=false` preflight (a 404 spends nothing), after `store.adopt_cookie_history` / `_load_history` (either can raise something other than `PersistenceUnavailable` and become a 500 — a claim taken before them would be spent on a request that never reached the generator), and immediately **before** `Response(stream_with_context(generate()))`. The view-body `try` that today wraps only the `Response(...)` line starts at the claim, and its `except` refunds as well as releasing the hold.
 
@@ -453,7 +501,7 @@ if quota is not None and not quota.allowed:
 
 `_quota_exhausted_response` returns `429 {"error": "quota_exhausted", "limit", "used", "remaining": 0, "resets_at": <iso>, "tier": <key>}` with `Retry-After` = seconds until `resets_at`, rounded up, and `Cache-Control: no-store`. This is the route's own response, not Flask-Limiter's generic 429, so the client can tell an allowance from a burst refusal (`code` present vs absent). The identical block sits in `handle_chat` so alternating endpoints cannot double the allowance.
 
-### 3.2 Refund, and the `spent` flag
+### [HISTORICAL] 3.2 Refund, and the `spent` flag
 
 The claim keys on `_durable_owner()`'s canonical uuid, not `g.identity.user_id` raw: `_authenticate_request` falls back to the email when a provider omits `id`, and an email cannot key a `uuid` column (`20260828143044` fixed exactly this for `touch_last_seen`). A non-uuid owner skips the claim and streams uncounted, logged once, the same degradation durable history already applies.
 
@@ -486,11 +534,11 @@ The existing `except SearchEngineError` branch, the generic `except Exception` b
 
 **Release runs at most once per request.** `chat_release_daily_message`'s `greatest(0, used - 1)` is not idempotent as a primitive; nothing in the SQL stops a second call from refunding a message the reader actually spent. Today the `spent` flag happens to make the single call site once-per-request, but that is control flow, not an invariant, and it would not survive a refactor that moved the refund. `_release_daily_message()` therefore keeps its own request-local guard — a `released` flag set on first entry, returning immediately thereafter — and `test_quota.py` asserts a double call decrements once (§10).
 
-### 3.3 The `done` frame and the blocking response carry the counter
+### [HISTORICAL] 3.3 The `done` frame and the blocking response carry the counter
 
 `done` gains `quota: {used, limit, remaining, resets_at}` (the claim's own return value; zero extra round trips). `handle_chat`'s JSON gains the same object. `ARCHITECTURE.md`'s frame-order sentence does not change; `test_chat_stream.py`'s frame-order test gains an assertion on the field.
 
-### 3.4 Fail-open posture
+### [HISTORICAL] 3.4 Fail-open posture
 
 `_claim_daily_message()` wraps the backend call; any exception is logged at `error` with `exc_info` and returns `None`, and the request proceeds uncounted with `quota: null` on `done` (ruling 3). A `None` backend (no service-role key configured, no persistence) behaves the same way, so a Supabase-less deployment keeps working. The realistic failure is not an outage but a stale PostgREST schema cache right after Commit A (`PGRST202` on the new function), under which every request would fail open with only a log line to show for it — so the backend keeps a process-local count of consecutive claim faults and `scripts/smoke_real.py` gained a **DAILY ALLOWANCE** section that exercises the three real RPCs through `SupabaseQuotaBackend` — status, claim, release — and asserts the refund lands. An earlier draft of this sentence said the script asserts `done.quota` is non-null; it cannot, because it deliberately bypasses Flask (`search → build_source_payload → streamed answer → citation validation`) and never builds a response frame. What it can do is the check that actually matters after a deploy: prove the function exists, that `service_role` may execute it, and that PostgREST's schema cache has caught up — the three faults that would otherwise fail closed on every request. It costs no model call and releases the claim it makes.
 
@@ -502,7 +550,7 @@ So `_claim_daily_message()` classifies: a configuration-shaped fault returns a s
 
 State the price of the open half plainly, because ruling 3 bought it deliberately: **every deploy carries an unbilled window that lasts until the smoke test passes.** Nobody is refused during it and nothing is counted; the log line and the fault counter are the only evidence it happened. That is the trade against the stricter `503 quota_unavailable` posture, and it is acceptable only because the counter and the smoke assertion make the window observable rather than silent. If either is dropped, the ruling should be revisited with it.
 
-### 3.5 Burst limit keyed to the reader
+### [HISTORICAL] 3.5 Burst limit keyed to the reader
 
 ```python
 def _rate_key() -> str:
@@ -524,17 +572,17 @@ The dropped branch is the one place this design could have been turned inside ou
 
 **`_admin_notification_rate_key` re-keys for the same reason**, and its own docstring makes the case: it names "a compromised admin account spamming via multiple IPs" as the threat, and a per-session hash is precisely what fails against it — an attacker holding the credentials signs in, gets a session of their own, and with it a fresh 10/hour. `admin_bp._gate` calls `_authenticate_request`, which sets `g.identity` (`app.py:747`) before dispatch, and `admin.create_notification` is itself one of the five reassignments, so the same ordering argument holds without a second GoTrue round trip — the objection the docstring raises. All three docstrings, which explain the hash by saying the key runs _before_ the gate, become false in the same commit and are rewritten with it; `config.yaml`'s `export_api` comment stops being aspirational. `history_api`/`sessions_api` stay IP-keyed; re-keying navigation reads is a separate decision and is listed under _Deliberately not done_.
 
-### 3.6 The five unenforced limits
+### [HISTORICAL] 3.6 The five unenforced limits
 
 Each `limiter.limit(...)(app.view_functions[name])` becomes `app.view_functions[name] = limiter.limit(...)(app.view_functions[name])`, with a comment explaining why the assignment is load-bearing and pointing at the test. Flask dispatches through `view_functions`, so the replaced callable is what runs; the blueprint's `before_request` gate still runs first. One correction to the comments beside those five registrations (`app.py` ~2089-2092, "Both stack on top of the blanket 60/minute"): they do not. `limit()` defaults `override_defaults=True`, and `_manager.py` adds a blueprint's limits only when a route carries no overriding limit of its own, so once enforced each of the five carries exactly its own limit and not the blueprint's. Commit A rewrites those comments to say so; if stacking is wanted, `override_defaults=False` is the switch. Filed as a _Known bug_ entry in `TODO.md` in the same commit that plans this (this session), closed by Commit A.
 
-### 3.7 Pinning the order, behaviourally
+### [HISTORICAL] 3.7 Pinning the order, behaviourally
 
 `web/tests/test_rate_limit_keys.py`: `create_app` gains a keyword-only `enforce_rate_limits: bool = False`, and `_configure_app` sets `RATELIMIT_ENABLED = enforce_rate_limits or not testing`, so a test can build one app with the limiter genuinely initialised (memory storage, the IP-keyed defaults included — harmless across three requests) while every other test keeps today's disabled limiter. The chat limit is lowered by `monkeypatch.setitem(config._config["server"]["rate_limit"], "chat_api", "1 per minute")` — not by patching `config.get`, which four other request-time lambdas share. Test: reader A (`fake_token`) → 200, reader B (`fake_reader_b_token`) from the same test client IP → 200, A again → 429 with **no** `quota_exhausted` code. Reversing the decorators makes B's request a 429 and the test fail. Sibling tests hit `account.export` twice with `export_api` at `"1 per 10 minutes"` and `admin.revoke_sessions` twice at `"1 per minute"` and expect a 429 on the second — the regression test for §3.6. `test_registrations_pause.py`'s comment keeps its conclusion (you cannot flip the limiter on for one test) and loses its stale "never retained" clause, pointing at this file for the harness that does work.
 
 ---
 
-## 4. Services and configuration
+## [HISTORICAL] 4. Services and configuration
 
 - **`web/config.yaml`** gains `server.quota.daily_messages_default: 200` (owner decision, 2026-09-03 — the same number today's global `per_day` already carries) with a comment saying it is the seed for **both** shipped tiers and the last-resort fallback for a profileless account whose `free` row is missing, that tiers are the runtime authority, and that `test_quota.py::test_seed_matches_shipped_default` pins the seed migration to it. **Both seeded numbers move together, or not at all:** `free` and `staff` are seeded from this one key, and the test compares **both** rows to it, so an implementer who edits the migration to give `staff` a different number fails the suite rather than shipping a silent divergence between the config comment and the database. Differentiating the two tiers is a **console** edit after Commit D, never a change to the seed — which also guarantees that an account whose override is cleared always falls back to a tier limit somebody deliberately set, rather than to whichever number happened to be typed into a migration. Nothing goes into `app_settings` or `SettingsService`; no third cache slot.
 - **`web/services/quota_store.py`** — `QuotaBackend(Protocol)` with exactly three methods, the reader path only: `claim(user_id) -> QuotaClaim` (`allowed, used, limit, remaining, resets_at, tier_key, day`), `release(user_id, day) -> None`, `status(user_id) -> QuotaStatus`. Tier CRUD and `set_reader_quota` live on `AdminBackend` (below), because `admin.py` consumes `admin_backend()` exclusively and every audited, actor-carrying mutation in this repo already lives there; two protocols owning tier management would be the kind of split that drifts. `SupabaseQuotaBackend` calls the three reader RPCs with `p_default_limit` from config; `InMemoryQuotaBackend` seeded with `free`/`staff` and the testing identities, day keyed on the **`Asia/Riyadh`** date (the same zone as the RPC — a double that rolls over on a different day than the thing it doubles is worse than no double), with a `_now` hook so rollover is testable.
@@ -553,29 +601,29 @@ Each `limiter.limit(...)(app.view_functions[name])` becomes `app.view_functions[
 
 ---
 
-## 5. Admin console
+## [HISTORICAL] 5. Admin console
 
-### 5.1 Tiers tab (new)
+### [HISTORICAL] 5.1 Tiers tab (new)
 
 `web/templates/admin.html`: a **sixth** tab button (the console already ships five — Overview, Settings, People, Activity, Notifications, `admin.html` ~122-141) and `#panel-tiers` with `#tiers-body`, aria wired like the others; `page.admin.tabs.tiers` — labelled **Tiers** / **الفئات** (owner decision, 2026-09-03, closing §13 Q6; "groups" was the owner's own earlier word and was considered, but the console already calls the column `tier` and two names for one thing is how a console starts lying). The tab button's glyph is rendered **server-side** by Jinja (`{{ icon('…', 15) }}`, like its five siblings), so a new one must exist in `web/utils/icons.py`'s primary `ICONS` dict — **not** `ADMIN_RUNTIME_ICON_NAMES`, which is only for glyphs `iconMarkup()` draws in the browser and which an earlier draft of this line wrongly named. Simplest is to reuse a glyph already in `ICONS` and add nothing. `static/js/admin.js` calls `initTiersTab(services)` beside the existing inits. `static/js/admin/handlers.js` `initTiersTab`: load `services.tiers()`, render a table (key, **one** label resolved against the console language — see §14.1, which reverses this line's original "label EN, label AR" — daily limit, members, ordering, edit/delete), an inline create/edit form (key immutable after create; `free` shows no delete control), `window.confirm` on delete with the member count in the copy, `loadAudit(services)` after every successful save (the registrations handler's reason). `static/js/admin/ui.js` `renderTiers(tiers, {editingKey})`; labels via `textContent`. `static/js/admin/services.js`: `tiers`, `createTier`, `updateTier`, `deleteTier`. Routes in `admin.py`: `GET /admin/api/tiers`, `POST /admin/api/tiers`, `PATCH /admin/api/tiers/<key>`, `DELETE /admin/api/tiers/<key>`; validation in Flask before the RPC (key regex, label lengths, integer ≥ 0) returning `422` with the same machine codes the RPC uses; `AdminActionRefused` → `409 {error: code}`. `test_admin_page.py`'s route-gate test only covers GET routes (notification plan finding 16), so the three mutations get their own 401/403 tests.
 
-### 5.2 Account detail: tier and override
+### [HISTORICAL] 5.2 Account detail: tier and override
 
 `renderAccountDetail` gains a **Quota** section between the profile form and the actions card (Zone 2b): the tier as a `<select>` fed by `services.tiers()`, the override as a numeric input with a "Use tier limit" clear control, **two optional datetime fields for the override's window** (blank = in force until cleared, which is the default and the common case), a required-when-set reason field (mirroring the disable-reason rule — enforced at the route, as `admin.py` already enforces the disable reason, not in the RPC; it returns **`quota_reason_required`**, not the existing `reason_required`, whose catalogue string is hardcoded to "A reason is required to disable chat access." / «السبب مطلوب لتعطيل الوصول إلى المحادثة.» at `en.yaml:561` / `ar.yaml:353` — reusing the code would tell an operator setting an allowance that chat access cannot be disabled), today's usage as `used / effective limit` with the reset time, and one Save. When a window is set the section states in words what it means — "500 a day until 30 September" — and a window that has passed renders as "expired on {date}, now using the tier limit" rather than as a live number, because the row is still there (§1.2, expiry-on-read) and showing its value would be a lie. **That sentence carries a date, and §14.2 records why interpolating one is not as simple as it looks.** `PUT /admin/api/users/<id>/quota` `{tier, daily_message_limit_override: int|null, override_starts_at: iso|null, override_expires_at: iso|null, reason?}` — a PUT of the whole quota state, every key always present, because the RPC's nulls are asymmetric (`p_tier null` = unchanged, override `null` = clear) and a partial body would turn "I did not send it" into "clear it" → `backend.set_reader_quota` → `admin_set_reader_quota`; `_evict_identity_caches(user_id)` before returning; then `openAccount(userId)` and `loadAudit`. Hidden when `has_profile` is false (the RPC refuses `AD003` anyway). Disabled for self? No: changing your own allowance is not a privilege escalation and `AD001` does not apply; the audit row records it.
 
-### 5.3 Audit labels
+### [HISTORICAL] 5.3 Audit labels
 
 `static/js/admin/ui.js` action map gains `tier.create`, `tier.update`, `tier.delete`, `user.tier_change`, `user.quota_override_change` → `runtime.admin.audit.action*` keys.
 
-### 5.4 Notification composer
+### [HISTORICAL] 5.4 Notification composer
 
 `target_tier` becomes a `<select>` populated from `services.tiers()`; `admin.py`'s `_validate_notification_targeting` checks the key exists via the backend (`422 invalid_target_tier`, the existing code). The audience preview and `admin_create_notification` are unchanged in signature.
 
 ---
 
-## 6. Reader-facing behaviour
+## [HISTORICAL] 6. Reader-facing behaviour
 
-### 6.1 The exhausted notice
+### [HISTORICAL] 6.1 The exhausted notice
 
 `handlers.js` `processChatRequestInternal`, in the outer `catch`, gains a branch **before** the generic fault path and beside `account_disabled`:
 
@@ -602,11 +650,11 @@ if (error?.code === 'quota_exhausted') {
 
 CSS in `components.css`, next to the history notice: `.quota-notice` reuses the Notices shape (sunken fill, `rule-200` hairline, 3px radius, muted ink, the inset 2px inline-start pill) with the pill in `--confidence`. Never `--danger`, never `.stream-note`. Logical properties only. `ASSET_VERSION` bump.
 
-### 6.2 The quiet counter
+### [HISTORICAL] 6.2 The quiet counter
 
 `web/templates/index.html`: `<p class="composer-quota" id="composer-quota" hidden aria-live="polite"></p>` as a sibling _after_ `.composer` inside `footer.input-area` — never inside `.composer`, which is a flex row and would take it as a fourth item on the input line — muted ink, `--fs-100`. `UI.updateQuotaCounter(quota)` shows it only when `remaining <= max(3, ceil(limit * 0.2))` — 40 at the shipped 200, **DECIDED 2026-09-03** — text `runtime.chat.quota.counter` ("{remaining} of {limit} questions left today · resets {resets_at}") or `counterOne`. **The threshold is a constant in `ui.js`, not a setting.** No `config.yaml` key, no `app_settings` row, no console control: a display threshold is not a product setting for four accounts, and wiring one now would add a cache slot, a route and a test for a number nobody has evidence to choose. It is revisited after Commit C, against real `usage_daily` rows. Hidden otherwise; hidden otherwise; shown with `remaining = 0` after a 429. It writes `textContent` only when `remaining` or `resets_at` actually changed, so the `aria-live` region does not re-announce an unchanged number on every answer. Fed from: `/api/identity` at sign-in (`app.js`'s `fetchIdentityWithRetry` `.then`, guarded by the same `identityCheckId` and `user_id` checks that guard `renderAdminAffordance`), every `done` frame, every `handle_chat` response, and every 429 body. Never a re-fetch of identity after an answer. Cleared by `Handlers.clearReaderScopedUI` on sign-out.
 
-### 6.3 Account standing line
+### [HISTORICAL] 6.3 Account standing line
 
 `static/js/account.js` passes `identity.quota` to `renderStanding`; `account/ui.js` renders `tier` from `quota.tier.label_en` / `label_ar` by `I18n.lang` (falling back to the key when `quota` is null), and adds "{used} of {limit} questions today" and the reset time.
 
@@ -614,7 +662,7 @@ CSS in `components.css`, next to the history notice: `.quota-notice` reuses the 
 
 ---
 
-## 7. i18n
+## [HISTORICAL] 7. i18n
 
 Both catalogues, together, per key. Nothing new at the top level of `runtime.*` (collision #3).
 
@@ -631,7 +679,7 @@ Tier labels themselves are data (`tiers.label_en`/`label_ar`), edited from the c
 
 ---
 
-## 8. Security and privacy checklist
+## [HISTORICAL] 8. Security and privacy checklist
 
 1. `tiers`, `reader_quota_overrides`, `usage_daily`: RLS on, zero policies, `revoke all` from every role including `service_role`; every path a `security definer` RPC with `set search_path = ''`, revoked from `anon`/`authenticated`/`public`, granted to `service_role` only. Three new rows in the standing-findings table; `supabase/tests/privileges.test.sql` and `function_acls.test.sql` extended.
 2. No browser-direct write to tier, override or usage state. `profiles.tier` keeps its column `REVOKE` and trigger; the override is not on `profiles` at all.
@@ -646,7 +694,7 @@ Tier labels themselves are data (`tiers.label_en`/`label_ar`), edited from the c
 
 ---
 
-## 9. Rollout order
+## [HISTORICAL] 9. Rollout order
 
 Five commits, schema first (README: schema before code).
 
@@ -708,7 +756,7 @@ Five commits, schema first (README: schema before code).
 
 ---
 
-## 10. Test plan
+## [HISTORICAL] 10. Test plan
 
 Offline first: every Python test runs against the in-memory doubles; the SQL tests run by hand against the live project, because a mock cannot prove a grant.
 
@@ -734,7 +782,7 @@ Offline first: every Python test runs against the in-memory doubles; the SQL tes
 
 ---
 
-## 11. What this disturbs
+## [HISTORICAL] 11. What this disturbs
 
 Roughly notification-center scale: nine migrations, one new console tab, one new service module, two new test files plus extensions to nine, and three documents that describe rate limiting today.
 
@@ -749,9 +797,9 @@ Roughly notification-center scale: nine migrations, one new console tab, one new
 
 ---
 
-## 12. Deliberately not done
+## [HISTORICAL] 12. Deliberately not done
 
-### The fixed promo pool — designed 2026-09-03, deliberately not built
+### [HISTORICAL] The fixed promo pool — designed 2026-09-03, deliberately not built
 
 Worked out in full on the day this plan was written, and parked here rather than in the build, because the design is worth keeping and the feature is not worth shipping yet. Recorded with its defects already corrected, so whoever picks it up starts from a version that applies.
 
@@ -818,7 +866,7 @@ Token credits (owner ruling, on technical grounds a message count does not share
 
 ---
 
-## 13. Questions for the product owner
+## [HISTORICAL] 13. Questions for the product owner
 
 **All eight are now answered**, on **2026-09-03**, before anything was built. The numbering is unchanged — other sections cite these by number — and each question is kept beside its answer, because the question is the record of what was weighed. Only question 7 (retention) is deliberately left to an existing `TODO.md` entry rather than answered here.
 
@@ -836,12 +884,12 @@ Token credits (owner ruling, on technical grounds a message count does not share
 
 ---
 
-## 14. Amendments after the build (2026-09-04)
+## [HISTORICAL] 14. Amendments after the build (2026-09-04)
 
 Two defects that only the built surface could show. Both are recorded here rather than
 edited away, because one of them reverses a line this document itself specified.
 
-### 14.1 The tier table showed both labels — a reversal of §5.1
+### [HISTORICAL] 14.1 The tier table showed both labels — a reversal of §5.1
 
 §5.1 specified a table of "key, label EN, label AR, daily limit, members, ordering". That is
 the storage shape, and it should never have reached the screen. A tier's label is stored
@@ -862,7 +910,7 @@ Pinned in both directions by `test_admin_browser.py` — an English console must
 as a rule in DESIGN.md, _Operator-authored bilingual data_, and as row 13 of
 _Rules that collide_.
 
-### 14.2 Three classes that no stylesheet defined, and a date that rendered backwards
+### [HISTORICAL] 14.2 Three classes that no stylesheet defined, and a date that rendered backwards
 
 **`admin-btn`, `admin-btn-quiet` and `admin-hint` were applied by `ui.js` and `admin.html`
 and defined nowhere.** The Tiers tab's Edit, Delete, Save and Cancel controls, and the
@@ -891,6 +939,6 @@ is split on its own `{date}` placeholder rather than interpolated, and the stamp
 
 ---
 
-## Verification (when built)
+## [HISTORICAL] Verification (when built)
 
 `python -m pytest -m "not browser and not integration"`; `python -m pytest -m browser --browser chromium`; `ruff check . --fix && ruff format .`; `mypy web`; `npm run lint:fix && npm run format`; `npm run lint:md`; `get_advisors` after every migration; every `supabase/tests/*.test.sql` pasted into `execute_sql` before and after Commit A; a real `scripts/smoke_real.py` run once the claim is wired (it costs money and is not in CI).

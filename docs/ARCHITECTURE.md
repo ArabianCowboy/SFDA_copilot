@@ -387,7 +387,7 @@ The allowance resolves, in order: an in-window per-account override
 `profiles.tier`) → the live `free` tier → `web/config.yaml`'s
 `server.quota.daily_messages_default`. Tiers and overrides are operator-editable from the
 console; the calendar day is `Asia/Riyadh`. Schema and design:
-[`docs/reader-quota-plan.md`](reader-quota-plan.md).
+[`docs/archive/2026-09-04_reader-quota.md`](archive/2026-09-04_reader-quota.md).
 
 ---
 
@@ -460,5 +460,5 @@ chunks and a tokenizer estimate is not a billing ledger), **time-windowed access
 such (a per-account override may be time-boxed, but sign-in itself is not), and a
 **fixed promo pool** of bonus messages drawn once the daily allowance is spent — that
 last one is designed in full, with its schema corrected, in
-[`reader-quota-plan.md`](reader-quota-plan.md) §12, and deliberately not built until
+[`the archived reader-quota plan`](archive/2026-09-04_reader-quota.md) §12, and deliberately not built until
 the meter has produced real numbers to decide it on.
