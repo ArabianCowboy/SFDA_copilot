@@ -371,6 +371,15 @@ runtime:
     # it: that panel's own heading is literally "Generation", and a
     # registrations switch inside it would be a category error, riding the
     # generation form's single Save button for an unrelated write.
+    overview:
+      accounts: "Accounts"
+      signups: "Signups"
+      tierCount: "Tiers"
+      membershipHeading: "Tier membership"
+      recentHeading: "Recent activity"
+      manageTiers: "Manage tiers"
+      seeAllActivity: "See all activity"
+      unavailable: "Could not load this just now."
     registrations:
       heading: "Registrations"
       hint: "Applies to the signup form immediately. Readers who are already signed in are unaffected."
@@ -453,6 +462,11 @@ runtime:
       actionNotificationDeactivate: "Deactivated a notification"
       actionNotificationDelete: "Deleted a notification"
       actionNotificationPurge: "Purged a notification"
+      actionTierCreate: "Created a tier"
+      actionTierUpdate: "Changed a tier"
+      actionTierDelete: "Deleted a tier"
+      actionUserTierChange: "Moved an account to another tier"
+      actionQuotaOverrideChange: "Changed an account's daily allowance"
     account:
       quotaHeading: "Daily allowance"
       tierLabel: "Tier"
@@ -569,6 +583,7 @@ runtime:
       search: "Search by email"
       columnEmail: "Email"
       columnRole: "Role"
+      columnTier: "Tier"
       columnAccess: "Chat access"
       columnLastSignIn: "Last signed in"
       columnActions: ""
@@ -635,6 +650,7 @@ runtime:
       heading: "Notifications"
       hint: "Send a message to targeted readers as a toast, banner, or blocking modal."
       composer:
+        heading: "New notification"
         typeLabel: "Type"
         typeToast: "Toast"
         typeBanner: "Banner"

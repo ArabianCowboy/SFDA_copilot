@@ -949,7 +949,9 @@ def test_the_people_table_dates_survive_arabic(browser_page: Page):
 
     expect(browser_page.locator("html")).to_have_attribute("dir", "rtl")
     row = browser_page.locator(".admin-table tbody tr", has_text="test@example.com")
-    seen = row.locator("td.admin-cell-machine").nth(1)
+    # Three machine cells per row, in DOM order: the address, the tier key, and
+    # the sign-in stamp. This one is about the stamp.
+    seen = row.locator("td.admin-cell-machine").nth(2)
 
     # Shape, not a fixed date: `dayStamp` reads local parts, so the day itself is
     # timezone-dependent. The mangling this guards against fails the shape.
@@ -1729,7 +1731,12 @@ def test_people_pager_repeated_rapid_clicks_only_issue_one_request(browser_page:
         url = route.request.url
         query_params = parse_qs(urlparse(url).query)
         offset = int((query_params.get("offset") or ["0"])[0])
-        calls.append(offset)
+        # The pager's own requests only. The Overview tab reads the account
+        # TOTAL from this same route with `limit=1`, so counting every call
+        # would make an unrelated tab's boot fetch look like a duplicate page
+        # request — which is not what this test is about.
+        if int((query_params.get("limit") or ["50"])[0]) == 50:
+            calls.append(offset)
         rows = MANY_ACCOUNTS[offset : offset + 50]
         _json(
             route,
@@ -2106,3 +2113,268 @@ def test_the_tier_form_still_edits_both_labels(browser_page: Page):
     expect(browser_page.locator("#tier-label_ar")).to_have_value("\u0645\u062c\u0627\u0646\u064a")
     # The key is permanent, and has to look it rather than merely behave it.
     expect(browser_page.locator("#tier-key")).to_have_attribute("readonly", "")
+
+
+# ── The Overview tab ─────────────────────────────────────────────────────────
+
+
+def _overview_console(page: Page, *, audit_status: int = 200, lang: str = "") -> None:
+    """The console on its landing tab, with the four routes it reads fulfilled."""
+    _route_identity(page, status=200, body=ADMIN_IDENTITY)
+    page.route(
+        "**/admin/api/tiers",
+        lambda route: route.fulfill(
+            status=200, content_type="application/json", body=json.dumps(TIERS_RESPONSE)
+        ),
+    )
+    page.route(
+        "**/admin/api/registrations",
+        lambda route: route.fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps({"signup_enabled": True, "default": True}),
+        ),
+    )
+    page.route(
+        "**/admin/api/audit*",
+        lambda route: route.fulfill(
+            status=audit_status,
+            content_type="application/json",
+            body=json.dumps({"entries": []} if audit_status != 200 else AUDIT),
+        ),
+    )
+    page.route(
+        "**/admin/api/users?*",
+        lambda route: route.fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps({"users": list(ACCOUNTS), "total": 1290}),
+        ),
+    )
+    page.goto(f"/admin?testing=true{lang}")
+    expect(page.locator("#admin-console")).to_be_visible()
+
+
+def test_the_overview_tab_is_not_empty(browser_page: Page):
+    """It shipped rendering "Nothing here yet." — as the console's LANDING tab.
+
+    Everything on it comes from routes the other tabs already call, so this
+    asserts the assembly rather than any new endpoint: the count of accounts,
+    whether signup is open, how many tiers there are, and the membership table.
+    """
+    _overview_console(browser_page)
+    body = browser_page.locator("#overview-body")
+
+    expect(body).to_contain_text("1290")
+    expect(body.locator(".admin-facts")).to_be_visible()
+    expect(body.locator(".admin-facts .admin-fact")).to_have_count(3)
+
+    # Tier membership, resolved to the console's language like every other
+    # surface that prints a tier label.
+    table = body.locator("table")
+    expect(table).to_be_visible()
+    expect(table.locator("tbody tr")).to_have_count(2)
+    expect(table).to_contain_text("Free")
+    expect(table).not_to_contain_text("\u0645\u062c\u0627\u0646\u064a")
+
+    expect(body.locator(".admin-overview-feed li")).to_have_count(len(AUDIT["entries"]))
+    expect(body).not_to_contain_text("Nothing here yet")
+
+
+def test_the_overview_figures_lead_to_the_tab_that_owns_them(browser_page: Page):
+    """An overview that cannot be acted on is a poster."""
+    _overview_console(browser_page)
+
+    # `.first`: the Tiers figure and the "Manage tiers" button below the table
+    # both carry this attribute — a scan target and an explicit action, which is
+    # how the rest of the console pairs them.
+    browser_page.locator("[data-overview-goto='tab-tiers']").first.click()
+    expect(browser_page.locator("#panel-tiers")).to_be_visible()
+    expect(browser_page.locator("#tab-tiers")).to_have_attribute("aria-selected", "true")
+
+    browser_page.locator("#tab-overview").click()
+    browser_page.locator("[data-overview-goto='tab-audit']").first.click()
+    expect(browser_page.locator("#panel-audit")).to_be_visible()
+
+
+def test_one_failed_request_does_not_empty_the_whole_overview(browser_page: Page):
+    """`Promise.allSettled`, not `Promise.all`.
+
+    Four requests back this panel. A landing tab that renders nothing because
+    one of them failed would be a worse arrival than the empty panel it
+    replaced, so each section stands or falls on its own.
+    """
+    _overview_console(browser_page, audit_status=500)
+    body = browser_page.locator("#overview-body")
+
+    # The three figures and the membership table are unaffected.
+    expect(body).to_contain_text("1290")
+    expect(body.locator("table tbody tr")).to_have_count(2)
+    # And the section that failed says so rather than showing an empty list.
+    expect(body.locator(".admin-empty")).to_be_visible()
+
+
+def test_a_200_whose_body_is_not_an_object_does_not_blank_the_overview(browser_page: Page):
+    """A fulfilled request is not the same as a usable one.
+
+    `request()` in `services.js` returns `null` for a 200 whose body will not
+    parse — its own comment names the case, "a gateway or proxy can return HTML
+    on an error". Reading a field off that null threw, and because
+    `initOverviewTab` is deliberately not awaited the rejection went nowhere:
+    the console's LANDING tab stayed blank with its load-once flag already set,
+    and the only way back was a page reload.
+    """
+    _route_identity(browser_page, status=200, body=ADMIN_IDENTITY)
+    browser_page.route(
+        "**/admin/api/tiers",
+        lambda route: route.fulfill(
+            status=200, content_type="application/json", body=json.dumps(TIERS_RESPONSE)
+        ),
+    )
+    browser_page.route(
+        "**/admin/api/registrations",
+        lambda route: route.fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps({"signup_enabled": True, "default": True}),
+        ),
+    )
+    browser_page.route(
+        "**/admin/api/audit*",
+        lambda route: route.fulfill(
+            status=200, content_type="application/json", body=json.dumps(AUDIT)
+        ),
+    )
+    # 200 OK, valid JSON, and not an object.
+    browser_page.route(
+        "**/admin/api/users?*",
+        lambda route: route.fulfill(status=200, content_type="application/json", body="null"),
+    )
+    browser_page.goto("/admin?testing=true")
+    expect(browser_page.locator("#admin-console")).to_be_visible()
+
+    body = browser_page.locator("#overview-body")
+    # The section whose request was unusable says so; every other one renders.
+    expect(body.locator(".admin-facts .admin-fact")).to_have_count(3)
+    expect(body.locator("table tbody tr")).to_have_count(2)
+    expect(body.locator(".admin-overview-feed li")).to_have_count(len(AUDIT["entries"]))
+    expect(body).to_contain_text("—")
+
+
+def test_an_unavailable_tier_catalogue_says_so_rather_than_reporting_none(browser_page: Page):
+    """`null` and `[]` mean different things and must not collapse into one.
+
+    Reporting an instance with zero tiers, when the truth is that nobody
+    answered, is a claim the console has not earned.
+    """
+    _route_identity(browser_page, status=200, body=ADMIN_IDENTITY)
+    browser_page.route(
+        "**/admin/api/registrations",
+        lambda route: route.fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps({"signup_enabled": True, "default": True}),
+        ),
+    )
+    browser_page.route(
+        "**/admin/api/audit*",
+        lambda route: route.fulfill(
+            status=200, content_type="application/json", body=json.dumps(AUDIT)
+        ),
+    )
+    browser_page.route(
+        "**/admin/api/users?*",
+        lambda route: route.fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps({"users": list(ACCOUNTS), "total": 1290}),
+        ),
+    )
+    browser_page.route("**/admin/api/tiers", lambda route: route.fulfill(status=500, body="{}"))
+    browser_page.goto("/admin?testing=true")
+    expect(browser_page.locator("#admin-console")).to_be_visible()
+
+    body = browser_page.locator("#overview-body")
+    # The membership zone is present and states the problem; it does not vanish,
+    # and it does not draw an empty table implying nobody is in any tier.
+    expect(body.locator(".admin-empty").first).to_be_visible()
+    expect(body.locator("table")).to_have_count(0)
+
+
+def test_every_overview_figure_opens_the_tab_that_owns_it(browser_page: Page):
+    """An overview that cannot be acted on is a poster.
+
+    All three figures, not only the two section links — the count of accounts
+    and the signup state are the two an operator is most likely to act on.
+    """
+    _overview_console(browser_page)
+
+    for goto, panel in [
+        ("tab-people", "#panel-people"),
+        ("tab-settings", "#panel-settings"),
+        ("tab-tiers", "#panel-tiers"),
+    ]:
+        browser_page.locator("#tab-overview").click()
+        browser_page.locator(f"[data-overview-goto='{goto}']").first.click()
+        expect(browser_page.locator(panel)).to_be_visible()
+
+
+def test_the_overview_navigation_ignores_an_id_that_is_not_a_tab(browser_page: Page):
+    """The delegated handler is an arbitrary `getElementById(x).click()`.
+
+    Nothing attacker-controlled reaches it today — both call sites pass
+    hardcoded literals — but this console binds destructive controls to known
+    static ids with no second confirmation, so the door is shut before anyone
+    can render this attribute from data.
+    """
+    _overview_console(browser_page)
+
+    browser_page.evaluate(
+        """() => {
+          window.__victimHits = 0;
+          const victim = document.createElement('button');
+          victim.id = 'not-a-tab-victim';
+          victim.addEventListener('click', () => { window.__victimHits += 1; });
+          document.body.appendChild(victim);
+
+          const trigger = document.createElement('button');
+          trigger.id = 'goto-trigger';
+          trigger.dataset.overviewGoto = 'not-a-tab-victim';
+          document.getElementById('overview-body').appendChild(trigger);
+        }"""
+    )
+    browser_page.locator("#goto-trigger").click()
+    assert browser_page.evaluate("() => window.__victimHits") == 0, (
+        "the delegated handler dispatched a click to a non-tab id"
+    )
+
+
+def test_the_overview_respects_the_language_toggle(browser_page: Page):
+    _overview_console(browser_page, lang="&lang=ar")
+    table = browser_page.locator("#overview-body table")
+    expect(table).to_contain_text("\u0645\u062c\u0627\u0646\u064a")
+    expect(table).not_to_contain_text("Free")
+
+
+# ── The accounts table carries the tier ──────────────────────────────────────
+
+
+def test_the_users_table_shows_which_tier_each_account_is_in(browser_page: Page):
+    """Without it, answering "who is on the staff allowance" meant opening
+    every account in turn."""
+    _open_people(browser_page)
+    table = browser_page.locator("#people-table")
+
+    headers = table.locator("thead th")
+    expect(headers).to_have_count(6)
+    expect(headers.nth(2)).to_have_text(I18N_TIER_COLUMN)
+
+    # The key, in the mono face — the same form the Activity table prints.
+    # `machineCell` puts the class on the cell itself, not on a span inside it.
+    admin_tier = table.locator("tbody tr").first.locator("td").nth(2)
+    expect(admin_tier).to_have_text("staff")
+    expect(admin_tier).to_have_class("admin-cell-machine")
+    expect(table.locator("tbody tr").nth(1).locator("td").nth(2)).to_have_text("free")
+
+
+I18N_TIER_COLUMN = "Tier"

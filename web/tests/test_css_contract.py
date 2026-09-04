@@ -136,9 +136,16 @@ def test_report_current_violation_count(capsys):
 JS_DIR = Path(__file__).resolve().parents[2] / "static" / "js" / "admin"
 ADMIN_TEMPLATE = Path(__file__).resolve().parents[1] / "templates" / "admin.html"
 
-# `className = '…'`, `classList.add('…')`, and a template literal's static head.
+# Every shape this repo actually uses to put a class on an element:
+# `className = '…'`, `className += '…'`, `setAttribute('class', '…')`,
+# `classList.add/toggle/remove(…)`, and the static head of a template literal.
+# The gate is only as good as this list — a class applied through a shape not
+# named here is invisible to it, which was true of `setAttribute` and `+=`
+# until a review pointed it out.
 _JS_CLASS_SITES = re.compile(
-    r"""className\s*=\s*[`'"]([^`'"$]*)|classList\.(?:add|toggle|remove)\(([^)]*)\)"""
+    r"""className\s*(?:\+)?=\s*[`'"]([^`'"$]*)"""
+    r"""|classList\.(?:add|toggle|remove)\(([^)]*)\)"""
+    r"""|setAttribute\(\s*['"]class['"]\s*,\s*[`'"]([^`'"$]*)"""
 )
 _HTML_CLASS_SITES = re.compile(r'class="([^"]*)"')
 _ADMIN_CLASS = re.compile(r"\badmin-[a-z0-9-]+")
@@ -150,11 +157,11 @@ def _referenced_admin_classes() -> dict[str, set[str]]:
     for path in sorted(JS_DIR.glob("*.js")):
         text = path.read_text(encoding="utf-8")
         names: set[str] = set()
-        for head, listed in _JS_CLASS_SITES.findall(text):
+        for groups in _JS_CLASS_SITES.findall(text):
             # A name cut short by an interpolation (`admin-status-${…}`) is a
             # fragment, not a class. Its concrete forms are checked when they
             # appear in the stylesheet, which is where they are written out.
-            names.update(n for n in _ADMIN_CLASS.findall(f"{head} {listed}") if not n.endswith("-"))
+            names.update(n for n in _ADMIN_CLASS.findall(" ".join(groups)) if not n.endswith("-"))
         if names:
             found[path.name] = names
     template = ADMIN_TEMPLATE.read_text(encoding="utf-8")

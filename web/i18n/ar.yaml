@@ -265,6 +265,15 @@ runtime:
     signedInAs: "مسجّل الدخول باسم {email}"
     roleLabel: "الدور"
     empty: "لا يوجد شيء هنا بعد."
+    overview:
+      accounts: "الحسابات"
+      signups: "التسجيل"
+      tierCount: "الفئات"
+      membershipHeading: "توزيع الفئات"
+      recentHeading: "أحدث النشاط"
+      manageTiers: "إدارة الفئات"
+      seeAllActivity: "عرض كل النشاط"
+      unavailable: "تعذّر تحميل هذا الآن."
     registrations:
       heading: "التسجيل"
       hint: "يسري على نموذج التسجيل فوراً. لا يؤثر على القرّاء الذين سجّلوا دخولهم بالفعل."
@@ -341,6 +350,11 @@ runtime:
       actionNotificationDeactivate: "عطّل إشعارًا"
       actionNotificationDelete: "حذف إشعارًا"
       actionNotificationPurge: "طهّر إشعارًا"
+      actionTierCreate: "أنشأ فئة"
+      actionTierUpdate: "عدّل فئة"
+      actionTierDelete: "حذف فئة"
+      actionUserTierChange: "نقل حساباً إلى فئة أخرى"
+      actionQuotaOverrideChange: "غيّر الرصيد اليومي لحساب"
     account:
       quotaHeading: "الرصيد اليومي"
       tierLabel: "الفئة"
@@ -438,6 +452,7 @@ runtime:
       search: "بحث بالبريد الإلكتروني"
       columnEmail: "البريد الإلكتروني"
       columnRole: "الدور"
+      columnTier: "الفئة"
       columnAccess: "الوصول للمحادثة"
       columnLastSignIn: "آخر دخول"
       columnActions: ""
@@ -504,6 +519,7 @@ runtime:
       heading: "الإشعارات"
       hint: "أرسل رسالة إلى القرّاء المستهدفين كإشعار منبثق، أو شريط، أو نافذة تتطلّب تأكيدًا."
       composer:
+        heading: "إشعار جديد"
         typeLabel: "النوع"
         typeToast: "إشعار منبثق"
         typeBanner: "شريط"

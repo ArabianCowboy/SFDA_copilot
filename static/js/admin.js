@@ -26,6 +26,7 @@ import { revealConsole, selectTab } from './admin/ui.js';
 import {
   bindConsoleEvents,
   initNotificationsTab,
+  initOverviewTab,
   initPeopleTab,
   initRegistrationsTab,
   initSettingsTab,
@@ -78,6 +79,7 @@ const Admin = {
       loadAudit(services);
       initNotificationsTab(services);
       initTiersTab(services);
+      initOverviewTab(services);
     } catch (error) {
       showAccessFailure(error);
     }

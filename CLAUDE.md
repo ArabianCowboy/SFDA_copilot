@@ -89,7 +89,7 @@ it too, deliberately, to break an import cycle (both import back for `_authentic
 | Blueprint                            | File                 | Serves                                                                                        |
 | ------------------------------------ | -------------------- | --------------------------------------------------------------------------------------------- |
 | `auth_bp`, `recover_bp`, `signup_bp` | `web/api/auth.py`    | login, logout, password recovery, signup (its own blueprint so it carries its own rate limit) |
-| `admin_bp`                           | `web/api/admin.py`   | `/admin` console: people, account detail, audit, settings                                     |
+| `admin_bp`                           | `web/api/admin.py`   | `/admin` console: overview, settings, people, tiers, audit, notifications                     |
 | `account_bp`                         | `web/api/account.py` | `/account` page, NDJSON export, bulk conversation delete                                      |
 
 **The path a question takes.** `POST /api/chat/stream` → auth → validate → _ownership preflight

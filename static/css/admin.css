@@ -184,16 +184,6 @@
   text-align: center;
 }
 
-/* Separates the registrations block from the generation settings form below
-   it (docs/registrations-pause-plan.md §9 Step 12) — an explicit rule rather
-   than the browser default <hr>, which draws with a physical border. */
-.admin-divider {
-  border: 0;
-  border-block-start: 1px solid var(--hairline);
-  margin-block: var(--space-2) 0;
-  margin-inline: 0;
-}
-
 .admin-registrations-row {
   display: flex;
   align-items: center;
@@ -1063,6 +1053,67 @@ select.admin-input {
   border-block-start: 1px solid var(--hairline);
 }
 
+/* ── The overview feed ───────────────────────────────────────────────────────
+   Five rows of "when, what, who" — a list, not a table, because three values
+   with one of them the whole point do not need column rules. The date and the
+   address take the mono face they take everywhere else in this console; the
+   action is the sentence between them. */
+
+.admin-overview-feed {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+  padding: var(--space-5);
+}
+
+.admin-overview-feed li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2) var(--space-4);
+}
+
+.admin-overview-what {
+  color: var(--fg-primary);
+}
+
+/* Pushed to the far end so the actions read as one column even though the
+   addresses that follow them are all different lengths. `margin-inline-start`
+   is logical, so it becomes the far end under RTL without a direction branch. */
+.admin-overview-who {
+  margin-inline-start: auto;
+  font-size: var(--fs-100);
+}
+
+/* A readout figure that is also the way into its tab. It has to keep reading as
+   the value — an operator scanning three numbers is not looking for buttons — so
+   it inherits the type entirely and earns its affordance on hover and focus. */
+.admin-fact-link {
+  display: inline;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: inherit;
+  cursor: pointer;
+}
+
+.admin-fact-link:hover {
+  color: var(--signal);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* The way through to the tab that owns the figures above. Aligned to the start
+   edge rather than stretched: it is one control, not a bar. */
+.admin-overview-link {
+  margin: 0;
+  display: flex;
+}
+
 /* ── Editor cards: the daily allowance, and a tier ────────────────────────────
    Both are the profile form's shape, and deliberately so: each is a set of
    facts about one thing, grouped, with one Save. They reuse
@@ -1154,6 +1205,27 @@ select.admin-input {
 .admin-input[readonly]:focus {
   border-color: var(--hairline-strong);
   box-shadow: none;
+}
+
+/* `.admin-field`'s per-row hairline exists to separate a full-width stacked
+   list on the panel ground. Inside a bordered card, two fields across, it is a
+   rule drawn under every control for no reason and the card starts reading as
+   a table — so the card suppresses it and the grid gap does the separating.
+   Everything else about the row is untouched: the label/origin grid, the error
+   line and the revert control all still work, which is why the settings tab
+   keeps this idiom rather than being converted to the card one. */
+.admin-card .admin-field {
+  padding-block-end: 0;
+  border-block-end: 0;
+}
+
+/* Two across, not one narrow ribbon down the left of a 1180px page. 18rem
+   floors it: a model name is the widest thing any of these controls holds, and
+   below that width the select truncates it. */
+.admin-settings-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+  gap: var(--space-5) var(--space-6);
 }
 
 /* An action group NESTED in a cell, which is the tier table — not the
@@ -1275,7 +1347,41 @@ select.admin-input {
 }
 
 .admin-notif-history-toolbar {
+  /* `align-self`, not a width. `.admin-pager-size` is `inline-flex` with
+     `flex: 0 0 auto`, but this toolbar is a child of `#notifications-body`,
+     which is a flex COLUMN — so the default `align-items: stretch` pulled it
+     across the whole panel, the status select swallowed the free space, and
+     "Clear all" was squeezed until it wrapped onto two lines. Opting out of
+     the stretch lets both size to their own content. */
+  align-self: start;
   margin-block: var(--space-2) var(--space-3);
+}
+
+/* Bootstrap 5 dropped `.btn { white-space: nowrap }`, so a button that is a
+   shrinkable flex item breaks its own label — "Clear all" was arriving as two
+   stacked words beside a select four times its width. Neither control in this
+   toolbar has anything to gain from shrinking. */
+.admin-notif-history-toolbar > * {
+  flex: 0 0 auto;
+}
+
+.admin-notif-history-toolbar .btn {
+  white-space: nowrap;
+}
+
+/* The notification history puts `.admin-row-actions` ON the cell rather than
+   in a div inside it, so the nested-group rule above does not reach it. Same
+   reasoning: the table scrolls sideways already, and wrapping three controls
+   makes one row twice the height of its neighbours. */
+.admin-table td.admin-row-actions {
+  flex-wrap: nowrap;
+}
+
+/* A pair inside a card needs no closing hairline either — same reason as
+   `.admin-card .admin-field` above. */
+.admin-card .admin-field-pair {
+  padding-block-end: 0;
+  border-block-end: 0;
 }
 
 /* Bulk selection toolbar — [hidden] handles visibility, no display rule

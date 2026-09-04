@@ -17,6 +17,7 @@ import {
   readComposerForm,
   renderAccountDetail,
   renderAudit,
+  renderOverview,
   renderNotificationHistory,
   renderNotificationsPanel,
   renderUsers,
@@ -1377,6 +1378,87 @@ export async function saveAccountQuota(services, form, reopen) {
       true,
     );
   }
+}
+
+/**
+ * The Overview tab.
+ *
+ * Four requests, each awaited independently and each allowed to fail on its
+ * own. `Promise.allSettled`, not `Promise.all`: this is the console's landing
+ * tab, and one slow audit query must not be able to leave an operator looking
+ * at the empty panel this replaced. A section whose request failed says so;
+ * the rest still render.
+ *
+ * It loads once, on first activation. Overview is the default tab, so in
+ * practice that is at boot — but writing it as an activation makes it behave
+ * correctly if the default ever moves, which is the mistake the Tiers tab made
+ * in the other direction (it fetched on boot and toasted over whichever tab
+ * the operator was actually on).
+ */
+export function initOverviewTab(services) {
+  let loaded = false;
+
+  async function loadOnce() {
+    if (loaded) return;
+    loaded = true;
+
+    const results = await Promise.allSettled([
+      services.users({ limit: 1, offset: 0 }),
+      services.tiers(),
+      services.audit({ limit: 5, offset: 0 }),
+      services.registrations(),
+    ]);
+    const [users, tiers, audit, registrations] = results;
+
+    /* A FULFILLED request is not the same as a usable one. `request()` in
+       services.js returns `null` for a 200 whose body would not parse — its own
+       comment names the case: "a gateway or proxy can return HTML on an error.
+       Falling through with a null payload keeps the status". Reading a field off
+       that null threw, and because this init is deliberately not awaited the
+       rejection went nowhere: the landing tab stayed blank with `loaded` already
+       true, and no way back but a page reload. */
+    const value = (result, pick) => {
+      if (result.status !== 'fulfilled') return null;
+      const payload = result.value;
+      if (!payload || typeof payload !== 'object') return null;
+      return pick(payload);
+    };
+
+    /* `?? null`, never `?? []`. renderOverview draws "could not load this" for
+       null and "nothing yet" for an empty list, and collapsing the two would
+       report an instance with zero tiers when the truth is that nobody asked. */
+    renderOverview({
+      total: value(users, (v) => v.total ?? null),
+      tiers: value(tiers, (v) => v.tiers ?? null),
+      entries: value(audit, (v) => v.entries ?? null),
+      signup: value(registrations, (v) => v.signup_enabled ?? null),
+    });
+
+    /* Nothing arrived at all — a dropped connection rather than one bad route.
+       The guard above is still right for the double-click race, but leaving it
+       set would make a transient failure permanent for the whole session. */
+    if (results.every((result) => result.status === 'rejected')) loaded = false;
+  }
+
+  document.getElementById('tab-overview')?.addEventListener('click', loadOnce);
+  if (document.getElementById('panel-overview')?.hidden === false) loadOnce();
+
+  /* The figures are links. Delegated, because the panel is rebuilt whole.
+     The id is matched against the tab-button shape before it is used: as
+     written the two call sites pass hardcoded literals, so nothing
+     attacker-controlled can reach here today — but an unguarded
+     `getElementById(x).click()` is an arbitrary-click primitive on a console
+     that binds `registrations-toggle`, `account-revoke-sessions` and
+     `notification-history-clear-all` to known static ids with no second
+     confirmation. Whoever later renders this attribute from data should find
+     the door already shut rather than have to notice it was open. */
+  document.getElementById('overview-body')?.addEventListener('click', (event) => {
+    const goto = event.target.closest('[data-overview-goto]');
+    if (!goto) return;
+    const target = goto.dataset.overviewGoto;
+    if (!/^tab-[a-z-]+$/.test(target || '')) return;
+    document.getElementById(target)?.click();
+  });
 }
 
 export async function initTiersTab(services) {

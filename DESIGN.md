@@ -355,6 +355,15 @@ card shipped looking like a table nobody asked for.
   plain flex column of label over control, on an `auto-fit, minmax(14rem, 1fr)` grid, with
   hints inside the field they qualify and `.admin-profile-actions` closing the card with one
   primary Save and a note. This is what an editor card uses.
+- **Every panel is zoned.** `[TASTE]` A panel with two unrelated concerns in it names
+  both, with `section()` — a tracked cap and a hairline running out to the edge. The account
+  page had this from the start (Identity / Profile / Daily allowance / Account actions); the
+  Settings and Notifications tabs did not, and each ran two concerns down one column
+  separated by an `<hr>` that named neither. The cost was not only visual: Settings opened
+  with a hint about the signup form sitting directly under a heading that said "Settings", so
+  it read as describing the whole tab. Naming the zone attributed it without touching a word
+  of the copy.
+- **Zone headings are `h2`.** `[CORRECTNESS]` Every panel opens with an `.admin-heading` h1 and `section()` draws the zone heads directly beneath it. It emitted an `h3`, skipping a rank on every surface that used it. Heading rank is how a screen-reader user navigates a long console panel; `test_admin_page.py` pins it.
 - **`.admin-editor-card`** composes the second: `admin-card admin-editor-card`, an optional
   `.admin-editor-readout` at the top for what the values below currently add up to, then the
   field grid, then the actions bar. The account's profile, its daily allowance and the tier
@@ -362,6 +371,32 @@ card shipped looking like a table nobody asked for.
   one has learned all three. `.is-measured` caps the width for a card that stands **alone**;
   a card stacked in a column of siblings stays full width, because a card narrower than the
   two it sits between reads as a mistake no matter how well it is measured.
+
+**A landing surface answers before it is asked.** `[TASTE]` The console's Overview tab
+rendered "Nothing here yet." — as the first thing every operator saw, on every visit. An empty
+default is worse than no default: it teaches the person arriving that this room is not worth
+opening, and they stop looking. It is assembled entirely from routes the other tabs already
+call (accounts, signup state, tier membership, the last five audit rows), so it adds no
+endpoint and stores nothing, and **every figure on it links to the tab that owns it** — an
+overview that cannot be acted on is a poster. Its four requests are `Promise.allSettled`, never
+`Promise.all`: a landing tab that renders nothing because one query timed out would be worse
+than the empty panel it replaced, so each section stands or falls alone and the one that failed
+says so.
+
+**A fulfilled request is not a usable one.** `[CORRECTNESS]` `request()` in
+`static/js/admin/services.js` returns `null` for a 200 whose body will not parse — its own
+comment names the case, "a gateway or proxy can return HTML on an error". Any consumer that
+reads a field straight off a settled result will throw on that null, and inside an
+un-awaited `init*` the rejection goes nowhere: the panel stays blank with its load-once flag
+already set. Normalize the payload shape before reading it, and clear the flag when every
+request failed so the next activation can retry.
+
+**A form is not a ribbon down the left of the page.** `[TASTE]` `.admin-form`'s 34rem
+measure is right for a single column of full-width rows and wrong for a form of four short
+values, which is what it was doing on Settings and in the notification composer: eight
+controls stacked at 540px with half a 1180px page empty beside them. Inside an editor card
+the fields go on a grid — `.admin-settings-fields` for settings, `.admin-field-pair` for a
+matched pair — and the card takes `.is-measured`. Two short selects do not each need a row.
 
 **Every class the console names must have a rule.** `[GATE]` The browser says nothing about a
 class that matches no selector, so an invented one renders as a raw user-agent control beside
@@ -475,6 +510,7 @@ On the landing Sunny is the page's only image, sized `clamp(150px, 24vw, 232px)`
 - **Do** carry the independence notice on every surface; the landing footer holds it.
 - **Do** give a hover-revealed control a `:focus-within` sibling and a `@media (hover: none)` resting opacity in the same rule. A control that only appears under a cursor does not exist for a touch device or a keyboard reader.
 - **Do** reserve a revealed control's space at rest, so a row does not reflow under the cursor in a scrolling list.
+- **Do** guard a delegated `getElementById(x).click()` with a shape test on `x`. The console binds `registrations-toggle`, `account-revoke-sessions` and `notification-history-clear-all` to known static ids with no second confirmation, so an unguarded lookup is an arbitrary-click primitive waiting for the day somebody renders that attribute from data.
 - **Do** set `dir="auto"` on any string an **operator** typed too, not only a reader — a tier's two label fields hold one script each, and a fixed direction lays the Arabic one out backwards in an English console.
 - **Do** set `dir="auto"` on any string a reader typed. Titles, questions and names mix scripts, and a fixed direction puts the ellipsis on the wrong end.
 - **Do** suffix every id a twice-rendered macro generates, including the ones `aria-controls` and `aria-labelledby` point at — those resolve against the whole document, so an unsuffixed pair silently wires the mobile control to the desktop panel, and only for readers using a screen reader.

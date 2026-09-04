@@ -14,6 +14,7 @@ import re
 from pathlib import Path
 
 import pytest
+import yaml
 
 from web.api.app import ADMIN_MODULE_FILENAMES, ASSET_VERSION, create_app
 
@@ -370,3 +371,95 @@ def test_every_tab_button_points_at_a_panel_that_exists():
     controls = set(re.findall(r'aria-controls="(panel-[a-z]+)"', template))
     panels = set(re.findall(r'id="(panel-[a-z]+)"', template))
     assert controls <= panels, f"aria-controls names no such panel: {sorted(controls - panels)}"
+
+
+# ── The Activity log has to be able to name every action it records ──────────
+#
+# `admin_store.py` writes the action string; `ui.js` maps it to a catalogue key;
+# the catalogue translates it. Three files, and nothing joined them — so the
+# five actions the quota feature added (`tier.create`, `tier.update`,
+# `tier.delete`, `user.tier_change`, `user.quota_override_change`) were written
+# for a day and shown as raw dotted identifiers in the one table whose entire
+# purpose is to be readable afterwards. `describeAction` falls back to the raw
+# action deliberately — an unknown action showing its identifier is honest —
+# and that honest fallback is exactly what stopped anybody noticing.
+
+ADMIN_STORE = REPO_ROOT / "web" / "services" / "admin_store.py"
+ADMIN_UI_JS = REPO_ROOT / "static" / "js" / "admin" / "ui.js"
+ADMIN_TEMPLATE = REPO_ROOT / "web" / "templates" / "admin.html"
+
+
+def _recorded_actions() -> set[str]:
+    """Every dotted action literal on an `action=` line in `admin_store.py`.
+
+    Line-scoped rather than anchored to `action=` itself, so that both halves of
+    `action="user.disable" if row["is_disabled"] else "user.enable"` are seen.
+    One call site passes a variable (`action=action`, the notification writer)
+    and cannot be read statically; those actions are covered by the catalogue
+    test below instead.
+    """
+    found: set[str] = set()
+    pattern = re.compile(r"""['"]([a-z_]+\.[a-z_]+)['"]""")
+    for line in ADMIN_STORE.read_text(encoding="utf-8").splitlines():
+        if "action=" not in line:
+            continue
+        found.update(pattern.findall(line))
+    return found
+
+
+def _mapped_actions() -> dict[str, str]:
+    """`ACTION_KEYS` in ui.js, as {action: catalogue key}."""
+    source = ADMIN_UI_JS.read_text(encoding="utf-8")
+    block = re.search(r"const ACTION_KEYS = \{(.*?)\n\};", source, re.DOTALL)
+    assert block, "ACTION_KEYS not found in ui.js"
+    return dict(re.findall(r"'([^']+)':\s*'([^']+)'", block.group(1)))
+
+
+def test_the_action_scan_finds_something_to_check():
+    """A regex that matched nothing would pass the tests below vacuously."""
+    assert len(_recorded_actions()) >= 10
+    assert len(_mapped_actions()) > 10
+
+
+def test_every_audited_action_has_a_label_in_the_console():
+    missing = sorted(_recorded_actions() - set(_mapped_actions()))
+    assert not missing, (
+        "admin_store.py records these actions and ui.js's ACTION_KEYS cannot "
+        "name them, so the Activity tab prints the raw identifier: " + ", ".join(missing)
+    )
+
+
+@pytest.mark.parametrize("lang", ["en", "ar"])
+def test_every_mapped_action_label_exists_in_both_catalogues(lang):
+    catalogue = yaml.safe_load(
+        (REPO_ROOT / "web" / "i18n" / f"{lang}.yaml").read_text(encoding="utf-8")
+    )
+    missing = []
+    for action, key in sorted(_mapped_actions().items()):
+        node = catalogue.get("runtime", {})
+        for part in key.split("."):
+            node = node.get(part, {}) if isinstance(node, dict) else {}
+        if not isinstance(node, str) or not node:
+            missing.append(f"{action} -> runtime.{key}")
+    assert not missing, f"{lang}.yaml is missing: " + ", ".join(missing)
+
+
+def test_zone_headings_do_not_skip_a_rank():
+    """Every panel opens with an `.admin-heading` h1 and `section()` draws the
+    zone heads beneath it, so those have to be h2.
+
+    An h3 there skipped a rank on every surface using the helper — and it
+    silently demoted the notifications history heading, which had been a correct
+    h2 before it moved onto `section()`. Heading rank is how a screen-reader
+    user navigates a long console panel.
+    """
+    source = ADMIN_UI_JS.read_text(encoding="utf-8")
+    block = re.search(r"function section\(title\) \{(.*?)\n\}", source, re.DOTALL)
+    assert block, "section() not found in ui.js"
+    assert "createElement('h2')" in block.group(1), (
+        "section() must emit an h2: the panel heading above it is an h1"
+    )
+
+    template = ADMIN_TEMPLATE.read_text(encoding="utf-8")
+    assert 'class="admin-heading"' in template
+    assert "<h1 " in template and "<h3" not in template

@@ -113,10 +113,20 @@ export function renderRegistrations({ signup_enabled: enabled, default: deployed
   if (!body) return;
   body.textContent = '';
 
+  /* A named zone, not the first thing under the panel heading.
+     This block and the generation form below it are two unrelated concerns
+     that shared one column and one `<hr>`, so this hint — which is about the
+     signup form and nothing else — read as though it described the whole
+     Settings tab. Naming the zone attributes it without touching the copy,
+     and it is the shape the account page already uses for the same problem. */
+  const zone = section(I18n.t('admin.registrations.heading'));
+  const card = document.createElement('div');
+  card.className = 'admin-card admin-editor-card is-measured';
+
   const hint = document.createElement('p');
   hint.className = 'admin-form-hint';
   hint.textContent = I18n.t('admin.registrations.hint');
-  body.appendChild(hint);
+  card.appendChild(hint);
 
   // Above the toggle, not below it as small print: an operator deciding
   // whether to click is exactly the person who needs to read this FIRST —
@@ -130,7 +140,7 @@ export function renderRegistrations({ signup_enabled: enabled, default: deployed
   const noticeBody = document.createElement('p');
   noticeBody.textContent = I18n.t('admin.registrations.bypassNote');
   notice.append(noticeHeading, noticeBody);
-  body.appendChild(notice);
+  card.appendChild(notice);
 
   const row = document.createElement('div');
   row.className = 'admin-registrations-row';
@@ -157,7 +167,9 @@ export function renderRegistrations({ signup_enabled: enabled, default: deployed
   toggle.textContent = I18n.t(enabled ? 'admin.registrations.pause' : 'admin.registrations.resume');
   row.appendChild(toggle);
 
-  body.appendChild(row);
+  card.appendChild(row);
+  zone.appendChild(card);
+  body.appendChild(zone);
 
   // Unused today, kept off the DOM rather than rendered: the deployed
   // default becomes visible again once revert-to-default is offered here,
@@ -285,9 +297,17 @@ export function renderSettings({
   if (!body) return;
   body.textContent = '';
 
+  const zone = section(I18n.t('admin.settings.heading'));
+
   const form = document.createElement('form');
   form.id = 'settings-form';
-  form.className = 'admin-form';
+  /* The console's editor-card shape, the one the profile, allowance and tier
+     forms all take. The rows inside stay `.admin-field` — they carry the
+     origin marker, the error line and the revert control, and none of that
+     exists on the card idiom — but the card suppresses their per-row hairline
+     (see admin.css): those rules exist to separate a full-width stacked list,
+     and four values two-across inside a bordered card are separated already. */
+  form.className = 'admin-card admin-editor-card is-measured';
   form.noValidate = true;
 
   const hint = document.createElement('p');
@@ -324,6 +344,9 @@ export function renderSettings({
   // draw, so it could not be shown either. Switching away from a reasoning
   // model was therefore impossible from this console and silent about it.
   const inapplicable = [];
+
+  const fields = document.createElement('div');
+  fields.className = 'admin-settings-fields';
 
   FIELDS.forEach((field) => {
     const name = fieldName(field);
@@ -390,11 +413,13 @@ export function renderSettings({
       row.appendChild(revert);
     }
 
-    form.appendChild(row);
+    fields.appendChild(row);
   });
 
+  form.appendChild(fields);
+
   const actions = document.createElement('div');
-  actions.className = 'admin-form-actions';
+  actions.className = 'admin-profile-actions';
 
   const save = document.createElement('button');
   save.type = 'submit';
@@ -407,7 +432,8 @@ export function renderSettings({
   // Read back by readSettingsForm as explicit removals. Empty string when the
   // model accepts everything, which `split` turns into `[]` rather than `['']`.
   form.dataset.inapplicable = inapplicable.join(',');
-  body.appendChild(form);
+  zone.appendChild(form);
+  body.appendChild(zone);
 }
 
 /** The form's current values, keyed as the API expects them. */
@@ -740,14 +766,19 @@ export function renderUsers({
 
   const head = document.createElement('thead');
   const headRow = document.createElement('tr');
-  ['columnEmail', 'columnRole', 'columnAccess', 'columnLastSignIn', 'columnActions'].forEach(
-    (key) => {
-      const th = document.createElement('th');
-      th.scope = 'col';
-      th.textContent = I18n.t(`admin.people.${key}`);
-      headRow.appendChild(th);
-    },
-  );
+  [
+    'columnEmail',
+    'columnRole',
+    'columnTier',
+    'columnAccess',
+    'columnLastSignIn',
+    'columnActions',
+  ].forEach((key) => {
+    const th = document.createElement('th');
+    th.scope = 'col';
+    th.textContent = I18n.t(`admin.people.${key}`);
+    headRow.appendChild(th);
+  });
   head.appendChild(headRow);
 
   const tbody = document.createElement('tbody');
@@ -779,6 +810,14 @@ export function renderUsers({
     role.textContent = I18n.t(
       user.role === 'admin' ? 'admin.people.roleAdmin' : 'admin.people.roleUser',
     );
+
+    /* The KEY, in the mono face — the same form the Activity table's Change
+       column already prints (`tier: free → staff`) and the same thing the
+       Tiers tab's first column shows. The label would read better, but the
+       list route returns only the key and resolving it would mean fetching
+       the whole catalogue to draw one column of a paginated table. An
+       operator who needs the label is one click from the account page. */
+    const tier = machineCell(user.tier || '—');
 
     const access = document.createElement('td');
     access.textContent = I18n.t(
@@ -815,7 +854,7 @@ export function renderUsers({
     go.setAttribute('aria-hidden', 'true');
     go.innerHTML = iconMarkup('chevron-right', 14);
 
-    row.append(email, role, access, seen, go);
+    row.append(email, role, tier, access, seen, go);
     tbody.appendChild(row);
   });
 
@@ -877,6 +916,11 @@ const ACTION_KEYS = {
   'notification.deactivate': 'admin.audit.actionNotificationDeactivate',
   'notification.delete': 'admin.audit.actionNotificationDelete',
   'notification.purge': 'admin.audit.actionNotificationPurge',
+  'tier.create': 'admin.audit.actionTierCreate',
+  'tier.update': 'admin.audit.actionTierUpdate',
+  'tier.delete': 'admin.audit.actionTierDelete',
+  'user.tier_change': 'admin.audit.actionUserTierChange',
+  'user.quota_override_change': 'admin.audit.actionQuotaOverrideChange',
 };
 
 function describeAction(action) {
@@ -1146,7 +1190,7 @@ function emailVerifiedKey(value) {
 function fact(
   list,
   label,
-  { when = null, text = null, node = null, machine = false, tone = '' } = {},
+  { when = null, text = null, node = null, machine = false, tone = '', goto = null } = {},
 ) {
   const cell = document.createElement('div');
   cell.className = 'admin-fact';
@@ -1171,6 +1215,18 @@ function fact(
     dd.textContent = text || I18n.t('admin.account.notSet');
   }
 
+  /* A figure that names a tab is a way into it. The whole value becomes the
+     control rather than a separate "see more" beside it — an operator reading
+     "1,290 accounts" is already pointing at the thing they want to open. */
+  if (goto) {
+    const link = document.createElement('button');
+    link.type = 'button';
+    link.className = 'admin-fact-link';
+    link.dataset.overviewGoto = goto;
+    while (dd.firstChild) link.appendChild(dd.firstChild);
+    dd.appendChild(link);
+  }
+
   cell.append(dt, dd);
   list.appendChild(cell);
 }
@@ -1192,7 +1248,12 @@ function section(title) {
   const head = document.createElement('div');
   head.className = 'admin-section-head';
 
-  const heading = document.createElement('h3');
+  /* h2, not h3. Every panel opens with an `.admin-heading` h1 and these zones
+     sit directly under it, so an h3 skipped a rank on every surface that uses
+     this helper — and the notifications history heading, which was already a
+     correct h2, was demoted when it moved onto this helper. Heading rank is
+     how a screen-reader user navigates a long console panel. */
+  const heading = document.createElement('h2');
   heading.className = 'admin-subheading';
   heading.textContent = title;
 
@@ -2023,7 +2084,12 @@ function notifSelect(id, options) {
 function buildComposerForm() {
   const form = document.createElement('form');
   form.id = 'notification-composer-form';
-  form.className = 'admin-form';
+  /* The console's editor-card shape. It was a bare `.admin-form` on the panel
+     ground: eight controls down a 34rem ribbon with half the page empty beside
+     it, and no name — while the history table below it already had a zone
+     heading. The two halves of this tab are "write one" and "what has been
+     sent", and only one of them said so. */
+  form.className = 'admin-card admin-editor-card is-measured';
   form.noValidate = true;
 
   const hint = document.createElement('p');
@@ -2038,7 +2104,12 @@ function buildComposerForm() {
   error.setAttribute('role', 'alert');
   form.appendChild(error);
 
-  form.appendChild(
+  /* Shape and severity are one decision made twice, and both are three-option
+     selects that did not each need a row of the page. `.admin-field-pair` is
+     the wrapper the EN/AR folios below already use, so this needs no new grid. */
+  const kindPair = document.createElement('div');
+  kindPair.className = 'admin-field-pair';
+  kindPair.append(
     notifField(
       'admin.notifications.composer.typeLabel',
       notifSelect(
@@ -2049,9 +2120,6 @@ function buildComposerForm() {
         })),
       ),
     ),
-  );
-
-  form.appendChild(
     notifField(
       'admin.notifications.composer.severityLabel',
       notifSelect(
@@ -2063,6 +2131,7 @@ function buildComposerForm() {
       ),
     ),
   );
+  form.appendChild(kindPair);
 
   // Paired EN/AR folios, side by side where the viewport allows — the
   // composer's own "regulatory dispatch" signature, per the plan's design
@@ -2167,20 +2236,23 @@ function buildComposerForm() {
   expiresInput.className = 'admin-input';
   form.appendChild(notifField('admin.notifications.composer.expiresLabel', expiresInput));
 
-  const preview = document.createElement('p');
-  preview.id = 'notif-audience-preview';
-  preview.className = 'admin-form-hint';
-  preview.textContent = I18n.t('admin.notifications.composer.audiencePreviewNone');
-  form.appendChild(preview);
-
   const actions = document.createElement('div');
-  actions.className = 'admin-form-actions';
+  actions.className = 'admin-profile-actions';
   const send = document.createElement('button');
   send.type = 'submit';
   send.id = 'notif-send';
   send.className = 'btn btn-primary btn-sm';
   send.textContent = I18n.t('admin.notifications.composer.send');
   actions.appendChild(send);
+
+  /* Beside the button, not floating above it: "reaches 1,290 accounts" is a
+     statement about what pressing Send is going to do. */
+  const preview = document.createElement('p');
+  preview.id = 'notif-audience-preview';
+  preview.className = 'admin-form-hint';
+  preview.textContent = I18n.t('admin.notifications.composer.audiencePreviewNone');
+  actions.appendChild(preview);
+
   form.appendChild(actions);
 
   return form;
@@ -2430,6 +2502,147 @@ export function setBulkSelectionState(count) {
 /** The Notifications panel shell: composer at the top, history below. Built
  * once; renderNotificationHistory repaints the table body on its own. */
 /**
+ * The Overview tab: what the console knows, before you go looking for it.
+ *
+ * This panel shipped empty — the default landing tab of the whole console said
+ * "Nothing here yet." to every operator on every visit. It is assembled
+ * entirely from routes the other tabs already call, so it adds no endpoint, no
+ * RPC and no stored state: how many accounts there are, whether signup is
+ * open, how the tiers divide the readership, and the last few things anybody
+ * did. Every figure here is a link to the tab that owns it — an overview that
+ * cannot be acted on is a poster.
+ *
+ * Failure is per-section, not per-panel. Four requests back this and any one
+ * of them can fail on its own; a panel that renders nothing because the audit
+ * query timed out would be a worse landing than the empty one it replaced.
+ */
+export function renderOverview({ total = null, tiers = null, entries = null, signup = null } = {}) {
+  const body = el('overview-body');
+  if (!body) return;
+  body.textContent = '';
+
+  /* ── The three figures ──────────────────────────────────────────────────
+     Counts and a state, in the readout shape Zone 1 of the account page uses.
+     `—` where a request failed, never `0`: "no accounts" is a claim about the
+     instance and this panel has not earned the right to make it. */
+  const facts = document.createElement('dl');
+  facts.className = 'admin-facts admin-card';
+
+  fact(facts, I18n.t('admin.overview.accounts'), {
+    text: total === null ? '—' : String(total),
+    machine: true,
+    goto: total === null ? null : 'tab-people',
+  });
+  fact(facts, I18n.t('admin.overview.signups'), {
+    text:
+      signup === null
+        ? '—'
+        : I18n.t(signup ? 'admin.registrations.open' : 'admin.registrations.paused'),
+    tone: signup === false ? 'is-warning' : '',
+    goto: signup === null ? null : 'tab-settings',
+  });
+  fact(facts, I18n.t('admin.overview.tierCount'), {
+    text: tiers === null ? '—' : String(tiers.length),
+    machine: true,
+    goto: tiers === null ? null : 'tab-tiers',
+  });
+  body.appendChild(facts);
+
+  /* ── Who shares which allowance ─────────────────────────────────────────
+     The one thing the console could not answer at a glance: an operator had to
+     open the Tiers tab to learn that 1,284 of 1,290 readers are on one number.
+     Ordering, then key — the same order the Tiers tab lists them in. */
+  if (tiers === null || tiers.length) {
+    const zone = section(I18n.t('admin.overview.membershipHeading'));
+    const table = document.createElement('table');
+    table.className = 'admin-table';
+
+    const head = document.createElement('thead');
+    const headRow = document.createElement('tr');
+    for (const key of ['tiers.label', 'tiers.dailyLimit', 'tiers.members']) {
+      const th = document.createElement('th');
+      th.scope = 'col';
+      th.textContent = I18n.t(`admin.${key}`);
+      headRow.append(th);
+    }
+    head.append(headRow);
+
+    const tbody = document.createElement('tbody');
+    for (const tier of tiers || []) {
+      const row = document.createElement('tr');
+      const label = document.createElement('td');
+      label.textContent = (I18n.lang === 'ar' ? tier.label_ar : tier.label_en) || tier.key;
+      const limit = document.createElement('td');
+      limit.append(machineValue(String(tier.daily_message_limit)));
+      const members = document.createElement('td');
+      members.append(machineValue(String(tier.member_count ?? 0)));
+      row.append(label, limit, members);
+      tbody.append(row);
+    }
+    if (tiers === null) {
+      const unavailable = document.createElement('p');
+      unavailable.className = 'admin-empty';
+      unavailable.textContent = I18n.t('admin.overview.unavailable');
+      zone.append(unavailable);
+    } else {
+      table.append(head, tbody);
+      zone.append(table);
+    }
+    zone.append(overviewLink('tab-tiers', I18n.t('admin.overview.manageTiers')));
+    body.appendChild(zone);
+  }
+
+  /* ── The last few things anybody did ────────────────────────────────────
+     Five rows, not fifty: this is "has anything happened", and the Activity
+     tab is "what exactly". */
+  const activity = section(I18n.t('admin.overview.recentHeading'));
+  if (entries && entries.length) {
+    const list = document.createElement('ul');
+    list.className = 'admin-overview-feed admin-card';
+    for (const entry of entries.slice(0, 5)) {
+      const item = document.createElement('li');
+      const when = document.createElement('span');
+      when.className = 'admin-cell-machine';
+      when.setAttribute('dir', 'ltr');
+      when.textContent = dayStamp(entry.occurred_at);
+      const what = document.createElement('span');
+      what.className = 'admin-overview-what';
+      what.textContent = describeAction(entry.action);
+      item.append(when, what);
+      if (entry.actor_email) {
+        const who = machineValue(entry.actor_email);
+        who.classList.add('admin-overview-who');
+        item.append(who);
+      }
+      list.append(item);
+    }
+    activity.append(list);
+  } else {
+    const empty = document.createElement('p');
+    empty.className = 'admin-empty';
+    empty.textContent = I18n.t(
+      entries === null ? 'admin.overview.unavailable' : 'admin.audit.empty',
+    );
+    activity.append(empty);
+  }
+  activity.append(overviewLink('tab-audit', I18n.t('admin.overview.seeAllActivity')));
+  body.appendChild(activity);
+}
+
+/** A way through to the tab that owns the figures above it. */
+function overviewLink(tabId, label) {
+  const row = document.createElement('p');
+  row.className = 'admin-overview-link';
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'btn btn-sm btn-ghost';
+  button.dataset.overviewGoto = tabId;
+  button.textContent = label;
+  row.append(button);
+  return row;
+}
+
+/**
  * The Tiers tab: the operator's view of who shares which daily allowance.
  *
  * ONE label column, resolved against the console's own language — not the two
@@ -2608,12 +2821,15 @@ export function renderNotificationsPanel() {
   if (!body) return;
   body.textContent = '';
 
-  body.appendChild(buildComposerForm());
+  const composerZone = section(I18n.t('admin.notifications.composer.heading'));
+  composerZone.appendChild(buildComposerForm());
+  body.appendChild(composerZone);
 
-  const historyHeading = document.createElement('h2');
-  historyHeading.className = 'admin-subheading';
-  historyHeading.textContent = I18n.t('admin.notifications.history.heading');
-  body.appendChild(historyHeading);
+  /* The same zone head the composer above it now carries — a bare
+     `.admin-subheading` is styled for the head it sits inside and loses the
+     hairline that runs out to the edge, so two headings on one panel read as
+     two different kinds of thing. */
+  body.appendChild(section(I18n.t('admin.notifications.history.heading')));
 
   body.appendChild(buildNotificationHistoryToolbar());
   body.appendChild(buildPurgeToolbar());
