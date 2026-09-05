@@ -191,7 +191,7 @@ from web.services.notification_store import (
     InMemoryNotificationBackend,
     get_notification_backend,
 )
-from web.services.openai_app import GenerationFailed, OpenAIHandler
+from web.services.openai_app import FinishSignal, GenerationFailed, OpenAIHandler
 from web.services.quota_store import (
     InMemoryQuotaBackend,
     QuotaClaim,
@@ -263,7 +263,7 @@ SUPPORTED_FAQ_LANGS = ("en", "ar")
 # that mixes a fresh template with a stale module is worse than a stale page —
 # post-icon-migration it would render an <i class="bi"> with no icon font behind
 # it, or print a glyph NAME as text. MODULE_IMPORT_MAP below closes that.
-ASSET_VERSION = "warm70"
+ASSET_VERSION = "warm71"
 
 # Product release, rendered in the landing footer. The single source — do not
 # hand-type this value into a JS docstring or any other comment; that duplication
@@ -3364,6 +3364,12 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
 
                 yield sse("stage", {"stage": "drafting"})
                 parts: list[str] = []
+                # Request-local, allocated here and owned by this generator
+                # frame. NOT an attribute on `handler` -- one handler instance
+                # serves all eight threads, and it is documented as immutable
+                # after construction, so a shared slot would report whichever
+                # request wrote it last.
+                finish = FinishSignal()
                 # `spent` marks the point past which the allowance is NOT
                 # refundable, and it is set on the first token rather than around
                 # the call above -- `stream_response` is a GENERATOR FUNCTION, so
@@ -3381,7 +3387,7 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
                 # control fell straight through to `final`, both writes and
                 # `done` with the claim still reported as spent.
                 for token in handler.stream_response(
-                    query, llm_context, category, history, lang=lang
+                    query, llm_context, category, history, lang=lang, finish=finish
                 ):
                     spent = True
                     parts.append(token)
@@ -3550,7 +3556,18 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
                 yield sse(
                     "done",
                     {
-                        "finish_reason": "stop",
+                        # The provider's own word, or "unknown" -- never a
+                        # manufactured "stop". This was hardcoded, so a `length`
+                        # truncation was announced as a complete answer and the
+                        # reader had no way to tell. "unknown" rather than
+                        # "stop" as the fallback because a missing reason is an
+                        # absence, and claiming completeness we did not observe
+                        # is the same asserted-not-computed mistake the
+                        # `evidence_state` comment above warns about. Not every
+                        # OpenAI-compatible gateway sends one. The client acts
+                        # only on an explicit "length", so "unknown" renders
+                        # exactly like "stop" and no correct answer is flagged.
+                        "finish_reason": finish.reason or "unknown",
                         "chars": len(answer),
                         "conversation_id": conversation_id,
                         # The claim's own return value -- zero extra round trips.
@@ -3733,12 +3750,18 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
                     return _quota_exhausted_response(quota)
 
                 try:
+                    # Same request-local sink as the streaming route. This route
+                    # had the identical blindness one door over: an answer cut by
+                    # the operator-editable ceiling returned 200, rendered whole
+                    # and persisted as whole, with nothing on the wire to say so.
+                    finish = FinishSignal()
                     answer, suggested_questions = openai_handler.generate_response(
                         query,
                         llm_context,
                         category,
                         chat_history,
                         lang=lang,
+                        finish=finish,
                     )
                 except GenerationFailed:
                     # The model never answered, so the allowance is refunded and
@@ -3824,6 +3847,10 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
                 # The same object the streaming route's `done` frame carries, so
                 # one client-side renderer serves both paths.
                 quota=quota.as_frame() if quota is not None else None,
+                # And the same contract as that frame's field: the provider's own
+                # word, or "unknown". `Handlers.blockingChat` branches on it the
+                # way the stream's `done` handler does.
+                finish_reason=finish.reason or "unknown",
             )
 
         except SearchEngineError:

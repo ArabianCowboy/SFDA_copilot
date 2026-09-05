@@ -3,6 +3,10 @@
 Both the blocking and the streaming paths build their prompt through
 ``_build_messages``, so the two can never drift apart — ``generate_response``
 is literally ``"".join(stream_response(...))`` plus the suggestions call.
+
+The provider's ``finish_reason`` rides back out through a caller-allocated
+``FinishSignal`` rather than the return value, so the yield type stays ``str``
+and that identity survives.
 """
 
 from __future__ import annotations
@@ -12,6 +16,7 @@ import logging
 import os
 import re
 from collections.abc import Iterator
+from dataclasses import dataclass
 from typing import Any, cast
 
 import tiktoken
@@ -162,6 +167,27 @@ class GenerationFailed(RuntimeError):
     so the caller must NOT treat whatever it has as an answer, and must not
     charge a quota for it.
     """
+
+
+@dataclass
+class FinishSignal:
+    """Request-local carriage for the provider's ``finish_reason``.
+
+    Deliberately NOT stored on the handler. One handler instance is shared by
+    every request thread (`--workers 1 --threads 8`), and
+    ``OpenAIHandler.__init__`` pins that a handler is wholly old or wholly new —
+    ``apply_generation_settings`` rebinds a replacement rather than mutating the
+    live one. A ``self._finish_reason`` would therefore be read by whichever
+    request happened to write it last, which on a truncation warning is exactly
+    the wrong answer to get wrong.
+
+    The caller allocates one of these per request and passes it down, so the
+    value cannot outlive or cross a request. ``None`` means the provider
+    reported nothing, which is NOT the same as reporting ``"stop"`` — see the
+    ``done`` frame in ``app.py``.
+    """
+
+    reason: str | None = None
 
 
 class OpenAIHandler:
@@ -424,9 +450,24 @@ class OpenAIHandler:
         category: str = "all",
         chat_history: list[dict] | None = None,
         lang: str = "en",
+        *,
+        finish: FinishSignal | None = None,
     ) -> Iterator[str]:
-        """Yield answer tokens as they arrive from the model."""
+        """Yield answer tokens as they arrive from the model.
+
+        ``finish`` is an optional caller-owned sink for the provider's terminal
+        ``finish_reason``. Keyword-only and defaulted so positional callers --
+        ``scripts/eval_citations.py``, ``scripts/smoke_real.py``, and the fakes
+        in the test suite -- are unaffected. Without it a `length` truncation is
+        indistinguishable from a whole answer, which is what shipped a cut-off
+        regulatory answer to the reader as though it were complete.
+        """
         if query.lower().strip() == EASTER_EGG_QUERY:
+            # Genuinely whole, and says so rather than leaning on the default:
+            # the route cannot tell "no provider was called" from "the provider
+            # reported nothing" unless this path is explicit.
+            if finish is not None:
+                finish.reason = "stop"
             yield EASTER_EGG_RESPONSE
             return
 
@@ -443,7 +484,17 @@ class OpenAIHandler:
             for chunk in stream:
                 if not chunk.choices:  # usage-only final chunk
                     continue
-                content = chunk.choices[0].delta.content
+                choice = chunk.choices[0]
+                # BEFORE the content guard, deliberately. The terminal chunk
+                # carries `finish_reason` with `delta.content` set to None
+                # (ChoiceDelta.content is Optional[str], verified against the
+                # installed openai 2.38.0), so reading it after `if content:`
+                # would skip precisely the chunk that reports the truncation.
+                # Last writer wins, which is also correct for a provider that
+                # reports the reason on a content-bearing chunk instead.
+                if finish is not None and choice.finish_reason:
+                    finish.reason = choice.finish_reason
+                content = choice.delta.content
                 if content:
                     yield content
 
@@ -454,14 +505,24 @@ class OpenAIHandler:
         category: str = "all",
         chat_history: list[dict] | None = None,
         lang: str = "en",
+        *,
+        finish: FinishSignal | None = None,
     ) -> tuple[str, list[str]]:
-        """Blocking variant: collect the stream, then generate follow-ups."""
+        """Blocking variant: collect the stream, then generate follow-ups.
+
+        Forwards ``finish`` so the two paths cannot drift on truncation
+        reporting any more than they can on prompt construction.
+        """
         if query.lower().strip() == EASTER_EGG_QUERY:
+            if finish is not None:
+                finish.reason = "stop"
             return EASTER_EGG_RESPONSE, []
 
         try:
             answer = "".join(
-                self.stream_response(query, search_results, category, chat_history, lang)
+                self.stream_response(
+                    query, search_results, category, chat_history, lang, finish=finish
+                )
             ).strip()
         except Exception as exc:
             # RAISES rather than returning apology prose, since 2026-09-03.

@@ -29,6 +29,11 @@ runtime:
     invalidResponse: "Invalid response format from AI service."
     stopped: "Stopped"
     incomplete: "Answer incomplete — something went wrong"
+    # A `length` finish on the `done` frame. Its OWN words, not `incomplete`:
+    # nothing went wrong — the model reached the configured ceiling — and
+    # "something went wrong" would send the reader retrying an identical
+    # question into an identical ceiling instead of narrowing it.
+    truncated: "Answer cut short — the length limit was reached"
     askPrefix: "Ask: {question}"
     jumpToLatest: "Jump to latest"
     jumpToLatestAria: "Scroll to the latest message"

@@ -450,6 +450,66 @@ def test_a_stream_that_ends_without_final_is_flagged_incomplete(streaming_page: 
     expect(page.locator(".source-trigger")).to_have_count(0)
 
 
+def test_a_length_finish_flags_the_answer_as_cut_short(streaming_page: Page):
+    """A token-limit truncation must say so — and still show the answer.
+
+    Both halves matter. The server used to hardcode `finish_reason: "stop"`, so
+    an answer cut off by the operator-configured ceiling arrived looking
+    complete. But a truncated answer is a REAL answer that stopped early, not a
+    failure: the reader keeps it, its citations resolve, and it is annotated.
+    """
+    page = streaming_page
+    _open_stream(page)
+    page.evaluate("f => window.__chat.push(f)", sse_delta("Registration requires a dossier [1]. "))
+    page.evaluate("f => window.__chat.push(f)", SSE_FINAL_FRAME)
+    page.evaluate(
+        "f => window.__chat.push(f)",
+        'event: done\ndata: {"finish_reason":"length"}\n\n',
+    )
+    page.evaluate("() => window.__chat.close()")
+
+    expect(page.locator(".chatbot-message.is-truncated")).to_have_count(1)
+    expect(page.locator(".stream-note.truncated")).to_be_visible()
+    # NOT failure chrome: nothing malfunctioned, the ceiling did its job.
+    expect(page.locator(".chatbot-message.is-errored")).to_have_count(0)
+    # And the answer itself is intact, sources and all.
+    expect(page.locator(".source-trigger")).to_have_count(1)
+
+
+def test_a_normal_finish_is_not_flagged_as_cut_short(streaming_page: Page):
+    """The guard against over-flagging.
+
+    The client acts on an explicit "length" and nothing else, which is what lets
+    the server report an honest "unknown" when a gateway sends no reason at all.
+    Without this test, a later change of that default would quietly put a
+    truncation warning under every correct answer.
+    """
+    page = streaming_page
+    _open_stream(page)
+    page.evaluate("f => window.__chat.push(f)", sse_delta("Registration requires a dossier [1]. "))
+    page.evaluate("f => window.__chat.push(f)", SSE_FINAL_FRAME)
+    page.evaluate("f => window.__chat.push(f)", SSE_DONE_FRAME)
+    page.evaluate("() => window.__chat.close()")
+
+    expect(page.locator(".chatbot-message.is-truncated")).to_have_count(0)
+    expect(page.locator(".stream-note.truncated")).to_have_count(0)
+
+
+def test_an_unknown_finish_reason_is_not_flagged_as_cut_short(streaming_page: Page):
+    """ "unknown" is the server's honest fallback, not a truncation signal."""
+    page = streaming_page
+    _open_stream(page)
+    page.evaluate("f => window.__chat.push(f)", sse_delta("Registration requires a dossier [1]. "))
+    page.evaluate("f => window.__chat.push(f)", SSE_FINAL_FRAME)
+    page.evaluate(
+        "f => window.__chat.push(f)",
+        'event: done\ndata: {"finish_reason":"unknown"}\n\n',
+    )
+    page.evaluate("() => window.__chat.close()")
+
+    expect(page.locator(".chatbot-message.is-truncated")).to_have_count(0)
+
+
 def test_a_stream_that_ends_without_done_keeps_the_canonical_answer(streaming_page: Page):
     """`final` arrived, `done` did not.
 

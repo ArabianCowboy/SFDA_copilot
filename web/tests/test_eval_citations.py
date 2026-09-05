@@ -56,7 +56,7 @@ class FakeHandler:
         self._messages = messages
         self._raises = raises
 
-    def stream_response(self, query, search_results, category, chat_history, lang):
+    def stream_response(self, query, search_results, category, chat_history, lang, **kwargs):
         if self._raises:
             raise self._raises
         yield from self._answer_tokens

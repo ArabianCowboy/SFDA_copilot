@@ -1,4 +1,4 @@
-STATUS: IN PROGRESS — Commits A and B shipped 2026-09-05. Commits C and D still open.
+STATUS: IN PROGRESS — Commits A, B and C shipped 2026-09-05. Commit D still open.
 Written 2026-09-05.
 
 Supersedes nothing. When each commit lands, tick it in _Rollout_ below and update this
@@ -552,7 +552,7 @@ nobody noticed — record it here so the next person does not treat it as a bug.
 | --- | ---------------------------------------------------------------------------------- | ------- | --------------------- | ------------- |
 | ☑ A | Bind logout to the caller; stop the singleton holding sessions; two stale comments | 1       | no                    | no            |
 | ☑ B | Refuse and refund an empty answer on both routes; correct the false comment        | 3       | **yes** (quota frame) | no            |
-| ☐ C | Carry the provider's finish reason through to the reader, both routes              | 2       | **yes**               | yes           |
+| ☑ C | Carry the provider's finish reason through to the reader, both routes              | 2       | **yes**               | yes           |
 | ☐ D | Preserve demo and language flags across navigation                                 | 4       | **yes**               | yes           |
 
 **B lands before C, which is the reverse of the obvious order.** An empty stream that terminated on
@@ -599,6 +599,24 @@ Beyond the suite:
 **Confirm each new test fails against the unmodified tree before believing it**, and read the diff
 rather than trusting any delegated agent's self-report. Both rules are in CLAUDE.md because they
 have caught real errors here before.
+
+## Changed during implementation
+
+Recorded rather than quietly absorbed, per the repo's reversal rule.
+
+- **Commit B: `_release_daily_message` now returns the post-refund claim.** The plan said to put
+  the refunded counter on the `error` frame, but there was no honest way to build that number —
+  `QuotaClaim` is frozen and the refund can fail silently (no backend, RPC error). Computing
+  `used - 1` at the call site would have reported a refund that did not happen. Returning the
+  claim only when the refund actually lands means the frame carries `null` otherwise, which the
+  client already renders as "no counter this turn".
+- **Commit C: six test doubles needed widening, not one.** The adversarial review flagged
+  `test_eval_citations.py:59` as the rigid fake. It was right about the class of problem and low
+  on the count: `test_chat_api.py`, `test_new_chat.py` (x2) and `test_session_isolation.py` (x2)
+  had explicit signatures too, and 18 tests failed with
+  `TypeError: got an unexpected keyword argument 'finish'` until each grew `**kwargs`.
+- **Commit C: `UI.addMessage` now returns its message element.** The blocking route had no handle
+  to annotate — the plan assumed one existed. One line, one caller.
 
 ## Open questions this plan does not close
 

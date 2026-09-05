@@ -23,6 +23,10 @@ runtime:
     invalidResponse: "تنسيق استجابة غير صالح من الخدمة."
     stopped: "أُوقف"
     incomplete: "الإجابة غير مكتملة — حدث خطأ ما"
+    # Shares its opening clause with `incomplete` on purpose: both states ARE
+    # an incomplete answer, the reader only ever sees one, and the clause
+    # after the dash is what carries the difference.
+    truncated: "الإجابة غير مكتملة — تم بلوغ الحد الأقصى للطول"
     askPrefix: "اسأل: {question}"
     jumpToLatest: "الانتقال إلى الأحدث"
     jumpToLatestAria: "التمرير إلى أحدث رسالة"

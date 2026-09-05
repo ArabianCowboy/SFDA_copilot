@@ -59,7 +59,7 @@ def app():
     # replacing this side_effect, so the recording above survives the override.
     application.config["llm_answer"] = (ANSWER, SUGGESTIONS)
 
-    def record(query, llm_context, category, chat_history, lang="en"):
+    def record(query, llm_context, category, chat_history, lang="en", **kwargs):
         calls.append(
             {
                 "query": query,
@@ -106,6 +106,34 @@ def test_unknown_category_is_rejected(client):
     )
     assert response.status_code == 400
     assert "Invalid category" in response.get_json()["error"]
+
+
+def test_the_blocking_route_reports_the_providers_finish_reason(app, client):
+    """The same blindness the streaming route had, one route over.
+
+    An answer cut by the operator-editable ceiling returned 200, rendered whole
+    and persisted as whole, with nothing on the wire to say it stopped early.
+    """
+
+    def truncated(*a, finish=None, **k):
+        if finish is not None:
+            finish.reason = "length"
+        return "Applications must be", []
+
+    app.config["openai_handler"].generate_response.side_effect = truncated
+
+    body = client.post("/api/chat", json={"query": "hello"}, headers=AUTH).get_json()
+
+    assert body["finish_reason"] == "length"
+    # Still a real answer: delivered, and charged for.
+    assert body["response"] == "Applications must be"
+
+
+def test_the_blocking_route_reports_unknown_when_the_provider_is_silent(app, client):
+    """ "unknown", never a manufactured "stop" — same contract as the done frame."""
+    response = client.post("/api/chat", json={"query": "hello"}, headers=AUTH)
+
+    assert response.get_json()["finish_reason"] == "unknown"
 
 
 def test_search_engine_down_returns_503(app, client):

@@ -231,8 +231,45 @@ def test_deltas_reassemble_into_the_answer(client):
 
 def test_done_reports_the_final_length(client):
     frames = dict(read_frames(post(client)))
-    assert frames["done"]["finish_reason"] == "stop"
+    # "unknown", not "stop". The double yields tokens without reporting a
+    # terminal reason, which is exactly the case the server must not paper over:
+    # it hardcoded "stop" here, so a `length` truncation reached the reader
+    # looking finished. Claiming completeness nobody observed is the same
+    # asserted-not-computed mistake, one field over.
+    assert frames["done"]["finish_reason"] == "unknown"
     assert frames["done"]["chars"] == len("".join(ANSWER_TOKENS).strip())
+
+
+def test_done_reports_a_length_finish_when_the_provider_truncates(app, client):
+    """The defect: a cut-off answer was indistinguishable from a whole one."""
+
+    def truncated(*a, finish=None, **k):
+        yield "Applications must be"
+        if finish is not None:
+            finish.reason = "length"
+
+    app.config["openai_handler"].stream_response.side_effect = truncated
+
+    frames = dict(read_frames(post(client)))
+
+    assert frames["done"]["finish_reason"] == "length"
+    # The partial answer is still delivered and still filed — it is a real
+    # answer that stopped early, not a failure, and the reader's next question
+    # may refer to it.
+    assert frames["final"]["response"] == "Applications must be"
+
+
+def test_a_provider_reason_other_than_stop_is_passed_through_verbatim(app, client):
+    """Not a boolean. `content_filter` is not `length` and must not become it."""
+
+    def filtered(*a, finish=None, **k):
+        yield "Partial "
+        if finish is not None:
+            finish.reason = "content_filter"
+
+    app.config["openai_handler"].stream_response.side_effect = filtered
+
+    assert dict(read_frames(post(client)))["done"]["finish_reason"] == "content_filter"
 
 
 def test_final_payload_is_json_native(client):

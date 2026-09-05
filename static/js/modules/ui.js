@@ -16,6 +16,25 @@ import { MarkdownStream } from './stream-render.js';
 import { I18n } from './i18n.js';
 import { iconMarkup } from './icons.js';
 
+/* The three ways a message can be less than a finished answer, and the class
+   and copy each one earns. Kept as data so the three stay aligned: they drifted
+   apart the moment a third kind was added to a pair of ternaries.
+
+   `truncated` is NOT `is-errored`. The model reached an operator-configured
+   ceiling — nothing malfunctioned — and DESIGN.md's colour rule is explicit
+   that a deliberately-enforced boundary and a failure must not be swapped. */
+const INCOMPLETE_STATE = {
+  cancelled: 'is-cancelled',
+  truncated: 'is-truncated',
+  error: 'is-errored',
+};
+
+const INCOMPLETE_COPY = {
+  cancelled: 'chat.stopped',
+  truncated: 'chat.truncated',
+  error: 'chat.incomplete',
+};
+
 function createMessageContent(text, isBot) {
   const contentDiv = DOMCache.createElement('div', 'message-content');
   if (isBot) {
@@ -328,6 +347,11 @@ export const UI = {
     };
 
     render();
+    // Returned so a caller that has to annotate the message it just added can
+    // reach it — the blocking chat path flagging a truncated answer is the one
+    // caller today. Undefined when there was no container to append to, which
+    // is the same nothing the early return above yields.
+    return messageEl;
   },
 
   /** True when the reader is at (or near) the bottom of the transcript. */
@@ -563,10 +587,15 @@ export const UI = {
    */
   flagIncomplete(handle, kind = 'error') {
     if (!handle) return;
-    handle.messageEl.classList.add(kind === 'cancelled' ? 'is-cancelled' : 'is-errored');
+    /* Maps, not ternaries. A two-way ternary sent every unrecognised kind to
+       `is-errored`, so adding `truncated` would have dressed the bubble in
+       failure chrome while the note under it said the opposite — the exact
+       signal-swap DESIGN.md forbids, introduced by the change meant to respect
+       it. A fourth kind is now a data change. */
+    handle.messageEl.classList.add(INCOMPLETE_STATE[kind] ?? INCOMPLETE_STATE.error);
 
     const note = DOMCache.createElement('div', 'stream-note', kind);
-    note.textContent = I18n.t(kind === 'cancelled' ? 'chat.stopped' : 'chat.incomplete');
+    note.textContent = I18n.t(INCOMPLETE_COPY[kind] ?? INCOMPLETE_COPY.error);
     handle.messageEl.querySelector('.message-bubble')?.appendChild(note);
   },
 

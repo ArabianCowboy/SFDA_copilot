@@ -2345,7 +2345,8 @@
   animation: caretBlink 1s steps(2, start) infinite;
 }
 .message.is-cancelled .md-pending::after,
-.message.is-errored .md-pending::after {
+.message.is-errored .md-pending::after,
+.message.is-truncated .md-pending::after {
   display: none;
 }
 
@@ -2362,6 +2363,17 @@
 }
 .stream-note.error {
   color: var(--danger);
+}
+
+/* A `length` finish: the model reached the operator-configured ceiling, so the
+   answer above is real but stops early. `--confidence`, the same register the
+   spent-allowance notice uses, because DESIGN.md's rule is that a boundary the
+   product is deliberately enforcing is marked in `--confidence` and a failure
+   in `--danger` — and a ceiling doing exactly its job is the former. `--danger`
+   would tell the reader something broke and send them retrying an identical
+   question into an identical ceiling. */
+.stream-note.truncated {
+  color: var(--confidence);
 }
 
 /* ——————————————— Jump to latest ———————————————

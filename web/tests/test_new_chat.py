@@ -67,11 +67,11 @@ def app():
     # mock.call_args afterwards would show the mutated version.
     history_seen: list[list[dict]] = []
 
-    def record_blocking(query, llm_context, category, chat_history, lang="en"):
+    def record_blocking(query, llm_context, category, chat_history, lang="en", **kwargs):
         history_seen.append(copy.deepcopy(chat_history or []))
         return ANSWER, []
 
-    def record_streaming(query, llm_context, category=None, chat_history=None, lang="en"):
+    def record_streaming(query, llm_context, category=None, chat_history=None, lang="en", **kwargs):
         history_seen.append(copy.deepcopy(chat_history or []))
         return iter([ANSWER])
 

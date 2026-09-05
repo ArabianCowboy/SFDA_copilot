@@ -1365,6 +1365,10 @@ export const Handlers = {
     activeStreamConversationId = conversation?.id ?? null;
     let sawToken = false;
     let failed = null;
+    /* The provider's terminal reason, off the `done` frame. Only an explicit
+       'length' means anything to the reader; 'unknown' (the server's honest
+       fallback when a gateway reports nothing) renders like a whole answer. */
+    let finishReason = null;
 
     let result;
     try {
@@ -1428,6 +1432,7 @@ export const Handlers = {
             /* The counter rides the frame the stream already sends — no extra
                round trip, and never a re-fetch of identity after an answer. */
             UI.updateQuotaCounter(d?.quota ?? null);
+            finishReason = d?.finish_reason ?? null;
           },
         },
         requestId,
@@ -1504,6 +1509,10 @@ export const Handlers = {
          did not touch it. Render it properly and toast the failure. */
       if (handle.final) {
         UI.finishStreamingMessage(handle, handle.suggested || [], handle.final);
+        /* An auxiliary failure — history, suggestions — does not change the
+           fact that the answer itself was cut off. Both markings are true and
+           the reader is owed both. */
+        if (finishReason === 'length') UI.flagIncomplete(handle, 'truncated');
       } else {
         UI.markStreamIncomplete(handle, 'error');
       }
@@ -1555,6 +1564,9 @@ export const Handlers = {
          gets a marking that outlives the toast. */
       if (handle.final) {
         UI.finishStreamingMessage(handle, handle.suggested || [], handle.final);
+        /* No truncation branch here, and the omission is deliberate: the reason
+           only arrives on `done`, and `!result.complete` means `done` never
+           did. There is nothing to read. */
         UI.flagIncomplete(handle, 'error');
       } else {
         UI.markStreamIncomplete(handle, 'error');
@@ -1573,6 +1585,10 @@ export const Handlers = {
        `:2642` → `:2661`), not at it. */
     Route.commit();
     UI.finishStreamingMessage(handle, handle.suggested || [], handle.final || null);
+    /* After the canonical answer is rendered, not instead of it — the reader
+       keeps everything the model did produce and is told it stopped early. Same
+       finish-then-flag order the abort path uses. */
+    if (finishReason === 'length') UI.flagIncomplete(handle, 'truncated');
     RobotStateManager.returnToIdle(4000);
   },
 
@@ -1604,6 +1620,7 @@ export const Handlers = {
 
       /* Same field, same renderer, the blocking twin of the `done` frame. */
       UI.updateQuotaCounter(data?.quota ?? null);
+      const blockingTruncated = data?.finish_reason === 'length';
 
       UI.toggleTypingIndicator(false);
       RobotStateManager.startTalking();
@@ -1617,15 +1634,26 @@ export const Handlers = {
         Route.replace(data.conversation_id);
       }
 
-      UI.addMessage(data.response, 'bot', data.suggested_questions || [], data.sources || [], {
-        cited: data.cited ?? null,
-        retrieved: data.retrieved ?? (data.sources || []).length,
-        // Always 'verified' from this route today, because a live answer came
-        // from the active index. Carried anyway so the blocking and streaming
-        // paths hand UI the same shape — a field present on one and absent from
-        // the other is how two paths for one contract start to drift.
-        evidenceState: data.evidence_state,
-      });
+      const messageEl = UI.addMessage(
+        data.response,
+        'bot',
+        data.suggested_questions || [],
+        data.sources || [],
+        {
+          cited: data.cited ?? null,
+          retrieved: data.retrieved ?? (data.sources || []).length,
+          // Always 'verified' from this route today, because a live answer came
+          // from the active index. Carried anyway so the blocking and streaming
+          // paths hand UI the same shape — a field present on one and absent from
+          // the other is how two paths for one contract start to drift.
+          evidenceState: data.evidence_state,
+        },
+      );
+
+      /* The blocking twin of the stream's truncation flag. `flagIncomplete`
+         only wants `messageEl`, so the element addMessage returns is the whole
+         handle this path needs. */
+      if (blockingTruncated && messageEl) UI.flagIncomplete({ messageEl }, 'truncated');
 
       /* The blocking route reports the same auxiliary failure the streaming
          route sends as an `error` frame — it just has a JSON body to say it in.
