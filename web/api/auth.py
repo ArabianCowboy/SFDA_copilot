@@ -446,6 +446,11 @@ def logout():
     if current_app.config.get("TESTING"):
         return jsonify({"message": "Logged out successfully"})
 
+    if not token:
+        # Nothing to revoke upstream. The Flask-side teardown above is the whole
+        # of what an anonymous caller is entitled to, and it has already run.
+        return jsonify({"message": "Logged out (session cleared)"})
+
     try:
         supabase = get_supabase()
         if not supabase:
@@ -454,10 +459,24 @@ def logout():
             logger.warning("Logout: Supabase unavailable, session cleared anyway.")
             return jsonify({"message": "Logged out (session cleared)"})
 
+        # THE CALLER'S OWN TOKEN, explicitly. This used to be a no-arg
+        # `supabase.auth.sign_out()`, which reads the session stored on the
+        # process-global client and revokes THAT reader everywhere — so once any
+        # request had authenticated through the singleton, the next stranger's
+        # logout signed out somebody else. The route already held the right
+        # token (read above, for the cache eviction); it simply never passed it.
+        #
+        # `admin.sign_out` here is GoTrue's plain `/logout` with a bearer token,
+        # not a service-role operation: the anon client is the correct caller
+        # and the JWT is its own authorization. `global` is stated rather than
+        # left to the default, matching the browser-direct revoke in
+        # `services.js` — a logout that leaves other devices signed in is not
+        # the property this endpoint is for.
+        #
         # Typed loosely: sign_out() returns None on the currently installed
         # GoTrue client, but this guards defensively against a version that
         # returns an error-carrying response object instead.
-        response: Any = supabase.auth.sign_out()  # type: ignore[func-returns-value]
+        response: Any = supabase.auth.admin.sign_out(token, "global")  # type: ignore[func-returns-value]
 
         # Check for error in response
         if hasattr(response, "error") and response.error:

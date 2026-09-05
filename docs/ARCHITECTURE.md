@@ -325,6 +325,15 @@ that, for reasons specific to each (recovery: PKCE, see
 `web/services/account_recovery.py`'s module docstring). So today: **signup,
 recovery and logout are server-mediated; login is browser-direct.**
 
+**The anon client is deliberately sessionless.** `SupabaseClient` builds it with
+`persist_session=False`, so neither `sign_in_with_password` nor `sign_up` leaves a
+session on the process-global instance. Without that, the singleton starts holding
+whoever authenticated last for all eight threads, and any no-argument auth call on it
+acts as that reader — which is how `POST /auth/logout` came to revoke a different
+person's sessions than the caller's. Every auth call here passes its own JWT
+explicitly: `auth.get_user(token)` for verification, `auth.admin.sign_out(token,
+"global")` for logout. **Never add a no-argument auth call to this client.**
+
 Limits on `/account/api/*` key on the **authenticated user id**, not the IP
 (`_account_rate_key`) — otherwise it is "two exports per ten minutes _per building_".
 

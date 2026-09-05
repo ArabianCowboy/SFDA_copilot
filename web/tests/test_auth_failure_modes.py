@@ -200,6 +200,34 @@ def test_the_anon_client_builds_with_its_injected_transport(monkeypatch):
     assert transport.follow_redirects is True
 
 
+def test_the_anon_client_never_stores_a_session(monkeypatch):
+    """The singleton must not become a shared identity.
+
+    This client is process-global and shared by all eight request threads. With
+    session persistence on — supabase-py's default — `sign_in_with_password`
+    (`/auth/login`) and `sign_up` (`/auth/signup`, which IS browser-called) save
+    the authenticating reader into it, and every later no-arg auth call on that
+    client acts as that reader. That is how a stranger's `POST /auth/logout`
+    came to revoke somebody else's sessions everywhere.
+
+    Turning storage off removes the shared state rather than the one call that
+    happened to read it. Every auth call this app makes passes its own JWT
+    explicitly, so nothing wants the stored copy.
+    """
+    monkeypatch.setenv("SUPABASE_URL", "https://example.supabase.co")
+    monkeypatch.setenv("SUPABASE_ANON_KEY", "anon-key")
+
+    from web.utils import supabase_client as module
+
+    monkeypatch.setattr(module.SupabaseClient, "_instance", None)
+    auth = module.SupabaseClient().auth
+
+    assert auth._persist_session is False
+    # No session to refresh, so the background timer is overhead at best.
+    assert auth._auto_refresh_token is False
+    assert auth.get_session() is None
+
+
 def test_the_auth_timeout_can_be_tuned_without_a_code_change(monkeypatch):
     monkeypatch.setenv("SUPABASE_AUTH_TIMEOUT", "12")
 

@@ -70,11 +70,33 @@ class SupabaseClient:
                 # The mock will be injected by the test fixtures
                 return None
 
-            # This client is only ever used for auth (token verification,
-            # logout, the dead signup/login routes). Nothing reads PostgREST
-            # through it, so one timeout tuned for GoTrue is safe to share.
+            # This client is only ever used for auth: token verification, the
+            # live signup route, and logout. (`POST /auth/login` also exists and
+            # is registered unconditionally, but no browser calls it —
+            # `Services.login` goes straight to GoTrue. See ARCHITECTURE.md.)
+            # Nothing reads PostgREST through it, so one timeout tuned for
+            # GoTrue is safe to share.
+            #
+            # SESSIONLESS ON PURPOSE. `persist_session=False` is what keeps this
+            # process-global client from becoming a shared identity: without it,
+            # `sign_in_with_password` and `sign_up` call `_save_session` and the
+            # singleton starts holding whoever authenticated last, for every
+            # thread in the worker. A no-arg `auth.sign_out()` then revokes THAT
+            # reader's sessions rather than the caller's, which is exactly the
+            # bug fixed alongside this line — but the deeper problem was the
+            # client storing a session at all, and only this closes it. Every
+            # auth call here passes its own JWT explicitly (`get_user(token)`,
+            # `admin.sign_out(token, ...)`), so nothing needs the stored copy.
+            # `auto_refresh_token` follows: with no session to refresh, its
+            # background timer thread is pure overhead.
             cls._instance = create_client(
-                url, key, SyncClientOptions(httpx_client=_auth_http_client())
+                url,
+                key,
+                SyncClientOptions(
+                    httpx_client=_auth_http_client(),
+                    persist_session=False,
+                    auto_refresh_token=False,
+                ),
             )
         return cls._instance
 
