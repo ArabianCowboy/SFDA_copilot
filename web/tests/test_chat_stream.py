@@ -168,6 +168,45 @@ def test_frame_sequence(client):
     ]
 
 
+def test_an_empty_stream_ends_in_an_error_frame_not_a_done(app, client):
+    """A provider that says nothing must not be reported as a finished answer.
+
+    The old sequence was indistinguishable from success: `final` with
+    `response: ""`, then `suggestions`, then `done` — so `services.js` saw both
+    frames it uses to decide completeness and the reader got an empty bubble
+    filed into their history.
+    """
+    app.config["openai_handler"].stream_response.side_effect = lambda *a, **k: iter(())
+
+    events = [event for event, _ in read_frames(post(client))]
+
+    assert "error" in events
+    assert "final" not in events
+    assert "done" not in events
+
+
+def test_an_empty_stream_does_not_pay_for_suggestions(app, client):
+    """A second provider round trip to suggest follow-ups to nothing."""
+    app.config["openai_handler"].stream_response.side_effect = lambda *a, **k: iter(())
+
+    events = [event for event, _ in read_frames(post(client))]
+
+    assert "suggestions" not in events
+    assert app.config["openai_handler"].generate_suggestions.call_count == 0
+
+
+def test_an_empty_stream_is_not_written_to_history(app, client):
+    """An empty assistant message the reader would meet again on every reload."""
+    import uuid
+
+    app.config["openai_handler"].stream_response.side_effect = lambda *a, **k: iter(())
+    conversation = str(uuid.uuid4())
+
+    post(client, conversation_id=conversation, allow_create=True)
+
+    assert app.config["conversations"].get(conversation, owner_id="test-user-id") == []
+
+
 def test_no_sources_frame_precedes_the_answer(client):
     """Retrieval count mid-stream, passages only at the end.
 

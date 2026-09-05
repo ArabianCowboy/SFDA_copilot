@@ -228,6 +228,70 @@ def test_the_blocking_route_refunds_a_generation_failure(app, client, quota):
     assert quota.usage.get((OWNER, quota._today()), 0) == 0
 
 
+def test_an_empty_stream_gives_the_message_back(app, client, quota):
+    """The comment at the claim site promised this for months; the code did not.
+
+    `spent` is set inside the token loop, so an empty stream never sets it — but
+    every refund lived in an `except` handler, and an empty iterator raises
+    nothing. Control fell through to `final`, both writes and `done` with the
+    claim reported as spent.
+    """
+    quota.tiers["free"]["daily_message_limit"] = 5
+    app.config["openai_handler"].stream_response.side_effect = lambda *a, **k: iter(())
+
+    response = post_stream(client, json=payload(), headers=AUTH)
+
+    assert response.status_code == 200
+    assert quota.usage.get((OWNER, quota._today()), 0) == 0
+
+
+def test_an_empty_stream_reports_the_refunded_counter_to_the_reader(app, client, quota):
+    """A refund the reader cannot see is a refund they have no reason to believe.
+
+    The counter rides the `done` frame, and this path deliberately has no `done`
+    frame — so the numbers ride the `error` frame instead, or the reader watches
+    their allowance drop for an answer they never got until their next turn.
+    """
+    quota.tiers["free"]["daily_message_limit"] = 5
+    app.config["openai_handler"].stream_response.side_effect = lambda *a, **k: iter(())
+
+    sent = dict(frames(post_stream(client, json=payload(), headers=AUTH)))
+
+    assert sent["error"]["code"] == "empty_answer"
+    assert sent["error"]["quota"]["used"] == 0
+    assert sent["error"]["quota"]["remaining"] == 5
+
+
+def test_the_blocking_route_refunds_an_empty_answer(app, client, quota):
+    """Same defect, different door.
+
+    An empty answer is not a `GenerationFailed` — `generate_response` says so on
+    purpose — so the refund beside it never fired and `spent` was set
+    unconditionally on the line below.
+    """
+    quota.tiers["free"]["daily_message_limit"] = 5
+    app.config["openai_handler"].generate_response.side_effect = lambda *a, **k: ("", [])
+
+    response = client.post("/api/chat", json=payload(), headers=AUTH)
+
+    assert response.status_code == 503
+    # NOT `generation_failed`: "returned nothing" and "was unreachable" have to
+    # stay separable in the logs and in anything that branches on the code.
+    assert response.get_json()["code"] == "empty_answer"
+    assert quota.usage.get((OWNER, quota._today()), 0) == 0
+
+
+def test_a_whitespace_only_answer_counts_as_empty(app, client, quota):
+    """`.strip()` is load-bearing on both routes — a bubble of spaces is no answer."""
+    quota.tiers["free"]["daily_message_limit"] = 5
+    app.config["openai_handler"].stream_response.side_effect = lambda *a, **k: iter(["  ", "\n"])
+
+    sent = dict(frames(post_stream(client, json=payload(), headers=AUTH)))
+
+    assert sent["error"]["code"] == "empty_answer"
+    assert quota.usage.get((OWNER, quota._today()), 0) == 0
+
+
 def test_a_400_spends_nothing(client, quota):
     quota.tiers["free"]["daily_message_limit"] = 5
     bad = dict(payload())

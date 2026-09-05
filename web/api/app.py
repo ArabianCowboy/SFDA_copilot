@@ -23,6 +23,7 @@ import time
 import uuid
 from collections.abc import Callable, Sequence
 from contextlib import contextmanager
+from dataclasses import replace
 from functools import wraps
 from pathlib import Path
 from typing import (  # Added Callable
@@ -262,7 +263,7 @@ SUPPORTED_FAQ_LANGS = ("en", "ar")
 # that mixes a fresh template with a stale module is worse than a stale page —
 # post-icon-migration it would render an <i class="bi"> with no icon font behind
 # it, or print a glyph NAME as text. MODULE_IMPORT_MAP below closes that.
-ASSET_VERSION = "warm69"
+ASSET_VERSION = "warm70"
 
 # Product release, rendered in the landing footer. The single source — do not
 # hand-type this value into a JS docstring or any other comment; that duplication
@@ -860,8 +861,15 @@ def _claim_daily_message() -> QuotaClaim | None:
         return None
 
 
-def _release_daily_message(claim: QuotaClaim | None) -> None:
+def _release_daily_message(claim: QuotaClaim | None) -> QuotaClaim | None:
     """Refund a claim whose request failed before the model produced a token.
+
+    Returns the post-refund claim when a refund actually landed, and None
+    whenever nothing was given back -- no claim, already refunded this request,
+    no backend, or the RPC failed. A caller that has to show the reader their
+    counter can then report what is true rather than what was intended: the
+    streaming route's empty-answer branch has no `done` frame to carry the
+    number, so it puts this on its `error` frame instead.
 
     ONCE PER REQUEST, enforced here rather than assumed. The RPC is deliberately
     not idempotent -- `greatest(0, used - 1)` decrements on every call -- so a
@@ -874,20 +882,26 @@ def _release_daily_message(claim: QuotaClaim | None) -> None:
     a second error on top of it.
     """
     if claim is None or not claim.allowed:
-        return
+        return None
     if getattr(g, "_quota_released", False):
-        return
+        return None
     g._quota_released = True
     backend = _quota()
     owner_id = _durable_owner()
     if backend is None or not owner_id:
-        return
+        return None
     try:
         # claim.day, never a recomputed "today": a claim at 23:59:59 whose
         # retrieval fails at 00:00:01 must refund the day it charged.
         backend.release(owner_id, claim.day)
     except Exception:
         logger.error("Could not refund a daily message (day=%s).", claim.day, exc_info=True)
+        return None
+    # Mirrors the RPC's own `greatest(0, used - 1)` rather than re-reading the
+    # row: one refund, one message back, and no extra round trip on a path that
+    # is already reporting a failure.
+    used = max(0, claim.used - 1)
+    return replace(claim, used=used, remaining=max(0, claim.limit - used))
 
 
 def _quota_exhausted_response(claim: QuotaClaim) -> tuple[Response, int]:
@@ -3360,8 +3374,12 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
                 # timeout as consumed -- the most likely pre-answer failure there
                 # is, and exactly the class the refund exists for.
                 #
-                # The consequence is deliberate: a provider that connects and
-                # returns an EMPTY stream is refunded. The reader got no answer.
+                # A provider that connects and returns an EMPTY stream never
+                # sets it either, and the guard below is what turns that into an
+                # actual refund. This comment used to assert the refund happened
+                # here, and it did not: an empty iterator raises nothing, so
+                # control fell straight through to `final`, both writes and
+                # `done` with the claim still reported as spent.
                 for token in handler.stream_response(
                     query, llm_context, category, history, lang=lang
                 ):
@@ -3369,7 +3387,49 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
                     parts.append(token)
                     yield sse("delta", {"t": token})
 
-                answer, cited, sources = _finalize_answer("".join(parts).strip(), retrieved)
+                raw = "".join(parts).strip()
+                if not raw:
+                    # The provider connected and said nothing. Nothing raised, so
+                    # this is not an outage -- but it is not an answer either, and
+                    # the three things that follow a real answer are all wrong for
+                    # it: charging the reader, filing an empty assistant message
+                    # they will meet again on reload, and paying for a second
+                    # provider round trip to suggest follow-ups to a response that
+                    # does not exist. Skip all of it.
+                    #
+                    # The likeliest cause is not a broken provider: a reasoning
+                    # model can spend its entire `max_completion_tokens` budget on
+                    # hidden reasoning tokens and terminate with no visible
+                    # content at all. We are billed for those either way, so the
+                    # refund is this product absorbing a real cost rather than
+                    # recovering one -- which is the right call, because the
+                    # reader has no way to tell they asked an expensive question
+                    # and nothing to show for it.
+                    logger.warning(
+                        "Provider returned an empty answer (conversation=%s, model=%s).",
+                        conversation_id,
+                        getattr(handler, "model", "unknown"),
+                    )
+                    refunded = _release_daily_message(quota)
+                    # An `error` frame, NOT a new event name -- same reasoning as
+                    # `persistence_unavailable` below: services.js dispatches with
+                    # `on[frame.event]?.()` and silently drops what it does not
+                    # know. Without a `done` frame there is nowhere else to put
+                    # the counter, and a refund the reader cannot see on screen is
+                    # a refund they have no reason to believe, so it rides here.
+                    # `quota` is null when the refund did not actually land, which
+                    # the client already renders as "no counter this turn".
+                    yield sse(
+                        "error",
+                        {
+                            "error": "The assistant did not produce an answer.",
+                            "code": "empty_answer",
+                            "quota": refunded.as_frame() if refunded is not None else None,
+                        },
+                    )
+                    return
+
+                answer, cited, sources = _finalize_answer(raw, retrieved)
 
                 yield sse("stage", {"stage": "finalizing"})
 
@@ -3691,6 +3751,31 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
                     return jsonify(
                         error="The assistant is temporarily unavailable.",
                         code="generation_failed",
+                    ), 503
+                if not answer.strip():
+                    # Same defect as the streaming route's empty guard, one route
+                    # over, and it reaches here by a different door: an empty
+                    # answer is not a `GenerationFailed`. `generate_response`
+                    # says so deliberately -- an empty result is "legitimate (if
+                    # unhelpful)" -- so the refund above never fired and `spent`
+                    # was set unconditionally on the next line, charging the
+                    # reader and filing an empty assistant row.
+                    #
+                    # `empty_answer`, NOT the `generation_failed` code above.
+                    # They are 503 for the same reason and read the same to the
+                    # reader, but "the provider returned nothing" and "the
+                    # provider was unreachable" must stay separable in the logs
+                    # and in anything that branches on the code later.
+                    logger.warning(
+                        "Provider returned an empty answer (conversation=%s, model=%s).",
+                        conversation_id,
+                        getattr(openai_handler, "model", "unknown"),
+                    )
+                    _release_daily_message(quota)
+                    hold.__exit__(None, None, None)
+                    return jsonify(
+                        error="The assistant is temporarily unavailable.",
+                        code="empty_answer",
                     ), 503
                 # The model answered. Everything after this point -- finalization,
                 # the RAM append, the durable write -- happens to a real answer the

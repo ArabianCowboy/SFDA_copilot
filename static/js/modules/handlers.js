@@ -1416,6 +1416,13 @@ export const Handlers = {
            wrong and more alarming than the truth. */
           error: (d) => {
             failed = failed || d;
+            /* A refund the reader cannot see is a refund they have no reason to
+               believe. `empty_answer` ends the stream without a `done` frame —
+               the only other place the counter rides — so the server puts the
+               post-refund numbers here instead. Guarded rather than assumed:
+               every other error frame omits `quota`, and null is the server's
+               way of saying the refund did not actually land. */
+            if (d?.quota) UI.updateQuotaCounter(d.quota);
           },
           done: (d) => {
             /* The counter rides the frame the stream already sends — no extra

@@ -1,4 +1,4 @@
-STATUS: IN PROGRESS — Commit A shipped 2026-09-05. Commits B, C and D still open.
+STATUS: IN PROGRESS — Commits A and B shipped 2026-09-05. Commits C and D still open.
 Written 2026-09-05.
 
 Supersedes nothing. When each commit lands, tick it in _Rollout_ below and update this
@@ -551,7 +551,7 @@ nobody noticed — record it here so the next person does not treat it as a bug.
 |     | Commit                                                                             | Finding | JS/CSS                | Browser suite |
 | --- | ---------------------------------------------------------------------------------- | ------- | --------------------- | ------------- |
 | ☑ A | Bind logout to the caller; stop the singleton holding sessions; two stale comments | 1       | no                    | no            |
-| ☐ B | Refuse and refund an empty answer on both routes; correct the false comment        | 3       | **yes** (quota frame) | no            |
+| ☑ B | Refuse and refund an empty answer on both routes; correct the false comment        | 3       | **yes** (quota frame) | no            |
 | ☐ C | Carry the provider's finish reason through to the reader, both routes              | 2       | **yes**               | yes           |
 | ☐ D | Preserve demo and language flags across navigation                                 | 4       | **yes**               | yes           |
 
