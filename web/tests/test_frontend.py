@@ -274,6 +274,90 @@ def test_testing_mode_bypasses_auth(browser_page: Page):
     expect(browser_page.locator("#user-status")).to_have_text("Logged in as: test@example.com")
 
 
+def _demo_ask(page: Page, text: str) -> None:
+    """Send one question in the demo and wait for its answer to land."""
+    before = page.locator(".chatbot-message").count()
+    page.locator("#query-input").fill(text)
+    page.locator("#send-button").click()
+    expect(page.locator(".chatbot-message")).to_have_count(before + 1)
+
+
+def test_testing_mode_survives_a_conversation_navigation(browser_page: Page):
+    """The demo used to end on the reader's SECOND question.
+
+    `pathFor` dropped the query string, and `?testing=true` is the demo's only
+    carrier — re-read live from `window.location.search` by the session-token
+    lookup and the send guard, neither of which caches it. The first turn
+    worked because the token is read before `Route.enter` navigates; the second
+    found a bare `/c/<id>`, got a null token, and opened the auth modal.
+
+    Nothing caught it because no test had ever sent two messages in demo mode.
+    That was uncovered, not uncontradicted.
+    """
+    page = browser_page
+    page.goto("/?testing=true")
+    expect(page.locator("#authenticated-view")).to_be_visible()
+
+    _demo_ask(page, "What are the registration requirements?")
+
+    # The navigation happened...
+    expect(page).to_have_url(re.compile(r"/c/[0-9a-f-]{36}"))
+    # ...and the flag came with it.
+    assert "testing=true" in page.url
+
+    _demo_ask(page, "And what about renewals?")
+
+    expect(page.locator("#authModal")).to_be_hidden()
+    expect(page.locator("#authenticated-view")).to_be_visible()
+
+
+def test_a_reload_of_a_demo_conversation_stays_signed_in(browser_page: Page):
+    """`App.init` re-reads the flag at load, so a stripped URL rendered the
+    demo signed out on every refresh of `/c/<id>`."""
+    page = browser_page
+    page.goto("/?testing=true")
+    _demo_ask(page, "What are the registration requirements?")
+
+    page.reload()
+
+    expect(page.locator("#authenticated-view")).to_be_visible()
+    expect(page.locator("#user-status")).to_have_text("Logged in as: test@example.com")
+
+
+def test_the_language_flag_survives_a_conversation_navigation(browser_page: Page):
+    """Dropped by the same code path — the same defect wearing a different hat.
+
+    `I18n.set` already states that everything else in the query has to survive
+    its rewrite; navigating to a conversation was quietly breaking that.
+    """
+    page = browser_page
+    page.goto("/?testing=true&lang=ar")
+
+    _demo_ask(page, "ما هي متطلبات التسجيل؟")
+
+    assert "lang=ar" in page.url
+    expect(page.locator("html")).to_have_attribute("dir", "rtl")
+
+
+def test_a_recovery_flag_is_not_carried_into_a_conversation(browser_page: Page):
+    """The reason this is an allow-list and not the whole query string.
+
+    `isRecoveryCallback` reads `recovery=1`, and a completed reset deliberately
+    DELETES it. Replaying it onto every later `/c/<id>` entry would re-arm
+    recovery mode on the next navigation or reload — a worse bug than the one
+    being fixed, and the failure mode a blanket copy would have shipped.
+    """
+    page = browser_page
+    page.goto("/?testing=true&recovery=1")
+    # The recovery view owns the page at this point; dismiss it and get to chat.
+    page.goto("/?testing=true")
+
+    _demo_ask(page, "What are the registration requirements?")
+
+    assert "testing=true" in page.url
+    assert "recovery" not in page.url
+
+
 def test_responsive_landing_layout(browser_page: Page):
     browser_page.set_viewport_size({"width": 375, "height": 667})
     browser_page.goto("/")

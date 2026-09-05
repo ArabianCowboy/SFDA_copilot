@@ -1,4 +1,6 @@
-STATUS: IN PROGRESS — Commits A, B and C shipped 2026-09-05. Commit D still open.
+STATUS: COMPLETE — all four commits shipped 2026-09-05 (38254e2, 6347212, 80593b4, and D).
+Follow-ups are filed as TODO.md entries; this file is ready to archive per
+docs/archive/README.md.
 Written 2026-09-05.
 
 Supersedes nothing. When each commit lands, tick it in _Rollout_ below and update this
@@ -553,7 +555,7 @@ nobody noticed — record it here so the next person does not treat it as a bug.
 | ☑ A | Bind logout to the caller; stop the singleton holding sessions; two stale comments | 1       | no                    | no            |
 | ☑ B | Refuse and refund an empty answer on both routes; correct the false comment        | 3       | **yes** (quota frame) | no            |
 | ☑ C | Carry the provider's finish reason through to the reader, both routes              | 2       | **yes**               | yes           |
-| ☐ D | Preserve demo and language flags across navigation                                 | 4       | **yes**               | yes           |
+| ☑ D | Preserve demo and language flags across navigation                                 | 4       | **yes**               | yes           |
 
 **B lands before C, which is the reverse of the obvious order.** An empty stream that terminated on
 `length` satisfies both. Land C first and there is an interim release where such a turn is charged,
@@ -620,7 +622,7 @@ Recorded rather than quietly absorbed, per the repo's reversal rule.
 
 ## Open questions this plan does not close
 
-Record each as a `TODO.md` entry using the template at _How this file works_.
+**All six are now filed as `TODO.md` entries** (2026-09-05); they are listed here as the record of what this work deliberately left open.
 
 1. **Is GoTrue email confirmation on for this project?** It decides whether finding 1 was "requires
    a direct API login" or "arms on every signup". `en.yaml:214`'s copy assumes confirmation, which

@@ -27,8 +27,45 @@ function idFromPath(pathname) {
   return UUID_RE.test(raw) ? raw.toLowerCase() : null;
 }
 
+/* Query parameters that survive a conversation navigation, and nothing else.
+ *
+ * `pathFor` used to drop the query entirely, which quietly ended demo mode the
+ * moment a reader asked a second question: `?testing=true` is re-read live from
+ * `window.location.search` in six places — the session-token lookup, the send
+ * guard, password update, logout, and the two init branches — and none of them
+ * cache it. Turn one worked because the token is read before `Route.enter`
+ * runs; turn two got the auth modal. A reload of `/c/<id>` rendered the demo
+ * signed out for the same reason.
+ *
+ * An ALLOW-LIST rather than the whole query string, deliberately.
+ * `isRecoveryCallback` reads `recovery=1`, and `Handlers` goes out of its way
+ * to DELETE that parameter once a reset completes — carrying it into every
+ * later `/c/<id>` entry would re-arm recovery mode on the next navigation or
+ * reload, which is a worse bug than the one being fixed. Anything added here
+ * needs the same question asked of it: is this safe to replay on a history
+ * entry the reader can Back into, and safe in a link they might share?
+ *
+ * `lang` rides along because `I18n.set` already states that everything else in
+ * the query has to survive its own rewrite; dropping it on navigation was the
+ * same defect wearing a different hat.
+ *
+ * Note `commit()` below is not precedent for a blanket copy: it re-emits the
+ * search already on the URL, which by then this function has filtered. */
+const CARRIED_PARAMS = ['testing', 'lang'];
+
+function carriedSearch() {
+  const current = new URLSearchParams(window.location.search);
+  const kept = new URLSearchParams();
+  for (const name of CARRIED_PARAMS) {
+    const value = current.get(name);
+    if (value !== null) kept.set(name, value);
+  }
+  const query = kept.toString();
+  return query ? `?${query}` : '';
+}
+
 function pathFor(id) {
-  return id ? `${PREFIX}${id}` : '/';
+  return `${id ? `${PREFIX}${id}` : '/'}${carriedSearch()}`;
 }
 
 export const Route = {
