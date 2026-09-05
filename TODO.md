@@ -33,6 +33,12 @@ bottom of this file: [How this file works](#how-this-file-works).
 ## Open now
 
 - [Leaked-password protection is disabled in Supabase Auth](#leaked-password-protection-is-disabled-in-supabase-auth) — blocked on a Pro-plan upgrade, not code.
+- [`auth_bp` carries no rate limit, so `/auth/login` is unlimited](#auth_bp-carries-no-rate-limit-so-authlogin-is-unlimited) — diagnosed, unfixed; the exemption is deliberate for logout and accidental for login.
+- [Is GoTrue email confirmation on for this project?](#is-gotrue-email-confirmation-on-for-this-project) — a dashboard fact nobody has read; fold into the security-hardening plan's Task 3 trip.
+- [A silent truncation from a provider that omits `finish_reason` is still undetected](#a-silent-truncation-from-a-provider-that-omits-finish_reason-is-still-undetected) — diagnosed; needs `include_usage`, not a different default.
+- [An empty answer toasts "failed to send", which is the wrong thing](#an-empty-answer-toasts-failed-to-send-which-is-the-wrong-thing) — cosmetic, needs a bilingual key pair.
+- [`max_tokens` has no floor, and a low one guarantees empty answers](#max_tokens-has-no-floor-and-a-low-one-guarantees-empty-answers) — not started; prevention rather than the reporting that now exists.
+- [Ten source comments cite a plan file that has been archived](#ten-source-comments-cite-a-plan-file-that-has-been-archived) — doc rot, mechanical to fix.
 - [Security email is English-only](#security-email-is-english-only-on-a-product-that-is-bilingual-by-construction) — blocked in the Supabase dashboard, not code.
 - [SettingsService's two cache slots each query the settings row independently](#settingsservices-two-cache-slots-each-query-the-settings-row-independently) — not a correctness issue; recorded in case the round trip ever becomes measurable.
 - [Answer from a second provider](#answer-from-a-second-provider--and-why-the-code-is-the-easy-half) — the citation-fidelity harness is built (2026-08-22); still blocked on running it for real against the API.
@@ -62,6 +68,172 @@ bottom of this file: [How this file works](#how-this-file-works).
 ---
 
 ## Known bugs
+
+### `auth_bp` carries no rate limit, so `/auth/login` is unlimited
+
+**Where:** `web/api/app.py:2166` registers `auth_bp` with no limiter, while
+`recover_bp` and `signup_bp` get one immediately after (`:2173-2184`).
+
+**What is wrong.** The exemption is deliberate for logout — `web/api/auth.py:27-28`
+argues that a 5/minute ceiling on signing out would be wrong, and it is right. But
+`POST /auth/login` sits on the same blueprint and inherits it by accident. It
+accepts unauthenticated credentials and calls `sign_in_with_password`, so it is an
+unmetered credential-stuffing and account-enumeration oracle. No browser calls it —
+`Services.login` goes browser-direct — which is why it has attracted no attention.
+
+**Who it reaches.** Nobody through the UI. Anyone who can reach the public API.
+
+**How it was found.** The 2026-09-05 review pass, as an aside to the logout finding
+(`docs/review-findings-fix-plan.md`, finding 1).
+
+**What fixing it would disturb.** Either a per-route limit on login alone —
+Flask-Limiter supports a route decorator, so the blueprint-wide exemption can stay —
+or splitting login onto its own blueprint the way signup already is. The second is
+tidier and matches the existing shape. Either way `test_rate_limit_keys.py` gains a
+case, and someone has to decide whether a route no browser calls should simply be
+deleted instead, which is a product decision rather than a fix.
+
+---
+
+### Is GoTrue email confirmation on for this project?
+
+**Where:** The Supabase dashboard (Authentication → Providers → Email), not this
+repo.
+
+**What is wrong.** Nothing, necessarily — it is unverified. `web/i18n/en.yaml:214`
+tells the reader to check their inbox, which proves the copy assumes confirmation,
+not that the setting is on. If it is off, `POST /auth/signup` receives a session
+from GoTrue on every registration.
+
+**Who it reaches.** It decided how bad the logout defect fixed in `38254e2` was:
+"requires a direct API login first" if confirmation is on, "arms on every signup"
+if it is off. That specific exposure is closed — the anon client is now built with
+`persist_session=False`, so no route leaves a session on it — so this is no longer
+urgent. It still governs whether the signup flow behaves the way its own copy
+describes.
+
+**How it was found.** Neither reviewer in the 2026-09-05 pass could read it; both
+flagged it as the one probe requiring an operator.
+
+**What fixing it would disturb.** Nothing to fix — read the setting and write the
+answer down. `docs/security-hardening-plan.md` Task 3 already requires somebody in
+that dashboard; fold this into the same trip rather than making a second one.
+
+---
+
+### A silent truncation from a provider that omits `finish_reason` is still undetected
+
+**Where:** `web/services/openai_app.py` (`stream_response`) and the `done` frame in
+`web/api/app.py`.
+
+**What is wrong.** Since `80593b4` the server reports the provider's real
+termination reason, or `"unknown"` when none arrives, and the client flags an
+explicit `"length"`. That is honest but incomplete: not every OpenAI-compatible
+gateway sends a terminal `finish_reason`, and one that truncates without saying so
+still reaches the reader looking whole.
+
+**Who it reaches.** Nobody on stock OpenAI, which does send it. Anyone reached
+through a `base_url` override — today only the citation-fidelity harness, but that
+field exists precisely so a second provider can be tried.
+
+**How it was found.** Raised against the fix in `80593b4` by both an adversarial
+review and a pass over upstream sources. The fallback was chosen to under-flag
+rather than over-flag on purpose: a warning that appears on correct answers is
+trained away within a day, and then it is worth nothing on the answer that needed
+it.
+
+**What fixing it would disturb.** The answer is a positive signal, not a different
+default: `stream_options={"include_usage": True}` exposes
+`usage.completion_tokens_details.reasoning_tokens`, which separates budget
+exhaustion from a model that chose to say nothing. That means reading the
+usage-only final chunk the loop currently skips, deciding what to do when it never
+arrives (the SDK documents it as absent on an interrupted stream), and probably a
+second field on the `done` frame. It also costs a little response size on every
+request, for a signal only some providers make necessary.
+
+---
+
+### An empty answer toasts "failed to send", which is the wrong thing
+
+**Where:** `static/js/modules/handlers.js` — the toast copy selection in the
+stream's failure branch, which routes every code except `persistence_unavailable`
+to `chat.sendFailed`.
+
+**What is wrong.** Since `6347212` a provider that returns nothing produces an
+`error` frame coded `empty_answer`, the allowance is refunded and nothing is filed.
+But the reader is told their message failed to send. It did not: it was sent,
+understood, and answered with nothing. The file already reasons about exactly this
+distinction one branch over, for `chat.notSaved`.
+
+**Who it reaches.** Any reader who hits an empty answer — rare, and unmeasured.
+
+**How it was found.** Flagged during the `6347212` review as a known, accepted
+inaccuracy rather than discovered afterwards.
+
+**What fixing it would disturb.** A third branch in that lookup and a new key pair
+in both `en.yaml` and `ar.yaml` under an existing `runtime.*` namespace, plus an
+`ASSET_VERSION` bump. Small, but it is reader-facing copy, so `docs/PRODUCT.md`
+governs the wording and the Arabic needs a native read.
+
+---
+
+### `max_tokens` has no floor, and a low one guarantees empty answers
+
+**Where:** `web/services/settings_service.py` (`GENERATION_KEYS`, and the
+validation beside it), reached from the console's generation settings.
+
+**What is wrong.** `max_tokens` is validated as a positive integer under the
+model's declared ceiling, with no lower bound. For a reasoning model the budget
+covers hidden reasoning tokens **and** visible output, so a low value is spent
+entirely on reasoning and the model returns nothing, terminating on
+`finish_reason: "length"`. The provider bills every one of those tokens. An
+operator can therefore configure a guaranteed-empty, fully-billed answer from a
+form that reports no problem.
+
+**Who it reaches.** Every reader, immediately, from one console edit.
+
+**How it was found.** A pass over upstream guidance during the 2026-09-05 fixes:
+the recommendation is to leave the budget unset, or keep it well clear of the
+reasoning cost and control spend with `reasoning_effort` instead.
+
+**What fixing it would disturb.** The commits in `docs/review-findings-fix-plan.md`
+made this _reportable_ — refunded, not filed, and flagged — but not _preventable_.
+A floor needs a number, and the honest number is model-dependent, so it probably
+belongs in `allowed_models` in `config.yaml` beside each model's ceiling rather
+than as one global constant. That reopens the shape of the model contract, which is
+why it was not done alongside the reporting.
+
+---
+
+### Ten source comments cite a plan file that has been archived
+
+**Where:** `static/js/app.js:122`, `static/js/modules/handlers.js:457`,
+`static/js/modules/route.js:4`, `static/js/modules/services.js:496,662,793`, and
+`web/api/app.py:1356,1406,1677,2435`.
+
+**What is wrong.** All of them cite `docs/per-tab-conversation-deep-linking-plan.md`
+by section. That path no longer exists: the file is
+`docs/archive/2026-08-22_per-tab-deep-linking.md`, carrying `status: superseded`.
+So a reader following any of these citations finds nothing, and one who locates the
+archived file is reading a document the archive itself marks as not-current —
+exactly the failure mode `CLAUDE.md` warns about for `docs/archive/`.
+
+**Who it reaches.** Every contributor who tries to follow the reasoning behind the
+URL-as-pointer conversation model, which is most of them, because these comments
+sit on the load-bearing parts of it.
+
+**How it was found.** While editing `route.js` for the demo-flag fix; the citation
+at its line 4 was checked and did not resolve.
+
+**What fixing it would disturb.** Nothing functional — it is ten comment edits. The
+real decision is what to point them AT: `docs/ARCHITECTURE.md` now holds the live
+contract, but it does not carry the plan's section numbers (§1, §3.4, §5.1 and so
+on) that these comments cite precisely. Either the citations lose that precision,
+or ARCHITECTURE.md grows anchors to match. Deliberately not bundled into the
+demo-flag commit: one concern per commit, and this one spans four files that change
+for no other reason.
+
+---
 
 ### Leaked-password protection is disabled in Supabase Auth
 
@@ -186,60 +358,6 @@ with the `for update` that `admin_set_user_flags` already takes on a demotion ta
 costs nothing on the uncontended path. That is probably the right answer, and it should be
 measured rather than assumed: `for share` on `profiles` sits on the hot path of every admin
 mutation, and `profiles` is also the table every reader request reads.
-
----
-
-### Five rate limits are registered but never enforced — FIXED 2026-09-03
-
-> **Closed by the reader-quota Commit A.** All five registrations now assign the wrapper
-> back into `app.view_functions[name]`, and `web/tests/test_rate_limit_keys.py` pins each
-> of them behaviourally against an app built with `create_app(testing=True,
-enforce_rate_limits=True)` — nine tests covering the five reassignments, the chat burst
-> limit firing, the two chat routes sharing one allowance, per-account keying, and the
-> decorator order. The `app.py` comments claiming the limits "stack" on the blueprint's
-> 60/minute were corrected in the same commit, `docs/ARCHITECTURE.md`'s rate-limit table
-> records the whole episode, and the chat limit plus both former token-hash keys now key on
-> the account via `_rate_key`. Kept here rather than deleted because the failure mode —
-> a line that reads as protection and removes it — is worth recognising again.
-
-**The original entry, as written:**
-
-**Where:** `web/api/app.py`, `_register_routes` — the five calls of the shape
-`limiter.limit(...)(app.view_functions["admin.revoke_sessions"])`: `admin.revoke_sessions`,
-`admin.change_email`, `admin.create_notification`, `account.export` and
-`account.delete_all_conversations`.
-
-**What is wrong.** Each call discards the wrapper Flask-Limiter returns. In the installed
-Flask-Limiter (4.1.1) a decorated limit is evaluated inside that wrapper, not in the
-extension's `before_request`, and marking the endpoint makes `before_request` skip it —
-including the blueprint's blanket 60/minute. So none of the five routes has any effective
-limit: not the per-route one, not the blueprint one. `export_api: "2 per 10 minutes"` and the
-per-administrator `notification_broadcast_api` are documented in `docs/ARCHITECTURE.md`'s
-rate-limit table and enforced nowhere.
-
-**Who it reaches.** Every reader and every administrator, silently — nothing fails, a limit
-simply never fires. The routes are still behind their blueprint gates, so this is an
-unbounded-rate problem, not an authorization one.
-
-**How it was found.** A code read during the reader-quota planning session (2026-09-03),
-then reproduced in a throwaway app on the installed version: a "1 per minute" route limit
-plus a "2 per minute" blueprint limit answered `200, 200, 200, 200` to four hits; assigning
-the returned wrapper back (`app.view_functions[name] = limiter.limit(...)(fn)`) answered
-`200, 429, 429, 429`. The suite could not have caught it: `RATELIMIT_ENABLED=not testing`
-disables the limiter under pytest, and no test exercises an enabled limiter.
-
-**What fixing it would disturb.** One-line changes to the five registrations, plus the test
-harness that can prove them — an enabled limiter for one test, which
-`docs/archive/2026-09-04_reader-quota.md` §3.7 designs (`web/tests/test_rate_limit_keys.py`) and which
-also pins the chat routes' decorator order. Scheduled as part of that plan's Commit A rather
-than fixed alone, because the harness is the expensive half and is shared. Once fixed, each of the
-five carries exactly its own limit and **not** the blueprint's 60/minute as well: `limit()`
-defaults `override_defaults=True`, so a route limit replaces its blueprint's rather than
-stacking on it — the opposite of what `app.py`'s comments beside these registrations say
-("Both stack"), which the same commit rewrites. `web/tests/test_registrations_pause.py`'s
-comment is right that the retained instance cannot simply be switched on for one test
-(`init_app` returns before building storage when the flag is off); only its "never
-retained" clause is stale, and the plan's harness builds a separate app with the limiter on.
 
 ---
 

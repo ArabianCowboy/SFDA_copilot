@@ -43,6 +43,67 @@ recording.
 
 ## [HISTORICAL] Resolved bugs
 
+### [HISTORICAL] ~~Five rate limits are registered but never enforced~~ — FIXED 2026-09-03
+
+> **Closed by the reader-quota Commit A.** All five registrations now assign the wrapper
+> back into `app.view_functions[name]`, and `web/tests/test_rate_limit_keys.py` pins each
+> of them behaviourally against an app built with `create_app(testing=True,
+enforce_rate_limits=True)` — nine tests covering the five reassignments, the chat burst
+> limit firing, the two chat routes sharing one allowance, per-account keying, and the
+> decorator order. The `app.py` comments claiming the limits "stack" on the blueprint's
+> 60/minute were corrected in the same commit, `docs/ARCHITECTURE.md`'s rate-limit table
+> records the whole episode, and the chat limit plus both former token-hash keys now key on
+> the account via `_rate_key`. Kept here rather than deleted because the failure mode —
+> a line that reads as protection and removes it — is worth recognising again.
+
+**The original entry, as written:**
+
+**Where:** `web/api/app.py`, `_register_routes` — the five calls of the shape
+`limiter.limit(...)(app.view_functions["admin.revoke_sessions"])`: `admin.revoke_sessions`,
+`admin.change_email`, `admin.create_notification`, `account.export` and
+`account.delete_all_conversations`.
+
+**What is wrong.** Each call discards the wrapper Flask-Limiter returns. In the installed
+Flask-Limiter (4.1.1) a decorated limit is evaluated inside that wrapper, not in the
+extension's `before_request`, and marking the endpoint makes `before_request` skip it —
+including the blueprint's blanket 60/minute. So none of the five routes has any effective
+limit: not the per-route one, not the blueprint one. `export_api: "2 per 10 minutes"` and the
+per-administrator `notification_broadcast_api` are documented in `docs/ARCHITECTURE.md`'s
+rate-limit table and enforced nowhere.
+
+**Who it reaches.** Every reader and every administrator, silently — nothing fails, a limit
+simply never fires. The routes are still behind their blueprint gates, so this is an
+unbounded-rate problem, not an authorization one.
+
+**How it was found.** A code read during the reader-quota planning session (2026-09-03),
+then reproduced in a throwaway app on the installed version: a "1 per minute" route limit
+plus a "2 per minute" blueprint limit answered `200, 200, 200, 200` to four hits; assigning
+the returned wrapper back (`app.view_functions[name] = limiter.limit(...)(fn)`) answered
+`200, 429, 429, 429`. The suite could not have caught it: `RATELIMIT_ENABLED=not testing`
+disables the limiter under pytest, and no test exercises an enabled limiter.
+
+**What fixing it would disturb.** One-line changes to the five registrations, plus the test
+harness that can prove them — an enabled limiter for one test, which
+`docs/archive/2026-09-04_reader-quota.md` §3.7 designs (`web/tests/test_rate_limit_keys.py`) and which
+also pins the chat routes' decorator order. Scheduled as part of that plan's Commit A rather
+than fixed alone, because the harness is the expensive half and is shared. Once fixed, each of the
+five carries exactly its own limit and **not** the blueprint's 60/minute as well: `limit()`
+defaults `override_defaults=True`, so a route limit replaces its blueprint's rather than
+stacking on it — the opposite of what `app.py`'s comments beside these registrations say
+("Both stack"), which the same commit rewrites. `web/tests/test_registrations_pause.py`'s
+comment is right that the retained instance cannot simply be switched on for one test
+(`init_app` returns before building storage when the flag is off); only its "never
+retained" clause is stale, and the plan's harness builds a separate app with the limiter on.
+
+**Moved here 2026-09-05.** The entry was closed on 2026-09-03 but struck in place and left
+in `TODO.md`, which is the one thing that file's own closing procedure tells you not to do —
+"a file where a handful of entries in forty read as current is a file nobody trusts the index
+of" is the exact reason the archive exists. Nothing about the fix changed; only its location.
+Its own closing note already explains why the entry was kept rather than deleted, and that
+reasoning is why it is here rather than gone.
+
+---
+
 ### [HISTORICAL] ~~A new `security definer` function is born callable by anyone signed in~~ — FIXED 2026-08-28
 
 **Closed the same day it was opened, by an adversarial review that refused the diagnosis.**
