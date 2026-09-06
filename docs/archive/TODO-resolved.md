@@ -1134,6 +1134,52 @@ Supabase project: four `mark-read` calls and one `mark-all-read` call, all `200`
 
 ---
 
+### [HISTORICAL] ~~Is GoTrue email confirmation on for this project?~~ — ANSWERED 2026-09-06
+
+**Where:** The Supabase dashboard (Authentication → Providers → Email), not this
+repo.
+
+**What is wrong.** Nothing, necessarily — it is unverified. `web/i18n/en.yaml:214`
+tells the reader to check their inbox, which proves the copy assumes confirmation,
+not that the setting is on. If it is off, `POST /auth/signup` receives a session
+from GoTrue on every registration.
+
+**Who it reaches.** It decided how bad the logout defect fixed in `38254e2` was:
+"requires a direct API login first" if confirmation is on, "arms on every signup"
+if it is off. That specific exposure is closed — the anon client is now built with
+`persist_session=False`, so no route leaves a session on it — so this is no longer
+urgent. It still governs whether the signup flow behaves the way its own copy
+describes.
+
+**How it was found.** Neither reviewer in the 2026-09-05 pass could read it; both
+flagged it as the one probe requiring an operator.
+
+**What fixing it would disturb.** Nothing to fix — read the setting and write the
+answer down. `docs/security-hardening-plan.md` Task 3 already requires somebody in
+that dashboard; fold this into the same trip rather than making a second one.
+
+**ANSWERED 2026-09-06 — yes, Confirm email is on.** Read directly in the Supabase
+dashboard (Authentication → Sign In / Providers → User Signups) by the operator: **Confirm
+email ON**, Allow new users to sign up ON, Allow manual linking OFF, Allow anonymous
+sign-ins OFF. The signup flow therefore behaves the way its own copy describes —
+`/auth/signup` receives a user and no session, answers `201`, and
+`runtime.signupSent.heading` ("Check your email") is accurate rather than aspirational.
+Nothing was toggled; the correct state was already the current state. `Allow manual
+linking` was considered in the same trip and deliberately left off — it enables GoTrue's
+`linkIdentity`/`unlinkIdentity` APIs, which this email/password-only application never
+calls.
+
+**The diagnosis was not wrong, but the question had already been answered once.** This
+project turned confirmation back on on 2026-08-14, and that is already recorded in this
+same file — see _Email confirmation is disabled_ — RESOLVED 2026-08-14, further up under
+_Resolved bugs_. Neither reviewer in the
+2026-09-05 pass found it, because `docs/archive/` is excluded from search by `/.ignore` —
+which is the intended behaviour for a history directory, and the reason this entry cost a
+second dashboard trip rather than a grep. Worth remembering the next time an entry says
+"nobody has read this": the archive may have.
+
+---
+
 ## [HISTORICAL] Resolved planned work
 
 ### [HISTORICAL] ~~Give readers a quota, and limits worth having~~ — BUILT 2026-09-03/04

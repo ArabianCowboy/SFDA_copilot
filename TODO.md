@@ -34,7 +34,6 @@ bottom of this file: [How this file works](#how-this-file-works).
 
 - [Leaked-password protection is disabled in Supabase Auth](#leaked-password-protection-is-disabled-in-supabase-auth) — blocked on a Pro-plan upgrade, not code.
 - [`auth_bp` carries no rate limit, so `/auth/login` is unlimited](#auth_bp-carries-no-rate-limit-so-authlogin-is-unlimited) — diagnosed, unfixed; the exemption is deliberate for logout and accidental for login.
-- [Is GoTrue email confirmation on for this project?](#is-gotrue-email-confirmation-on-for-this-project) — a dashboard fact nobody has read; fold into the security-hardening plan's Task 3 trip.
 - [A silent truncation from a provider that omits `finish_reason` is still undetected](#a-silent-truncation-from-a-provider-that-omits-finish_reason-is-still-undetected) — diagnosed; needs `include_usage`, not a different default.
 - [An empty answer toasts "failed to send", which is the wrong thing](#an-empty-answer-toasts-failed-to-send-which-is-the-wrong-thing) — cosmetic, needs a bilingual key pair.
 - [`max_tokens` has no floor, and a low one guarantees empty answers](#max_tokens-has-no-floor-and-a-low-one-guarantees-empty-answers) — not started; prevention rather than the reporting that now exists.
@@ -92,32 +91,6 @@ or splitting login onto its own blueprint the way signup already is. The second 
 tidier and matches the existing shape. Either way `test_rate_limit_keys.py` gains a
 case, and someone has to decide whether a route no browser calls should simply be
 deleted instead, which is a product decision rather than a fix.
-
----
-
-### Is GoTrue email confirmation on for this project?
-
-**Where:** The Supabase dashboard (Authentication → Providers → Email), not this
-repo.
-
-**What is wrong.** Nothing, necessarily — it is unverified. `web/i18n/en.yaml:214`
-tells the reader to check their inbox, which proves the copy assumes confirmation,
-not that the setting is on. If it is off, `POST /auth/signup` receives a session
-from GoTrue on every registration.
-
-**Who it reaches.** It decided how bad the logout defect fixed in `38254e2` was:
-"requires a direct API login first" if confirmation is on, "arms on every signup"
-if it is off. That specific exposure is closed — the anon client is now built with
-`persist_session=False`, so no route leaves a session on it — so this is no longer
-urgent. It still governs whether the signup flow behaves the way its own copy
-describes.
-
-**How it was found.** Neither reviewer in the 2026-09-05 pass could read it; both
-flagged it as the one probe requiring an operator.
-
-**What fixing it would disturb.** Nothing to fix — read the setting and write the
-answer down. `docs/security-hardening-plan.md` Task 3 already requires somebody in
-that dashboard; fold this into the same trip rather than making a second one.
 
 ---
 

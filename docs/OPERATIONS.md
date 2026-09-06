@@ -291,6 +291,11 @@ check-your-mail panel — today's behaviour. Turning Confirm email **off** would
 have GoTrue return a session to the _server_, which does not forward it, and a
 reader would be told to check mail that never arrives while holding no
 session. That would need a code change first, not just a dashboard toggle.
+**Verified on 2026-09-06** by reading the dashboard directly (Authentication → Sign In
+/ Providers → User Signups): Confirm email is on, and so is _Allow new users to sign
+up_; _Allow manual linking_ and _Allow anonymous sign-ins_ are both off, which is the
+wanted state — this application never calls GoTrue's identity-linking or anonymous
+sign-in APIs.
 
 ---
 

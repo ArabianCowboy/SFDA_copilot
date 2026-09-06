@@ -412,7 +412,9 @@ cleanup.
 - **Rate limit** — `signup_api: "5 per minute"` at `web/config.yaml:123`.
 - **Confirm email** must stay on (see `docs/OPERATIONS.md`): signup is server-mediated and
   returns no session, so each test account needs its confirmation link followed, or confirming
-  through the Admin API.
+  through the Admin API. (Read in the dashboard 2026-09-06: it is on. This is no longer an open
+  question to settle during the run — `TODO.md` had folded that probe into this trip, and it has
+  since been answered and archived.)
 - **The mail ceiling is 30 emails per hour, per project** — `docs/OPERATIONS.md:76-81`, and it is
   enforced by Supabase independently of Resend's own limits. Three accounts plus any password
   resets is comfortably inside it, but a repeated run in the same hour is not. Create the
