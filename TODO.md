@@ -84,7 +84,7 @@ unmetered credential-stuffing and account-enumeration oracle. No browser calls i
 **Who it reaches.** Nobody through the UI. Anyone who can reach the public API.
 
 **How it was found.** The 2026-09-05 review pass, as an aside to the logout finding
-(`docs/review-findings-fix-plan.md`, finding 1).
+([the archived plan](docs/archive/2026-09-05_review-findings-fix.md), finding 1).
 
 **What fixing it would disturb.** Either a per-route limit on login alone —
 Flask-Limiter supports a route decorator, so the blueprint-wide exemption can stay —
@@ -196,7 +196,8 @@ form that reports no problem.
 the recommendation is to leave the budget unset, or keep it well clear of the
 reasoning cost and control spend with `reasoning_effort` instead.
 
-**What fixing it would disturb.** The commits in `docs/review-findings-fix-plan.md`
+**What fixing it would disturb.** The commits in
+[the archived review-findings plan](docs/archive/2026-09-05_review-findings-fix.md)
 made this _reportable_ — refunded, not filed, and flagged — but not _preventable_.
 A floor needs a number, and the honest number is model-dependent, so it probably
 belongs in `allowed_models` in `config.yaml` beside each model's ceiling rather

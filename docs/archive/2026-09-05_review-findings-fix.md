@@ -1,15 +1,58 @@
-STATUS: COMPLETE — all four commits shipped 2026-09-05 (38254e2, 6347212, 80593b4, and D).
-Follow-ups are filed as TODO.md entries; this file is ready to archive per
-docs/archive/README.md.
-Written 2026-09-05.
+---
+authority: historical
+status: superseded
+do_not_implement: true
+archived: 2026-09-05
+supersedes_note: >
+  This document is a finished plan, and it was revised twice while being built —
+  once before implementation, after an adversarial review of the plan itself, and
+  once during, when the code disagreed with it. The final positions are stated at
+  the top so no reading order is required. It is a record of what was decided and
+  what it cost, not a specification.
+live_authority:
+  - docs/ARCHITECTURE.md
+  - DESIGN.md
+  - TODO.md
+---
 
-Supersedes nothing. When each commit lands, tick it in _Rollout_ below and update this
-`STATUS:` line; when all four are done, archive this file per
-[`docs/archive/README.md`](archive/README.md#adding-to-this-archive).
+> [!CAUTION]
+> **You are reading history, not a specification.** Do not implement anything found
+> in this file without first confirming it against `docs/ARCHITECTURE.md` or the code.
+> Every heading below is prefixed `[HISTORICAL]` so a search result cannot be mistaken
+> for current design.
 
-# Fixing the four findings from the 2026-09-05 review
+STATUS: HISTORICAL RECORD — archived 2026-09-05. Nothing here is an instruction.
+All four commits shipped 2026-09-05 and are live: `38254e2`, `6347212`, `80593b4`,
+`2ffe4d0`, plus `313df9e` for the follow-up entries.
 
-## Context
+## [HISTORICAL] The final position, so this file needs no reading order
+
+Three of the four fixes shipped differently from how this plan first described them. Where
+the body still argues the earlier position, **this section wins.**
+
+| #   | What shipped                                                                                                                                                                                       | What this plan first said                                                                                                                                                                                                                                                                                                                                   |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Two changes: the anon Supabase client is built `persist_session=False` so no route leaves an identity on it, **and** logout passes the caller's own JWT to `auth.admin.sign_out(token, "global")`. | Delete the `sign_out()` call outright. Reversed before implementation — an adversarial review found three paths where the browser's own revoke never runs, and the installed SDK turned out to expose a scoped server-side revoke after all. Deleting would also have removed the _reader_ of the poisoned state while leaving `/auth/signup` _writing_ it. |
+| 2   | `done.finish_reason` reports the provider's word or **`"unknown"`**; the client flags only an explicit `"length"`. Both chat routes, not just streaming.                                           | `"stop"` as the fallback, and streaming only. Both reversed: manufacturing `"stop"` from an absence is the asserted-not-computed mistake this repo already warns about, and fixing one route would have made the other's blindness permanent and made it look deliberate.                                                                                   |
+| 3   | As planned, plus `_release_daily_message` now **returns** the post-refund claim so the `error` frame can carry a truthful counter.                                                                 | The plan assumed the number could be computed at the call site. It could not: `QuotaClaim` is frozen and a refund can fail silently, so that would have reported a refund that did not happen.                                                                                                                                                              |
+| 4   | As planned — an allow-list of `testing` and `lang` in `pathFor`.                                                                                                                                   | Unchanged.                                                                                                                                                                                                                                                                                                                                                  |
+
+Two claims raised against this plan were checked and **rejected**, and should stay rejected:
+
+- **That `?testing=true` is a CWE-598 auth bypass.** It is gated server-side on
+  `current_app.config["TESTING"]`, so in production it only makes the client send a token
+  real Supabase verification rejects. A demo affordance, not a credential.
+- **That the truncation note should use `--warning`.** `DESIGN.md`'s colour rule already
+  covers the case: an operator-configured ceiling doing its job is a deliberately-enforced
+  boundary, which is `--confidence`. A third register for a case two already cover is how a
+  colour vocabulary stops meaning anything.
+
+Everything this work deliberately left open is filed in [`TODO.md`](../../TODO.md) — six
+entries, added by `313df9e`. Nothing open lives only in this file.
+
+# [HISTORICAL] Fixing the four findings from the 2026-09-05 review
+
+## [HISTORICAL] Context
 
 A whole-codebase review followed by an adversarial re-review adjudicated four current-codebase
 defects: three P2 and one P3. Both reviewers were read-only. Neither ran browser tests or live
@@ -32,7 +75,7 @@ Two false comments become true as a side effect, and both must land in the commi
 them so, per CLAUDE.md's document rule: `app.py:3363-3364` promises a refund that does not
 happen, and `web/utils/supabase_client.py:73-75` calls a live route dead.
 
-### Corrections to the review this plan is built on
+### [HISTORICAL] Corrections to the review this plan is built on
 
 1. **`apply_generation_settings` does not mutate the shared handler in place.** `app.py:2081-2117`
    builds a replacement through `openai_handler_factory` and rebinds `app.config["openai_handler"]`.
@@ -49,9 +92,9 @@ happen, and `web/utils/supabase_client.py:73-75` calls a live route dead.
 
 ---
 
-## Finding 1 — logout is not bound to the requester
+## [HISTORICAL] Finding 1 — logout is not bound to the requester
 
-### What is wrong
+### [HISTORICAL] What is wrong
 
 `web/api/auth.py:460` calls `supabase.auth.sign_out()` on the **anon singleton** from
 `get_supabase()` (`web/utils/supabase_client.py:82-91`). The SDK's no-arg `sign_out()` defaults to
@@ -88,7 +131,7 @@ Verified separately: token verification passes the token explicitly
 (`app.py:677-678` `supabase.auth.get_user(token)`), so a stale saved session on the singleton
 affects nothing else. Line 460 is its only consumer.
 
-### The change
+### [HISTORICAL] The change
 
 > **This reverses an earlier decision, and the reversal is signed off (2026-09-05).** The first
 > draft simply deleted the upstream revoke, on the reasoning that the browser always performs it.
@@ -147,7 +190,7 @@ Same commit:
   no longer touches GoTrue. Say so.
 - Drop the now-unused `Any` import from `auth.py` if nothing else needs it.
 
-### Tests
+### [HISTORICAL] Tests
 
 - `web/tests/test_auth_routes.py:162-191`
   `test_logout_drops_the_token_even_when_gotrue_fails` is the **only pin on the ordering** —
@@ -165,11 +208,11 @@ Same commit:
 
 ---
 
-## Finding 3 — an empty answer is charged, persisted and returned 200
+## [HISTORICAL] Finding 3 — an empty answer is charged, persisted and returned 200
 
 Sequenced before finding 2; see _Rollout_ for why.
 
-### What is wrong
+### [HISTORICAL] What is wrong
 
 **Streaming.** `spent = True` sits _inside_ the token loop (`app.py:3368`), so an empty stream never
 sets it — but all three refunds live in `except` handlers (`:3537`, `:3545`, `:3558`) and an empty
@@ -196,7 +239,7 @@ terminating on `finish_reason: "length"`. The provider bills every reasoning tok
 the upstream cost is real even when the reader gets nothing — refunding the reader is a deliberate
 product choice to absorb that cost, not a way to recover it.
 
-### The change
+### [HISTORICAL] The change
 
 **Streaming** — after the loop, before `_finalize_answer` at `:3372`, branch on an empty joined and
 stripped answer: log it, `_release_daily_message(quota)`, emit an `error` frame carrying a new
@@ -249,7 +292,7 @@ distinction at `:1504-1507`. Accurate copy needs a third branch plus a bilingual
 outside the copy scope chosen for this plan — so it becomes a `TODO.md` entry, and this commit
 ships the slightly-wrong-but-not-misleading existing string.
 
-### Tests
+### [HISTORICAL] Tests
 
 There is no existing empty-stream test on either route — `iter([])` appears nowhere in
 `web/tests/` — so this is new coverage, not changed coverage.
@@ -268,9 +311,9 @@ trap bites.
 
 ---
 
-## Finding 2 — the truncation signal is thrown away
+## [HISTORICAL] Finding 2 — the truncation signal is thrown away
 
-### What is wrong
+### [HISTORICAL] What is wrong
 
 `stream_response` (`openai_app.py:420-448`) reads `chunk.choices[0].delta.content` and nothing else.
 `app.py:3493` then writes the literal `"finish_reason": "stop"` into the `done` frame. A token-limit
@@ -285,14 +328,14 @@ through the admin console (`settings_service.py:28-31`, `admin.py:165`,
 Discarding `finish_reason` is one of the most commonly reported defects in streaming LLM
 integrations, so this is a well-trodden failure rather than an exotic one.
 
-### The hard constraint
+### [HISTORICAL] The hard constraint
 
 **The finish reason must not be stored on the handler.** One worker, eight threads, one shared
 instance; `OpenAIHandler` has no per-request mutable state today and documents immutability as a
 contract (`openai_app.py:176-183`), and `apply_generation_settings` replaces rather than mutates
 (`app.py:2081-2117`). An instance attribute would be read by whichever request got there last.
 
-### The change
+### [HISTORICAL] The change
 
 **Carriage.** A small `FinishSignal` dataclass beside `GenerationFailed` (`openai_app.py:157`),
 passed as a keyword-only argument:
@@ -415,7 +458,7 @@ structure, and does not need to.
 
 Bump `ASSET_VERSION` (`app.py:265`, currently `"warm69"`).
 
-### Which branch wins when both conditions hold
+### [HISTORICAL] Which branch wins when both conditions hold
 
 An empty stream that terminated on `length` satisfies both findings. **The empty guard wins**,
 because it returns before the `done` frame is built, so no finish reason is transmitted. That is the
@@ -434,7 +477,7 @@ the other, and they differ on every axis that matters:
 Collapsing them into one "incomplete" concept would either refund a truncated answer or file an
 empty one.
 
-### Tests
+### [HISTORICAL] Tests
 
 Changing:
 
@@ -472,9 +515,9 @@ New:
 
 ---
 
-## Finding 4 — demo mode is lost on navigation
+## [HISTORICAL] Finding 4 — demo mode is lost on navigation
 
-### What is wrong
+### [HISTORICAL] What is wrong
 
 `route.js:30-32` `pathFor(id)` returns `` `${PREFIX}${id}` `` with no query string, and `enter`
 (`:58`), `replace` (`:74`) and `go` (`:86`) all navigate through it. Six places read the flag live
@@ -496,7 +539,7 @@ too — the demo user takes the _signed-out_ branch rather than a graceful bypas
 `?lang=` is dropped by the same code path, and `i18n.js:63-68` already states that everything else
 in the query has to survive its rewrite. It is the same bug wearing a different hat.
 
-### The change
+### [HISTORICAL] The change
 
 **Preserve an allow-list of query parameters in `pathFor` — `testing` and `lang` — not the whole
 query string.** Allow-listing is the settled practice; blanket preservation is avoided precisely
@@ -515,7 +558,7 @@ Flagged rather than done silently: `route.js:4` and `services.js:496` cite
 `docs/per-tab-conversation-deep-linking-plan.md`, which no longer exists at that path — it is
 `docs/archive/2026-08-22_per-tab-deep-linking.md`, `status: superseded`. Repoint or drop.
 
-### On `?testing=true` as a URL flag
+### [HISTORICAL] On `?testing=true` as a URL flag
 
 A query-string auth-bypass flag is an anti-pattern in general (CWE-598), and preserving one more
 widely deserves a second look. **It does not apply here, and this was verified rather than
@@ -524,7 +567,7 @@ the branch at `:665` runs instead, so `?testing=true` merely makes the client se
 real Supabase verification, which rejects it. The flag is inert without a server started in testing
 mode. The server gate is the control; the URL parameter is a demo affordance, not a credential.
 
-### Tests
+### [HISTORICAL] Tests
 
 `web/tests/test_frontend.py:270-274` is page-load only — it asserts header text and sends nothing,
 which is why this was **uncovered** rather than uncontradicted. No test sends two messages in demo
@@ -538,7 +581,7 @@ level (`conftest.py:614-621`), so both turns resolve. Assert: the second send do
 `#authModal`; the URL still carries `testing=true` after navigation; and `recovery=1` is **not**
 carried into a `/c/<id>` entry.
 
-### One consequence to accept deliberately
+### [HISTORICAL] One consequence to accept deliberately
 
 Preserving `testing` into `/c/<uuid>` means a **copied link replays demo mode for the recipient**
 rather than opening the real conversation. That is inherent to keeping the flag in the URL, it is
@@ -548,7 +591,7 @@ nobody noticed — record it here so the next person does not treat it as a bug.
 
 ---
 
-## Rollout
+## [HISTORICAL] Rollout
 
 |     | Commit                                                                             | Finding | JS/CSS                | Browser suite |
 | --- | ---------------------------------------------------------------------------------- | ------- | --------------------- | ------------- |
@@ -571,7 +614,7 @@ them; rule 9 fires only on edits to `CLAUDE.md`.
 
 **B must not be bisected.** Its streaming and blocking halves ship together — see that section.
 
-## Verification
+## [HISTORICAL] Verification
 
 ```bash
 python -m pytest -m "not browser and not integration"      # what CI runs
@@ -602,7 +645,7 @@ Beyond the suite:
 rather than trusting any delegated agent's self-report. Both rules are in CLAUDE.md because they
 have caught real errors here before.
 
-## Changed during implementation
+## [HISTORICAL] Changed during implementation
 
 Recorded rather than quietly absorbed, per the repo's reversal rule.
 
@@ -620,13 +663,13 @@ Recorded rather than quietly absorbed, per the repo's reversal rule.
 - **Commit C: `UI.addMessage` now returns its message element.** The blocking route had no handle
   to annotate — the plan assumed one existed. One line, one caller.
 
-## Open questions this plan does not close
+## [HISTORICAL] Open questions this plan does not close
 
 **All six are now filed as `TODO.md` entries** (2026-09-05); they are listed here as the record of what this work deliberately left open.
 
 1. **Is GoTrue email confirmation on for this project?** It decides whether finding 1 was "requires
    a direct API login" or "arms on every signup". `en.yaml:214`'s copy assumes confirmation, which
-   proves the copy, not the dashboard. [`docs/security-hardening-plan.md`](security-hardening-plan.md)
+   proves the copy, not the dashboard. [`docs/security-hardening-plan.md`](../security-hardening-plan.md)
    Task 3 already needs someone in that dashboard — fold this in rather than making a second trip.
 2. **`auth_bp` carries no rate limit**, so `/auth/login` is an unlimited credential-stuffing
    surface. Deliberate for logout; login inherits it by accident.
@@ -644,7 +687,7 @@ Recorded rather than quietly absorbed, per the repo's reversal rule.
    console lets an operator set a value that guarantees the failure findings 2 and 3 handle. A
    validated floor would prevent rather than report it.
 
-## How this plan was built
+## [HISTORICAL] How this plan was built
 
 Written 2026-09-05 against a read-only review and its adversarial re-review. Every `file:line` was
 then re-read directly rather than carried over, which corrected four of the review's own claims
