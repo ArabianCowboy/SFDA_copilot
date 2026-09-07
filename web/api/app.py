@@ -981,6 +981,29 @@ def _quota_exhausted_response(claim: QuotaClaim) -> tuple[Response, int]:
     return response, 429
 
 
+def realtime_ws_origins(project_ref: str | None) -> list[str]:
+    """The `connect-src` WebSocket entries for Supabase Realtime.
+
+    The project's own origin when the ref is known, and the wildcard ONLY as the
+    fallback when it is not — never both. This used to append
+    `wss://*.supabase.co` unconditionally, immediately after the specific
+    origin, which meant the specific entry narrowed nothing: any `*.supabase.co`
+    stayed reachable whether or not the ref was configured, so setting
+    `SUPABASE_PROJECT_REF` looked like hardening and achieved exactly nothing.
+
+    A deployment that has not set the ref keeps the wildcard and works exactly as
+    before; tightening is something a deployment opts into by configuring itself
+    properly, not something imposed on one that has not.
+
+    Extracted from `_init_extensions` to be testable at all: under
+    `testing=True` the debug branch replaces `connect-src` wholesale, so the
+    production rule is unreachable from a test client.
+    """
+    if project_ref:
+        return [f"wss://{project_ref}.supabase.co"]
+    return ["wss://*.supabase.co"]
+
+
 def _quota_unavailable_response() -> tuple[Response, int]:
     """503 for a configuration-shaped quota fault. Fails CLOSED, deliberately."""
     response = jsonify(error="The service is temporarily unavailable.", code="quota_unavailable")
@@ -1657,10 +1680,7 @@ def _init_extensions(app: Flask, testing: bool) -> Limiter:
         "https://cdn.jsdelivr.net",
     ]
 
-    # Add WebSocket support for Supabase Realtime
-    if project_ref := config.get_secret("SUPABASE_PROJECT_REF"):
-        connect_src.append(f"wss://{project_ref}.supabase.co")
-    connect_src.append("wss://*.supabase.co")  # Allow all Supabase WebSocket connections
+    connect_src.extend(realtime_ws_origins(config.get_secret("SUPABASE_PROJECT_REF")))
 
     # Dev-only allowance for the Impeccable live-mode helper, which serves its
     # picker script and an SSE channel from http://localhost:8400. It needs both
