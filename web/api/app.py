@@ -17,6 +17,7 @@ import base64
 import json
 import logging
 import math
+import re
 import sys
 import threading
 import time
@@ -121,17 +122,12 @@ DOTENV_PATH = PROJECT_ROOT / ".env"
 # source. The shadowing that does happen is logged below rather than left
 # silent, because a variable set in two places and honoured from one is exactly
 # the situation that costs an afternoon.
+# The shadowed set is computed BEFORE the load, while the environment still
+# shows only what the deployment itself set. It is reported further down, after
+# logging is configured — see there for why.
 _dotenv_values = dotenv_values(DOTENV_PATH) if DOTENV_PATH.exists() else {}
 _shadowed = sorted(name for name in _dotenv_values if os.getenv(name) is not None)
 load_dotenv(dotenv_path=DOTENV_PATH, override=False)
-logger.info("Loaded .env from %s", DOTENV_PATH)
-if _shadowed:
-    # Names only — several of these are secrets.
-    logger.warning(
-        "These variables are set in BOTH the environment and .env; the "
-        "environment wins and the .env value is ignored: %s",
-        ", ".join(_shadowed),
-    )
 
 # ──────────────────────────────────────────────────────────
 # Logging Configuration
@@ -147,6 +143,21 @@ if not logging.getLogger().handlers:
 
 # Explicitly set the level for the openai_app logger to INFO
 logging.getLogger("web.services.openai_app").setLevel(logging.INFO)
+
+# Reported HERE, not at the load above, because the load has to happen first —
+# it is where LOG_LEVEL comes from — and anything logged before `basicConfig`
+# goes to logging's last-resort handler: unformatted, routed to no configured
+# destination, and dropping INFO entirely. The one line that says a deployment's
+# own configuration is being honoured over a stale file is precisely the line
+# that must not be the one that goes missing.
+logger.info("Loaded .env from %s", DOTENV_PATH)
+if _shadowed:
+    # Names only — several of these are secrets.
+    logger.warning(
+        "These variables are set in BOTH the environment and .env; the "
+        "environment wins and the .env value is ignored: %s",
+        ", ".join(_shadowed),
+    )
 
 # Optional: Add a file handler for persistent logs
 # handler = RotatingFileHandler('app.log', maxBytes=10000, backupCount=3)
@@ -981,26 +992,65 @@ def _quota_exhausted_response(claim: QuotaClaim) -> tuple[Response, int]:
     return response, 429
 
 
-def realtime_ws_origins(project_ref: str | None) -> list[str]:
+# A Supabase project ref is a DNS label, so anything outside this cannot be one.
+# The check is not about a hostile operator — the value comes from the process
+# environment, which is already trusted — but about a wrong value producing a
+# policy that silently does the opposite of what it looks like. `*` is the case
+# that matters: interpolated unchecked it rebuilds `wss://*.supabase.co`, the
+# exact wildcard this narrowing removed, while reading as though it were locked
+# down. A space produces `wss:// .supabase.co`, which blocks Realtime outright.
+_PROJECT_REF = re.compile(r"^[a-z0-9-]{1,63}$")
+
+
+def realtime_ws_origins(supabase_url: str | None, project_ref: str | None = None) -> list[str]:
     """The `connect-src` WebSocket entries for Supabase Realtime.
 
-    The project's own origin when the ref is known, and the wildcard ONLY as the
-    fallback when it is not — never both. This used to append
-    `wss://*.supabase.co` unconditionally, immediately after the specific
-    origin, which meant the specific entry narrowed nothing: any `*.supabase.co`
-    stayed reachable whether or not the ref was configured, so setting
-    `SUPABASE_PROJECT_REF` looked like hardening and achieved exactly nothing.
+    Derived from `SUPABASE_URL`, deliberately, because that is the value the
+    browser actually connects with — `services.js` passes it to `createClient`,
+    and Realtime opens its socket against the same host. Deriving the CSP from a
+    SEPARATE variable was the flaw in the first version of this: `connect-src`
+    came from `SUPABASE_PROJECT_REF` while the socket came from `SUPABASE_URL`,
+    so the two could disagree. A stale ref left over from another project — the
+    same copy-paste that caused the 2026-09-07 incident — would then block the
+    socket to the correct host while REST kept working, degrading Realtime to
+    poll-only with nothing raised anywhere. `SUPABASE_PROJECT_REF` has no other
+    consumer in the codebase, so it could hold anything and nobody would notice
+    until the CSP started depending on it.
 
-    A deployment that has not set the ref keeps the wildcard and works exactly as
-    before; tightening is something a deployment opts into by configuring itself
-    properly, not something imposed on one that has not.
+    The wildcard is the fallback, never a companion: appending it unconditionally
+    after the specific origin — the behaviour before this — meant the specific
+    entry narrowed nothing at all. A deployment that supplies no usable URL or ref
+    keeps the wildcard and works exactly as before.
+
+    `project_ref` is still honoured as a fallback, and validated rather than
+    interpolated on trust. When both are present and disagree, the URL wins and
+    the mismatch is logged: the URL is what the browser will use, so a CSP built
+    from the other value would be wrong by construction.
 
     Extracted from `_init_extensions` to be testable at all: under
     `testing=True` the debug branch replaces `connect-src` wholesale, so the
     production rule is unreachable from a test client.
     """
-    if project_ref:
-        return [f"wss://{project_ref}.supabase.co"]
+    host = None
+    if supabase_url:
+        host = urlparse(supabase_url.strip()).hostname
+
+    candidate = (project_ref or "").strip().lower()
+    ref = candidate if _PROJECT_REF.match(candidate) else None
+
+    if host:
+        if ref and not host.startswith(f"{ref}."):
+            logger.warning(
+                "SUPABASE_PROJECT_REF (%s) does not match the host in SUPABASE_URL (%s). "
+                "Using the URL, which is what the browser connects to; fix or remove the ref.",
+                ref,
+                host,
+            )
+        return [f"wss://{host}"]
+
+    if ref:
+        return [f"wss://{ref}.supabase.co"]
+
     return ["wss://*.supabase.co"]
 
 
@@ -1680,7 +1730,11 @@ def _init_extensions(app: Flask, testing: bool) -> Limiter:
         "https://cdn.jsdelivr.net",
     ]
 
-    connect_src.extend(realtime_ws_origins(config.get_secret("SUPABASE_PROJECT_REF")))
+    connect_src.extend(
+        realtime_ws_origins(
+            config.get_secret("SUPABASE_URL"), config.get_secret("SUPABASE_PROJECT_REF")
+        )
+    )
 
     # Dev-only allowance for the Impeccable live-mode helper, which serves its
     # picker script and an SSE channel from http://localhost:8400. It needs both

@@ -1,70 +1,100 @@
-"""One rule for where configuration comes from, pinned in both loaders.
+"""One rule for where configuration comes from, enforced everywhere at once.
 
 Plan item P8 of docs/supabase-key-incident-fix-plan.md. `web/api/app.py` loaded
 `.env` with `override=True` while `web/utils/config_loader.py` used the default,
-so the effective precedence depended on which module an entrypoint imported
-first — and in the app's own entrypoint the file beat the real environment. That
-makes the documented way to fix a bad credential in production (set it in the
-systemd unit, the container, the deploy script) silently do nothing.
+so a systemd `EnvironmentFile=`, a container `-e`, or a key exported by a deploy
+script was silently discarded in favour of whatever `.env` held on that host.
+The documented way to fix a bad credential in production therefore did nothing.
 
-This is a source-level contract test, in the same spirit as
-`test_frontend_architecture.py`: the rule is not observable from a single import
-because both calls run at module scope, and by the time a test could look, the
-values are already merged.
+This walks the tree and parses it rather than checking a list of known files. The
+first version of this test pinned five paths by name, which fails OPEN in the one
+way that matters: a sixth entrypoint added later with `override=True` would pass
+a green suite and silently reinstate the bug. It also matched with a regex, whose
+`[^)]*` stopped at the first `)` — so a call with a nested parenthesis, like
+`load_dotenv(dotenv_path=Path(__file__).parent / ".env", override=True)`, would
+have had its arguments truncated before the `override` was ever seen.
 """
 
 from __future__ import annotations
 
-import re
+import ast
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
-# Every place the project loads a .env, and whether an explicit override is
-# required. The scripts are one-shot developer tools rather than deployments,
-# so they are allowed the library default — but they must not ASK for the
-# environment to lose, which is the failure this test exists to prevent.
-_LOADERS = (
-    PROJECT_ROOT / "web" / "api" / "app.py",
-    PROJECT_ROOT / "web" / "utils" / "config_loader.py",
-    PROJECT_ROOT / "scripts" / "smoke_real.py",
-    PROJECT_ROOT / "scripts" / "eval_retrieval.py",
-    PROJECT_ROOT / "scripts" / "eval_citations.py",
-)
-
-_LOAD_DOTENV_CALL = re.compile(r"load_dotenv\((?P<args>[^)]*)\)", re.DOTALL)
+# Vendored code, build output and historical records are not this repo's rules to
+# enforce. `docs/archive` is history, per CLAUDE.md, not current behaviour.
+_SKIP = {".venv", "venv", "node_modules", ".git", "__pycache__", "archive", "data"}
 
 
-def test_no_loader_lets_dotenv_beat_the_real_environment():
-    """`override=True` anywhere is the bug: it discards a deployment's own
-    configuration in favour of a file that may be stale or absent from the
-    deployment entirely."""
-    offenders = []
-    for path in _LOADERS:
-        if not path.exists():
+def _python_files():
+    for path in PROJECT_ROOT.rglob("*.py"):
+        if _SKIP.isdisjoint(part for part in path.parts):
+            yield path
+
+
+def _load_dotenv_calls():
+    """Every `load_dotenv(...)` in the repo, as (path, lineno, override-keyword)."""
+    for path in _python_files():
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+        except (SyntaxError, UnicodeDecodeError):  # pragma: no cover - not ours to police
             continue
-        for match in _LOAD_DOTENV_CALL.finditer(path.read_text(encoding="utf-8")):
-            args = " ".join(match.group("args").split())
-            if "override=True" in args.replace(" ", ""):
-                offenders.append(f"{path.relative_to(PROJECT_ROOT)}: load_dotenv({args})")
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            func = node.func
+            name = getattr(func, "id", None) or getattr(func, "attr", None)
+            if name != "load_dotenv":
+                continue
+            override = next((kw for kw in node.keywords if kw.arg == "override"), None)
+            yield path, node.lineno, override
+
+
+def test_the_repo_contains_load_dotenv_calls_to_check():
+    """A guard on the guard: if the parse silently stopped finding anything, the
+    two tests below would pass vacuously forever."""
+    assert list(_load_dotenv_calls()), "found no load_dotenv calls — this test has gone blind"
+
+
+def test_nothing_anywhere_lets_dotenv_beat_the_real_environment():
+    """`override=True` is the bug, wherever it appears — including in a file that
+    did not exist when this test was written."""
+    offenders = [
+        f"{path.relative_to(PROJECT_ROOT)}:{lineno}"
+        for path, lineno, override in _load_dotenv_calls()
+        if override is not None
+        and isinstance(override.value, ast.Constant)
+        and override.value.value is True
+    ]
 
     assert not offenders, (
-        "These loaders let .env override the real environment, which silently "
+        "These calls let .env override the real environment, which silently "
         "discards a deployment's own configuration:\n  " + "\n  ".join(offenders)
     )
 
 
 def test_the_two_application_loaders_state_the_rule_explicitly():
-    """The default is already correct, but a deployment-visible decision should
-    be readable at the call site rather than inferred from library defaults —
-    that inference is what let the two loaders disagree unnoticed."""
-    for path in (
+    """The library default is already correct, but a deployment-visible decision
+    should be readable at the call site rather than inferred — that inference is
+    exactly how the two loaders came to disagree unnoticed. Scripts are one-shot
+    developer tools and may take the default."""
+    required = {
         PROJECT_ROOT / "web" / "api" / "app.py",
         PROJECT_ROOT / "web" / "utils" / "config_loader.py",
-    ):
-        source = path.read_text(encoding="utf-8")
-        calls = [" ".join(m.group("args").split()) for m in _LOAD_DOTENV_CALL.finditer(source)]
-        assert calls, f"{path.relative_to(PROJECT_ROOT)} no longer loads .env — update this test"
-        assert all("override=False" in call.replace(" ", "") for call in calls), (
-            f"{path.relative_to(PROJECT_ROOT)} should say `override=False` explicitly; found: {calls}"
+    }
+    seen = set()
+
+    for path, lineno, override in _load_dotenv_calls():
+        if path not in required:
+            continue
+        seen.add(path)
+        assert override is not None, (
+            f"{path.relative_to(PROJECT_ROOT)}:{lineno} should say `override=False` explicitly"
         )
+        assert isinstance(override.value, ast.Constant) and override.value.value is False, (
+            f"{path.relative_to(PROJECT_ROOT)}:{lineno} must pass `override=False`"
+        )
+
+    missing = {p.relative_to(PROJECT_ROOT) for p in required - seen}
+    assert not missing, f"these no longer load .env — update this test: {missing}"
