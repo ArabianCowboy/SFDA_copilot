@@ -27,8 +27,13 @@ WEB_DIR = Path(__file__).resolve().parents[1]
 # Backward compatibility export (lowercase)
 project_root = str(PROJECT_ROOT)
 
-# Load .env file from project root
-load_dotenv(dotenv_path=PROJECT_ROOT / ".env")
+# Load .env file from project root. `override=False` is python-dotenv's default,
+# but it is stated explicitly here because it is a deployment-visible decision,
+# not an accident of the default: the real environment wins and `.env` fills the
+# gaps. `web/api/app.py` says the same thing, and used to say the opposite —
+# which made the effective precedence depend on which of the two an entrypoint
+# imported first. See the note there.
+load_dotenv(dotenv_path=PROJECT_ROOT / ".env", override=False)
 
 
 class ConfigLoader:

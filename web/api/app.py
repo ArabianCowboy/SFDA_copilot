@@ -34,7 +34,7 @@ from urllib.parse import urlparse
 
 import httpx
 import yaml
-from dotenv import load_dotenv
+from dotenv import dotenv_values, load_dotenv
 from werkzeug.middleware.proxy_fix import ProxyFix  # For reverse proxy support
 from werkzeug.wrappers import Response as WerkzeugResponse
 
@@ -104,8 +104,34 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 DOTENV_PATH = PROJECT_ROOT / ".env"
-load_dotenv(dotenv_path=DOTENV_PATH, override=True)
+
+# `override=False`: the real environment WINS over `.env`, which supplies only
+# what the environment has not already set.
+#
+# This was `override=True`, which is the wrong way round for a deployment. A
+# systemd unit's `EnvironmentFile=`, a container's `-e`, or a rotated key
+# exported by a deploy script were all silently discarded in favour of whatever
+# `.env` happened to hold on that host — so the documented way to fix a bad
+# credential in production did not work, and nothing said why. It also disagreed
+# with `web/utils/config_loader.py`, which never passed `override` at all, making
+# the effective precedence depend on which module a given entrypoint imported
+# first. Now both say the same thing.
+#
+# Nothing changes for local development, where `.env` is normally the only
+# source. The shadowing that does happen is logged below rather than left
+# silent, because a variable set in two places and honoured from one is exactly
+# the situation that costs an afternoon.
+_dotenv_values = dotenv_values(DOTENV_PATH) if DOTENV_PATH.exists() else {}
+_shadowed = sorted(name for name in _dotenv_values if os.getenv(name) is not None)
+load_dotenv(dotenv_path=DOTENV_PATH, override=False)
 logger.info("Loaded .env from %s", DOTENV_PATH)
+if _shadowed:
+    # Names only — several of these are secrets.
+    logger.warning(
+        "These variables are set in BOTH the environment and .env; the "
+        "environment wins and the .env value is ignored: %s",
+        ", ".join(_shadowed),
+    )
 
 # ──────────────────────────────────────────────────────────
 # Logging Configuration
