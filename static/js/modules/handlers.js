@@ -69,6 +69,14 @@ let resetCooldownTimer = null;
    and the guard has to outlive it. */
 let recoverySubmitInFlight = false;
 
+/* Notification polling backoff configuration (plan item P7).
+   A fixed interval hammered a hard-down backend indefinitely; completion-based
+   scheduling with capped exponential backoff and jitter backs off progressively
+   under failure while preserving the normal 45-second cadence when healthy. */
+export const NOTIFICATIONS_POLL_BASE_DELAY_MS = 45000;
+export const NOTIFICATIONS_POLL_MAX_DELAY_MS = 600000; // 10 minutes ceiling
+export const NOTIFICATIONS_POLL_JITTER_RATIO = 0.1; // ±10% randomize window to prevent thundering herd
+
 /* Notification Center (docs/notification-center-plan.md §2/§4). Bumped on
    every start/stop of the poll — a sign-out, a sign-in, or the tab leaving
    or regaining visibility. An in-flight /active fetch stamps the value it
@@ -78,11 +86,47 @@ let recoverySubmitInFlight = false;
    requires of the (not yet wired) Realtime path, applied here to polling. */
 let notificationsGeneration = 0;
 
+/* Consecutive failure count for exponential backoff (plan item P7).
+   Reset to 0 on a successful fetch (from either the poll loop or a Realtime
+   push) or on a fresh startNotificationsPolling call. Not-applicable outcomes
+   (stale generation or signed-out 401) do not count as failures. */
+let notificationsConsecutiveFailures = 0;
+
 /* Which notifications this tab has already shown as a toast/banner/modal
    this poll session, so a notification does not re-present itself every
-   30s poll tick while it stays active and un-dismissed. Cleared whenever
+   poll tick while it stays active and un-dismissed. Cleared whenever
    polling (re)starts for a fresh identity. */
 let notificationsPresented = new Set();
+let notificationsScheduledDelay = null;
+
+/**
+ * Compute the next poll delay in milliseconds using exponential backoff
+ * and jitter (docs/supabase-key-incident-fix-plan.md P7).
+ *
+ * For consecutive failures <= 0 (healthy / reset state), returns the base
+ * delay without backoff or jitter (keeping today's fixed 45s cadence).
+ * On consecutive failures >= 1, scales base by 2^failures, applies ±10% jitter
+ * to prevent thundering-herd resynchronization, and only then clamps to the
+ * ceiling.
+ *
+ * Jitter is applied BEFORE the clamp, deliberately. Clamping first and jittering
+ * after lets the result exceed the ceiling by the jitter fraction — a "10 minute
+ * cap" that actually returns 11 minutes is not a cap. Clamping last means the
+ * ceiling is the real maximum, at the cost of jitter being one-sided once the
+ * backoff saturates, which is harmless: by then every tab is already spread out.
+ *
+ * `randomFn` is injected (defaults to Math.random) so tests can assert
+ * exact delays deterministically.
+ */
+export function computeNotificationPollDelay(consecutiveFailures, randomFn = Math.random) {
+  if (consecutiveFailures <= 0) {
+    return NOTIFICATIONS_POLL_BASE_DELAY_MS;
+  }
+  const exponent = Math.min(consecutiveFailures, 10);
+  const backoff = NOTIFICATIONS_POLL_BASE_DELAY_MS * Math.pow(2, exponent);
+  const jitter = 1 + (randomFn() * 2 - 1) * NOTIFICATIONS_POLL_JITTER_RATIO;
+  return Math.min(NOTIFICATIONS_POLL_MAX_DELAY_MS, Math.round(backoff * jitter));
+}
 
 export const Handlers = {
   bindEvents() {
@@ -1135,20 +1179,81 @@ export const Handlers = {
     notificationsGeneration += 1;
     const generation = notificationsGeneration;
     notificationsPresented = new Set();
+    notificationsConsecutiveFailures = 0;
 
-    const tick = () => this.fetchActiveNotifications(generation);
-    tick(); // reconcile immediately — every (re)start is also a fresh read
-    AppState.set('notificationsPollTimer', setInterval(tick, 45000));
+    const scheduleNext = (delay) => {
+      // Guard: do not schedule if polling was stopped or generation changed
+      // while the attempt was in flight.
+      if (generation !== notificationsGeneration) return;
+      notificationsScheduledDelay = delay;
+      const timer = setTimeout(pollTick, delay);
+      AppState.set('notificationsPollTimer', timer);
+    };
+
+    const pollTick = async () => {
+      if (generation !== notificationsGeneration) return;
+
+      let outcome;
+      try {
+        outcome = await this.fetchActiveNotifications(generation);
+      } catch (err) {
+        logError(err, 'pollTick');
+        outcome = { status: 'failure', error: err };
+      }
+
+      // Check generation again after await: an in-flight fetch whose generation
+      // was bumped (sign-out, account switch, tab hide) must never reschedule.
+      if (generation !== notificationsGeneration) return;
+
+      let delay;
+      if (outcome?.status === 'failure') {
+        notificationsConsecutiveFailures += 1;
+        delay = computeNotificationPollDelay(notificationsConsecutiveFailures);
+      } else if (outcome?.status === 'success') {
+        notificationsConsecutiveFailures = 0;
+        delay = NOTIFICATIONS_POLL_BASE_DELAY_MS;
+      } else {
+        // outcome?.status === 'not-applicable' (e.g. 401 signed out).
+        // Stale generation is already caught by the guard above; a 401 response
+        // while the generation is still current must NOT count as a failure.
+        delay = NOTIFICATIONS_POLL_BASE_DELAY_MS;
+      }
+
+      scheduleNext(delay);
+    };
+
+    /* A Realtime-triggered read that SUCCEEDS is genuine evidence the backend
+       recovered, so it clears the backoff and the next scheduled poll runs at
+       normal cadence. It deliberately schedules nothing: the poll loop owns the
+       timer chain, and a second scheduler here is exactly how you get two
+       concurrent chains. The `.catch` is not decoration — `fetchActiveNotifications`
+       only maps *fetch* failures to an outcome, so a throw in the rendering it
+       does afterwards would otherwise be an unhandled rejection on a path with
+       no timer to absorb it. */
+    const resetBackoffOnRealtimeSuccess = () =>
+      this.fetchActiveNotifications(generation)
+        .then((outcome) => {
+          if (generation !== notificationsGeneration) return;
+          if (outcome?.status === 'success') notificationsConsecutiveFailures = 0;
+        })
+        .catch((error) => logError(error, 'realtimeNotificationsRefetch'));
+
+    // Reconcile immediately — every (re)start is also a fresh read.
+    // Completion of this initial tick schedules the next one via setTimeout.
+    // Catching here too: `pollTick` is invoked bare, so without it a throw
+    // escaping the loop would be an unhandled rejection AND would stop the
+    // chain dead, leaving the bell silent until a reload.
+    pollTick().catch((error) => logError(error, 'notificationsPollTick'));
 
     if (userId) {
       Services.notifications.subscribe(userId, {
         onMessage: () => {
           if (generation !== notificationsGeneration) return;
-          this.fetchActiveNotifications(generation);
+          resetBackoffOnRealtimeSuccess();
         },
         onStatusChange: (status) => {
           if (generation !== notificationsGeneration) return;
-          if (status === 'SUBSCRIBED') this.fetchActiveNotifications(generation);
+          if (status === 'SUBSCRIBED') resetBackoffOnRealtimeSuccess();
         },
       });
     }
@@ -1162,13 +1267,24 @@ export const Handlers = {
    * in. */
   stopNotificationsPolling() {
     const timer = AppState.get('notificationsPollTimer');
-    if (timer) clearInterval(timer);
+    if (timer) clearTimeout(timer);
     AppState.set('notificationsPollTimer', null);
+    notificationsScheduledDelay = null;
     Services.notifications.unsubscribe();
     notificationsGeneration += 1; // discard any fetch already in flight
   },
 
+  /* `generation` is REQUIRED, deliberately not defaulted. Defaulting it to the
+     live `notificationsGeneration` would make the staleness check below compare
+     a value against itself — always equal, never stale — silently disarming the
+     guard that stops a signed-out reader's in-flight fetch from painting the
+     next reader's notifications. Every caller stamps the generation it started
+     under; that is the whole mechanism. */
   async fetchActiveNotifications(generation) {
+    if (generation !== notificationsGeneration) {
+      return { status: 'not-applicable', reason: 'stale' };
+    }
+
     let response;
     try {
       response = await Services.notifications.fetchActive();
@@ -1177,18 +1293,51 @@ export const Handlers = {
       // the way a chat request's is — it costs the bell one refresh cycle,
       // and the next tick tries again. Logged for diagnosis only.
       logError(error, 'fetchActiveNotifications');
-      return;
+      if (generation !== notificationsGeneration) {
+        return { status: 'not-applicable', reason: 'stale' };
+      }
+      return { status: 'failure', error };
     }
-    if (generation !== notificationsGeneration) return; // stale — reader signed out/switched
-    if (!response) return; // 401 — nobody signed in
+    if (generation !== notificationsGeneration) {
+      return { status: 'not-applicable', reason: 'stale' }; // stale — reader signed out/switched
+    }
+    if (!response) {
+      return { status: 'not-applicable', reason: 'signed-out' }; // 401 — nobody signed in
+    }
 
-    const items = response.notifications || [];
-    AppState.set('notificationsActive', items);
-    UI.Notifications.setUnreadCount(items.filter((n) => !n.read_at).length);
+    /* The rendering below is inside the guard too, not just the fetch. The
+       contract this function now owes its caller is a structured outcome on
+       EVERY path — the poll loop reads `status` to decide the next delay. A
+       throw out of `setUnreadCount`, `isSnoozed` or `presentNotification` would
+       otherwise reject the promise instead, which the loop cannot classify and
+       which surfaces as an unhandled rejection. A rendering fault is still a
+       failed tick from the bell's point of view, so it is reported as one. */
+    try {
+      const items = response.notifications || [];
+      AppState.set('notificationsActive', items);
+      UI.Notifications.setUnreadCount(items.filter((n) => !n.read_at).length);
 
-    items
-      .filter((n) => !notificationsPresented.has(n.id) && !BroadcastNotice.isSnoozed(n.id))
-      .forEach((n) => this.presentNotification(n));
+      items
+        .filter((n) => !notificationsPresented.has(n.id) && !BroadcastNotice.isSnoozed(n.id))
+        .forEach((n) => this.presentNotification(n));
+
+      return { status: 'success', count: items.length };
+    } catch (error) {
+      logError(error, 'fetchActiveNotifications.render');
+      return { status: 'failure', error };
+    }
+  },
+
+  getNotificationsConsecutiveFailures() {
+    return notificationsConsecutiveFailures;
+  },
+
+  getNotificationsGeneration() {
+    return notificationsGeneration;
+  },
+
+  getLastScheduledDelay() {
+    return notificationsScheduledDelay;
   },
 
   /** Route one active notification to its display shape. Fires at most once

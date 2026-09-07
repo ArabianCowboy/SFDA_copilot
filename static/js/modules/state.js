@@ -28,7 +28,7 @@ export const AppState = {
     sidebarTabSettled: false,
 
     // ── Notification Center (docs/notification-center-plan.md) ──────────
-    // The interval id for the active-notifications poll, so it can be torn
+    // The timeout id for the active-notifications poll, so it can be torn
     // down on sign-out and on the tab going hidden, and re-established on
     // sign-in / the tab becoming visible again — the same reasoning
     // `sidebarOwner` documents above, applied to a recurring fetch instead

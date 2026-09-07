@@ -28,6 +28,24 @@ from playwright.sync_api import Page, expect
 
 pytestmark = pytest.mark.browser
 
+# Wait for a CONDITION, never for a duration. The P7 scheduler tests below drive
+# an async poll loop from inside the page and then read a counter it updates; a
+# fixed `setTimeout(r, 20)` encodes a guess about how fast that resolves, and a
+# loaded CI machine (this suite runs a real Chromium alongside a Flask server)
+# is exactly where that guess stops holding. Polling the observable state keeps
+# the tests deterministic under load while still failing fast when the state
+# never arrives. Prepended to the evaluate() bodies that need it.
+_WAIT_UNTIL_JS = """
+const waitUntil = async (predicate, timeoutMs = 2000) => {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    if (predicate()) return true;
+    if (Date.now() > deadline) return false;
+    await new Promise((r) => setTimeout(r, 5));
+  }
+};
+"""
+
 
 ADMIN_IDENTITY = {
     "user_id": "test-admin-id",
@@ -144,7 +162,460 @@ def test_a_realtime_broadcast_triggers_an_immediate_refetch(browser_page: Page):
     assert active_calls["count"] > first_count
 
 
-# ── Reader: toast ────────────────────────────────────────────────────────────
+# ── Notification polling capped backoff with jitter (plan item P7) ───────────
+
+
+def test_notification_poll_delay_grows_on_consecutive_failures_and_caps_at_ceiling(
+    browser_page: Page,
+):
+    """P7: The poll delay grows by 2x on each consecutive failure, is capped
+    at 600,000 ms (10 min), and applies ±10% jitter.
+    """
+    browser_page.goto("/?testing=true")
+
+    # 1. Formula contract: exponential backoff, 10 min cap, ±10% jitter bounds
+    delays = browser_page.evaluate("""async () => {
+        const { computeNotificationPollDelay, NOTIFICATIONS_POLL_BASE_DELAY_MS, NOTIFICATIONS_POLL_MAX_DELAY_MS } =
+            await import('/static/js/modules/handlers.js');
+
+        const neutralRandom = () => 0.5; // neutral jitter factor: 1.0
+        const unjittered = [0, 1, 2, 3, 4, 5, 10].map((f) => computeNotificationPollDelay(f, neutralRandom));
+
+        const minRandom = () => 0.0; // minimum jitter factor: 0.9
+        const maxRandom = () => 1.0; // maximum jitter factor: 1.1
+        const jitterRanges = [1, 2, 3, 4].map((f) => ({
+            min: computeNotificationPollDelay(f, minRandom),
+            max: computeNotificationPollDelay(f, maxRandom),
+        }));
+
+        return {
+            base: NOTIFICATIONS_POLL_BASE_DELAY_MS,
+            cap: NOTIFICATIONS_POLL_MAX_DELAY_MS,
+            unjittered,
+            jitterRanges,
+        };
+    }""")
+
+    assert delays["base"] == 45_000
+    assert delays["cap"] == 600_000
+    # On 0 failures (healthy): base delay 45000 ms
+    assert delays["unjittered"][0] == 45_000
+    # On failure 1: 45000 * 2^1 = 90000 ms
+    assert delays["unjittered"][1] == 90_000
+    # On failure 2: 45000 * 2^2 = 180000 ms
+    assert delays["unjittered"][2] == 180_000
+    # On failure 3: 45000 * 2^3 = 360000 ms
+    assert delays["unjittered"][3] == 360_000
+    # On failure 4: capped at 600000 ms
+    assert delays["unjittered"][4] == 600_000
+    # On failure 5+: stays capped at 600000 ms
+    assert delays["unjittered"][5] == 600_000
+    assert delays["unjittered"][6] == 600_000
+
+    # Jitter bounds (±10%):
+    assert delays["jitterRanges"][0]["min"] == 81_000
+    assert delays["jitterRanges"][0]["max"] == 99_000
+    assert delays["jitterRanges"][1]["min"] == 162_000
+    assert delays["jitterRanges"][1]["max"] == 198_000
+    assert delays["jitterRanges"][2]["min"] == 324_000
+    assert delays["jitterRanges"][2]["max"] == 396_000
+    # Failure 4 saturates: 45000 * 2^4 = 720000, and BOTH jitter bounds
+    # (648000 and 792000) land above the ceiling, so both clamp to it. This
+    # pinned 540000/660000 when the clamp ran before the jitter, which let the
+    # "10 minute cap" return 11 minutes — the cap is the maximum, so the jitter
+    # goes first and the clamp goes last. Jitter is one-sided once saturated,
+    # which costs nothing: by then the tabs are already spread out.
+    assert delays["jitterRanges"][3]["min"] == 600_000
+    assert delays["jitterRanges"][3]["max"] == 600_000
+    assert delays["jitterRanges"][3]["max"] <= delays["cap"]
+
+    # 2. Runtime scheduler: consecutive failures increment and schedule growing timeouts
+    scheduled = browser_page.evaluate(
+        """async () => {"""
+        + _WAIT_UNTIL_JS
+        + """
+        const { Handlers } = await import('/static/js/modules/handlers.js');
+        const { Services } = await import('/static/js/modules/services.js');
+
+        Services.notifications.fetchActive = async () => {
+            throw new Error('500 Backend Outage');
+        };
+
+        Handlers.startNotificationsPolling('test-user');
+        // Let the initial tick run and fail
+        await waitUntil(() => Handlers.getNotificationsConsecutiveFailures() === 1);
+
+        const failures1 = Handlers.getNotificationsConsecutiveFailures();
+        const delay1 = Handlers.getLastScheduledDelay();
+        Handlers.stopNotificationsPolling();
+
+        return { failures: failures1, delay: delay1 };
+    }"""
+    )
+
+    assert scheduled["failures"] == 1
+    assert 81_000 <= scheduled["delay"] <= 99_000
+
+
+def test_notification_poll_success_resets_delay_to_base(browser_page: Page):
+    """P7: A successful poll tick resets consecutive failures to 0 and schedules
+    the next poll at the base delay (45,000 ms).
+    """
+    browser_page.goto("/?testing=true")
+
+    result = browser_page.evaluate(
+        """async () => {"""
+        + _WAIT_UNTIL_JS
+        + """
+        const { Handlers, NOTIFICATIONS_POLL_BASE_DELAY_MS } =
+            await import('/static/js/modules/handlers.js');
+        const { Services } = await import('/static/js/modules/services.js');
+
+        // First attempt fails
+        Services.notifications.fetchActive = async () => {
+            throw new Error('Outage');
+        };
+
+        Handlers.startNotificationsPolling('test-user');
+        await waitUntil(() => Handlers.getNotificationsConsecutiveFailures() === 1);
+
+        const failCountBefore = Handlers.getNotificationsConsecutiveFailures();
+        const delayBefore = Handlers.getLastScheduledDelay();
+
+        // Backend recovers: subsequent attempts succeed
+        Services.notifications.fetchActive = async () => ({ notifications: [] });
+
+        // Start polling again under recovered backend
+        Handlers.startNotificationsPolling('test-user');
+        await waitUntil(() => Handlers.getLastScheduledDelay() !== null);
+
+        const failCountAfter = Handlers.getNotificationsConsecutiveFailures();
+        const delayAfter = Handlers.getLastScheduledDelay();
+        Handlers.stopNotificationsPolling();
+
+        return {
+            failCountBefore,
+            delayBefore,
+            failCountAfter,
+            delayAfter,
+            baseDelay: NOTIFICATIONS_POLL_BASE_DELAY_MS,
+        };
+    }"""
+    )
+
+    assert result["failCountBefore"] == 1
+    assert result["delayBefore"] >= 81_000
+    assert result["failCountAfter"] == 0
+    assert result["delayAfter"] == result["baseDelay"] == 45_000
+
+
+def test_stale_generation_or_signed_out_outcome_not_counted_as_failure(
+    browser_page: Page,
+):
+    """P7: A stale generation or signed-out (401 -> null) outcome reports
+    'not-applicable' and does NOT increment the failure counter or trigger backoff.
+    """
+    browser_page.goto("/?testing=true")
+
+    result = browser_page.evaluate(
+        """async () => {"""
+        + _WAIT_UNTIL_JS
+        + """
+        const { Handlers, NOTIFICATIONS_POLL_BASE_DELAY_MS } =
+            await import('/static/js/modules/handlers.js');
+        const { Services } = await import('/static/js/modules/services.js');
+
+        // 401 signed out: sessionRequest returns null
+        Services.notifications.fetchActive = async () => null;
+
+        Handlers.startNotificationsPolling('test-user');
+        await waitUntil(() => Handlers.getLastScheduledDelay() !== null);
+
+        const failures = Handlers.getNotificationsConsecutiveFailures();
+        const lastDelay = Handlers.getLastScheduledDelay();
+        const gen = Handlers.getNotificationsGeneration();
+
+        // Direct call tests for structured outcomes
+        const staleOutcome = await Handlers.fetchActiveNotifications(gen - 1);
+        const signedOutOutcome = await Handlers.fetchActiveNotifications(gen);
+
+        Handlers.stopNotificationsPolling();
+
+        return {
+            failures,
+            lastDelay,
+            baseDelay: NOTIFICATIONS_POLL_BASE_DELAY_MS,
+            staleOutcome,
+            signedOutOutcome,
+        };
+    }"""
+    )
+
+    assert result["failures"] == 0
+    assert result["lastDelay"] == result["baseDelay"] == 45_000
+    assert result["staleOutcome"]["status"] == "not-applicable"
+    assert result["staleOutcome"]["reason"] == "stale"
+    assert result["signedOutOutcome"]["status"] == "not-applicable"
+    assert result["signedOutOutcome"]["reason"] == "signed-out"
+
+
+def test_stop_notifications_polling_cancels_timeout_and_prevents_rescheduling(
+    browser_page: Page,
+):
+    """P7: stopNotificationsPolling cancels any pending timeout via clearTimeout,
+    clears AppState, bumps generation, and leaves nothing able to reschedule.
+    """
+    browser_page.clock.install()
+    browser_page.goto("/?testing=true")
+
+    browser_page.evaluate("""async () => {
+        const { Handlers } = await import('/static/js/modules/handlers.js');
+        const { Services } = await import('/static/js/modules/services.js');
+        const { AppState } = await import('/static/js/modules/state.js');
+
+        // Stop background page poll
+        Handlers.stopNotificationsPolling();
+
+        let calls = 0;
+        Services.notifications.fetchActive = async () => {
+            calls++;
+            return { notifications: [] };
+        };
+
+        Handlers.startNotificationsPolling(null);
+
+        window.__teardownTest = {
+            getCalls: () => calls,
+            hasTimer: () => AppState.get('notificationsPollTimer') !== null,
+            stop: () => Handlers.stopNotificationsPolling(),
+        };
+    }""")
+
+    browser_page.clock.run_for(10)
+    assert browser_page.evaluate("window.__teardownTest.getCalls()") == 1
+    assert browser_page.evaluate("window.__teardownTest.hasTimer()") is True
+
+    # Stop polling
+    browser_page.evaluate("window.__teardownTest.stop()")
+    assert browser_page.evaluate("window.__teardownTest.hasTimer()") is False
+
+    # Advance clock by 100,000 ms
+    browser_page.clock.run_for(100_000)
+
+    # Nothing should have run or rescheduled
+    assert browser_page.evaluate("window.__teardownTest.getCalls()") == 1
+    assert browser_page.evaluate("window.__teardownTest.hasTimer()") is False
+
+
+def test_no_overlapping_requests_when_response_is_slower_than_base_interval(
+    browser_page: Page,
+):
+    """P7: Completion-based scheduling with setTimeout ensures that when a request
+    takes longer than the 45-second base interval, no second request is started
+    concurrently.
+    """
+    browser_page.clock.install()
+    browser_page.goto("/?testing=true")
+
+    browser_page.evaluate("""async () => {
+        const { Handlers } = await import('/static/js/modules/handlers.js');
+        const { Services } = await import('/static/js/modules/services.js');
+
+        // Stop background page poll
+        Handlers.stopNotificationsPolling();
+
+        let calls = 0;
+        let inFlight = 0;
+        let maxConcurrent = 0;
+        let currentResolve = null;
+
+        Services.notifications.fetchActive = () => {
+            calls++;
+            inFlight++;
+            maxConcurrent = Math.max(maxConcurrent, inFlight);
+            return new Promise((resolve) => {
+                currentResolve = () => {
+                    inFlight--;
+                    resolve({ notifications: [] });
+                };
+            });
+        };
+
+        Handlers.startNotificationsPolling(null);
+
+        window.__clockTest = {
+            getStats: () => ({ calls, inFlight, maxConcurrent }),
+            resolveCurrent: () => {
+                if (currentResolve) currentResolve();
+            },
+        };
+    }""")
+
+    # 1st request is in flight
+    stats0 = browser_page.evaluate("window.__clockTest.getStats()")
+    assert stats0["calls"] == 1
+    assert stats0["inFlight"] == 1
+
+    # Advance clock by 60,000 ms (past 45,000 ms base delay) while request 1 is still in flight
+    browser_page.clock.run_for(60_000)
+
+    # Under fixed setInterval, request 2 would have launched.
+    # Under completion-based setTimeout, still strictly 1 request in flight!
+    stats1 = browser_page.evaluate("window.__clockTest.getStats()")
+    assert stats1["calls"] == 1
+    assert stats1["maxConcurrent"] == 1
+
+    # Now fulfill request 1
+    browser_page.evaluate("window.__clockTest.resolveCurrent()")
+    browser_page.clock.run_for(10)
+
+    # Still strictly 1 call so far
+    stats2 = browser_page.evaluate("window.__clockTest.getStats()")
+    assert stats2["calls"] == 1
+
+    # Advance clock by 45,000 ms: now the completion-scheduled second tick fires
+    browser_page.clock.run_for(45_000)
+    stats3 = browser_page.evaluate("window.__clockTest.getStats()")
+    assert stats3["calls"] == 2
+    assert stats3["maxConcurrent"] == 1
+
+    # Clean up request 2
+    browser_page.evaluate("window.__clockTest.resolveCurrent()")
+    browser_page.clock.run_for(10)
+
+
+def test_account_switch_does_not_leave_old_chain_running(browser_page: Page):
+    """P7: When an account switch or generation bump occurs while a request
+    is in flight, the stale response is discarded and never reschedules its chain.
+    Only the new user's chain runs.
+    """
+    browser_page.clock.install()
+    browser_page.goto("/?testing=true")
+
+    browser_page.evaluate("""async () => {
+        const { Handlers } = await import('/static/js/modules/handlers.js');
+        const { Services } = await import('/static/js/modules/services.js');
+
+        // Stop background page poll
+        Handlers.stopNotificationsPolling();
+
+        const requests = [];
+        Services.notifications.fetchActive = () => {
+            return new Promise((resolve, reject) => {
+                requests.push({ resolve, reject });
+            });
+        };
+
+        Handlers.startNotificationsPolling(null);
+
+        window.__switchTest = {
+            getRequests: () => requests.length,
+            switchToUserB: () => {
+                Handlers.stopNotificationsPolling();
+                Handlers.startNotificationsPolling(null);
+            },
+            resolveRequest: (idx, data) => {
+                requests[idx].resolve(data);
+            },
+        };
+    }""")
+
+    assert browser_page.evaluate("window.__switchTest.getRequests()") == 1
+
+    # Switch to User B while User A's fetch is still in flight
+    browser_page.evaluate("window.__switchTest.switchToUserB()")
+    assert browser_page.evaluate("window.__switchTest.getRequests()") == 2
+
+    # Resolve User A's stale request with a notification
+    browser_page.evaluate(
+        'window.__switchTest.resolveRequest(0, { notifications: [{ id: "stale-1", type: "toast", title: "Stale" }] })'
+    )
+    browser_page.clock.run_for(10)
+
+    # User A's notification was NOT painted (discarded as stale)
+    assert browser_page.locator(".broadcast-toast").count() == 0
+
+    # Resolve User B's request
+    browser_page.evaluate("window.__switchTest.resolveRequest(1, { notifications: [] })")
+    browser_page.clock.run_for(10)
+
+    # Fast forward by 45,000 ms: only User B's scheduled tick fires (total 3 requests, not 4)
+    browser_page.clock.run_for(45_000)
+    assert browser_page.evaluate("window.__switchTest.getRequests()") == 3
+
+    # Clean up request 3
+    browser_page.evaluate("window.__switchTest.resolveRequest(2, { notifications: [] })")
+    browser_page.clock.run_for(10)
+
+
+def test_realtime_success_resets_backoff_and_realtime_failure_does_not(
+    browser_page: Page,
+):
+    """P7: Realtime-triggered SUCCESS resets the consecutive failures counter
+    (genuine evidence of backend recovery), while Realtime FAILURE does not
+    touch the failure counter and does not schedule a concurrent timer chain.
+    """
+    browser_page.goto("/?testing=true")
+
+    result = browser_page.evaluate(
+        """async () => {"""
+        + _WAIT_UNTIL_JS
+        + """
+        const { Handlers } = await import('/static/js/modules/handlers.js');
+        const { Services } = await import('/static/js/modules/services.js');
+
+        /* A Realtime FAILURE is asserted to leave the counter untouched, so
+           the counter itself cannot signal that the refetch finished. Count
+           the calls instead and wait on that — otherwise the assertion could
+           pass simply because the refetch had not run yet. */
+        let calls = 0;
+        const failing = async () => {
+            calls += 1;
+            throw new Error('500 Outage');
+        };
+        const recovered = async () => {
+            calls += 1;
+            return { notifications: [] };
+        };
+
+        // Initial poll fails
+        Services.notifications.fetchActive = failing;
+
+        Handlers.startNotificationsPolling('test-user');
+        await waitUntil(() => Handlers.getNotificationsConsecutiveFailures() === 1);
+
+        // 1 failure accumulated
+        const f1 = Handlers.getNotificationsConsecutiveFailures();
+        const callsAfterInitial = calls;
+
+        // Realtime message callback fires while backend is still failing (500)
+        window.__supabaseState.notificationChannelBroadcastCallback({
+            payload: { notification_id: 'test', revision: '1' }
+        });
+        await waitUntil(() => calls > callsAfterInitial);
+
+        const fAfterRealtimeFail = Handlers.getNotificationsConsecutiveFailures();
+
+        // Backend recovers: Realtime broadcast now succeeds
+        Services.notifications.fetchActive = recovered;
+
+        window.__supabaseState.notificationChannelBroadcastCallback({
+            payload: { notification_id: 'test-rec', revision: '2' }
+        });
+        await waitUntil(() => Handlers.getNotificationsConsecutiveFailures() === 0);
+
+        const fAfterRealtimeSuccess = Handlers.getNotificationsConsecutiveFailures();
+        Handlers.stopNotificationsPolling();
+
+        return { f1, fAfterRealtimeFail, fAfterRealtimeSuccess };
+    }"""
+    )
+
+    assert result["f1"] == 1
+    # Realtime failure must NOT increment or reset the failure counter
+    assert result["fAfterRealtimeFail"] == 1
+    # Realtime success proves backend recovery and resets failures to 0
+    assert result["fAfterRealtimeSuccess"] == 0
 
 
 def test_an_active_toast_renders_and_dismiss_marks_it_read(browser_page: Page):

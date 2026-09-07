@@ -60,6 +60,21 @@ def test_handlers_own_user_facing_service_failures():
     assert "RobotStateManager.returnToIdle(4000)" in source
 
 
+def test_notification_polling_backoff_contracts():
+    """docs/supabase-key-incident-fix-plan.md P7: Polling /api/notifications/active
+    must not use fixed setInterval. It must use completion-based setTimeout
+    scheduling with capped exponential backoff and jitter, torn down with clearTimeout.
+    """
+    source = (MODULES / "handlers.js").read_text(encoding="utf-8")
+
+    assert "export const NOTIFICATIONS_POLL_BASE_DELAY_MS = 45000;" in source
+    assert "export const NOTIFICATIONS_POLL_MAX_DELAY_MS = 600000;" in source
+    assert "export const NOTIFICATIONS_POLL_JITTER_RATIO = 0.1;" in source
+    assert "export function computeNotificationPollDelay" in source
+    assert "setInterval(tick, 45000)" not in source
+    assert "clearTimeout(timer)" in source
+
+
 def test_account_flow_uses_the_i18n_catalogue_not_literals():
     """The profile-editing surface this guarded moved from the #profileModal
     (handlers.js/ui.js) to static/js/account/ when the modal was retired
