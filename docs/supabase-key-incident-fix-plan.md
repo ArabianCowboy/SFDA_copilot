@@ -7,7 +7,9 @@ failure the same day.
 
 An `Unregistered API key` 401 took every privileged Supabase call down on
 2026-09-07. This plan records the confirmed root cause, the recovery, and the
-defects the incident exposed. **P0 is done. P1-P10 are not.**
+defects the incident exposed. **P0, P4, P6 and P7 are done** (each in its own
+commit on `fix/supabase-key-incident-followups`). **P1, P2, P3, P5, P8, P9 and
+P10 remain open.**
 
 **Revision 2 changed the plan materially.** Revision 1's P0 was judged unsafe to
 execute (no production scope, no rollback, no acceptance checks) and its P5
@@ -223,8 +225,22 @@ this outcome. A credential fault reaches the wrong branch.
    (`supabase/migrations/20260903195102_reader_quota_claim_release_and_read_rpcs.sql:14-17,51-57,77-86`),
    so an uncertain response can double-count.
 
-The numeric threshold is a cost-versus-availability policy decision and is
-**not yet decided**.
+**Threshold decided 2026-09-07 (owner):** keep answering for the first **5
+consecutive claim failures or 2 minutes, whichever comes first**, then refuse
+with 503. Two refinements agreed alongside it:
+
+- The counter is **process-global, not per-reader**. A rejected key is a
+  deployment fault, not a reader's; per-reader, five failures across two hundred
+  readers is a thousand unmetered requests, while global it is five.
+  Single-worker makes one counter trivially correct.
+- A **recovery probe** is required, not optional: once closed, one request is let
+  through every 30s to test recovery. Without it a transient blip that trips the
+  threshold keeps chat closed until somebody restarts the process — worse than
+  the bug being fixed.
+
+The cost arithmetic supports erring toward answering: a chat request is roughly
+4,400 input tokens, so five unmetered requests is negligible spend, whereas
+closing too eagerly takes chat down for everyone.
 
 **Tests:** both routes, real SDK error construction, repeated requests,
 concurrency, recovery, and zero model invocation on rejection. Existing coverage

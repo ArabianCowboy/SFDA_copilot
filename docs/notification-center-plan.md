@@ -53,7 +53,7 @@ Every other fix in this section came from the reviewer and was accepted on its o
 ### Suggestions adopted
 
 - **Async banner arrival never steals keyboard focus** — live-region semantics (`aria-live="polite"`) for the banner/toast; forced focus is reserved for the acknowledgment modal alone, where it belongs (§4).
-- **A session-level modal snooze**, so Escape/backdrop-dismiss doesn't recreate a practical trap: without it, a reader who dismisses stays on the page and the next ~30-60s poll/reconnect could reopen the same modal immediately. Client-side (`sessionStorage`) suppression for that specific notification for the rest of the browser session; still unacknowledged server-side, still resurfaces on the next real session (§4).
+- **A session-level modal snooze**, so Escape/backdrop-dismiss doesn't recreate a practical trap: without it, a reader who dismisses stays on the page and the next poll or reconnect could reopen the same modal immediately. (The poll was a fixed interval when this was written; it now backs off on failure — see `docs/supabase-key-incident-fix-plan.md` P7 — so the gap is 45s while healthy and up to 10 minutes during an outage. The snooze is what makes that range irrelevant to the reader.) Client-side (`sessionStorage`) suppression for that specific notification for the rest of the browser session; still unacknowledged server-side, still resurfaces on the next real session (§4).
 - **Multi-tab behavior stated explicitly rather than left implicit**: each open tab holds its own per-user channel and its own unread badge; mark-read/acknowledge in one tab reconciles in a sibling tab only on that sibling's own next poll or visibility-change refetch, not instantly — an accepted v1 scope limit, not an oversight (§4).
 - **Direct SQL/integration tests for the security boundary itself** — cross-user mark-read attempts, actor demotion mid-transaction, wrong action/type combinations, and confirming `authenticated` genuinely cannot execute the service-only RPCs — added to §8, since a Flask-level mock alone can't prove these properties.
 
@@ -271,6 +271,8 @@ using (
 **Race safety on the client:** every in-flight notification fetch is stamped with the identity/session generation active when it was issued; a response that resolves after the reader has signed out or switched accounts is discarded rather than painted into the new session's UI.
 
 **Multi-tab scope, stated explicitly (not left implicit):** each open tab holds its own per-user channel and its own unread badge. Mark-read/acknowledge in one tab reconciles in a sibling tab only on that sibling's own next poll or visibility-change refetch, not instantly. Accepted as a v1 scope limit.
+
+**Cadence note (2026-09-07):** "next poll" is no longer a fixed 45 seconds. The loop now schedules on completion with capped exponential backoff, so a sibling tab reconciles within 45s while the backend is healthy and as slowly as every 10 minutes while it is not. Realtime remains the fast path; the poll is the floor, not the expected latency. Each tab still holds its own channel and its own loop — collapsing those to one per browser profile via Web Locks leader election is noted as an option, not built.
 
 ---
 
