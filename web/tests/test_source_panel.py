@@ -58,13 +58,29 @@ def _settle_scroll(page: Page) -> None:
     Anything that reads or changes scroll position before that animation ends
     is racing it — a test scroll issued mid-flight gets overridden as the
     animation continues, which is what made the follow tests intermittent.
+
+    "Two consecutive samples are equal" is NOT enough on its own, and used to be
+    the whole check. It is just as true before the animation starts as after it
+    ends: on a loaded machine the first two polls both read `scrollTop === 0`,
+    the helper declared the scroll settled at the top, and the animation then ran
+    during whatever the test measured next. That is what made
+    `test_opening_sources_does_not_move_the_answer` blame the source panel for an
+    820px move the panel had not caused.
+
+    So the destination is checked too. Both callers run straight after an answer,
+    where the transcript is pinned to the bottom, which makes "at the bottom AND
+    not moving" the real settled state. A transcript too short to scroll never
+    animates and is settled immediately.
     """
     page.wait_for_function(
         """() => {
           const c = document.getElementById('messages');
-          if (window.__settleTop === c.scrollTop) return true;
+          if (!c) return false;
+          const previous = window.__settleTop;
           window.__settleTop = c.scrollTop;
-          return false;
+          if (c.scrollHeight <= c.clientHeight + 1) return true; // nothing to scroll
+          const atBottom = c.scrollTop + c.clientHeight >= c.scrollHeight - 2;
+          return atBottom && previous === c.scrollTop;
         }""",
         timeout=5000,
     )
