@@ -16,6 +16,8 @@ to, the fixture-level fix this file exists to exercise would not be proven.
 
 from __future__ import annotations
 
+import re
+
 import pytest
 from playwright.sync_api import Page, expect
 
@@ -96,11 +98,20 @@ def test_two_tabs_hold_two_conversations(browser_page: Page):
     _ask(tab_a, "Question in tab A")
     _ask(tab_b, "Question in tab B")
 
+    # `expect(...).to_have_url` and NOT `evaluate("() => location.pathname")`.
+    # `_ask` returns once the reader's own bubble is on screen, which happens on
+    # send; the address only changes when the stream's `meta` frame lands, which
+    # is later. A bare `evaluate` is a single read with no retry, so it sampled
+    # the id the client minted optimistically before the server's answer arrived
+    # — tab A usually won that race and tab B usually lost it, which is what made
+    # this test fail perhaps two runs in three. The matcher retries until the
+    # address settles, so it waits for the same event the assertion is about.
+    expect(tab_a).to_have_url(re.compile(rf"/c/{CONV_A}$"))
+    expect(tab_b).to_have_url(re.compile(rf"/c/{CONV_B}$"))
+
     url_a = tab_a.evaluate("() => location.pathname")
     url_b = tab_b.evaluate("() => location.pathname")
     assert url_a != url_b, "both tabs settled on the same conversation"
-    assert url_a == f"/c/{CONV_A}"
-    assert url_b == f"/c/{CONV_B}"
 
     expect(tab_a.locator("#messages")).to_contain_text("Answer in tab A")
     expect(tab_a.locator("#messages")).not_to_contain_text("Answer in tab B")
