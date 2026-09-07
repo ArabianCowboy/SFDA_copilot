@@ -1,4 +1,4 @@
-STATUS: CURRENT AUTHORITY — state this repository cannot hold. Last verified 2026-08-28.
+STATUS: CURRENT AUTHORITY — state this repository cannot hold. Last verified 2026-09-07.
 
 This file records configuration that lives in the Supabase dashboard, in DNS, and in a
 third-party mail provider — none of it in version control, some of it write-only once saved.
@@ -11,9 +11,9 @@ Three things belong here and are not yet written up, all filed as open entries i
 section below records as an assumption precisely because nobody has looked. When any of
 them is settled, the answer goes in this file.
 
-Three sections follow: transactional email, the registrations pause, and database
-recovery. As other out-of-repo state gets documented, add it as a sibling section rather
-than a new file.
+Four sections follow: transactional email, the registrations pause, database recovery,
+and Supabase API keys. As other out-of-repo state gets documented, add it as a sibling
+section rather than a new file.
 
 ---
 
@@ -389,3 +389,135 @@ An `idle_in_transaction_session_timeout` would **not** bound the lock above. It 
 transaction that is idle, and a PL/pgSQL function still executing is not idle. It is worth
 setting as a backstop against a client that dies mid-transaction; it is not a fix for that
 lock, and an earlier draft of the plan wrongly implied it was.
+
+---
+
+# Supabase API keys: what breaks, and how to get it back
+
+Written 2026-09-07, the day this was needed and did not exist. On that date a
+`sb_secret_` key that belonged to a **different Supabase project** was sitting in
+`SUPABASE_SECRET_KEY`, and every privileged call returned
+`401 {"message":"Unregistered API key"}`. Diagnosis took a working session because nothing
+here said which key does what, and the one relevant log line was actively misleading. The
+full incident write-up is `docs/supabase-key-incident-fix-plan.md`; this is the part you
+need at 2am.
+
+## Which key does what
+
+Three credentials, three blast radii. Confusing them is most of the diagnostic difficulty.
+
+| Variable | Client | If it breaks |
+| --- | --- | --- |
+| `SUPABASE_ANON_KEY` | the browser, and Flask's GoTrue calls (`web/utils/supabase_client.py`, `SupabaseClient`) | **Sign-in stops working.** It is also rendered into every page, so the browser's own Supabase calls fail too. |
+| `SUPABASE_SECRET_KEY`, falling back to `SUPABASE_SERVICE_ROLE_KEY` | the service-role client (`SupabaseAdminClient`) | **Everything privileged**: conversation history, notifications, the daily allowance, `/admin`. Sign-in keeps working. |
+| `SUPABASE_PROJECT_REF` | the Realtime CSP origin only | Realtime falls back to a wildcard origin. Not an outage. |
+
+The asymmetry is the thing to internalise: **you can be signed in, with a working session,
+while every privileged read fails.** That is what a broken service key looks like, and it
+does not look like an auth problem.
+
+## The symptom signature
+
+You have a service-key fault if:
+
+- `/api/chat/sessions` and `/api/notifications/active` return **503**, while
+- `/api/identity` returns **200**, and
+- the reader stays signed in, and
+- **the administration link disappears for a known administrator.**
+
+That last one is the most confusing and the most diagnostic. The admin role is read from
+`profiles` through the service key; when that read fails, `resolve_identity_flags` falls
+back to `IdentityFlags.unknown()`, `is_admin` requires `is_resolved`, and the console link
+is hidden. A missing admin button therefore means **authentication succeeded** — the app
+got far enough to know who you are and then failed to look up what you are.
+
+If instead **sign-in itself** fails, suspect the anon key, not the secret key.
+
+## Triage: three commands
+
+Run from the deployment host, against the deployment's own environment.
+
+```bash
+# 1. Which project is configured?
+echo "$SUPABASE_URL"          # -> https://<ref>.supabase.co
+
+# 2. Does the service key work? 200 = healthy, 401 = this is your problem.
+curl -s -o /dev/null -w '%{http_code}\n' \
+  -H "apikey: $SUPABASE_SECRET_KEY" -H "Authorization: Bearer $SUPABASE_SECRET_KEY" \
+  "$SUPABASE_URL/rest/v1/"
+
+# 3. Does the anon key work? (200 expected; this one is about sign-in.)
+curl -s -o /dev/null -w '%{http_code}\n' \
+  -H "apikey: $SUPABASE_ANON_KEY" "$SUPABASE_URL/auth/v1/health"
+```
+
+`401 Unregistered API key` means the key is not registered **for this project**. That is
+different from expired and different from malformed:
+
+- A **legacy JWT** key (`eyJ…`) encodes its project. Decode the middle segment and compare
+  its `ref` claim to the host in `SUPABASE_URL`; check `exp` while you are there.
+- A **new-format** key (`sb_secret_…`) encodes nothing. It is structurally valid or not,
+  and only a live call tells you whether it belongs to this project. This is why the
+  2026-09-07 key looked perfect and was not.
+
+## Recovery
+
+1. **Establish scope first.** Local and production have separate `.env` files. A working
+   local app tells you nothing about production. Check each one with the commands above.
+2. **Mint a replacement**: Supabase dashboard → Project Settings → API Keys → Secret keys →
+   Create, _in the project whose ref matches `SUPABASE_URL`_.
+3. **Verify the candidate before cutting over**, using command 2 above with the new value.
+   A `200` from `/rest/v1/` is necessary but not sufficient — application reads also need
+   table grants and RPC execute, so plan to run the acceptance checks below.
+4. **Write it to the source the deployment actually reads.** Since 2026-09-07 the real
+   environment wins over `.env` (`web/api/app.py`, `override=False`), so a systemd
+   `EnvironmentFile=` or container `-e` value is honoured. Variables set in both places are
+   logged by name at startup.
+5. **Restart the process.** Non-negotiable: `SupabaseAdminClient` caches its instance on the
+   class (`web/utils/supabase_client.py`), so a running worker never re-reads the key.
+   Editing the file alone changes nothing.
+6. **Confirm from the log.** Startup now prints `Supabase admin client built from <NAME>`,
+   which tells you which variable won. If that name is not the one you just edited, stop:
+   the other variable is shadowing it.
+
+**Rollback:** keep the previous working value until the acceptance checks pass. Do **not**
+rotate the JWT signing secret as part of this — that invalidates the anon key and every
+live session at once, turning a privileged-read outage into a total one.
+
+## Acceptance checks
+
+HTTP 200 is not sufficient anywhere here: several routes deliberately swallow their own
+failures, which is why the incident looked healthier than it was.
+
+- `/api/identity` — expected role and tier, **and a populated `quota`**. A `null` quota
+  means the service key is still failing.
+- `/api/chat/sessions` — a real list, not a 503.
+- The administration link is visible again for an administrator.
+- One controlled question through chat: the answer streams, the counter increments, and the
+  turn survives a reload.
+- Notifications: the bell loads, and a targeted notification actually arrives over Realtime
+  — REST success does not prove broadcast delivery.
+
+## What this deployment does while the key is broken
+
+Worth knowing, because it changes how urgent the page is:
+
+- **Chat keeps working.** Answers stream, and until 2026-09-07 they streamed _uncounted_ —
+  every reader had unmetered LLM access for the duration. There is now a budget: five
+  consecutive claim failures or two minutes, then chat answers 503 rather than serving free
+  answers indefinitely (`ClaimFailureTolerance`, `web/services/quota_store.py`).
+- **Nothing is saved.** Durable writes fail, so the conversation is gone on reload.
+- **Disabled accounts are admitted** on a cold cache, because "we could not check" resolves
+  to enabled. Documented and accepted (`web/services/identity_cache.py`), but during a
+  credential outage the window is indefinite rather than 30 seconds.
+- **Nothing alerts.** There is no health or readiness endpoint, and `/api/identity` answers
+  200 while degraded, so an ordinary uptime check sees a healthy app. Both times this has
+  happened, a human noticed first. Filed in the incident plan as an open item.
+
+## One more thing that has bitten twice
+
+On 2026-09-07 a **second** credential failed within hours of the first: `OPENAI_API_KEY`,
+which presents completely differently — chat returns 500 and the log carries
+`openai.AuthenticationError: invalid_api_key` — and is unrelated to Supabase. When
+something breaks right after a credential fix, check whether it is a _different_ credential
+before assuming the fix failed or that a recent commit caused it.

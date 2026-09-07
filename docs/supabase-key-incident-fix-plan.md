@@ -7,9 +7,12 @@ failure the same day.
 
 An `Unregistered API key` 401 took every privileged Supabase call down on
 2026-09-07. This plan records the confirmed root cause, the recovery, and the
-defects the incident exposed. **P0, P4, P6 and P7 are done** (each in its own
-commit on `fix/supabase-key-incident-followups`). **P1, P2, P3, P5, P8, P9 and
-P10 remain open.**
+defects the incident exposed. **P0, P1, P4, P6, P7, P8, P9 and P10 are done**, each
+in its own commit on `fix/supabase-key-incident-followups`. **P5 is half done** —
+the observability half shipped; the three-state model has not. **P2 and P3 remain
+open**, both blocked on things this machine cannot supply: P2 needs sanitized
+fixtures captured from live GoTrue, and P3 needs a Python 3.10 environment to
+resolve against.
 
 **Revision 2 changed the plan materially.** Revision 1's P0 was judged unsafe to
 execute (no production scope, no rollback, no acceptance checks) and its P5
