@@ -194,6 +194,7 @@ from web.services.notification_store import (
 )
 from web.services.openai_app import FinishSignal, GenerationFailed, OpenAIHandler
 from web.services.quota_store import (
+    ClaimFailureTolerance,
     InMemoryQuotaBackend,
     QuotaClaim,
     QuotaUnavailable,
@@ -855,12 +856,39 @@ def _claim_daily_message() -> QuotaClaim | None:
         # uncounted, already logged once by `_durable_owner`.
         return None
     try:
-        return backend.claim(owner_id, _default_daily_limit())
+        claim = backend.claim(owner_id, _default_daily_limit())
     except QuotaUnavailable:
         raise
-    except Exception:
-        logger.error("Could not claim a daily message; streaming uncounted.", exc_info=True)
+    except Exception as exc:
+        # Fail open, but on a BUDGET. Everything that is not a recognised
+        # configuration fault used to land here and stream uncounted forever,
+        # which is how a rejected deployment key gave every reader unmetered
+        # access on 2026-09-07 with only a log line per request. The tolerance
+        # spends five consecutive failures or two minutes, whichever runs out
+        # first, and then says the deployment is broken rather than keeping the
+        # meter off. See `ClaimFailureTolerance`.
+        tolerance = current_app.config["claim_tolerance"]
+        if tolerance.record_failure():
+            logger.error(
+                "Could not claim a daily message %d times running; refusing rather than "
+                "streaming uncounted. This is a deployment fault: the allowance cannot be "
+                "consulted, so every answer served past this point would be free. %s",
+                tolerance.consecutive_failures,
+                describe_api_error(exc),
+                exc_info=True,
+            )
+            raise QuotaUnavailable("claim") from exc
+        logger.error(
+            "Could not claim a daily message; streaming uncounted (%d within the tolerance). %s",
+            tolerance.consecutive_failures,
+            describe_api_error(exc),
+            exc_info=True,
+        )
         return None
+    # The first success is the recovery signal — there is no separate probe,
+    # because reader traffic already supplies one.
+    current_app.config["claim_tolerance"].record_success()
+    return claim
 
 
 def _release_daily_message(claim: QuotaClaim | None) -> QuotaClaim | None:
@@ -2005,6 +2033,14 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
         return get_quota_backend()
 
     app.config["quota_backend"] = quota_backend
+
+    # One tolerance per application, which in production is one per process —
+    # `create_app` runs once — so the budget spans requests exactly as intended.
+    # Deliberately NOT a module global: that survives between tests too, letting
+    # one test's failures spend the budget and turn an unrelated later test's
+    # expected 200 into a 503 depending on collection order. Scoping it to the
+    # app gives every test a clean counter without a reset fixture to forget.
+    app.config["claim_tolerance"] = ClaimFailureTolerance()
 
     def admin_backend():
         """Resolved per call, never at startup.

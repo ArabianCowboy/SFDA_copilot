@@ -339,3 +339,84 @@ def test_a_backend_fault_streams_the_answer_uncounted(app, client, quota):
     response = post_stream(client, json=payload(), headers=AUTH)
     assert response.status_code == 200
     assert dict(frames(response))["done"]["quota"] is None
+
+
+def test_a_persistent_backend_fault_stops_being_free(app, client, quota):
+    """P1: fail open on a BUDGET, not forever.
+
+    The 2026-09-07 incident: a rejected deployment key made every claim raise
+    something that is not a recognised configuration fault, so the blanket
+    fail-open above served every reader unmetered for the whole outage. The
+    tolerance absorbs a blip and then stops paying for one.
+    """
+
+    def boom(*a, **k):
+        raise RuntimeError("401 Unregistered API key")
+
+    app.config["_testing_quota_backend"].claim = boom
+    budget = app.config["claim_tolerance"].MAX_CONSECUTIVE_FAILURES
+
+    # Inside the budget: still answered, still uncounted — a blip must not take
+    # chat down.
+    for attempt in range(budget - 1):
+        response = post_stream(client, json=payload(), headers=AUTH)
+        assert response.status_code == 200, f"refused inside the budget on attempt {attempt + 1}"
+        assert dict(frames(response))["done"]["quota"] is None
+
+    # Budget spent: the deployment is broken, and a broken deployment does not
+    # get to serve free answers indefinitely.
+    refused = post_stream(client, json=payload(), headers=AUTH)
+    assert refused.status_code == 503
+    # The code, not just the status: a 503 from any other cause would otherwise
+    # satisfy this test and hide a regression in the one it exists to pin.
+    assert refused.get_json()["code"] == "quota_unavailable"
+
+
+def test_recovery_needs_no_restart(app, client, quota):
+    """The first successful claim restores the whole budget.
+
+    This is what makes the missing explicit half-open state safe: reader traffic
+    is the probe, so a deployment that recovers serves again on its own.
+    """
+
+    def boom(*a, **k):
+        raise RuntimeError("401 Unregistered API key")
+
+    real_claim = app.config["_testing_quota_backend"].claim
+    app.config["_testing_quota_backend"].claim = boom
+    budget = app.config["claim_tolerance"].MAX_CONSECUTIVE_FAILURES
+
+    for _ in range(budget - 1):
+        post_stream(client, json=payload(), headers=AUTH)
+
+    app.config["_testing_quota_backend"].claim = real_claim
+    recovered = post_stream(client, json=payload(), headers=AUTH)
+    assert recovered.status_code == 200
+    assert dict(frames(recovered))["done"]["quota"] is not None
+
+    # And the budget is whole again, not one failure from closing.
+    app.config["_testing_quota_backend"].claim = boom
+    for attempt in range(budget - 1):
+        again = post_stream(client, json=payload(), headers=AUTH)
+        assert again.status_code == 200, f"budget was not restored (attempt {attempt + 1})"
+
+
+def test_the_blocking_route_stops_being_free_too(app, client, quota):
+    """The blocking route's `except QuotaUnavailable` is a COPY of the streaming
+    route's. An edit that breaks one copy would otherwise go uncaught, so the
+    policy is pinned on both paths rather than on the one that happened to be
+    written first."""
+
+    def boom(*a, **k):
+        raise RuntimeError("401 Unregistered API key")
+
+    app.config["_testing_quota_backend"].claim = boom
+    budget = app.config["claim_tolerance"].MAX_CONSECUTIVE_FAILURES
+
+    for attempt in range(budget - 1):
+        answered = client.post("/api/chat", json=payload(), headers=AUTH)
+        assert answered.status_code == 200, f"refused inside the budget on {attempt + 1}"
+
+    refused = client.post("/api/chat", json=payload(), headers=AUTH)
+    assert refused.status_code == 503
+    assert refused.get_json()["code"] == "quota_unavailable"

@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Protocol
@@ -124,6 +125,73 @@ class QuotaBackend(Protocol):
     def release(self, user_id: str, day: str) -> None: ...
 
     def status(self, user_id: str, default_limit: int) -> QuotaStatus: ...
+
+
+class ClaimFailureTolerance:
+    """How long chat keeps answering while the allowance cannot be consulted.
+
+    The 2026-09-07 incident found the gap this closes. A claim that raised
+    something outside ``_CONFIGURATION_FAULTS`` — a PostgREST 401 from a
+    rejected deployment key, say — was swallowed by the route and the answer
+    streamed *uncounted*. That is the precise outcome this module's docstring
+    says the design refuses, reached through the one branch that was not
+    classifying anything: every reader had unmetered access for as long as the
+    key stayed broken, with one log line per request to show for it.
+
+    Failing closed on the first failure is the wrong correction, because a
+    transient blip would then take chat down for everyone. So there is a budget,
+    and it is spent in whichever currency runs out first: **five consecutive
+    failures, or two minutes** from the first of them. A chat request is roughly
+    4,400 input tokens, so five unmetered answers is negligible spend against
+    the cost of refusing a legitimate question.
+
+    Counted **process-globally, not per reader**. A rejected key is a fault of
+    the deployment, not of whoever happens to ask next; per-reader tolerance
+    would multiply the unmetered window by the number of readers. One worker
+    means one counter, and the lock is for its eight threads.
+
+    Recovery needs no probe of its own and no restart: every claim attempt is
+    itself the probe, since chat traffic is driven by readers rather than a
+    timer, and the first success clears the budget. Claim health is tracked
+    separately from ``status`` health deliberately — a failing counter read on
+    the identity route says nothing about whether spending works.
+    """
+
+    MAX_CONSECUTIVE_FAILURES = 5
+    MAX_TOLERATED_SECONDS = 120.0
+
+    def __init__(self, *, clock: Any = None) -> None:
+        # Injectable so the elapsed-time rule is testable without sleeping, and
+        # monotonic so a clock adjustment mid-incident cannot widen or collapse
+        # the budget.
+        self._now = clock or time.monotonic
+        self._lock = threading.Lock()
+        self._consecutive = 0
+        self._first_failure_at: float | None = None
+
+    def record_success(self) -> None:
+        with self._lock:
+            self._consecutive = 0
+            self._first_failure_at = None
+
+    def record_failure(self) -> bool:
+        """Record one failed claim. True means this request must fail CLOSED.
+
+        Returning True is a claim about the deployment, not about the reader, so
+        the caller answers 503 rather than charging or refusing an allowance.
+        """
+        with self._lock:
+            self._consecutive += 1
+            if self._first_failure_at is None:
+                self._first_failure_at = self._now()
+            spent = self._consecutive >= self.MAX_CONSECUTIVE_FAILURES
+            expired = (self._now() - self._first_failure_at) >= self.MAX_TOLERATED_SECONDS
+            return spent or expired
+
+    @property
+    def consecutive_failures(self) -> int:
+        with self._lock:
+            return self._consecutive
 
 
 def _fault_code(exc: Exception) -> str | None:
@@ -377,6 +445,7 @@ def get_quota_backend() -> SupabaseQuotaBackend | None:
 
 __all__ = [
     "QUOTA_TIMEZONE",
+    "ClaimFailureTolerance",
     "InMemoryQuotaBackend",
     "QuotaBackend",
     "QuotaClaim",
