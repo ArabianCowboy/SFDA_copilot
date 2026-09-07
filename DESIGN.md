@@ -227,7 +227,7 @@ A warm porcelain-and-aubergine field holding two saturated voices — a deep tea
 
 **The Two Jobs Rule.** `[TASTE]` Teal is the brand's action colour on the landing (CTA and card icons) and is rationed to retrieval and citation state inside the chat transcript. A decorative teal in the transcript dilutes the one cue that says "this sentence came from a document"; a rationed teal on the landing leaves the page with no action colour. Which job applies is decided by surface, never by taste.
 
-**The Primitives-Only Dark Rule.** `[CORRECTNESS]` Dark mode overrides Layer 1 primitives and nothing else. A `[data-bs-theme="dark"]` branch inside a component means the primitive ramp is wrong — fix the ramp. The teal ramp lifts to `#4FC2C8` in dark because `#0F5E63` on `#191420` is roughly 2.1:1 and unreadable; that is a ramp decision, not a component decision.
+**The Primitives-Only Dark Rule.** `[CORRECTNESS]` Dark mode overrides Layer 1 primitives and nothing else. A `[data-bs-theme="dark"]` branch inside a component means the primitive ramp is wrong — fix the ramp. The teal ramp lifts to `#4FC2C8` in dark because `#0F5E63` on `#13161F` is roughly 2.4:1 and unreadable; that is a ramp decision, not a component decision.
 
 **The Semantic-Names-Only Rule.** `[TASTE]` Components reference Layer 3 names (`--bg-surface`, `--fg-muted`, `--signal`, `--confidence`, `--hairline`). Reaching for a primitive in a component file means the semantic layer is missing a name; add the name.
 

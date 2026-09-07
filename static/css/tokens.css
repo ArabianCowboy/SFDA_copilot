@@ -168,6 +168,11 @@
   --fg-muted: var(--ink-500);
   --fg-faint: var(--ink-300);
   --fg-on-signal: #fff;
+  /* Cross-theme literals for the toast: --bg-inverse is dark in light mode,
+     so these reuse the dark theme's alert/gold values, which are the ones
+     tuned for contrast against a dark surface. */
+  --danger-inverse: #F0857A;
+  --confidence-inverse: #E9A84B;
 
   --hairline: var(--rule-200);
   --hairline-strong: var(--rule-300);
@@ -216,20 +221,20 @@
    without a single dark-mode branch in any component.
    ═══════════════════════════════════════════════════════════════════ */
 [data-bs-theme="dark"] {
-  --ink-900: #F1ECF4;
-  --ink-700: #D2CAD9;
-  --ink-500: #A79DB1;
-  --ink-300: #837A8D;
+  --ink-900: #EDEEF2;
+  --ink-700: #C8CCE2;
+  --ink-500: #99A0BB;
+  --ink-300: #767C9C;
 
-  --paper-000: #241E2C;
-  --paper-050: #191420;
-  --paper-100: #2F2839;
+  --paper-000: #1C202F;
+  --paper-050: #13161F;
+  --paper-100: #282B33;
 
-  --rule-200: #362E42;
-  --rule-300: #4A4058;
+  --rule-200: #2C3049;
+  --rule-300: #3B4362;
 
-  /* Lifted so the signal clears AA on the dark page. #0F5E63 on #191420 is
-     roughly 2.1:1 — unreadable. This is why the ramp flips, not the
+  /* Lifted so the signal clears AA on the dark page. #0F5E63 on #13161F is
+     roughly 2.4:1 — unreadable. This is why the ramp flips, not the
      semantics, and why the hover goes LIGHTER here. */
   --teal-600: #4FC2C8;
   --teal-700: #7FD9DD;
@@ -240,9 +245,13 @@
   --gold-100: #332A26;
 
   --alert-600: #F0857A;
-  --warn-600: #E0A94D;
+  --warn-600: #E26928;
 
   --fg-on-signal: #062325;           /* dark text on a bright teal fill */
+  /* Mirror of the above: --bg-inverse is light in dark mode, so these reuse
+     the light theme's alert/gold values, tuned for a light surface. */
+  --danger-inverse: #A8301F;
+  --confidence-inverse: #B87310;
   --focus-ring-shadow: rgb(79 194 200 / .32);
   --signal-rgb: 79 194 200;
   --confidence-rgb: 233 168 75;

@@ -1286,7 +1286,7 @@
   background: var(--bg-sunken);
   font-size: var(--fs-200);
   line-height: 1.6;
-  color: var(--fg);
+  color: var(--fg-primary);
 }
 .account-disabled-notice .account-disabled-notice-icon {
   flex-shrink: 0;
@@ -2703,10 +2703,10 @@
    rather than decoration — but it answers to the same weight as every other
    meaningful rule in the system. */
 .toast-notification.error {
-  border-inline-start: 2px solid var(--danger);
+  border-inline-start: 2px solid var(--danger-inverse);
 }
 .toast-notification.success {
-  border-inline-start: 2px solid var(--confidence);
+  border-inline-start: 2px solid var(--confidence-inverse);
 }
 
 /* A toast that carries an action becomes a row rather than a line of text.

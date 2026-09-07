@@ -8,7 +8,7 @@
         "role": "neutral",
         "displayName": "Aubergine Ink",
         "canonical": "#241F2B",
-        "darkValue": "#F1ECF4",
+        "darkValue": "#EDEEF2",
         "tonalRamp": [
           "#100D13",
           "#1A161F",
@@ -24,25 +24,25 @@
         "role": "neutral",
         "displayName": "Aubergine Secondary",
         "canonical": "#463E52",
-        "darkValue": "#D2CAD9"
+        "darkValue": "#C8CCE2"
       },
       "ink-500": {
         "role": "neutral",
         "displayName": "Aubergine Muted",
         "canonical": "#675D75",
-        "darkValue": "#A79DB1"
+        "darkValue": "#99A0BB"
       },
       "ink-300": {
         "role": "neutral",
         "displayName": "Aubergine Faint",
         "canonical": "#857A94",
-        "darkValue": "#837A8D"
+        "darkValue": "#767C9C"
       },
       "paper-050": {
         "role": "neutral",
         "displayName": "Warm Porcelain",
         "canonical": "#F4F2F0",
-        "darkValue": "#191420",
+        "darkValue": "#13161F",
         "tonalRamp": [
           "#2A2622",
           "#453F39",
@@ -58,25 +58,25 @@
         "role": "neutral",
         "displayName": "Card White",
         "canonical": "#FFFFFF",
-        "darkValue": "#241E2C"
+        "darkValue": "#1C202F"
       },
       "paper-100": {
         "role": "neutral",
         "displayName": "Sunken Porcelain",
         "canonical": "#E9E5E1",
-        "darkValue": "#2F2839"
+        "darkValue": "#282B33"
       },
       "rule-200": {
         "role": "neutral",
         "displayName": "Hairline",
         "canonical": "#DCD7D1",
-        "darkValue": "#362E42"
+        "darkValue": "#2C3049"
       },
       "rule-300": {
         "role": "neutral",
         "displayName": "Hairline Strong",
         "canonical": "#BFB8B0",
-        "darkValue": "#4A4058"
+        "darkValue": "#3B4362"
       },
       "teal-600": {
         "role": "primary",
@@ -144,7 +144,7 @@
         "role": "tertiary",
         "displayName": "Warn Amber",
         "canonical": "#8A5A00",
-        "darkValue": "#E0A94D"
+        "darkValue": "#E26928"
       },
       "scrim": {
         "role": "neutral",
@@ -429,7 +429,7 @@
       },
       {
         "name": "The Primitives-Only Dark Rule",
-        "body": "Dark mode overrides Layer 1 primitives and nothing else. A `[data-bs-theme=\"dark\"]` branch inside a component means the primitive ramp is wrong — fix the ramp. The teal ramp lifts to `#4FC2C8` in dark because `#0F5E63` on `#191420` is roughly 2.1:1 and unreadable; that is a ramp decision, not a component decision.",
+        "body": "Dark mode overrides Layer 1 primitives and nothing else. A `[data-bs-theme=\"dark\"]` branch inside a component means the primitive ramp is wrong — fix the ramp. The teal ramp lifts to `#4FC2C8` in dark because `#0F5E63` on `#13161F` is roughly 2.4:1 and unreadable; that is a ramp decision, not a component decision.",
         "section": "colors"
       },
       {
