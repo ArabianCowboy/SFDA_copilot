@@ -52,7 +52,7 @@ bottom of this file: [How this file works](#how-this-file-works).
 - [The browser suite flakes intermittently in test_source_panel.py](#the-browser-suite-flakes-intermittently-in-test_source_panelpy) — undiagnosed; resource-contention evidence only.
 - [Know what people actually ask](#know-what-people-actually-ask--without-reading-anyones-conversation) — an identity-free question log; not started, gated on scale.
 - [Enable the token-verification cache once production numbers justify it](#enable-the-token-verification-cache-once-production-numbers-justify-it) — single-flight (the worker-starvation fix) shipped 2026-08-27 at no revocation cost; the optional positive cache stays off, gated on measurement.
-- [Admin broadcast & Reader Notification Center](#admin-broadcast--reader-notification-center-popups-banners-and-inbox-history) — implemented 2026-08-24; live login/session smoke-tested against production 2026-08-29 (by hand), which also surfaced and closed a real `mark-read` 500 the same day ([fix write-up](docs/notification-mark-read-500-fix.md)); still owes a live Realtime-push check, the sign-out/reauthenticate paths, and a clean `mypy web` run (unrelated numpy/Python-3.14 stub issue).
+- [Admin broadcast & Reader Notification Center](#admin-broadcast--reader-notification-center-popups-banners-and-inbox-history) — implemented 2026-08-24; live login/session smoke-tested against production 2026-08-29 (by hand), which also surfaced and closed a real `mark-read` 500 the same day ([fix write-up](docs/notification-mark-read-500-fix.md)); still owes a live Realtime-push check and the sign-out/reauthenticate paths (the sign-out half is now its own entry above); the `mypy web` caveat closed 2026-09-08.
 - [The privacy policy (/privacy) is a draft, not reviewed legal text](#the-privacy-policy-privacy-is-a-draft-not-reviewed-legal-text) — consent shipped against this draft; the legal review of the text is what is still owed.
 - [Account deletion (Spec 4)](#account-deletion-spec-4--blocked-on-a-product-decision-not-on-engineering) — blocked on an unclosed product decision; both migrations written.
 - [A conversation id now reaches the access log](#a-conversation-id-now-reaches-the-access-log) — a verification task, possibly already fine; unverified either way.
@@ -63,6 +63,8 @@ bottom of this file: [How this file works](#how-this-file-works).
 - [Confirm the backup schedule, and rehearse a restore once](#confirm-the-backup-schedule-and-rehearse-a-restore-once) — dashboard task; the recovery position is currently an assumption.
 - [Measure the real statement and lock timeouts on the write path](#measure-the-real-statement-and-lock-timeouts-on-the-write-path) — needs a call through PostgREST, not MCP.
 - [Run the database assertions somewhere other than by hand](#run-the-database-assertions-somewhere-other-than-by-hand) — `supabase/tests/` exists and runs by hand only.
+- [A revoked session leaves the conversation id in the address bar](#a-revoked-or-expired-session-clears-the-transcript-but-leaves-the-conversation-id-in-the-address-bar) — diagnosed, unfixed; the fix belongs at the `SIGNED_OUT` call site, not in the shared teardown.
+- [One Realtime socket per reader, not one per visible tab](#one-realtime-socket-per-reader-not-one-per-visible-tab) — not started; costs nothing measurable yet, written down because the cost is the interesting half.
 
 ---
 
@@ -332,6 +334,44 @@ with the `for update` that `admin_set_user_flags` already takes on a demotion ta
 costs nothing on the uncontended path. That is probably the right answer, and it should be
 measured rather than assumed: `for share` on `profiles` sits on the hot path of every admin
 mutation, and `profiles` is also the table every reader request reads.
+
+### A revoked or expired session clears the transcript but leaves the conversation id in the address bar
+
+**Where:** `static/js/app.js:514-515` — the `SIGNED_OUT`/`USER_DELETED` branch of
+`onAuthStateChange` — against `Handlers.redirectToHomeIfNeeded` in
+`static/js/modules/handlers.js:2205`.
+
+**What is wrong.** There are two ways out of a session and only one of them fixes the
+address bar. `handleLogout` calls `redirectToHomeIfNeeded()` on both its success and its
+error path (`handlers.js:2112` and `2120`). The `onAuthStateChange` branch that catches
+every _other_ way a session ends — expiry, revocation from another tab, an administrator
+disabling the account — calls only `clearSessionState()`. That clears the transcript,
+sidebar, source panel and citation map, but nothing touches `window.location`, so a reader
+whose session dies at `/c/<uuid>` is left looking at the landing view with the previous
+reader's conversation id still in the URL bar and still in browser history.
+
+**Who it reaches.** Anyone whose session ends without their pressing the logout button,
+while reading a conversation rather than sitting at `/`. On a shared machine that is the
+case that matters: the id is not the content, but it is a durable pointer to another
+person's conversation, left in the address bar and the history of the next person to use
+the machine. A later sign-in from that URL then asks for a conversation the new reader does
+not own, and the ownership preflight refuses it correctly — so this is an exposure of an
+identifier and a confusing first screen, not an access-control failure.
+
+**How it was found.** A code read on 2026-09-08, reviewing the sign-out paths after the
+Supabase key incident; confirmed by grepping every caller of `redirectToHomeIfNeeded` and
+finding both of them inside `handleLogout`.
+
+**What fixing it would disturb.** The fix does **not** belong inside `clearSessionState`,
+which is the obvious place and the wrong one. That function is also reached from
+`endRecovery` (`handlers.js:2098`) and from `app.js:387`, and a `location.replace('/')`
+there would navigate away from the password-recovery form at the exact moment it completes
+— trading this bug for a worse one. It belongs at the `SIGNED_OUT` call site, which means
+the two exits stop sharing one teardown, and the reason they differ has to be written down
+at both ends or the next person will helpfully consolidate it back. Needs a browser test
+that ends a session at `/c/<uuid>` without pressing logout — note the existing suite has no
+fixture for revocation-from-elsewhere, so that fixture is part of the cost — and an
+`ASSET_VERSION` bump in `web/api/app.py`, since it touches JS.
 
 ---
 
@@ -1107,6 +1147,23 @@ Operators need a direct mechanism to send real-time or persistent notifications 
 - **Bilingual & Real-time**:
   - Dual-language fields (`title_en`, `title_ar`, `body_en`, `body_ar`) matching reader UI language.
 
+**2026-09-08 — one of the three outstanding checks closes; the other two do not.**
+`python -m mypy web` now reports `Success: no issues found in 44 source files` on this same
+Python 3.14 environment, so the numpy-stub caveat above is spent and should not be repeated
+as a reason to distrust a pass. It was an environment problem and it went away with the
+environment, which is worth saying plainly: nothing in this feature fixed it.
+
+The other two are still owed, and one of them has since been diagnosed rather than merely
+listed. The sign-out path is now its own entry — [a revoked or expired session clears the
+transcript but leaves the conversation id in the address
+bar](#a-revoked-or-expired-session-clears-the-transcript-but-leaves-the-conversation-id-in-the-address-bar)
+— because it turned out to be a specific missing call rather than an unverified area, and a
+named bug is worth more than a caveat. The live Realtime-push check is unchanged and still
+needs a real project. Separately, the poll cadence this entry describes was changed on
+2026-09-07: `fetchActive` now backs off from 45s toward 600s on repeated failure instead of
+polling at a fixed interval, which is also what makes [one Realtime socket per
+reader](#one-realtime-socket-per-reader-not-one-per-visible-tab) worth writing down.
+
 ---
 
 ### The privacy policy (/privacy) is a draft, not reviewed legal text
@@ -1415,6 +1472,45 @@ Converting the files to pgTAP is **not** part of this. `pgtap` is available and 
 installed, and installing a few hundred functions into the production database to run
 three assertion files is a bigger change than the files are. They are plain `do` blocks
 that need no extension and convert mechanically if that ever changes.
+
+### One Realtime socket per reader, not one per visible tab
+
+**Where:** `static/js/modules/services.js:955-964` (`Notifications.subscribe`) and the poll
+loop in `static/js/modules/handlers.js` (`startNotificationsPolling`, line 1176), both
+driven by the visibility listener at `handlers.js:244-247`.
+
+**What is wanted.** Every visible tab opens its own `notify:user:<uid>` Realtime channel
+and runs its own REST poll loop, so one reader with four windows open holds four
+WebSockets and four independent timers against a server that runs a single worker. Web
+Locks (`navigator.locks.request` in exclusive mode) plus a `BroadcastChannel` would elect
+one leader tab to hold the socket and the poll and fan the results out to the rest. That is
+the standard browser answer, and the reason to prefer it over an election written by hand
+is that the browser releases the lock when the leader tab dies — a hand-rolled leader has
+to detect its own death, which is the part that goes wrong.
+
+**Who it reaches.** Nobody badly, today, and that is why this is planned work rather than a
+bug. The visibility listener already tears down both the channel and the poll when a tab is
+hidden (`handlers.js:246`), so the multiplier is _visible_ tabs, not open ones — normally
+one. It reaches the reader working across two monitors, and it multiplies whatever the poll
+costs: the P7 work set that at 45s, rising to 600s under sustained failure, so four visible
+tabs is four times that floor.
+
+**How it was found.** A code read on 2026-09-08 during the P7 notification-poll work,
+alongside a survey of how other projects handle multi-tab state.
+
+**What fixing it would disturb.** Leader election is genuinely stateful, and wrong in ways
+that only appear in production. The sharp edge here is that leadership and visibility are
+two different things: a leader tab that becomes hidden tears its own subscription down by
+the rule above, so it must hand the lock on rather than hold it while delivering nothing —
+which means the visibility listener and the lock have to be reasoned about together, not
+bolted on to each other. `BroadcastChannel` also adds a new cross-tab surface carrying
+notification state, and `test_frontend_architecture.py` has an opinion about that:
+`services.js` is transport only and may not reach into view or state, which a fan-out that
+delivers straight into the other tabs' handlers would do. Verifying it needs real
+multi-context browser tests — `test_multi_tab_conversations.py` is the pattern — and those
+are the slowest and most contention-prone tests in the suite, which is the subject of its
+own entry above. Worth doing when someone can show the duplicate polling costs something;
+not before.
 
 ---
 
