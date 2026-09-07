@@ -145,7 +145,15 @@ class SupabaseAdminClient:
             # format, so the migration is a value swap. The new name wins when
             # both are present, which makes the cutover a rename rather than an
             # edit-in-place — and leaves the old value recoverable for a rollback.
-            key = os.getenv("SUPABASE_SECRET_KEY") or os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+            source = next(
+                (
+                    name
+                    for name in ("SUPABASE_SECRET_KEY", "SUPABASE_SERVICE_ROLE_KEY")
+                    if os.getenv(name)
+                ),
+                None,
+            )
+            key = os.getenv(source) if source else None
 
             if not url or not key:
                 # Loud in the log, but not fatal. A missing admin key must not
@@ -154,12 +162,24 @@ class SupabaseAdminClient:
                 # is an administrator", which fails in the safe direction.
                 if not cls._warned:
                     logger.error(
-                        "SUPABASE_SERVICE_ROLE_KEY is not set; every reader will "
-                        "resolve as a non-administrator and the admin surface will "
-                        "be unreachable. Set it in .env to enable it."
+                        "Neither SUPABASE_SECRET_KEY nor SUPABASE_SERVICE_ROLE_KEY is set "
+                        "(or SUPABASE_URL is missing); every reader will resolve as a "
+                        "non-administrator and the admin surface will be unreachable. "
+                        "Set one in .env to enable it."
                     )
                     cls._warned = True
                 return None
+
+            # WHICH name won, by name only and never the value. On 2026-09-07 a
+            # foreign `sb_secret_` key shadowed a working `service_role` JWT and
+            # 401'd every privileged call; the log said only that
+            # SUPABASE_SERVICE_ROLE_KEY was unset, which was both untrue and the
+            # opposite of useful, because the guard above had not fired at all.
+            # A present-but-wrong key looks identical to a correct one from here
+            # — `create_client` validates nothing — so the one thing this can
+            # honestly report is which variable it read, and that is exactly the
+            # fact the incident needed and did not have.
+            logger.info("Supabase admin client built from %s.", source)
 
             cls._instance = create_client(url, key)
 
