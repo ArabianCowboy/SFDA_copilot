@@ -36,6 +36,7 @@ from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from typing import Any, Protocol
 
+from web.utils.postgrest_errors import describe_api_error
 from web.utils.supabase_client import get_supabase_admin
 
 logger = logging.getLogger(__name__)
@@ -497,7 +498,7 @@ class SupabaseChatBackend:
                 },
             ).execute()
         except Exception as exception:
-            raise PersistenceUnavailable(str(exception)) from exception
+            raise PersistenceUnavailable(describe_api_error(exception)) from exception
 
         rows = getattr(response, "data", None) or []
         sessions = [_row_to_summary(row) for row in rows]

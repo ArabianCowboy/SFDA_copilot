@@ -26,6 +26,7 @@ from datetime import timezone
 from typing import Protocol
 
 from web.services.identity_cache import IdentityFlags
+from web.utils.postgrest_errors import describe_api_error
 from web.utils.supabase_client import get_supabase_admin
 
 logger = logging.getLogger(__name__)
@@ -1264,10 +1265,11 @@ def resolve_identity_flags(
 
     try:
         flags = backend.fetch_identity(user_id, email)
-    except Exception:
+    except Exception as exc:
         logger.error(
-            "Identity lookup failed for %s; falling back to the last known answer.",
+            "Identity lookup failed for %s (%s); falling back to the last known answer.",
             user_id,
+            describe_api_error(exc),
             exc_info=True,
         )
         return _fallback(cache, user_id, email)

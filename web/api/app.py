@@ -218,6 +218,7 @@ from web.utils.i18n import (
     text_direction,
 )
 from web.utils.icons import CATEGORY_ICONS, icon, runtime_icons
+from web.utils.postgrest_errors import describe_api_error
 from web.utils.supabase_client import _auth_timeout, get_supabase
 
 # ──────────────────────────────────────────────────────────
@@ -2561,8 +2562,12 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
 
             try:
                 facts = backend.get_standing_line_facts(flags.user_id)
-            except Exception:
-                logger.exception("Could not load standing-line facts for %s", flags.user_id)
+            except Exception as exc:
+                logger.exception(
+                    "Could not load standing-line facts for %s: %s",
+                    flags.user_id,
+                    describe_api_error(exc),
+                )
                 facts = None
             if facts is not None:
                 created_at = facts.get("created_at")
@@ -2583,8 +2588,12 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
                 quota_field = quota_backend.status(
                     flags.user_id, _default_daily_limit()
                 ).as_identity_field()
-            except Exception:
-                logger.exception("Could not load the quota for %s", flags.user_id)
+            except Exception as exc:
+                logger.exception(
+                    "Could not load the quota for %s: %s",
+                    flags.user_id,
+                    describe_api_error(exc),
+                )
 
         return jsonify(
             {
@@ -3108,9 +3117,12 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
         lang = (request.args.get("lang") or "en").lower()
         try:
             rows = backend.list_active_for_reader(g.identity.user_id)
-        except Exception:
+        except Exception as exc:
             logger.warning(
-                "Could not load active notifications for %s.", g.identity.user_id, exc_info=True
+                "Could not load active notifications for %s: %s",
+                g.identity.user_id,
+                describe_api_error(exc),
+                exc_info=True,
             )
             return (
                 jsonify(
