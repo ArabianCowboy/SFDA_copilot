@@ -524,7 +524,9 @@ class InMemoryNotificationBackend:
         if not actor.user_id:
             return False
         acting = next((u for u in self._users if u["id"] == actor.user_id), None)
-        return bool(acting) and acting.get("role") == "admin" and not acting.get("is_disabled")
+        return (
+            acting is not None and acting.get("role") == "admin" and not acting.get("is_disabled")
+        )
 
     def preview_audience(
         self, *, target_kind: str, target_role, target_tier, target_user_id

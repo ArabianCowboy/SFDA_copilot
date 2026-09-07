@@ -3,6 +3,7 @@ from typing import Any
 
 from flask import Blueprint, current_app, jsonify, request, session
 from supabase_auth.errors import AuthError
+from supabase_auth.types import SignUpWithEmailAndPasswordCredentialsOptions
 
 from web.services.account_recovery import (
     RecoveryRefused,
@@ -172,7 +173,7 @@ def signup() -> Any:
         if not supabase:
             return jsonify({"error": "provider_unavailable"}), 503
 
-        options: dict[str, Any] = {"data": _signup_metadata(data)}
+        options: SignUpWithEmailAndPasswordCredentialsOptions = {"data": _signup_metadata(data)}
         redirect_to = signup_redirect_url(lang)
         if redirect_to:
             options["email_redirect_to"] = redirect_to

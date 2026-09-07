@@ -76,6 +76,7 @@ from flask import (
     stream_with_context,
     url_for,
 )
+from flask.typing import RouteCallable
 from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -2220,11 +2221,13 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
     # reassigned. Flask dispatches through `view_functions`, so the replaced
     # callable is what runs; the blueprint's `before_request` gate still runs first.
     # Pinned by web/tests/test_rate_limit_keys.py.
-    app.view_functions["admin.revoke_sessions"] = limiter.limit("10 per minute")(
-        app.view_functions["admin.revoke_sessions"]
+    app.view_functions["admin.revoke_sessions"] = cast(
+        RouteCallable,
+        limiter.limit("10 per minute")(app.view_functions["admin.revoke_sessions"]),
     )
-    app.view_functions["admin.change_email"] = limiter.limit("10 per minute")(
-        app.view_functions["admin.change_email"]
+    app.view_functions["admin.change_email"] = cast(
+        RouteCallable,
+        limiter.limit("10 per minute")(app.view_functions["admin.change_email"]),
     )
     # Keyed per-ADMINISTRATOR (the account, via `_rate_key`), not per-IP and not
     # per-session: a broadcast fans a message out to every targeted reader at
@@ -2233,12 +2236,15 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
     # keyed on a bearer-token HASH until 2026-09-03, which failed against the very
     # threat its own docstring named -- an attacker holding the credentials signs
     # in, gets a session of their own, and with it a fresh 10/hour.
-    app.view_functions["admin.create_notification"] = limiter.limit(
-        lambda: config.get("server", "rate_limit", {}).get(
-            "notification_broadcast_api", "10 per hour"
-        ),
-        key_func=_rate_key,
-    )(app.view_functions["admin.create_notification"])
+    app.view_functions["admin.create_notification"] = cast(
+        RouteCallable,
+        limiter.limit(
+            lambda: config.get("server", "rate_limit", {}).get(
+                "notification_broadcast_api", "10 per hour"
+            ),
+            key_func=_rate_key,
+        )(app.view_functions["admin.create_notification"]),
+    )
 
     # Imported here for the same reason admin_bp is: account.py imports back
     # into this module for _authenticate_request, and a top-level import
@@ -2259,20 +2265,26 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
     # limit. (The comment here claimed the opposite until 2026-09-03; if stacking
     # is ever wanted, `override_defaults=False` is the switch.) Keyed per reader
     # rather than per IP -- see `_rate_key`.
-    app.view_functions["account.export"] = limiter.limit(
-        lambda: config.get("server", "rate_limit", {}).get("export_api", "2 per 10 minutes"),
-        key_func=_rate_key,
-    )(app.view_functions["account.export"])
+    app.view_functions["account.export"] = cast(
+        RouteCallable,
+        limiter.limit(
+            lambda: config.get("server", "rate_limit", {}).get("export_api", "2 per 10 minutes"),
+            key_func=_rate_key,
+        )(app.view_functions["account.export"]),
+    )
     # A destructive, irreversible action on the reader's own history — tighter
     # than the ordinary sidebar single-delete (sessions_api, 60/minute), but
     # not as tight as export: it costs one RPC round trip, not a full scan
     # and stream of every stored message.
-    app.view_functions["account.delete_all_conversations"] = limiter.limit(
-        lambda: config.get("server", "rate_limit", {}).get(
-            "account_bulk_delete_api", "10 per hour"
-        ),
-        key_func=_rate_key,
-    )(app.view_functions["account.delete_all_conversations"])
+    app.view_functions["account.delete_all_conversations"] = cast(
+        RouteCallable,
+        limiter.limit(
+            lambda: config.get("server", "rate_limit", {}).get(
+                "account_bulk_delete_api", "10 per hour"
+            ),
+            key_func=_rate_key,
+        )(app.view_functions["account.delete_all_conversations"]),
+    )
 
     workers = os.getenv("WEB_CONCURRENCY", "1")
     if workers != "1":

@@ -1070,10 +1070,20 @@ def update_tier(key: str) -> Response | tuple[Response, int]:
         tier = backend.update_tier(key, actor=actor_from_request(g.identity), **fields)
     except AdminActionRefused as refused:
         return jsonify({"error": refused.code}), 409
-    # A limit change alters what every member of this tier may ask next, and the
-    # flags cache carries `tier`. Evicting the whole cache is the honest move:
-    # the console has just changed a fact about a GROUP, not about one account.
-    _evict_identity_caches(None)
+    # No cache to evict here: the flags cache carries which tier a reader is
+    # IN (role/tier/disabled), not a tier's limit values, and quota is never
+    # read from it -- chat_claim_daily_message joins public.tiers live, on
+    # every claim (see the reader-quota-claim migration). A limit change is
+    # visible on the next message with no cache in the loop at all. This was
+    # a call to `_evict_identity_caches(None)` before 2026-09-07, which read
+    # as "evict everyone" but was actually a silent no-op (`None` is not a
+    # cached key) -- removed rather than fixed into a real global eviction:
+    # that would have wiped `IdentityFlagsCache`'s retained-expired entries
+    # for every reader, not just this tier, which is exactly what a
+    # concurrent Supabase blip needs to fail an unrelated disabled account
+    # open (`last_known()` -> nothing -> `IdentityFlags.unknown()`,
+    # is_disabled=False) for the sake of a change that never needed the
+    # cache touched. Found in review (/code-review, 2026-09-07).
     logger.info("%s updated tier %s", g.identity.email, key)
     return jsonify({"tier": tier})
 
@@ -1229,7 +1239,9 @@ def _notification_backend():
     return factory() if factory else None
 
 
-def _validate_notification_targeting(payload: dict) -> tuple[dict, Response | tuple] | None:
+def _validate_notification_targeting(
+    payload: dict,
+) -> tuple[dict, None] | tuple[None, Response | tuple[Response, int]]:
     """``(fields, None)`` on success, or ``(None, error_response)``.
 
     Shared by the audience-preview and create routes so the two cannot
@@ -1312,6 +1324,11 @@ def notifications_audience_preview() -> Response | tuple[Response, int]:
     fields, error = _validate_notification_targeting(payload)
     if error:
         return error
+    # mypy cannot correlate the two arms of `tuple[dict, None] | tuple[None,
+    # ...]` across an unpack into two separate names -- the invariant (one of
+    # the pair is always None, never both) is real, just outside what it
+    # tracks here.
+    assert fields is not None
 
     backend = _notification_backend()
     if backend is None:
@@ -1376,6 +1393,8 @@ def create_notification() -> Response | tuple[Response, int]:
     fields, error = _validate_notification_targeting(payload)
     if error:
         return error
+    # See the matching assert in notifications_audience_preview above.
+    assert fields is not None
 
     expires_at = payload.get("expires_at")
     if expires_at is not None and not isinstance(expires_at, str):
