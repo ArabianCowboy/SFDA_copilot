@@ -355,6 +355,7 @@ def test_identity_says_nothing_about_anyone_else(client):
         "tier",
         "is_admin",
         "is_disabled",
+        "is_resolved",
         # Both back the /account standing line. Null under TESTING — no
         # service-role key means get_admin_backend() returns None — which is
         # the honest answer, not an omission of the key.
@@ -396,6 +397,66 @@ def test_identity_quota_starts_from_this_readers_own_usage(client):
     assert quota["remaining"] == quota["limit"]
     assert quota["limit"] > 0
     assert quota["resets_at"]
+
+
+def test_identity_payload_reports_resolution_status(monkeypatch, app, client):
+    """The payload tells the client whether identity was resolved or guessed.
+
+    During an outage, resolve_identity_flags falls back to unknown()
+    (is_resolved=False). Exposing this in the payload allows clients to
+    distinguish an outage fallback from a genuine free-tier reader without
+    failing the entire response.
+    """
+    import base64
+    import json
+    import time
+    from types import SimpleNamespace
+
+    from web.services import admin_store
+
+    monkeypatch.setitem(app.config, "TESTING", False)
+
+    token_payload = (
+        base64.urlsafe_b64encode(json.dumps({"exp": time.time() + 3600}).encode())
+        .rstrip(b"=")
+        .decode()
+    )
+    token = f"header.{token_payload}.signature"
+    headers = {"Authorization": f"Bearer {token}"}
+
+    class FakeSupabase:
+        def __init__(self) -> None:
+            self.auth = self
+
+        def get_user(self, _token: str) -> SimpleNamespace:
+            return SimpleNamespace(user=SimpleNamespace(id="u1", email="u1@example.com"))
+
+    monkeypatch.setattr("web.api.app.get_supabase", lambda: FakeSupabase())
+
+    # Failing backend: fetch_identity raises
+    class Broken:
+        def fetch_identity(self, user_id: str, email: str | None) -> None:
+            raise RuntimeError("supabase is down")
+
+    monkeypatch.setattr(admin_store, "get_admin_backend", lambda: Broken())
+
+    response = client.get("/api/identity", headers=headers)
+    assert response.status_code == 200
+    body = response.get_json()
+    assert body["is_resolved"] is False
+
+    # Healthy path: backend returns resolved identity
+    class Healthy:
+        def fetch_identity(self, user_id: str, email: str | None) -> IdentityFlags:
+            return IdentityFlags(user_id, email, "user", "free", False, is_resolved=True)
+
+    monkeypatch.setattr(admin_store, "get_admin_backend", lambda: Healthy())
+
+    healthy_token = f"header.{token_payload}.healthy"
+    response = client.get("/api/identity", headers={"Authorization": f"Bearer {healthy_token}"})
+    assert response.status_code == 200
+    body = response.get_json()
+    assert body["is_resolved"] is True
 
 
 # ── touch_last_seen: its own try, never sharing the standing-line facts one ───

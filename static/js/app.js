@@ -465,7 +465,17 @@ const App = {
               );
               return;
             }
-            AuthView.renderAdminAffordance(!!identity?.is_admin);
+            /* Skip re-rendering when the identity could not be resolved: during
+               an outage is_admin falls back to false because the lookup failed,
+               so painting that non-answer would actively hide a real administrator's
+               console link. Declining to hide never grants privilege: it only
+               avoids hiding a link already shown, and web/api/admin.py:101-105
+               still rejects an unresolved identity with 503.
+               `!== false` rather than truthiness: an older cached payload omitting
+               is_resolved is treated as resolved. */
+            if (identity?.is_resolved !== false) {
+              AuthView.renderAdminAffordance(!!identity?.is_admin);
+            }
             /* Seeds the counter at sign-in, guarded by the same checkId and
                user_id checks that guard the admin affordance above — a stale
                answer must not paint another reader's allowance. Every later

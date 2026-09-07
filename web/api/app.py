@@ -265,7 +265,7 @@ SUPPORTED_FAQ_LANGS = ("en", "ar")
 # that mixes a fresh template with a stale module is worse than a stale page —
 # post-icon-migration it would render an <i class="bi"> with no icon font behind
 # it, or print a glyph NAME as text. MODULE_IMPORT_MAP below closes that.
-ASSET_VERSION = "warm73"
+ASSET_VERSION = "warm74"
 
 # Product release, rendered in the landing footer. The single source — do not
 # hand-type this value into a JS docstring or any other comment; that duplication
@@ -2603,6 +2603,10 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
                 "tier": flags.tier,
                 "is_admin": flags.is_admin,
                 "is_disabled": flags.is_disabled,
+                # Distinguishes a real answer from a fallback. Without it, a
+                # degraded response during an outage is indistinguishable from
+                # a healthy free-tier one.
+                "is_resolved": flags.is_resolved,
                 "created_at": created_at,
                 "conversation_count": conversation_count,
                 # Counts and the tier's own bilingual labels; never the operator's
