@@ -71,9 +71,10 @@ class SupabaseClient:
                 return None
 
             # This client is only ever used for auth: token verification, the
-            # live signup route, and logout. (`POST /auth/login` also exists and
-            # is registered unconditionally, but no browser calls it —
-            # `Services.login` goes straight to GoTrue. See ARCHITECTURE.md.)
+            # live signup route, and logout. `POST /auth/login` is a 410
+            # tombstone pending deletion and calls nothing here — sign-in is
+            # browser-direct, `Services.login` going straight to GoTrue. See
+            # ARCHITECTURE.md.
             # Nothing reads PostgREST through it, so one timeout tuned for
             # GoTrue is safe to share.
             #

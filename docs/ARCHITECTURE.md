@@ -312,10 +312,16 @@ mutation.
 cookie or session auth on those routes would be CSRF-shaped, and this app has no CSRF
 protection. A decorator can be forgotten on route nine, and that failure is silent.
 
-**Not every route under `auth_bp` is actually used.** `POST /auth/login` is
-browser-direct — `Services.login` calls `supabase.auth.signInWithPassword`
-straight to GoTrue with the public anon key, and nothing gates it, so moving
-it server-side would be cost without a property. `POST /auth/signup` used to
+**Not every route under `auth_bp` is actually used.** `/auth/login` answers
+`410 Gone` with `{"error": "endpoint_removed"}` and calls nothing — sign-in
+is browser-direct and always was: `Services.login` calls
+`supabase.auth.signInWithPassword` straight to GoTrue with the public anon
+key. The server-side route was worse than cost without a property: it
+forwarded the caller's traffic to GoTrue from this host's single address,
+blinding GoTrue's own per-IP `/token` limiter to the attacker's real
+address. It logs each call so the retirement produces the caller list a grep
+cannot; whether the function is then deleted is an open entry in `TODO.md`,
+not a promise this document makes. `POST /auth/signup` used to
 be the same shape and was dead code in production as a result — nothing
 called it — until the registrations-pause work
 (`docs/registrations-pause-plan.md`) moved `Services.signup` onto it, which

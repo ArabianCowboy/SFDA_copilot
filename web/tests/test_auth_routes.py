@@ -275,14 +275,47 @@ def test_auth_api_endpoints(client, mock_supabase):
         "/auth/signup",
         json={"email": "test@example.com", "password": "Password123!"},
     )
-    login = client.post(
-        "/auth/login",
-        json={"email": "test@example.com", "password": "Password123!"},
-    )
     logout = client.post("/auth/logout")
 
     assert signup.status_code == 201
     assert signup.get_json()["user"]["email"] == "test@example.com"
-    assert login.status_code == 200
-    assert login.get_json()["session"]["access_token"] == "fake_token"
     assert logout.status_code == 200
+
+
+def test_login_route_is_a_gone_tombstone(client, mock_supabase):
+    """`/auth/login` is retired: 410, machine code, no GoTrue call.
+
+    Every shape gets the same JSON answer. The tombstone reads no request body
+    at all, so a malformed one cannot reach a parser — the old view ran
+    `request.get_json()` above its `try` and answered HTML 415 on a wrong
+    Content-Type and HTML 500 on a JSON scalar. `GET` is pinned too: it is
+    accepted purely so a human diagnosing an integration gets the JSON body
+    rather than Werkzeug's HTML 405, which would defeat the point of a 410.
+    """
+    response = client.post(
+        "/auth/login",
+        json={"email": "test@example.com", "password": "Password123!"},
+    )
+
+    assert response.status_code == 410
+    assert response.is_json
+    assert response.get_json() == {"error": "endpoint_removed"}
+
+    wrong_content_type = client.post("/auth/login", data="not json", content_type="text/plain")
+    assert wrong_content_type.status_code == 410
+    assert wrong_content_type.is_json
+    assert wrong_content_type.get_json() == {"error": "endpoint_removed"}
+
+    scalar_body = client.post("/auth/login", data="123", content_type="application/json")
+    assert scalar_body.status_code == 410
+    assert scalar_body.is_json
+    assert scalar_body.get_json() == {"error": "endpoint_removed"}
+
+    probe = client.get("/auth/login")
+    assert probe.status_code == 410
+    assert probe.is_json
+    assert probe.get_json() == {"error": "endpoint_removed"}
+
+    # The security property the retirement buys, asserted once after every
+    # shape above rather than per request: nothing reached the provider.
+    mock_supabase.auth.sign_in_with_password.assert_not_called()

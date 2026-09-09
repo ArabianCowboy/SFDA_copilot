@@ -25,8 +25,29 @@ auth_bp = Blueprint("auth", __name__)
 # blueprint-scoped limit is the mechanism the console already uses successfully,
 # and it is applied in `_register_routes`.
 #
-# Scoped to one route each rather than all of `auth_bp` because a 5/minute
-# ceiling on logout would be wrong.
+# Scoped to one route each rather than all of `auth_bp`. `auth_bp` itself
+# carries no explicit limit, so `logout` runs at the global defaults — all
+# three of them: 200/day, 50/hour, 10/minute per IP. An accepted ceiling now,
+# not an oversight. It reaches GoTrue (`admin.sign_out`) from this host's
+# address, so exempting it would mint a second unmetered proxy of the shape
+# the `/login` tombstone below closes.
+#
+# Halve those numbers before judging them: one sign-out button press spends
+# TWO of the budget, because `Services.logout` posts here and the
+# `clearSessionState` that follows posts here again — deliberately, and
+# documented as idempotent at `handlers.js:2155-2159`. So the real ceiling is
+# 5 sign-outs a minute and 100 a day per key, and "per key" is
+# `get_remote_address()`, which under the unresolved proxy question collapses
+# to one address for every reader on earth.
+# A refused logout still signs the reader out: `Services.endServerSession`
+# (`static/js/modules/services.js`) only catches network errors, and a 429 is
+# a successful HTTP response, so the caller proceeds to the browser-direct
+# `supabase.auth.signOut({ scope: 'global' })` and the session is revoked
+# upstream either way. What a refusal skips is the Flask-side teardown —
+# `purge_conversation_state()`, `session.clear()`, `invalidate_token(token)`
+# — i.e. the previous reader's conversation pointer lingering in the cookie
+# for the next person on a shared browser. Real, bounded, not a sign-out
+# denial.
 recover_bp = Blueprint("recover", __name__)
 # `/signup` used to live on `auth_bp` and inherit no limit at all — the same
 # unlimited-decorator trap described above, just never noticed because nothing
@@ -292,72 +313,47 @@ def _signup_error_response(gotrue_code: str | None, message: str) -> tuple[str, 
     return "signup_refused", 400
 
 
-@auth_bp.route("/login", methods=["POST"])
+@auth_bp.route("/login", methods=["GET", "POST"])
 def login():
-    data = request.get_json()
-    email = data.get("email")
-    password = data.get("password")
+    """Retired. One-release tombstone — delete this function outright next release.
 
-    if not email or not password:
-        return jsonify({"error": "Email and password are required"}), 400
+    This route was an unmetered proxy in front of GoTrue's own per-IP `/token`
+    limiter: every request reached the provider from this host's single
+    address, so the one limiter that could see the attacker no longer could.
+    Sign-in is and always was browser-direct (`Services.login` calls
+    `supabase.auth.signInWithPassword` straight to GoTrue); nothing in-tree
+    ever called this route.
 
-    try:
-        supabase = get_supabase()
-        if not supabase:
-            return jsonify({"error": "Supabase client not available"}), 500
+    `410` and not `404` is deliberate: an unknown out-of-tree client gets a
+    diagnosable JSON answer rather than the app's HTML 404. `GET` is accepted
+    for the same reason and only for that reason — a human diagnosing a broken
+    integration reaches for `GET` first, and Werkzeug's HTML 405 would be the
+    very failure the JSON body exists to avoid. The route reads no body under
+    either method.
 
-        response = supabase.auth.sign_in_with_password({"email": email, "password": password})
+    **The log line is the point of the tombstone.** A release that answers 410
+    and records nothing gathers exactly the evidence a bare deletion would
+    have: none. This route exists for one release *because* the production
+    access log could not be consulted (see `docs/auth-login-rate-limit-plan.md`
+    §2 step 7), so the deletion decision needs a caller list, and this is where
+    it comes from. Logging an unauthenticated endpoint is normally how an
+    attacker gets to drive our storage bill — it is refused deliberately
+    elsewhere in this plan — but here the volume is bounded by the limiter:
+    `auth_bp` carries no explicit limit, so this route inherits the global
+    defaults and one address can write at most 200 records a day.
 
-        # Handle response structure - check for error attribute first
-        if hasattr(response, "error") and response.error:
-            error_msg = getattr(response.error, "message", str(response.error))
-            logger.warning(f"Login error: {error_msg}")
-            return jsonify({"error": error_msg}), 401
-
-        # Access user and session data from the response
-        # Try different possible response structures
-        user = None
-        session_obj = None
-
-        if hasattr(response, "user") and response.user:
-            user = response.user
-        elif hasattr(response, "data") and hasattr(response.data, "user"):
-            user = response.data.user
-
-        if hasattr(response, "session") and response.session:
-            session_obj = response.session
-        elif hasattr(response, "data") and hasattr(response.data, "session"):
-            session_obj = response.data.session
-
-        if not user:
-            logger.error(
-                f"Login response structure unexpected. Response attributes: {dir(response)}"
-            )
-            return jsonify({"error": "Unexpected response from authentication service"}), 500
-
-        if not session_obj:
-            logger.warning("Login successful but no session returned")
-            return jsonify({"user": {"id": user.id, "email": user.email}, "session": None}), 200
-
-        return jsonify(
-            {
-                "user": {"id": user.id, "email": user.email},
-                "session": {
-                    "access_token": session_obj.access_token,
-                    "refresh_token": session_obj.refresh_token,
-                },
-            }
-        )
-
-    except Exception as e:
-        logger.error(f"Login exception: {e!s}", exc_info=True)
-        error_msg = str(e)
-        # Extract more meaningful error messages from common exceptions
-        if "Invalid login credentials" in error_msg or "invalid_credentials" in error_msg.lower():
-            error_msg = "Invalid email or password"
-        elif "Email not confirmed" in error_msg or "email_not_confirmed" in error_msg.lower():
-            error_msg = "Please confirm your email address before logging in"
-        return jsonify({"error": error_msg}), 401
+    TODO.md once called this route unlimited. It never was: with no explicit
+    limit it inherited those same defaults (200/day, 50/hour, 10/minute per
+    IP) all along.
+    """
+    logger.warning(
+        "Retired endpoint called: %s /auth/login from %s (ua=%r). If this line "
+        "never appears, delete the route; if it does, find the caller first.",
+        request.method,
+        request.remote_addr,
+        request.user_agent.string,
+    )
+    return jsonify({"error": "endpoint_removed"}), 410
 
 
 @recover_bp.route("/recover", methods=["POST"])

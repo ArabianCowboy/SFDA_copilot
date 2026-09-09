@@ -230,7 +230,7 @@ caller in the tree — builds its metadata from six literal keys, never from a f
 post any JSON body it likes regardless of what this function does.
 
 What the reorder buys is that the next person to add a metadata field cannot silently break
-signup. `SIGNUP_METADATA_KEYS` (`web/api/auth.py:43-50`) is `first_name`, `family_name`,
+signup. `SIGNUP_METADATA_KEYS` (`web/api/auth.py:56-63`) is `first_name`, `family_name`,
 `marketing_consent`, `marketing_consent_policy_version`, `marketing_consent_language`, `age` —
 none collide today. The server allow-list governs only what reaches `raw_user_meta_data`; it
 does not guard the top-level fields this spread can clobber.

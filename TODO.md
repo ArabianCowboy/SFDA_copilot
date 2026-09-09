@@ -33,7 +33,7 @@ bottom of this file: [How this file works](#how-this-file-works).
 ## Open now
 
 - [Leaked-password protection is disabled in Supabase Auth](#leaked-password-protection-is-disabled-in-supabase-auth) — blocked on a Pro-plan upgrade, not code.
-- [`auth_bp` carries no rate limit, so `/auth/login` is unlimited](#auth_bp-carries-no-rate-limit-so-authlogin-is-unlimited) — diagnosed, unfixed; the exemption is deliberate for logout and accidental for login.
+- [`POST /auth/login` is a 410 tombstone pending deletion](#post-authlogin-is-a-410-tombstone-pending-deletion) — tombstone shipped; the bare deletion is still owed next release.
 - [A silent truncation from a provider that omits `finish_reason` is still undetected](#a-silent-truncation-from-a-provider-that-omits-finish_reason-is-still-undetected) — diagnosed; needs `include_usage`, not a different default.
 - [An empty answer toasts "failed to send", which is the wrong thing](#an-empty-answer-toasts-failed-to-send-which-is-the-wrong-thing) — cosmetic, needs a bilingual key pair.
 - [`max_tokens` has no floor, and a low one guarantees empty answers](#max_tokens-has-no-floor-and-a-low-one-guarantees-empty-answers) — not started; prevention rather than the reporting that now exists.
@@ -69,32 +69,6 @@ bottom of this file: [How this file works](#how-this-file-works).
 ---
 
 ## Known bugs
-
-### `auth_bp` carries no rate limit, so `/auth/login` is unlimited
-
-**Where:** `web/api/app.py:2166` registers `auth_bp` with no limiter, while
-`recover_bp` and `signup_bp` get one immediately after (`:2173-2184`).
-
-**What is wrong.** The exemption is deliberate for logout — `web/api/auth.py:27-28`
-argues that a 5/minute ceiling on signing out would be wrong, and it is right. But
-`POST /auth/login` sits on the same blueprint and inherits it by accident. It
-accepts unauthenticated credentials and calls `sign_in_with_password`, so it is an
-unmetered credential-stuffing and account-enumeration oracle. No browser calls it —
-`Services.login` goes browser-direct — which is why it has attracted no attention.
-
-**Who it reaches.** Nobody through the UI. Anyone who can reach the public API.
-
-**How it was found.** The 2026-09-05 review pass, as an aside to the logout finding
-([the archived plan](docs/archive/2026-09-05_review-findings-fix.md), finding 1).
-
-**What fixing it would disturb.** Either a per-route limit on login alone —
-Flask-Limiter supports a route decorator, so the blueprint-wide exemption can stay —
-or splitting login onto its own blueprint the way signup already is. The second is
-tidier and matches the existing shape. Either way `test_rate_limit_keys.py` gains a
-case, and someone has to decide whether a route no browser calls should simply be
-deleted instead, which is a product decision rather than a fix.
-
----
 
 ### A silent truncation from a provider that omits `finish_reason` is still undetected
 
@@ -376,6 +350,67 @@ fixture for revocation-from-elsewhere, so that fixture is part of the cost — a
 ---
 
 ## Planned work
+
+### `POST /auth/login` is a 410 tombstone pending deletion
+
+**Where:** `login()` at `web/api/auth.py:316-356` — the tombstone itself, which is
+what the remaining work deletes — plus the test that pins it,
+`test_login_route_is_a_gone_tombstone` at `web/tests/test_auth_routes.py:285-321`.
+For context: `web/api/app.py:2318` registers `auth_bp` with no limiter, while
+`recover_bp` and `signup_bp` get one immediately after (`:2324-2336`).
+
+**What is wrong.** This entry's original title was false: the route was never
+unlimited — with no explicit limit it inherited the global defaults (200/day,
+50/hour, 10/minute per IP) all along. The real defect was worse than a missing
+limit: the route forwarded unauthenticated credentials to GoTrue's `/token`
+from this host's single address, blinding GoTrue's own per-IP limiter to the
+attacker's real address, while answering with distinguishable refusal bodies.
+What shipped is a one-release `410 Gone` tombstone answering
+`{"error": "endpoint_removed"}` without reading the request body or calling
+GoTrue — a tombstone rather than a deletion because no in-tree caller exists
+(the browser signs in browser-direct) but an out-of-tree client cannot be
+ruled out from the repository alone. Nothing in the UI ever called it —
+`Services.login` goes browser-direct — which is why the route attracted no
+attention for a year, and why the module comment above it was left describing
+a logout exemption that never existed.
+
+**Who it reaches.** Nobody through the UI. Anyone who can reach the public API.
+
+**How it was found.** The 2026-09-05 review pass, as an aside to the logout finding
+([the archived plan](docs/archive/2026-09-05_review-findings-fix.md), finding 1).
+The "unlimited" premise was corrected by measurement in
+`docs/auth-login-rate-limit-plan.md` §0.
+
+**What fixing it would disturb.** Deleting `login()` and its route entry outright,
+plus the tombstone test that pins the 410 — that test must go with the route, or it
+fails on a green tree. The plan document (`docs/auth-login-rate-limit-plan.md`) is
+then archived per the closing procedure at the bottom of this file, with its
+still-open items (C1, C2, C3 and the password-spraying note) lifted back here as
+their own entries **first** — the archive is excluded from search, so anything left
+inside that document at archiving time disappears.
+
+**Update 2026-09-09 — the tombstone landed; the deletion did not.** `login()` now
+answers `410 {"error": "endpoint_removed"}` under both `GET` and `POST`, reads no
+request body, and calls nothing. It logs one bounded `warning` per call naming the
+method, address and user agent: **that log is the whole point of the release.** The
+route was tombstoned rather than deleted only because the production access log
+could not be consulted, so an out-of-tree caller could not be ruled out — and a
+tombstone that records nothing would end the release knowing exactly as much as a
+deletion would have. Read that log before deleting: silence is the evidence to
+delete on, and a hit is a caller to find first.
+
+Also landed: the module comment claiming a logout exemption that never existed is
+gone (logout keeps the global defaults, and one sign-out press spends two of them —
+`Services.logout` and `clearSessionState` each POST to `/auth/logout`), and
+`web/tests/test_auth.py` was deleted whole. **That deletion left the `integration`
+pytest marker with no users at all** — `pytest.ini:6` still defines it and
+`CLAUDE.md` still tells contributors to run those tests by hand, so
+`pytest -m integration` now collects nothing. The two tests were genuinely stale
+(they hit port 5000 and asserted a top-level `access_token` the route stopped
+returning long ago), but one of them was the only end-to-end check that a real
+bearer token is accepted by `/api/chat`. Nothing replaces it.
+
+---
 
 ### Answer from a second provider — and why the code is the easy half
 
