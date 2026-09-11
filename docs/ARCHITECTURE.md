@@ -343,6 +343,47 @@ explicitly: `auth.get_user(token)` for verification, `auth.admin.sign_out(token,
 Limits on `/account/api/*` key on the **authenticated user id**, not the IP
 (`_account_rate_key`) — otherwise it is "two exports per ten minutes _per building_".
 
+### When a session ends in the browser
+
+_Verified against code 2026-09-11._ A shared machine is the ordinary case, so the rule is that
+nothing of reader A's may reach reader B — not the transcript, not the URL, not a notice. The
+three frontends meet it differently, on purpose.
+
+**The chat page tears down in place and never reloads.** `SIGNED_OUT`/`USER_DELETED` runs
+`Handlers.clearSessionState()` (the local teardown plus `POST /auth/logout`) and then, if the
+address bar names `/c/<id>`, `Route.replace(null)`. A direct switch to a different reader runs
+`clearReaderScopedUI()` (the local teardown without the POST, which would revoke A upstream) and
+the same URL reset. Both are one function, `clearReaderLocalState()`: **it is the single list
+of reader-scoped state, so new reader-scoped UI is cleared there**. The URL is deliberately not
+its job — `endRecovery` shares the teardown and must keep the recovery form's path. The only
+reload left is `handleLogout`'s `redirectToHomeIfNeeded()`, a fallback for the paths where no
+`SIGNED_OUT` arrives (the demo, a throwing `signOut`, `sessionMissing`).
+
+**Late answers are discarded by generation, not by luck.** A request that outlives the reader
+who made it checks the counter it stamped: `resetGeneration` (chat requests and the stream),
+`transcriptEpoch` (history), `selectionEpoch` (sidebar), `identityCheckId` (identity and
+profile) and `readerGeneration` (the notification inbox). A new asynchronous path that paints
+reader-scoped state must stamp one of these.
+
+**Back and bfcache.** `handlePopState` scrubs a `/c/<id>` only when `getSession` confirms there
+is no session — an error is not absence, and a signed-in reader must never be bounced to `/`. A
+fresh load reached by Back with nobody signed in drops the id too; a cold deep link keeps it. A
+bfcache restore runs no init and supabase-js emits no event for storage it finds empty, so the
+chat page hides `<body>` on `pagehide`, and on a restore `reconcileRestoredSession` reveals it
+only for the same reader, navigates to a fresh `/` for anyone else, and reloads on an error.
+
+**`/account` and `/admin` reload instead.** `installSessionResetOnEnd`
+(`static/js/modules/session-reset.js`) hides the page and reloads on `SIGNED_OUT`/`USER_DELETED`
+and on any bfcache restore; their own init already renders the signed-out and refused states.
+The account page's dirty-form guard stands down for that one reload (`allowForcedReload`). The
+chat page cannot do the same: it holds a live stream and in-page state, and on its sign-out path
+a reload would cancel the unawaited teardown POST.
+
+Pinned by `web/tests/test_signed_out_route.py` and `web/tests/test_bfcache_session.py`. The
+second launches full Chromium: Playwright's default headless shell disables bfcache, so a
+bfcache test run against it passes without testing anything. The reasoning, the reviews and
+what was reversed on the way are in `docs/archive/2026-09-11_revoked-session-url-reset.md`.
+
 ---
 
 ## Rate limits

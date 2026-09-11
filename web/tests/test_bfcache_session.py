@@ -1,4 +1,4 @@
-"""bfcache restore reconciliation of the chat page (§7 of docs/revoked-session-url-reset-plan.md).
+"""bfcache restores of a signed-in page after the session ended (docs/ARCHITECTURE.md).
 
 Playwright's default Chromium is the headless shell, which reports
 BackForwardCacheDisabledForDelegate so every Back is a fresh load; a bfcache
@@ -89,13 +89,17 @@ def bfcache_page(browser_type, base_url):
     browser.close()
 
 
-def _sign_in_and_open(page: Page) -> None:
+def _sign_in(page: Page) -> None:
     page.goto("/")
     page.locator("#auth-button-main").click()
     page.locator("#login-email").fill("reader-a@example.com")
     page.locator("#login-password").fill("password123")
     page.locator("#login-form").evaluate("(form) => form.requestSubmit()")
     page.locator("#authenticated-view").wait_for(state="visible")
+
+
+def _sign_in_and_open(page: Page) -> None:
+    _sign_in(page)
     page.goto(f"/c/{CONV}")
     expect(page.get_by_text("Reader A's answer")).to_be_visible()
     expect(page.locator("#history-sidebar-section .history-item")).to_have_count(1)
@@ -163,3 +167,21 @@ def test_get_session_error_on_restore_reloads_same_url(
     expect(page).to_have_url(re.compile(rf"/c/{CONV}$"))
     assert page.evaluate("() => performance.getEntriesByType('navigation')[0].type") == "reload"
     assert page.shows[-1]["persisted"] is False
+
+
+def test_restored_account_page_after_the_session_ended_elsewhere_shows_the_signed_out_state(
+    bfcache_page: Page,
+) -> None:
+    """Restored /account page after session ended elsewhere reloads into signed-out state."""
+    page = bfcache_page
+    _sign_in(page)
+    page.goto("/account")
+    expect(page.locator("#account-email")).to_have_text("reader-a@example.com")
+    _leave(page)
+    page.evaluate("() => localStorage.removeItem('__mock_supabase_user')")
+    _come_back(page)
+    expect(page.locator("#account-signed-out")).to_be_visible()
+    assert any(s["persisted"] and s["path"] == "/account" for s in page.shows), (
+        f"bfcache was not used — this test proves nothing. pageshow log: {page.shows}"
+    )
+    assert "reader-a@example.com" not in page.locator("body").inner_text()

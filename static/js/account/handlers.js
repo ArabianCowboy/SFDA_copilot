@@ -39,6 +39,16 @@ import {
 
 const el = (id) => document.getElementById(id);
 
+// Stands down the dirty-form guard when the session ends elsewhere and a forced reload occurs.
+let forcedReload = false;
+
+/** The session ended: the page is about to reload into its signed-out state,
+ *  and edits to a record that is no longer this reader's cannot be saved. Lets
+ *  the dirty-form guard below stand down for that one reload only. */
+export function allowForcedReload() {
+  forcedReload = true;
+}
+
 function isDirty(form) {
   const snapshot = form.dataset.snapshot;
   if (!snapshot) return false;
@@ -60,6 +70,7 @@ export function bindIdentityForm(getUserId) {
   // should be asked, not silently lose it. Preferences carries no such
   // guard — it never has unsaved state, by design (instant-apply).
   window.addEventListener('beforeunload', (event) => {
+    if (forcedReload) return;
     if (!isDirty(form)) return;
     event.preventDefault();
     event.returnValue = '';

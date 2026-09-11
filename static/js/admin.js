@@ -19,6 +19,7 @@
  */
 
 import { Services } from './modules/services.js';
+import { installSessionResetOnEnd } from './modules/session-reset.js';
 import { ThemeManager } from './modules/theme.js';
 import { initLanguageToggle } from './modules/i18n.js';
 import { AdminRequestError, createAdminServices } from './admin/services.js';
@@ -52,6 +53,9 @@ const Admin = {
 
     try {
       Services.init();
+      // Reload into the unauthenticated gate on session revocation or bfcache restore;
+      // see modules/session-reset.js.
+      installSessionResetOnEnd(Services.supabase);
 
       // Resolved once here only to decide whether anyone is signed in at all.
       // The transport gets the provider, not this value, so it always presents

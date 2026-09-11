@@ -13,6 +13,7 @@
  */
 
 import { Services } from './modules/services.js';
+import { installSessionResetOnEnd } from './modules/session-reset.js';
 import { ThemeManager } from './modules/theme.js';
 import { initLanguageToggle } from './modules/i18n.js';
 import {
@@ -26,6 +27,7 @@ import {
   populateConsent,
 } from './account/ui.js';
 import {
+  allowForcedReload,
   bindIdentityForm,
   bindThemeChoice,
   bindLanguageChoice,
@@ -55,6 +57,9 @@ const Account = {
 
     try {
       Services.init();
+      // Reload into the signed-out state on session revocation or bfcache restore;
+      // see modules/session-reset.js.
+      installSessionResetOnEnd(Services.supabase, { onForcedReset: allowForcedReload });
 
       const token = await Services.getSessionToken();
       if (!token) {

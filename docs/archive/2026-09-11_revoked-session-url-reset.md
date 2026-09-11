@@ -1,18 +1,60 @@
-# Fix: an ended session leaves reader A's traces for reader B
+---
+authority: historical
+status: superseded
+do_not_implement: true
+archived: 2026-09-11
+supersedes_note: >
+  This document is a finished plan. It was reviewed by three models before it was
+  built, and departed from its own text in six places while being built — each
+  recorded in its Implementation notes. The final positions are stated at the top so
+  no reading order is required. It is a record of what was decided and what it
+  cost, not a specification.
+live_authority:
+  - docs/ARCHITECTURE.md
+  - TODO.md
+---
 
-STATUS: APPROVED PLAN — IN PROGRESS. Written and approved 2026-09-11; commits 1-3 of 4
-(§1-§7, §9) shipped 2026-09-11 — see _Implementation notes_ for where the build departed from
-this text.
-Closes the TODO.md entry _A revoked or expired session clears the transcript but leaves the
-conversation id in the address bar_ once all four commits below land; archive this file then
-(see _Docs_).
+> [!CAUTION]
+> **You are reading history, not a specification.** Do not implement anything found
+> in this file without first confirming it against `docs/ARCHITECTURE.md` or the code.
+> Every heading below is prefixed `[HISTORICAL]` so a search result cannot be mistaken
+> for current design.
+
+STATUS: HISTORICAL RECORD — archived 2026-09-11. Nothing here is an instruction. The live
+contract is `docs/ARCHITECTURE.md` → _When a session ends in the browser_. Shipped on branch
+`fix/signed-out-route-reset`: `7f5d228`, `6837149`, `1beccc5` (review fixes), `40da73c`, and
+the commit that archived this file; `752d35b` is an unrelated quota-notice bug the tests
+surfaced on the way.
+
+## [HISTORICAL] The final position, so this file needs no reading order
+
+Where the body below still argues an earlier position, **this section wins.**
+
+| #   | What shipped                                                                                                                                                          | What this plan first said                                                                                                                                                                                                                                     |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | On `pagehide` the chat page hides the whole `<body>`; a restore for the same reader just un-hides it.                                                                 | `AuthView.concealForRestore()` hid `#authenticated-view`, and a same-reader restore re-ran `AuthView.render(user)`. Reversed during the build: the notification surfaces and toasts live outside that view, and re-rendering an unchanged view only animates. |
+| 2   | The inbox guards stamp a new `readerGeneration`.                                                                                                                      | Reuse `notificationsGeneration`. Reversed: that counter also moves on a tab hide, which would have stranded an open inbox mid-load.                                                                                                                           |
+| 3   | The shared teardown also resets the sending UI, typing indicator and mascot, and hides the admin link; a stale request's `finally` resets only what is still its own. | Not in §2's table. Added after two independent reviews found reader B's composer left disabled behind a parked token read, and reader A's late identity answer able to show the console link to B.                                                            |
+| 4   | `handlePopState` clears the transcript before it awaits the session check.                                                                                            | Clear inside each branch, after the await. Reversed by review: a slow check left X's transcript under Y's URL.                                                                                                                                                |
+| 5   | The composer is emptied with `value = ''`.                                                                                                                            | Also call `UI.autoResizeInput`, which does not exist.                                                                                                                                                                                                         |
+| 6   | Tests are numbered 1-6, 8-21 (see Implementation notes); the account test types with real key events.                                                                 | Tests 1-16; the account test's `fill()` would have passed with the guard's stand-down deleted.                                                                                                                                                                |
+
+Rejected, and should stay rejected: keeping the reload on an explicit logout (agy's security
+review — the owner chose a complete teardown instead, and the tests pin it), and OpenCode's
+reading of one `app.js` comment as false (true once commit 2 shipped).
+
+Everything this work left open is in [`TODO.md`](../../TODO.md): _One logout-button press sends
+`POST /auth/logout` three times_, and a note on the browser suite's flakes. Nothing open lives
+only in this file.
+
+# [HISTORICAL] Fix: an ended session leaves reader A's traces for reader B
 
 _Plan, 2026-09-11. Reviewed by three independent models: OpenCode · Muse Spark 1.3 xhigh (gap
 debate), agy · Gemini 3.8 Flash High (security), and Codex · gpt-6-astra medium (debate and
 final review). bfcache behaviour was verified by a Chromium 151 probe. Every accepted finding
 was re-checked against the code by the orchestrator (see the review record)._
 
-## Context
+## [HISTORICAL] Context
 
 The starting point is TODO.md → _A revoked or expired session clears the transcript but leaves
 the conversation id in the address bar_ (`TODO.md:312`, index `:66`).
@@ -50,9 +92,9 @@ The user asked for no loose ends, so this plan covers all of it:
 **Must keep working:** password recovery (the §4.6 deep-link preservation), a cold signed-out
 deep link (§4.5), the `?testing=true` demo, and the `?lang=` param.
 
-## Changes
+## [HISTORICAL] Changes
 
-### 1. URL reset at the `SIGNED_OUT` call site — `app.js:514`
+### [HISTORICAL] 1. URL reset at the `SIGNED_OUT` call site — `app.js:514`
 
 ```js
 if (event === 'SIGNED_OUT' || event === 'USER_DELETED') {
@@ -83,7 +125,7 @@ if (event === 'SIGNED_OUT' || event === 'USER_DELETED') {
     `signOut` throwing, and `sessionMissing: true` (`services.js:511`). Those paths still
     reload; say so where the no-reload design is described.
 
-### 2. One complete local teardown, shared by sign-out and reader switch — `handlers.js`
+### [HISTORICAL] 2. One complete local teardown, shared by sign-out and reader switch — `handlers.js`
 
 Today there are two diverging teardowns:
 
@@ -118,7 +160,7 @@ Refactor:
   shared teardown.
 - **Accepted trade-off:** a reader whose session expires mid-typing loses the draft.
 
-### 3. No URL write for A after the teardown — `handlers.js`
+### [HISTORICAL] 3. No URL write for A after the teardown — `handlers.js`
 
 - **Late chat request** (Codex C1). `processChatRequestInternal` awaits the token (`:367`) and
   then calls `Route.enter()` (`:402`) with no check that a sign-out happened meanwhile.
@@ -132,7 +174,7 @@ Refactor:
   on whether this is reachable. Adopted as an invariant: nothing writes `/c/<id>` after a
   teardown. This matches the blocking twin (`:1768`).
 
-### 4. Signed-out Back guard — `handlePopState` (`handlers.js:814`)
+### [HISTORICAL] 4. Signed-out Back guard — `handlePopState` (`handlers.js:814`)
 
 Insert after the `if (!id)` branch and before `!Route.isCommitted()`:
 
@@ -174,7 +216,7 @@ keeps it).
 - **Scope:** `navigate` and `reload` keep the path. Navigation Timing's `type` describes the
   document's own load, so leave it in `init` and don't move it into reusable handlers.
 
-### 5. Write the reasons down, and correct the stale comments
+### [HISTORICAL] 5. Write the reasons down, and correct the stale comments
 
 - **`app.js:504-513`:** why this exit rewrites the URL, why `Route.replace` and not a reload, and
   why the reset isn't in the teardown (recovery).
@@ -190,11 +232,11 @@ keeps it).
 - **`auth.py:47-49`:** correct the same stale conversation-pointer explanation.
 - **`handleLogout`:** mark the `redirectToHomeIfNeeded()` calls as the no-event fallback.
 
-### 6. `ASSET_VERSION` (`web/api/app.py:306`)
+### [HISTORICAL] 6. `ASSET_VERSION` (`web/api/app.py:306`)
 
 Bump it in **every** commit, since each commit touches JS.
 
-### 7. bfcache restore of the chat page — conceal on leave, fresh-read on mismatch
+### [HISTORICAL] 7. bfcache restore of the chat page — conceal on leave, fresh-read on mismatch
 
 **Verified real** (probe, Chromium 151, bfcache on).
 
@@ -255,7 +297,7 @@ async reconcileRestoredSession() {
   - A reader returning by Back to their own page sees the same 300 ms reveal a sign-in shows,
     and `handlePopState` already re-fetches the transcript on a persisted `pageshow`.
 
-### 8. `/account` and `/admin` — reload into their own signed-out states
+### [HISTORICAL] 8. `/account` and `/admin` — reload into their own signed-out states
 
 **Verified real:**
 
@@ -306,7 +348,7 @@ window.addEventListener('pageshow', (e) => {
   has a live stream and in-page state, and on the sign-out path a reload would cancel the
   teardown POST.
 
-### 9. Notification Center teardown — `dom.js` + `handlers.js`
+### [HISTORICAL] 9. Notification Center teardown — `dom.js` + `handlers.js`
 
 This is the sign-out half the Notification Center TODO entry (`TODO.md:55`, `:1191-1196`) says
 it still owes.
@@ -328,7 +370,7 @@ it still owes.
   - Apply the same check to `markNotificationRead`'s continuation (`:1385`) and to any
     follow-up load.
 
-## Tests
+## [HISTORICAL] Tests
 
 Two files:
 
@@ -435,7 +477,7 @@ URL is `/`, the composer is empty, and the no-reload marker survives.
 - **Test 16 — Restored `/account`, session ended:** it reloads into the signed-out state without A's
   email. Fails today (probe).
 
-## Docs
+## [HISTORICAL] Docs
 
 Update each doc in the commit that introduces the behaviour it describes.
 
@@ -462,7 +504,7 @@ Update each doc in the commit that introduces the behaviour it describes.
     open into TODO.md first, `git mv`, add the `STATUS: HISTORICAL RECORD` banner, and add an
     index row.
 
-## Commit split
+## [HISTORICAL] Commit split
 
 Each commit passes all gates on its own and bumps `ASSET_VERSION`.
 
@@ -473,7 +515,7 @@ Each commit passes all gates on its own and bumps `ASSET_VERSION`.
 3. **§4b + §7**, plus tests 12-15 and the mock opt-in flag.
 4. **§8**, plus tests 10, 11 and 16, then the final docs close.
 
-## Evidence (orchestrator probe, 2026-09-11 — a throwaway Playwright script against the testing app, not committed; `test_bfcache_session.py` is its durable form)
+## [HISTORICAL] Evidence (orchestrator probe, 2026-09-11 — a throwaway Playwright script against the testing app, not committed; `test_bfcache_session.py` is its durable form)
 
 | Case                                          | Browser                               | Result on Back                                                                                                                |
 | --------------------------------------------- | ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
@@ -482,7 +524,7 @@ Each commit passes all gates on its own and bumps `ASSET_VERSION`.
 | `/account`, storage cleared, no broadcast     | same                                  | **Restored** with name, email, role, tier and quota; unchanged                                                                |
 | Any case                                      | Playwright default headless shell     | bfcache disabled (`BackForwardCacheDisabledForDelegate`)                                                                      |
 
-## Out of scope
+## [HISTORICAL] Out of scope
 
 - **Reader A never signs out and leaves the machine:** A's session is still live. That's not a
   defect.
@@ -490,7 +532,7 @@ Each commit passes all gates on its own and bumps `ASSET_VERSION`.
 - **FAQ callbacks after a switch** are unguarded (`app.js:401-406`), but the FAQ data is public
   (`services.js:166`). No change; don't describe it as identity-guarded.
 
-## Verification
+## [HISTORICAL] Verification
 
 ```bash
 python -m pytest web/tests/test_signed_out_route.py web/tests/test_source_panel.py --browser chromium
@@ -510,7 +552,7 @@ ruff check . && ruff format --check . && mypy web && npm run lint && pre-commit 
 4. Leave `/c/<id>` for an external site, sign out in another tab, press Back. Confirm nothing of
    A's shows.
 
-## Implementation notes
+## [HISTORICAL] Implementation notes
 
 Where the build departed from the text above, and why. Implemented by agy (Gemini 3.8 Flash
 High) from orchestrator briefs; every diff was reviewed line by line, every new test was run
@@ -598,7 +640,25 @@ now.
   launch `channel="chromium"`, which the CI job's `playwright install --with-deps chromium`
   provides on the unpinned current Playwright; that has not yet been observed in CI.
 
-## Review record
+**Commit 4 (§8):**
+
+- **As planned**, with one test correction. `installSessionResetOnEnd`
+  (`static/js/modules/session-reset.js`) imports nothing and takes the Supabase client as an
+  argument, so it cannot pull the chat shell into `/admin`; `allowForcedReload` stands the
+  account page's dirty-form guard down for the forced reload only.
+- **The account test first passed with the stand-down deleted.** It dirtied the form with
+  Playwright's `fill()`, which grants no user activation, and Chromium only raises a
+  `beforeunload` prompt on a page with sticky activation — so the guard never fired and the test
+  proved nothing about it. It now types with real key events and fails the run if any prompt
+  appears; against the mutant it fails (the reload is cancelled and the page is left blank behind
+  `body.hidden`, which is exactly the defect).
+- **Tests 19-21** (renumbered from 10, 11 and 16): the live `/account` and `/admin` tests, and a
+  restored `/account` in `test_bfcache_session.py`. All three fail on the pre-change code. The
+  admin test runs a real session, not `?testing=true`, per the review record.
+- **Source comments cite `docs/ARCHITECTURE.md`**, not this file, so archiving it leaves no code
+  pointing into `docs/archive/`.
+
+## [HISTORICAL] Review record
 
 | #   | Finding                                                                                      | Source                  | Outcome                                                            |
 | --- | -------------------------------------------------------------------------------------------- | ----------------------- | ------------------------------------------------------------------ |

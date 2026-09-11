@@ -2378,3 +2378,29 @@ def test_the_users_table_shows_which_tier_each_account_is_in(browser_page: Page)
 
 
 I18N_TIER_COLUMN = "Tier"
+
+REVOKE_JS = (
+    "() => { const s = window.__supabaseState; s.user = null; "
+    "localStorage.removeItem('__mock_supabase_user'); "
+    "return s.authCallback && s.authCallback('SIGNED_OUT', null); }"
+)
+
+
+def test_a_session_ending_elsewhere_takes_the_console_down(authenticated_page: Page):
+    """Uses a real session (authenticated_page signs in through the mock), not
+    ?testing=true — under ?testing=true the token is always 'fake_token' and a
+    revocation could never be observed."""
+    page = authenticated_page
+    page.route(
+        "**/admin/api/identity",
+        lambda route: route.fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps(ADMIN_IDENTITY),
+        ),
+    )
+    page.goto("/admin")
+    expect(page.locator("#admin-console")).to_be_visible()
+    page.evaluate(REVOKE_JS)
+    expect(page.locator("#admin-console")).to_be_hidden()
+    expect(page.locator("#admin-gate")).to_be_visible()

@@ -124,3 +124,45 @@ def test_services_getprofile_and_updateprofile_contracts(authenticated_page: Pag
         "missingProfile": None,
         "profileError": "Profile lookup failed",
     }
+
+
+REVOKE_JS = (
+    "() => { const s = window.__supabaseState; s.user = null; "
+    "localStorage.removeItem('__mock_supabase_user'); "
+    "return s.authCallback && s.authCallback('SIGNED_OUT', null); }"
+)
+
+
+def test_a_session_ending_elsewhere_reloads_the_account_page_into_its_signed_out_state(
+    authenticated_page: Page,
+):
+    """The unsaved edit is deliberate: it arms the dirty-form beforeunload guard,
+    which would otherwise cancel the reload and leave the record on screen.
+
+    Typed with real key events, not `fill()`: Chromium only raises a
+    beforeunload prompt on a page with sticky user activation, and `fill()`
+    grants none — with it, this test passed even with the guard's stand-down
+    deleted. Any prompt that does appear is recorded and dismissed (dismissing
+    it is what cancels a navigation), so a guard that fires fails the test."""
+    page = authenticated_page
+    prompts: list[str] = []
+
+    def dismiss(dialog):
+        prompts.append(dialog.type)
+        dialog.dismiss()
+
+    page.on("dialog", dismiss)
+    page.goto("/account")
+    expect(page.locator("#account-email")).to_have_text("test@example.com")
+    first_name = page.locator("#identity-first-name")
+    first_name.click()
+    first_name.press("End")
+    page.keyboard.type(" unsaved")  # dirty the form: the guard is now armed
+    expect(page.locator("#identity-save")).to_be_enabled()
+    page.evaluate("() => { window.__noReload = true; }")
+    page.evaluate(REVOKE_JS)
+    expect(page.locator("#account-signed-out")).to_be_visible()
+    expect(page.locator("#account-record")).to_be_hidden()
+    assert page.evaluate("() => window.__noReload") is None  # a real reload happened
+    assert "test@example.com" not in page.locator("body").inner_text()
+    assert prompts == [], f"the dirty-form guard fired on the forced reload: {prompts}"

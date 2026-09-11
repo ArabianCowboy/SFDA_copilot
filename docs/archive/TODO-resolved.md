@@ -43,6 +43,68 @@ recording.
 
 ## [HISTORICAL] Resolved bugs
 
+### [HISTORICAL] ~~A revoked or expired session clears the transcript but leaves the conversation id in the address bar~~ — FIXED 2026-09-11
+
+> **Closed 2026-09-11** by the series on branch `fix/signed-out-route-reset`, planned in
+> [`2026-09-11_revoked-session-url-reset.md`](2026-09-11_revoked-session-url-reset.md): `7f5d228`
+> (the URL reset at the `SIGNED_OUT` call site, one teardown shared by sign-out and a reader
+> switch, the late-request guards, a signed-out Back guard), `6837149` (the Notification Center's
+> surfaces, snoozes and inbox), `1beccc5` (fixes from two independent reviews), `40da73c` (a Back
+> into a fresh load, and bfcache restores of the chat page) and the final commit for `/account`
+> and `/admin`. The diagnosis below held — the fix did belong at the call site, not in the shared
+> teardown — but it described a fraction of the problem: reviewing it found a dozen more ways for
+> reader A's traces to reach reader B, all fixed in the same series. Two of its claims were wrong:
+> the suite had a revocation fixture, and the code comments' "the Flask cookie still holds
+> `conv_id`" had been false since per-tab deep linking. One limit is accepted rather than fixed:
+> `Route.replace` rewrites only the current history entry, so an older `/c/<id>` entry stays in
+> the browser's history list until someone traverses to it — at which point it is scrubbed.
+
+**Where:** `static/js/app.js:514-515` — the `SIGNED_OUT`/`USER_DELETED` branch of
+`onAuthStateChange` — against `Handlers.redirectToHomeIfNeeded` in
+`static/js/modules/handlers.js:2205`.
+
+**What is wrong.** There are two ways out of a session and only one of them fixes the
+address bar. `handleLogout` calls `redirectToHomeIfNeeded()` on both its success and its
+error path (`handlers.js:2112` and `2120`). The `onAuthStateChange` branch that catches
+every _other_ way a session ends — expiry, revocation from another tab, an administrator
+disabling the account — calls only `clearSessionState()`. That clears the transcript,
+sidebar, source panel and citation map, but nothing touches `window.location`, so a reader
+whose session dies at `/c/<uuid>` is left looking at the landing view with the previous
+reader's conversation id still in the URL bar and still in browser history.
+
+**Who it reaches.** Anyone whose session ends without their pressing the logout button,
+while reading a conversation rather than sitting at `/`. On a shared machine that is the
+case that matters: the id is not the content, but it is a durable pointer to another
+person's conversation, left in the address bar and the history of the next person to use
+the machine. A later sign-in from that URL then asks for a conversation the new reader does
+not own, and the ownership preflight refuses it correctly — so this is an exposure of an
+identifier and a confusing first screen, not an access-control failure.
+
+**How it was found.** A code read on 2026-09-08, reviewing the sign-out paths after the
+Supabase key incident; confirmed by grepping every caller of `redirectToHomeIfNeeded` and
+finding both of them inside `handleLogout`.
+
+**What fixing it would disturb.** The fix does **not** belong inside `clearSessionState`,
+which is the obvious place and the wrong one. That function is also reached from
+`endRecovery` (`handlers.js:2098`) and from `app.js:387`, and a `location.replace('/')`
+there would navigate away from the password-recovery form at the exact moment it completes
+— trading this bug for a worse one. It belongs at the `SIGNED_OUT` call site, which means
+the two exits stop sharing one teardown, and the reason they differ has to be written down
+at both ends or the next person will helpfully consolidate it back. Needs a browser test
+that ends a session at `/c/<uuid>` without pressing logout — note the existing suite has no
+fixture for revocation-from-elsewhere, so that fixture is part of the cost — and an
+`ASSET_VERSION` bump in `web/api/app.py`, since it touches JS.
+
+**Update 2026-09-11.** Grew into a plan:
+[`2026-09-11_revoked-session-url-reset.md`](2026-09-11_revoked-session-url-reset.md), which also
+covers the teardown gaps, Back navigation, bfcache restores and the `/account` and `/admin`
+pages that reviewing this entry turned up. Commit 1 of 4 shipped the URL reset at the
+`SIGNED_OUT` call site (exactly where this entry said it belonged), one local teardown shared by
+sign-out and a direct reader switch, the late-request guards and a signed-out Back guard. This
+entry closes when the last commit lands. One claim above was wrong: the suite _did_ have a
+revocation-from-elsewhere fixture (`test_history_notice.py:120-131`); the new tests' `_revoke`
+helper follows the same pattern, and also clears the browser double's stored session.
+
 ### [HISTORICAL] ~~Five rate limits are registered but never enforced~~ — FIXED 2026-09-03
 
 > **Closed by the reader-quota Commit A.** All five registrations now assign the wrapper

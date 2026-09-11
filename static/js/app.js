@@ -280,7 +280,7 @@ const App = {
   },
 
   /**
-   * §7 of docs/revoked-session-url-reset-plan.md. Runs on a bfcache restore.
+   * Runs on a bfcache restore (docs/ARCHITECTURE.md, "When a session ends in the browser").
    * Same reader still in storage → reveal the restored page as it was. Anyone else, or
    * nobody → a fresh load of "/" (the ordinary, tested init path) rather than tearing the
    * restored page down in place and re-deriving auth. getSession error → reload this URL:
@@ -343,7 +343,7 @@ const App = {
     // can still navigate, and the popstate handler itself is what decides
     // whether there is anything to hydrate.
     Route.init((navigation) => Handlers.handlePopState(navigation));
-    /* §7: bfcache restore (docs/revoked-session-url-reset-plan.md §7). A restored
+    /* bfcache restore (docs/ARCHITECTURE.md, "When a session ends in the browser"). A restored
        page runs no init(), and supabase-js emits no SIGNED_OUT for storage it
        finds empty, so a page frozen while reader A was signed in comes back
        showing A after A's session ended elsewhere. The snapshot is concealed on

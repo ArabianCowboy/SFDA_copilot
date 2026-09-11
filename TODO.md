@@ -63,7 +63,6 @@ bottom of this file: [How this file works](#how-this-file-works).
 - [Confirm the backup schedule, and rehearse a restore once](#confirm-the-backup-schedule-and-rehearse-a-restore-once) — dashboard task; the recovery position is currently an assumption.
 - [Measure the real statement and lock timeouts on the write path](#measure-the-real-statement-and-lock-timeouts-on-the-write-path) — needs a call through PostgREST, not MCP.
 - [Run the database assertions somewhere other than by hand](#run-the-database-assertions-somewhere-other-than-by-hand) — `supabase/tests/` exists and runs by hand only.
-- [A revoked session leaves the conversation id in the address bar](#a-revoked-or-expired-session-clears-the-transcript-but-leaves-the-conversation-id-in-the-address-bar) — in progress under [its plan](docs/revoked-session-url-reset-plan.md); commits 1-3 of 4 shipped (the URL reset, the full teardown, Back and bfcache); `/account` and `/admin` remain.
 - [One logout-button press sends `POST /auth/logout` three times](#one-logout-button-press-sends-post-authlogout-three-times) — pre-existing, harmless beyond spending the per-IP budget three times as fast; not started.
 - [One Realtime socket per reader, not one per visible tab](#one-realtime-socket-per-reader-not-one-per-visible-tab) — not started; costs nothing measurable yet, written down because the cost is the interesting half.
 
@@ -310,54 +309,6 @@ costs nothing on the uncontended path. That is probably the right answer, and it
 measured rather than assumed: `for share` on `profiles` sits on the hot path of every admin
 mutation, and `profiles` is also the table every reader request reads.
 
-### A revoked or expired session clears the transcript but leaves the conversation id in the address bar
-
-**Where:** `static/js/app.js:514-515` — the `SIGNED_OUT`/`USER_DELETED` branch of
-`onAuthStateChange` — against `Handlers.redirectToHomeIfNeeded` in
-`static/js/modules/handlers.js:2205`.
-
-**What is wrong.** There are two ways out of a session and only one of them fixes the
-address bar. `handleLogout` calls `redirectToHomeIfNeeded()` on both its success and its
-error path (`handlers.js:2112` and `2120`). The `onAuthStateChange` branch that catches
-every _other_ way a session ends — expiry, revocation from another tab, an administrator
-disabling the account — calls only `clearSessionState()`. That clears the transcript,
-sidebar, source panel and citation map, but nothing touches `window.location`, so a reader
-whose session dies at `/c/<uuid>` is left looking at the landing view with the previous
-reader's conversation id still in the URL bar and still in browser history.
-
-**Who it reaches.** Anyone whose session ends without their pressing the logout button,
-while reading a conversation rather than sitting at `/`. On a shared machine that is the
-case that matters: the id is not the content, but it is a durable pointer to another
-person's conversation, left in the address bar and the history of the next person to use
-the machine. A later sign-in from that URL then asks for a conversation the new reader does
-not own, and the ownership preflight refuses it correctly — so this is an exposure of an
-identifier and a confusing first screen, not an access-control failure.
-
-**How it was found.** A code read on 2026-09-08, reviewing the sign-out paths after the
-Supabase key incident; confirmed by grepping every caller of `redirectToHomeIfNeeded` and
-finding both of them inside `handleLogout`.
-
-**What fixing it would disturb.** The fix does **not** belong inside `clearSessionState`,
-which is the obvious place and the wrong one. That function is also reached from
-`endRecovery` (`handlers.js:2098`) and from `app.js:387`, and a `location.replace('/')`
-there would navigate away from the password-recovery form at the exact moment it completes
-— trading this bug for a worse one. It belongs at the `SIGNED_OUT` call site, which means
-the two exits stop sharing one teardown, and the reason they differ has to be written down
-at both ends or the next person will helpfully consolidate it back. Needs a browser test
-that ends a session at `/c/<uuid>` without pressing logout — note the existing suite has no
-fixture for revocation-from-elsewhere, so that fixture is part of the cost — and an
-`ASSET_VERSION` bump in `web/api/app.py`, since it touches JS.
-
-**Update 2026-09-11.** Grew into a plan:
-[`docs/revoked-session-url-reset-plan.md`](docs/revoked-session-url-reset-plan.md), which also
-covers the teardown gaps, Back navigation, bfcache restores and the `/account` and `/admin`
-pages that reviewing this entry turned up. Commit 1 of 4 shipped the URL reset at the
-`SIGNED_OUT` call site (exactly where this entry said it belonged), one local teardown shared by
-sign-out and a direct reader switch, the late-request guards and a signed-out Back guard. This
-entry closes when the last commit lands. One claim above was wrong: the suite _did_ have a
-revocation-from-elsewhere fixture (`test_history_notice.py:120-131`); the new tests' `_revoke`
-helper follows the same pattern, and also clears the browser double's stored session.
-
 ### One logout-button press sends `POST /auth/logout` three times
 
 **Where:** `Handlers.handleLogout` and `Handlers.clearSessionState`
@@ -381,7 +332,7 @@ budget: under the unresolved proxy question every reader shares one key, so sign
 readers spend one pool three times as fast as the comment used to say.
 
 **How it was found.** agy's (Gemini 3.8 Flash) security review of
-`docs/revoked-session-url-reset-plan.md` on 2026-09-11, then confirmed by reading the three call
+the revoked-session plan (now [`docs/archive/2026-09-11_revoked-session-url-reset.md`](docs/archive/2026-09-11_revoked-session-url-reset.md)) on 2026-09-11, then confirmed by reading the three call
 sites and the supabase-js 2.74.0 source. Pre-existing: that plan neither adds nor removes a POST
 on this path.
 
@@ -999,6 +950,17 @@ un-cleaned browser/agent processes measurably degrades this specific suite's
 timing-sensitive assertions. Worth checking process count before trusting a
 red run in a long-lived session, CI or not.
 
+**2026-09-11 — not only this file.** Across seven full `-m browser` runs in one long session
+(the revoked-session work, with delegate agents running beside it), three tests outside
+`test_source_panel.py` each failed once and then passed every time in isolation (3/3 each):
+`test_signup_identity_capture.py::test_family_name_is_optional`,
+`test_history_notice.py::test_the_notice_names_the_delete_control_now_that_one_exists` and
+`test_notifications_browser.py::test_history_status_filter_hides_deleted_notifications_by_default`.
+None touches the code that work changed, and a clean full re-run passed 310/310. The heading
+still names one file because that is where the entry started; the symptom is suite-wide. The
+runs kept only the summary line, so no failure text was captured for any of the three — nothing
+to add on the cause.
+
 ---
 
 ### Know what people actually ask — without reading anyone's conversation
@@ -1240,7 +1202,7 @@ environment, which is worth saying plainly: nothing in this feature fixed it.
 The other two are still owed, and one of them has since been diagnosed rather than merely
 listed. The sign-out path is now its own entry — [a revoked or expired session clears the
 transcript but leaves the conversation id in the address
-bar](#a-revoked-or-expired-session-clears-the-transcript-but-leaves-the-conversation-id-in-the-address-bar)
+bar](docs/archive/TODO-resolved.md) (now closed and archived)
 — because it turned out to be a specific missing call rather than an unverified area, and a
 named bug is worth more than a caveat. The live Realtime-push check is unchanged and still
 needs a real project. Separately, the poll cadence this entry describes was changed on
@@ -1254,7 +1216,7 @@ surfaces for the next reader. Toasts, the banner and the acknowledgement modal r
 `#authenticated-view`; a teardown that hid the modal fired its snooze; snoozes survived in
 `sessionStorage`; the inbox stayed open with its rows; and a late inbox page or mark-read failure
 painted over the next reader. Commit 2 of
-[`docs/revoked-session-url-reset-plan.md`](docs/revoked-session-url-reset-plan.md) (§9) fixed all
+[the revoked-session plan](docs/archive/2026-09-11_revoked-session-url-reset.md) (§9) fixed all
 of it — `BroadcastNotice.reset()` plus a `readerGeneration` guard — with four browser tests in
 `web/tests/test_signed_out_route.py`. The reauthenticate path was checked on the way: the
 password-change reauthentication and "sign out everywhere else" do not end this tab's session, so
