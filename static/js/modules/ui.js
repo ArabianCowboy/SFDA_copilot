@@ -968,7 +968,7 @@ export const UI = {
     // must leave one notice, not three.
     this.hideQuotaNotice();
 
-    const notice = DOMCache.createElement('div', 'history-notice quota-notice', QUOTA_NOTICE_ID);
+    const notice = DOMCache.createElement('div', 'history-notice', 'quota-notice');
     notice.id = QUOTA_NOTICE_ID;
     notice.setAttribute('role', 'note');
     notice.setAttribute('data-non-turn', '');
@@ -1021,9 +1021,13 @@ export const UI = {
   removePendingUserTurn(queryText) {
     const container = DOMCache.get(CONFIG.SELECTORS.MESSAGES);
     if (!container) return;
-    const turns = container.querySelectorAll('.message.user');
+    /* `.user-message` is the class createMessageElement actually sets, and the
+       comparison reads `.message-content` only: the bubble also holds a
+       timestamp, so the wrapper's whole textContent never equals the question. */
+    const turns = container.querySelectorAll('.message.user-message');
     const last = turns[turns.length - 1];
-    if (last && last.textContent.trim() === String(queryText).trim()) last.remove();
+    const text = last?.querySelector('.message-content')?.textContent ?? '';
+    if (last && text.trim() === String(queryText).trim()) last.remove();
   },
 
   /**
