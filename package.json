@@ -14,6 +14,10 @@
     "markdownlint-cli2": "^0.23.2",
     "prettier": "^3.9.6"
   },
+  "//overrides": "markdownlint-cli2@0.23.2 pins smol-toml to exactly 1.7.0, which carries GHSA-7w5x-hrqm-74c2 (a denial of service on malformed TOML). 1.8.0 is the fix and is API-compatible; the only alternative npm offers is downgrading the linter itself. Nothing here reaches a browser or the server — smol-toml parses a markdownlint TOML config, and this repo's config is .markdownlint-cli2.yaml — so this closes the advisory, not an exposure. Drop the override once markdownlint-cli2 ships a release pinning 1.8.0 or later.",
+  "overrides": {
+    "smol-toml": "1.8.0"
+  },
   "scripts": {
     "lint": "eslint static/js",
     "lint:fix": "eslint static/js --fix",
