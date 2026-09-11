@@ -113,17 +113,14 @@ const App = {
     /* KEYED TO THE READER, NOT TO THE PAGE, and this is not a refinement.
 
        The sequence: reader A signs out and reader B signs in on the same tab,
-       still sitting on A's `/c/<id>`. The app lives at "/" and AuthView only
-       toggles `d-none`, so nothing reloads and a plain once-per-page guard
-       would already be spent — B's transcript would never be (re)drawn, and
-       the stale route would still name A's conversation. `hydrateTranscript`
-       below reads that route and asks the server for it under B's own
-       identity; the server's ownership check (§3.1 of
-       docs/per-tab-conversation-deep-linking-plan.md) answers 404 for a
-       conversation B does not own, which `Handlers._conversationUnreachable`
-       then bounces to `/` — but only if `hydrateTranscript` actually runs for
-       B, which is what this guard being per-identity rather than per-page
-       ensures.
+       or identity switches under a live page. AuthView only toggles `d-none`, so
+       nothing reloads and a plain once-per-page guard would already be spent —
+       B's transcript would never be (re)drawn. Both exits (the SIGNED_OUT
+       listener and the reader-switch branch below) now reset the URL with
+       Route.replace(null) before hydrateTranscript runs, so B does not request
+       A's conversation. This per-identity guard is what makes hydrateTranscript
+       run again for B at all; the server's ownership 404 remains the backstop
+       if a stale route ever did reach it.
 
        Settling more than once is safe because settling is now idempotent per
        identity: the same reader short-circuits, a different one re-hydrates. */
@@ -153,12 +150,15 @@ const App = {
       return;
     }
 
-    /* A reader changed under a live transcript. `clearSessionState` covers the
-       ordinary sign-out, but this path is also reached when a session is
-       replaced without one, and leaving the previous reader's turns on screen
-       for the next person is the hazard the old ownership tag existed to
-       prevent. */
-    if (previous && previous !== identity) Handlers.clearReaderScopedUI();
+    /* A reader changed under a live page without a SIGNED_OUT in between; the
+       full local teardown runs, and the URL moves off the previous reader's
+       /c/<id> so the new reader does not request a conversation they do not
+       own (which would only 404 and bounce). Reset at the call site, like the
+       SIGNED_OUT branch, never inside the shared teardown. */
+    if (previous && previous !== identity) {
+      Handlers.clearReaderScopedUI();
+      if (Route.current()) Route.replace(null);
+    }
 
     Transcript.discard();
 
@@ -505,14 +505,29 @@ const App = {
            — never on the INITIAL_SESSION event this fires on subscribe. That
            event reports "no session yet" during startup, and clearing on it
            would wipe the transcript hydration had just drawn
-           after a language switch.
+           after a language switch. INITIAL_SESSION falls through to `else`, so
+           a signed-out cold deep link keeps its path (§4.5).
 
            Without the cleanup here a session that ends anywhere other than the
            logout button leaves the previous reader's transcript, source panel
            and citation state live behind the landing view, because the tab is
-           never reloaded on the way out. */
+           never reloaded on the way out.
+
+           This exit also moves the address bar off /c/<id>, because a session
+           that ends at /c/<uuid> would otherwise leave the previous reader's
+           conversation id in the URL and in the history entry. Route.replace,
+           not location.replace('/'): no reload (a reload would cancel the
+           unawaited POST /auth/logout that clearSessionState fires, would drop
+           nothing the teardown has not already dropped, and would reload every
+           open tab on a broadcast sign-out), and it keeps ?lang=/?testing=.
+           Guarded by Route.current() so "/" and its query string are left alone.
+           The reset lives HERE, not inside clearSessionState, because
+           endRecovery and the recovery branch above also call clearSessionState
+           and must keep the recovery form's path — the recovery branch returns
+           before reaching this line. */
         if (event === 'SIGNED_OUT' || event === 'USER_DELETED') {
           Handlers.clearSessionState();
+          if (Route.current()) Route.replace(null);
         } else {
           UI.Faq.clearButtons();
         }

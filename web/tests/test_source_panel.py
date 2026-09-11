@@ -632,12 +632,11 @@ def test_asking_again_closes_a_panel_showing_the_previous_answer(sourced_page: P
 
 
 def test_logging_out_leaves_nothing_of_the_previous_reader(sourced_page: Page):
-    """The tab is not reloaded on the way out.
+    """The logout button no longer reloads the tab on the way out.
 
-    AuthView only toggles `d-none` and the app lives at "/", so the transcript,
-    the source panel and the citation map all survive a logout unless they are
-    explicitly cleared — and the next person to sign in on a shared machine
-    would find the previous reader's questions, answers and evidence intact.
+    The SIGNED_OUT listener resets /c/<id> to "/" in place, so everything
+    here — including an unsent draft — must be cleared explicitly, and the
+    marker proves no reload happened to do it for us.
     """
     page = sourced_page
     page.set_viewport_size(WIDE)
@@ -645,6 +644,8 @@ def test_logging_out_leaves_nothing_of_the_previous_reader(sourced_page: Page):
     page.locator(".source-trigger").click()
     expect(page.locator("#source-panel")).to_be_visible()
 
+    page.evaluate("() => { window.__noReload = true; }")
+    page.locator("#query-input").fill("Reader A's unsent draft")
     page.locator("#logout-button").locator("visible=true").first.click()
     expect(page.locator("#unauthenticated-view")).to_be_visible()
 
@@ -652,6 +653,9 @@ def test_logging_out_leaves_nothing_of_the_previous_reader(sourced_page: Page):
     expect(page.locator(".chatbot-message")).to_have_count(0)
     expect(page.locator(".source-trigger")).to_have_count(0)
     assert page.evaluate("() => sessionStorage.getItem('sfda-transcript')") is None
+    expect(page).to_have_url(re.compile(r"/$"))
+    expect(page.locator("#query-input")).to_have_value("")
+    assert page.evaluate("() => window.__noReload === true")
 
 
 def test_cancelling_after_final_keeps_the_canonical_answer(streaming_page: Page):

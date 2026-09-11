@@ -339,6 +339,9 @@ export const Handlers = {
   },
 
   async processChatRequestInternal(queryText, category = '') {
+    // A sign-out or New chat bumps resetGeneration; the token await below can outlive either.
+    const startGeneration = resetGeneration;
+
     /* A new question makes whatever the panel is showing stale — it would sit
        beside an answer it has nothing to do with, in the one column the reader
        is watching for the new one. Here rather than in beginStreamingMessage,
@@ -366,11 +369,18 @@ export const Handlers = {
       try {
         token = await Services.getSessionToken();
       } catch (error) {
+        if (startGeneration !== resetGeneration) return;
         logError(error, 'processChatRequestInternal.getSessionToken');
         ErrorHandler.showToast(I18n.t('chat.sessionUnverified'), true);
         RobotStateManager.resetToIdle();
         return;
       }
+
+      // The session ended (or New chat was pressed) while the token was being read;
+      // minting an id and calling Route.enter now would write reader A's new /c/<id>
+      // into the address bar after the teardown reset it to "/", and would send A's
+      // question under a token that is no longer theirs.
+      if (startGeneration !== resetGeneration) return;
 
       if (!token && !window.location.search.includes('testing=true')) {
         AppState.get('authModal')?.show();
@@ -424,6 +434,10 @@ export const Handlers = {
       if (conversation?.allowCreate && Route.current() === conversation.id) {
         Route.replace(null);
       }
+
+      // A teardown already owns the screen; no error bubble, toast, quota notice
+      // or composer restore for the conversation it ended.
+      if (startGeneration !== resetGeneration) return;
 
       if (error?.name === 'AbortError') {
         RobotStateManager.resetToIdle();
@@ -842,6 +856,34 @@ export const Handlers = {
       return;
     }
 
+    /* A signed-out reader traversing Back into /c/<id> (e.g. the entry reader A
+       was on before a revocation) would otherwise put A's id back in the
+       address bar. ONLY a confirmed absence (`null`) scrubs: getSessionToken
+       throws on a getSession error and waits (does not return null) during a
+       token refresh or lock contention, and a signed-in reader must never be
+       bounced to "/" by a transient failure — an error falls through to the
+       existing path unchanged. ?testing=true returns 'fake_token', so the
+       demo is unaffected. Accepted trade-off (§4.5): a signed-out reader who
+       Backs into a deep link they opened themselves loses it; a cold-opened
+       deep link does not go through popstate, so deep-link-across-sign-in
+       still works. */
+    let token;
+    try {
+      token = await Services.getSessionToken();
+    } catch (error) {
+      logError(error, 'handlePopState.session');
+      token = undefined;
+    }
+    if (epoch !== transcriptEpoch) return;
+    if (token === null) {
+      Route.replace(null);
+      UI.clearTranscript();
+      SourcePanel.reset();
+      resetCitationState();
+      UI.History.setActive(null);
+      return;
+    }
+
     if (!Route.isCommitted()) {
       /* This tab minted `id` and the turn never landed — a reload mid-first-
          stream, or a Forward into that same abandoned attempt. Fetching
@@ -1114,48 +1156,17 @@ export const Handlers = {
   },
 
   /**
-   * Drop everything scoped to the reader who just left, short of a full
-   * sign-out.
+   * The reader-switch teardown (identity changed under a live page without a
+   * `SIGNED_OUT` in between).
    *
-   * `clearSessionState` is the sign-out path and does more (it ends the server
-   * session and cancels in-flight work). This is the narrower case: the
-   * identity changed under a live page without a `SIGNED_OUT` in between, which
-   * the auth SDK can do. Clearing only the transcript there would leave the
-   * previous reader's passages in an open source panel and their entries in the
-   * citation map — one reader's evidence sitting in the next reader's document,
-   * which is the hazard the transcript's old ownership tag existed to prevent.
+   * It is `clearReaderLocalState` and nothing else; it deliberately does NOT
+   * POST /auth/logout, because on a switch the Flask session already belongs
+   * to the new reader. It used to be a narrower, separate teardown; the two
+   * diverged (no stream cancel, no composer, no identity-check bump) and were
+   * merged so they cannot drift again.
    */
   clearReaderScopedUI() {
-    this.beginTranscriptEpoch();
-    // Unlike the history notice (unconditionally redrawn for the new reader
-    // right after this call, via showHistoryNotice's own remove-then-redraw),
-    // the completion notice only redraws if the new reader's profile also
-    // turns out incomplete — so it needs an explicit hide here, or reader A's
-    // strip survives on screen for reader B if B's own profile is complete.
-    UI.hideProfileCompletionNotice();
-    // Reader A's allowance is not reader B's business, and `clearTranscript`
-    // only detaches turns -- this notice carries `data-non-turn`.
-    UI.hideQuotaNotice();
-    UI.updateQuotaCounter(null);
-    /* The sidebar moves with everything else scoped to the reader who left.
-       These rows are their own opening questions, and the app lives at "/" so
-       nothing reloads on the way out — leaving them drawn behind the landing
-       view is the same hazard the transcript's ownership tag existed to
-       prevent, applied to the index of the transcript instead of the transcript.
-       The epoch bump is what stops a list fetch dispatched for them painting
-       into the next reader's column when it lands. */
-    selectionEpoch += 1;
-    UI.History.clear();
-    AppState.set('sidebarTabSettled', false);
-    UI.clearTranscript();
-    SourcePanel.reset();
-    resetCitationState();
-    // Same reasoning as the sidebar rows above: an active broadcast list is
-    // scoped to the reader who was signed in, and re-fetched fresh for
-    // whoever replaced them once identity resolves again.
-    this.stopNotificationsPolling();
-    AppState.set('notificationsUserId', null);
-    UI.Notifications.setUnreadCount(0);
+    this.clearReaderLocalState();
   },
 
   /**
@@ -1536,8 +1547,11 @@ export const Handlers = {
            diagnose. `Route.replace`, not `enter`: the reconciled id may
            already be a real, committed conversation (a resumed one), and
            `replace` is the safer default either way — see its own comment
-           for why a premature "uncommitted" here still degrades gracefully. */
+           for why a premature "uncommitted" here still degrades gracefully.
+           Nothing may write /c/<id> after a teardown — the same invariant
+           `blockingChat`'s own `generation` check enforces. */
           meta: (d) => {
+            if (generation !== resetGeneration) return;
             if (d.conversation_id && d.conversation_id !== Route.current()) {
               Route.replace(d.conversation_id);
             }
@@ -2109,6 +2123,10 @@ export const Handlers = {
       ErrorHandler.showToast(
         result?.testing ? 'Logged out successfully (testing mode)' : 'Logged out successfully',
       );
+      // Normally a no-op now — signOut() awaited the SIGNED_OUT listener, which
+      // already reset the URL with Route.replace(null) without a reload. It still
+      // reloads to "/" on the paths where no SIGNED_OUT arrives: the ?testing=true
+      // demo, a signOut that throws, and Services.logout returning sessionMissing.
       this.redirectToHomeIfNeeded();
     } catch (error) {
       logError(error, 'handleLogout');
@@ -2117,28 +2135,28 @@ export const Handlers = {
       AppState.set('userProfile', null);
       this.clearSessionState();
       ErrorHandler.showToast('Logged out (session cleared)', false);
+      // Fallback reload when no SIGNED_OUT event arrives; see comment in try above.
       this.redirectToHomeIfNeeded();
     }
   },
 
   /**
-   * Drop everything in this tab that belonged to the signed-out reader.
+   * Drop everything in this tab scoped to the reader who just left.
    *
-   * One function because there are two ways out — the logout button and a
-   * session that expires or is revoked elsewhere (app.js routes
-   * onAuthStateChange here) — and only one of them used to clean up. The tab
-   * is not reloaded on the way out: the app lives at "/", so
-   * redirectToHomeIfNeeded is a no-op, and AuthView only toggles `d-none` on
-   * the authenticated view. Everything below therefore survives into the next
-   * sign-in unless it is explicitly cleared, which on a regulatory product
-   * means a second reader on a shared machine sees the first one's questions,
-   * answers and evidence.
+   * Shared by sign-out and reader switch. The tab is not reloaded on the way out:
+   * AuthView only toggles `d-none` on the authenticated view. Everything below
+   * therefore survives into the next sign-in unless it is explicitly cleared,
+   * which on a regulatory product means a second reader on a shared machine
+   * sees the first one's questions, answers, evidence and drafts.
    *
-   * The server side is handled by the logout route, which purges the store
-   * entries behind `conv_id` and `prev_conv_id` and then clears the session —
-   * so nothing of this reader's conversation survives on either side.
+   * The URL is NOT this function's job: callers reset it — app.js's
+   * SIGNED_OUT/USER_DELETED branch and settleTranscript's reader-switch branch
+   * call Route.replace(null); endRecovery deliberately does not, because the
+   * recovery form must keep its own path. Neither exit reloads the page, except
+   * handleLogout's redirectToHomeIfNeeded() fallback when no SIGNED_OUT event
+   * arrives.
    */
-  clearSessionState() {
+  clearReaderLocalState() {
     resetGeneration += 1;
     // Also invalidates any transcript fetch still in flight, which would
     // otherwise draw the departing reader's conversation into an empty page.
@@ -2151,15 +2169,18 @@ export const Handlers = {
     // An in-flight answer would otherwise keep streaming into the hidden
     // transcript and repopulate the citation map after logout.
     Services.cancelChatRequest();
-    /* Also reached when a session expires or is revoked rather than being
-       signed out here, in which case Services.logout() never ran and the
-       Flask cookie still holds conv_id. Not awaited — this function is the
-       synchronous teardown, and the server rotates on an identity change
-       regardless. On the logout-button path this is a duplicate of the call
-       inside Services.logout(); the endpoint is idempotent. */
-    Services.endServerSession();
     UI.clearTranscript();
     UI.hideAccountDisabledNotice();
+    // Unlike the history notice (unconditionally redrawn for the new reader
+    // right after this call, via showHistoryNotice's own remove-then-redraw),
+    // the completion notice only redraws if the new reader's profile also
+    // turns out incomplete — so it needs an explicit hide here, or reader A's
+    // strip survives on screen for reader B if B's own profile is complete.
+    UI.hideProfileCompletionNotice();
+    // Reader A's allowance is not reader B's business, and `clearTranscript`
+    // only detaches turns -- this notice carries `data-non-turn`.
+    UI.hideQuotaNotice();
+    UI.updateQuotaCounter(null);
     // reset, not close: closing leaves the previous reader's passages sitting
     // in the panel's DOM for the next one.
     SourcePanel.reset();
@@ -2174,11 +2195,46 @@ export const Handlers = {
     AppState.set('notificationsActive', []);
     AppState.set('notificationsHistoryItems', []);
     AppState.set('notificationsOpenModalId', null);
+
+    // The composer is only hidden with #authenticated-view, never emptied, so a
+    // draft reader A left unsent would be sitting there for reader B.
+    const composer = DOMCache.get(CONFIG.SELECTORS.QUERY_INPUT);
+    if (composer) composer.value = '';
+
+    // A dead stream's id must not satisfy handlePopState's re-attach check.
+    activeStreamConversationId = null;
+
+    // Retire every identity/profile answer still in flight for the reader who
+    // left — the same bump auth-view.js makes on a null render, but here it
+    // also covers a direct A→B switch, where render(B) does not bump it and
+    // A's late /api/identity answer (user_id A, so it passes app.js's user_id
+    // check) would otherwise paint A's admin link and quota for B.
+    AppState.set('identityCheckId', (AppState.get('identityCheckId') || 0) + 1);
+    AuthView.renderAdminAffordance(false);
+
     try {
       sessionStorage.removeItem('sfda-transcript');
     } catch (error) {
-      logError(error, 'clearSessionState: sessionStorage');
+      logError(error, 'clearReaderLocalState: sessionStorage');
     }
+  },
+
+  /**
+   * The sign-out teardown = clearReaderLocalState + ending the Flask session.
+   *
+   * Called from the SIGNED_OUT branch in app.js, from handleLogout, from
+   * endRecovery and from the recovery branch in app.js.
+   */
+  clearSessionState() {
+    this.clearReaderLocalState();
+    /* This is the only difference from clearReaderLocalState — it also ends the
+       Flask session (POST /auth/logout: session.clear(), the legacy
+       chat_history purge, and token-cache eviction when the request carries a
+       token). Not awaited, because this is the synchronous teardown. On the
+       logout-button path it duplicates the call inside Services.logout(); the
+       endpoint is idempotent (a TODO entry tracks that one press currently
+       sends it three times). */
+    Services.endServerSession();
   },
 
   clearLocalAuthData() {

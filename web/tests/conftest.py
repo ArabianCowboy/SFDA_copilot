@@ -66,6 +66,8 @@ export function createClient() {
     lastPreferencesPatch: null,
     lastSignUpMetadata: null,
     sessionError: null,
+    sessionErrorOnce: null,   // getSession() returns this error ONCE, then behaves normally
+    getSessionGate: null,     // a Promise; getSession() awaits it before returning
     profileError: null,
     profileUpdateError: null,
     preferencesUpdateError: null,
@@ -88,10 +90,20 @@ export function createClient() {
   return {
     auth: {
       async getSession() {
+        if (state.sessionErrorOnce) {
+          const message = state.sessionErrorOnce;
+          state.sessionErrorOnce = null;
+          return { data: { session: null }, error: new Error(message) };
+        }
         if (state.sessionError) {
           return { data: { session: null }, error: new Error(state.sessionError) };
         }
-        return { data: { session: session() }, error: null };
+        const current = session();
+        // The session is read BEFORE the gate, so a test can hold a getSession()
+        // that already read reader A's session while A is signed out — the real
+        // client's window between reading storage and its caller's continuation running.
+        if (state.getSessionGate) await state.getSessionGate;
+        return { data: { session: current }, error: null };
       },
       onAuthStateChange(callback) {
         state.authCallback = callback;

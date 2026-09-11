@@ -32,12 +32,14 @@ auth_bp = Blueprint("auth", __name__)
 # address, so exempting it would mint a second unmetered proxy of the shape
 # the `/login` tombstone below closes.
 #
-# Halve those numbers before judging them: one sign-out button press spends
-# TWO of the budget, because `Services.logout` posts here and the
-# `clearSessionState` that follows posts here again — deliberately, and
-# documented as idempotent at `handlers.js:2155-2159`. So the real ceiling is
-# 5 sign-outs a minute and 100 a day per key, and "per key" is
-# `get_remote_address()`, which under the unresolved proxy question collapses
+# Divide those numbers by three before judging them: one sign-out button press
+# spends THREE of the budget, because `Services.logout` posts here, then the
+# `SIGNED_OUT` listener's `Handlers.clearSessionState` (in
+# `static/js/modules/handlers.js`) posts here, then `handleLogout`'s own
+# `Handlers.clearSessionState` posts here; each other open tab adds one more
+# on a broadcast sign-out (deduplicating it is tracked in TODO.md). So the real
+# ceiling is about 3 sign-outs a minute and about 66 a day per key, and "per key"
+# is `get_remote_address()`, which under the unresolved proxy question collapses
 # to one address for every reader on earth.
 # A refused logout still signs the reader out: `Services.endServerSession`
 # (`static/js/modules/services.js`) only catches network errors, and a 429 is
@@ -45,8 +47,9 @@ auth_bp = Blueprint("auth", __name__)
 # `supabase.auth.signOut({ scope: 'global' })` and the session is revoked
 # upstream either way. What a refusal skips is the Flask-side teardown —
 # `purge_conversation_state()`, `session.clear()`, `invalidate_token(token)`
-# — i.e. the previous reader's conversation pointer lingering in the cookie
-# for the next person on a shared browser. Real, bounded, not a sign-out
+# — where what lingers is the Flask session itself (the reader's cached access
+# token and identity markers, plus any legacy pre-migration chat_history keys)
+# until the next identity change rotates it. Real, bounded, not a sign-out
 # denial.
 recover_bp = Blueprint("recover", __name__)
 # `/signup` used to live on `auth_bp` and inherit no limit at all — the same
