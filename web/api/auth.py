@@ -42,6 +42,41 @@ auth_bp = Blueprint("auth", __name__)
 # day per key for a reader with one chat tab open, divided by N for one with
 # N; and "per key" is `get_remote_address()`, which under the unresolved proxy
 # question collapses to one address for every reader on earth.
+#
+# That N is ACCEPTED, decided 2026-09-12 after an adversarial review of both
+# candidate fixes. Sign-outs are human-rate against these windows, the duplicate
+# POSTs are idempotent (the first one's `session.clear()` leaves the rest
+# tokenless, and nothing in this app ever sets the `sb-access-token` cookie that
+# `_get_token_from_request` would otherwise still find), and both fixes cost
+# more than the budget they save:
+#   - A per-route limit with Flask-Limiter's `deduct_when`. An explicit route
+#     limit REPLACES the defaults, so it would have to restate all three windows
+#     or silently delete two of them; `deduct_when` sees only the response, and
+#     a real teardown and a no-op both answer 200, so "did something" would mean
+#     matching a body string; a request refused with 429 never reaches it, so it
+#     does not restore the retry the single-tab fix gave up; and it still has to
+#     dodge the unlimited-decorator trap described at the top of this comment.
+#     Verified against the installed Flask-Limiter 4.1.1: with `deduct_when` the
+#     request-time call is `test` rather than `hit`, so the window is still
+#     ENFORCED, only not charged — a tokenless flood would need a second,
+#     looser ceiling of its own.
+#   - A sign-out receipt in `localStorage`, so only the first tab posts. It is
+#     persistent cross-sign-in state, and a stale one silences the teardown in
+#     EVERY tab on a later revocation — on a shared machine, which is what the
+#     teardown exists for. `handlers.js`'s in-flight counter has the opposite
+#     shape on purpose: scoped to one call, cleared in a `finally`.
+#   - Keying this route by reader instead of by IP. `_rate_key` (`app.py`) only
+#     returns a reader key when `g.identity` is populated, which happens behind
+#     `@auth_required` — a gate `logout` deliberately lacks, because it must
+#     clear a session for an expired or absent token.
+# What would reopen it: `ratelimit ... exceeded at endpoint: auth.logout` lines
+# in a production log, clustered with multi-tab sign-outs. Flask-Limiter already
+# emits them. Nothing in this repo measures N or how often readers sign out, so
+# there is no number to optimise against until then. The proxy question above is
+# worth answering on its own account — it repairs every IP-keyed default at once
+# — but it is not a prerequisite for this decision, per the 2026-09-08
+# correction in `docs/auth-login-rate-limit-plan.md`.
+#
 # A refused logout still signs the reader out: `Services.endServerSession`
 # (`static/js/modules/services.js`) only catches network errors, and a 429 is
 # a successful HTTP response, so the caller proceeds to the browser-direct

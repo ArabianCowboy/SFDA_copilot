@@ -355,7 +355,9 @@ address bar names `/c/<id>`, `Route.replace(null)`. One sign-out posts once from
 logout button and `endRecovery` post through `Services.logout`, first, and run only the local
 teardown themselves, and `clearSessionState` skips its POST while that call is running; the
 listener posts for every sign-out the tab did not start. Each other open chat tab posts once more
-on a broadcast sign-out, by design. A direct switch to a different reader runs
+on a broadcast sign-out — accepted, not overlooked: the rate-limit comment at the top of
+`web/api/auth.py` records why neither candidate fix is worth its cost, and what would reopen it.
+A direct switch to a different reader runs
 `clearReaderScopedUI()` (the local teardown without the POST, which would revoke A upstream) and
 the same URL reset. Both are one function, `clearReaderLocalState()`: **it is the single list
 of reader-scoped state, so new reader-scoped UI is cleared there**. The URL is deliberately not
