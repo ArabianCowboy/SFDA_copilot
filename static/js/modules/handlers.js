@@ -86,6 +86,14 @@ export const NOTIFICATIONS_POLL_JITTER_RATIO = 0.1; // ±10% randomize window to
    requires of the (not yet wired) Realtime path, applied here to polling. */
 let notificationsGeneration = 0;
 
+/* Bumped only by clearReaderLocalState — i.e. only when the reader this tab is
+   showing actually changes (sign-out, revocation, or a direct switch). Distinct
+   from notificationsGeneration, which ALSO moves when the tab is merely hidden
+   and shown again: guarding the inbox on that one would strand a legitimately
+   open inbox in its loading state whenever the reader switches browser tabs
+   mid-load. */
+let readerGeneration = 0;
+
 /* Consecutive failure count for exponential backoff (plan item P7).
    Reset to 0 on a successful fetch (from either the poll loop or a Realtime
    push) or on a fresh startNotificationsPolling call. Not-applicable outcomes
@@ -1394,9 +1402,11 @@ export const Handlers = {
   },
 
   async markNotificationRead(notificationId, action) {
+    const generation = readerGeneration;
     try {
       await Services.notifications.markRead(notificationId, action);
     } catch (error) {
+      if (generation !== readerGeneration) return;
       /* The operator withdrew, deleted or expired this notice between the poll
          that delivered it and the click. The server refuses the receipt
          (RN003) so a retracted modal cannot keep accruing acknowledgements —
@@ -1412,6 +1422,7 @@ export const Handlers = {
         return;
       }
     }
+    if (generation !== readerGeneration) return;
     // Drop it from the cached active list so a reopened inbox and the badge
     // agree without waiting for the next poll tick.
     const remaining = (AppState.get('notificationsActive') || []).filter(
@@ -1422,13 +1433,16 @@ export const Handlers = {
   },
 
   async markAllNotificationsRead() {
+    const generation = readerGeneration;
     try {
       await Services.notifications.markAllRead();
     } catch (error) {
+      if (generation !== readerGeneration) return;
       logError(error, 'markAllNotificationsRead');
       ErrorHandler.showToast(I18n.t('chat.notifications.markAllReadFailed'), true);
       return;
     }
+    if (generation !== readerGeneration) return;
     const active = (AppState.get('notificationsActive') || []).map((n) => ({
       ...n,
       read_at: n.read_at || new Date().toISOString(),
@@ -1452,6 +1466,7 @@ export const Handlers = {
   },
 
   async loadNotificationHistory({ reset = false } = {}) {
+    const generation = readerGeneration;
     if (reset) {
       AppState.set('notificationsHistoryCursor', null);
       AppState.set('notificationsHistoryExhausted', false);
@@ -1464,11 +1479,14 @@ export const Handlers = {
         cursor: reset ? null : AppState.get('notificationsHistoryCursor'),
       });
     } catch (error) {
+      if (generation !== readerGeneration) return;
       logError(error, 'loadNotificationHistory');
       UI.Notifications.setInboxLoading(false);
       UI.Notifications.setInboxUnavailable(true);
       return;
     }
+    // A teardown already closed and emptied the inbox; A's page must not be painted for B.
+    if (generation !== readerGeneration) return;
     UI.Notifications.setInboxLoading(false);
 
     if (!response) {
@@ -1498,7 +1516,9 @@ export const Handlers = {
    * itself only ever sets read_at once) and reflect that in the list
    * without a full reload. */
   async openNotificationFromInbox(item) {
+    const generation = readerGeneration;
     if (!item.read_at) await this.markNotificationRead(item.id, 'read');
+    if (generation !== readerGeneration) return;
     const items = (AppState.get('notificationsHistoryItems') || []).map((n) =>
       n.id === item.id ? { ...n, read_at: n.read_at || new Date().toISOString() } : n,
     );
@@ -2147,7 +2167,9 @@ export const Handlers = {
    * AuthView only toggles `d-none` on the authenticated view. Everything below
    * therefore survives into the next sign-in unless it is explicitly cleared,
    * which on a regulatory product means a second reader on a shared machine
-   * sees the first one's questions, answers, evidence and drafts.
+   * sees the first one's questions, answers, evidence and drafts. It also clears
+   * the Notification Center's surfaces (toasts, banner, modal, inbox, snoozes)
+   * through BroadcastNotice.reset, without recording anything for the reader who left.
    *
    * The URL is NOT this function's job: callers reset it — app.js's
    * SIGNED_OUT/USER_DELETED branch and settleTranscript's reader-switch branch
@@ -2157,6 +2179,7 @@ export const Handlers = {
    * arrives.
    */
   clearReaderLocalState() {
+    readerGeneration += 1;
     resetGeneration += 1;
     // Also invalidates any transcript fetch still in flight, which would
     // otherwise draw the departing reader's conversation into an empty page.
@@ -2195,6 +2218,19 @@ export const Handlers = {
     AppState.set('notificationsActive', []);
     AppState.set('notificationsHistoryItems', []);
     AppState.set('notificationsOpenModalId', null);
+    /* The Notification Center renders outside #authenticated-view — toasts,
+       banner and modal sit at the top of <body> — so hiding the view leaves
+       all of it on the landing page for the next reader. reset() removes each
+       surface without firing its dismiss/acknowledge/snooze callbacks: a
+       teardown must never record a receipt for anyone. The inbox is closed
+       through hideModal because a plain hide() is ignored mid-fade, and
+       emptied because its rows are reader A's history. */
+    BroadcastNotice.reset();
+    this.hideModal('notificationsInboxModal', CONFIG.SELECTORS.NOTIFICATIONS_INBOX_MODAL);
+    UI.Notifications.setInboxLoading(false);
+    UI.Notifications.renderInboxList([]);
+    AppState.set('notificationsHistoryCursor', null);
+    AppState.set('notificationsHistoryExhausted', false);
 
     // The composer is only hidden with #authenticated-view, never emptied, so a
     // draft reader A left unsent would be sitting there for reader B.

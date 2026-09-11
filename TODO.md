@@ -52,7 +52,7 @@ bottom of this file: [How this file works](#how-this-file-works).
 - [The browser suite flakes intermittently in test_source_panel.py](#the-browser-suite-flakes-intermittently-in-test_source_panelpy) — undiagnosed; resource-contention evidence only.
 - [Know what people actually ask](#know-what-people-actually-ask--without-reading-anyones-conversation) — an identity-free question log; not started, gated on scale.
 - [Enable the token-verification cache once production numbers justify it](#enable-the-token-verification-cache-once-production-numbers-justify-it) — single-flight (the worker-starvation fix) shipped 2026-08-27 at no revocation cost; the optional positive cache stays off, gated on measurement.
-- [Admin broadcast & Reader Notification Center](#admin-broadcast--reader-notification-center-popups-banners-and-inbox-history) — implemented 2026-08-24; live login/session smoke-tested against production 2026-08-29 (by hand), which also surfaced and closed a real `mark-read` 500 the same day ([fix write-up](docs/notification-mark-read-500-fix.md)); still owes a live Realtime-push check and the sign-out/reauthenticate paths (the sign-out half is now its own entry above); the `mypy web` caveat closed 2026-09-08.
+- [Admin broadcast & Reader Notification Center](#admin-broadcast--reader-notification-center-popups-banners-and-inbox-history) — implemented 2026-08-24; live login/session smoke-tested against production 2026-08-29 (by hand), which also surfaced and closed a real `mark-read` 500 the same day ([fix write-up](docs/notification-mark-read-500-fix.md)); still owes a live Realtime-push check; the sign-out teardown shipped 2026-09-11 and the reauthenticate path needs none; the `mypy web` caveat closed 2026-09-08.
 - [The privacy policy (/privacy) is a draft, not reviewed legal text](#the-privacy-policy-privacy-is-a-draft-not-reviewed-legal-text) — consent shipped against this draft; the legal review of the text is what is still owed.
 - [Account deletion (Spec 4)](#account-deletion-spec-4--blocked-on-a-product-decision-not-on-engineering) — blocked on an unclosed product decision; both migrations written.
 - [A conversation id now reaches the access log](#a-conversation-id-now-reaches-the-access-log) — a verification task, possibly already fine; unverified either way.
@@ -1246,6 +1246,18 @@ needs a real project. Separately, the poll cadence this entry describes was chan
 2026-09-07: `fetchActive` now backs off from 45s toward 600s on repeated failure instead of
 polling at a fixed interval, which is also what makes [one Realtime socket per
 reader](#one-realtime-socket-per-reader-not-one-per-visible-tab) worth writing down.
+
+**2026-09-11 — the sign-out half closes; the Realtime-push check does not.** The diagnosis
+above turned out to be half the story: besides the URL, sign-out left this feature's own
+surfaces for the next reader. Toasts, the banner and the acknowledgement modal render outside
+`#authenticated-view`; a teardown that hid the modal fired its snooze; snoozes survived in
+`sessionStorage`; the inbox stayed open with its rows; and a late inbox page or mark-read failure
+painted over the next reader. Commit 2 of
+[`docs/revoked-session-url-reset-plan.md`](docs/revoked-session-url-reset-plan.md) (§9) fixed all
+of it — `BroadcastNotice.reset()` plus a `readerGeneration` guard — with four browser tests in
+`web/tests/test_signed_out_route.py`. The reauthenticate path was checked on the way: the
+password-change reauthentication and "sign out everywhere else" do not end this tab's session, so
+there is nothing to tear down there. What this entry still owes is the live Realtime-push check.
 
 ---
 

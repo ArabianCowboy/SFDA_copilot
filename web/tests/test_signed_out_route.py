@@ -12,6 +12,7 @@ a sign-out or reader switch are discarded.
 
 from __future__ import annotations
 
+import json
 import re
 
 import pytest
@@ -283,3 +284,203 @@ def test_direct_reader_switch_at_conversation_resets_url_and_discards_stale_iden
             )
 
     expect(page.locator("#admin-button")).to_have_class(re.compile(r"(?:^|\s)d-none(?:\s|$)"))
+
+
+def _notification(**overrides):
+    row = {
+        "id": "11111111-1111-4111-8111-111111111111",
+        "type": "toast",
+        "severity": "info",
+        "title": "Scheduled maintenance",
+        "body": "The service will be briefly unavailable tonight.",
+        "requires_ack": False,
+        "created_at": "2026-08-23T20:00:00+00:00",
+        "expires_at": None,
+        "deactivated_at": None,
+        "read_at": None,
+        "dismissed_at": None,
+        "acknowledged_at": None,
+    }
+    row.update(overrides)
+    return row
+
+
+def _route_active(page: Page, notifications) -> None:
+    page.context.route(
+        "**/api/notifications/active*",
+        lambda route: route.fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps({"notifications": notifications}),
+        ),
+    )
+
+
+def _route_history(page: Page, notifications, next_cursor=None) -> None:
+    page.context.route(
+        "**/api/notifications/history*",
+        lambda route: route.fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps({"notifications": notifications, "next_cursor": next_cursor}),
+        ),
+    )
+
+
+def _route_mark_read(page: Page, calls: list) -> None:
+    def handle(route):
+        calls.append(json.loads(route.request.post_data or "{}"))
+        route.fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps({"ok": True}),
+        )
+
+    page.context.route("**/api/notifications/mark-read", handle)
+
+
+def _snooze_keys(page: Page):
+    return page.evaluate(
+        "() => Object.keys(sessionStorage).filter((k) => k.startsWith('sfda-notif-snooze-'))"
+    )
+
+
+def test_notification_surfaces_do_not_survive_revocation_or_reach_reader_b(
+    browser_page: Page,
+) -> None:
+    """Notification toasts, banner and modal do not survive revocation or reach reader B.
+
+    Teardown removes active toasts, hides and empties the banner and modal without
+    triggering dismissal or acknowledgement receipts, clears session-scoped snoozes,
+    and ensures reader B sees no active surfaces.
+    """
+    page = browser_page
+    calls = []
+    _route_mark_read(page, calls)
+    _route_active(
+        page,
+        [
+            _notification(id="n-toast", type="toast", title="Reader A toast"),
+            _notification(id="n-banner", type="banner", title="Reader A banner"),
+            _notification(id="n-modal", type="modal", requires_ack=True, title="Reader A modal"),
+        ],
+    )
+    page.goto("/")
+    _sign_in(page)
+    expect(page.locator(".broadcast-toast")).to_have_count(1)
+    expect(page.locator("#notifications-banner")).to_have_class(
+        re.compile(r"(?:^|\s)is-open(?:\s|$)")
+    )
+    modal = page.locator("#notifications-modal")
+    expect(modal).to_be_visible()
+    page.evaluate("() => sessionStorage.setItem('sfda-notif-snooze-older', '1')")
+    _route_active(page, [])  # reader B will have no active notifications
+    _revoke(page)
+    expect(page.locator(".broadcast-toast")).to_have_count(0)
+    expect(page.locator("#notifications-banner")).not_to_have_class(
+        re.compile(r"(?:^|\s)is-open(?:\s|$)")
+    )
+    expect(page.locator("#notifications-banner")).to_have_text("")
+    expect(modal).to_be_hidden()
+    expect(modal.locator(".broadcast-modal-title")).to_have_text("")
+    assert _snooze_keys(page) == []
+    assert calls == []
+    _switch_to_reader_b(page)
+    expect(page.locator("#authenticated-view")).to_be_visible()
+    expect(page.locator(".broadcast-toast")).to_have_count(0)
+    expect(modal).to_be_hidden()
+    assert calls == []
+
+
+def test_inbox_modal_is_closed_and_emptied_by_revocation(browser_page: Page) -> None:
+    """The notification inbox is closed and emptied by a revocation.
+
+    When a session ends, the inbox modal is transition-safely hidden, its loading
+    state is reset, and its rendered list is cleared so reader A's rows do not linger.
+    """
+    page = browser_page
+    _route_active(page, [])
+    _route_history(page, [_notification(id="h1", title="Reader A inbox row")])
+    page.goto("/")
+    _sign_in(page)
+    page.locator("#notifications-bell-button").click()
+    inbox = page.locator("#notifications-inbox-modal")
+    expect(inbox).to_be_visible()
+    expect(page.locator(".notifications-inbox-item")).to_have_count(1)
+    _revoke(page)
+    expect(inbox).to_be_hidden()
+    expect(page.locator(".notifications-inbox-item")).to_have_count(0)
+
+
+def test_late_inbox_response_for_reader_a_is_discarded_after_teardown(
+    browser_page: Page,
+) -> None:
+    """A late inbox page for reader A is discarded after teardown.
+
+    readerGeneration guard drops an in-flight history fetch resolving after sign-out,
+    leaving the inbox empty with reset cursor state.
+    """
+    page = browser_page
+    page.goto("/")
+    _sign_in(page)
+    result = page.evaluate(
+        """async () => {
+      const { Handlers } = await import('/static/js/modules/handlers.js');
+      const { Services } = await import('/static/js/modules/services.js');
+      const { AppState } = await import('/static/js/modules/state.js');
+      let release;
+      Services.notifications.fetchHistory = () => new Promise((r) => { release = r; });
+      const pending = Handlers.loadNotificationHistory({ reset: true });
+      const s = window.__supabaseState;
+      s.user = null; localStorage.removeItem('__mock_supabase_user');
+      await s.authCallback('SIGNED_OUT', null);
+      release({
+        notifications: [{
+          id: 'a1',
+          type: 'toast',
+          severity: 'info',
+          title: "Reader A late row",
+          body: 'x',
+          created_at: '2026-09-11T00:00:00+00:00',
+          read_at: null,
+        }],
+        next_cursor: 'cursor-a',
+      });
+      await pending;
+      return {
+        rows: document.querySelectorAll('.notifications-inbox-item').length,
+        items: (AppState.get('notificationsHistoryItems') || []).length,
+        cursor: AppState.get('notificationsHistoryCursor'),
+      };
+    }"""
+    )
+    assert result == {"rows": 0, "items": 0, "cursor": None}
+
+
+def test_late_mark_read_failure_for_reader_a_shows_reader_b_no_error(
+    browser_page: Page,
+) -> None:
+    """A late mark-read failure for reader A shows reader B no error toast.
+
+    readerGeneration guard suppresses error handling for an in-flight mark-read
+    request that fails after reader A has signed out.
+    """
+    page = browser_page
+    page.goto("/")
+    _sign_in(page)
+    toast_text = page.evaluate(
+        """async () => {
+      const { Handlers } = await import('/static/js/modules/handlers.js');
+      const { Services } = await import('/static/js/modules/services.js');
+      let fail;
+      Services.notifications.markRead = () => new Promise((_, reject) => { fail = reject; });
+      const pending = Handlers.markNotificationRead('n1', 'dismissed');
+      const s = window.__supabaseState;
+      s.user = null; localStorage.removeItem('__mock_supabase_user');
+      await s.authCallback('SIGNED_OUT', null);
+      fail(Object.assign(new Error('boom'), { status: 500 }));
+      await pending;
+      return document.getElementById('toast')?.textContent || '';
+    }"""
+    )
+    assert "Could not update that notification." not in toast_text

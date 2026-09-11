@@ -1,7 +1,8 @@
 # Fix: an ended session leaves reader A's traces for reader B
 
-STATUS: APPROVED PLAN — IN PROGRESS. Written and approved 2026-09-11; commit 1 of 4 (§1-§6)
-shipped 2026-09-11 — see _Implementation notes_ for where the build departed from this text.
+STATUS: APPROVED PLAN — IN PROGRESS. Written and approved 2026-09-11; commits 1 and 2 of 4
+(§1-§6, §9) shipped 2026-09-11 — see _Implementation notes_ for where the build departed from
+this text.
 Closes the TODO.md entry _A revoked or expired session clears the transcript but leaves the
 conversation id in the address bar_ once all four commits below land; archive this file then
 (see _Docs_).
@@ -539,6 +540,22 @@ against the pre-change code, and the two guard branches were mutation-tested.
   question, saw no notice, and got an unhandled rejection. Both came from `a6dbefb`;
   `test_quota_notice.py` pins the fix. agy found the first one and stopped rather than weaken
   the test, as its brief told it to.
+
+**Commit 2 (§9):**
+
+- **The inbox guards stamp a new `readerGeneration`, not `notificationsGeneration`.** §9 said to
+  reuse the poll's counter, but `stopNotificationsPolling` also bumps it whenever the tab is
+  merely hidden, so an inbox page loading while the reader switched browser tabs would have been
+  discarded and left spinning. `readerGeneration` moves only in `clearReaderLocalState`.
+- **`BroadcastNotice.reset()` also cancels a banner's pending open.** `showBanner` adds its open
+  class in a `requestAnimationFrame`; a reset landing inside that frame would have been undone.
+  The callback now checks the banner still names the same notification.
+- **Accepted edge:** a reader who clicks _Got it_ on an acknowledgement modal in the ~300 ms
+  before a teardown hides it loses that acknowledgement (the suppressed `hidden` handler records
+  nothing). The notice resurfaces next session, which fails safe.
+- **Tests 10-13** (numbered past the original 12 because test 7 became tests 12 and 13): the two
+  race tests call the handlers directly through the page's own module graph and await the stale
+  call, so they cannot pass by winning a timing race. All four fail on the pre-change code.
 
 ## Review record
 

@@ -328,6 +328,8 @@ export const BroadcastNotice = {
      which has no "snoozed" action because this is deliberately never sent
      to the server at all. */
   _snoozed: new Set(),
+  _liveToasts: new Set(),
+  _activeModal: null,
 
   isSnoozed(id) {
     if (this._snoozed.has(id)) return true;
@@ -385,9 +387,19 @@ export const BroadcastNotice = {
     let settled = false;
     let timer = null;
 
+    const cancel = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      el.remove();
+      BroadcastNotice._liveToasts.delete(cancel);
+    };
+    BroadcastNotice._liveToasts.add(cancel);
+
     const settle = (reason) => {
       if (settled) return;
       settled = true;
+      BroadcastNotice._liveToasts.delete(cancel);
       clearTimeout(timer);
       el.classList.add(CONFIG.CLASSES.NOTIF_TOAST_LEAVING);
       const finish = () => {
@@ -451,8 +463,12 @@ export const BroadcastNotice = {
     el.append(body, dismissBtn);
     // A rAF between setting content and adding the open class, so the
     // height-collapse transition actually runs from 0 rather than starting
-    // already at its resting height on the very first paint.
-    requestAnimationFrame(() => el.classList.add(CONFIG.CLASSES.NOTIF_BANNER_OPEN));
+    // already at its resting height on the very first paint. Guarded on the
+    // notification id so a reset landing during this frame is not undone.
+    requestAnimationFrame(() => {
+      if (el.dataset.notificationId === String(notification.id))
+        el.classList.add(CONFIG.CLASSES.NOTIF_BANNER_OPEN);
+    });
   },
 
   hideBanner(onDismiss) {
@@ -493,6 +509,7 @@ export const BroadcastNotice = {
     });
 
     let acknowledged = false;
+    let suppressed = false;
     // Bootstrap ignores hide() while its own fade-in transition is still
     // running (see handlers.js's hideModal, which documents this same
     // limitation for the auth modal) — a click landing in that window would
@@ -510,16 +527,75 @@ export const BroadcastNotice = {
       acknowledged = true;
       requestHide();
     };
+    const token = {};
     const onHidden = () => {
       ackBtn?.removeEventListener('click', onAckClick);
       el.removeEventListener('hidden.bs.modal', onHidden);
+      if (BroadcastNotice._activeModal?.el === el && BroadcastNotice._activeModal.token === token)
+        BroadcastNotice._activeModal = null;
+      if (suppressed) {
+        BroadcastNotice._clearModalContent();
+        return;
+      }
       if (acknowledged) onAcknowledge?.();
       else onSnooze?.();
     };
 
     ackBtn?.addEventListener('click', onAckClick);
     el.addEventListener('hidden.bs.modal', onHidden);
+    BroadcastNotice._activeModal = {
+      el,
+      token,
+      suppress: () => {
+        suppressed = true;
+        requestHide();
+      },
+    };
     modal.show();
     return modal;
+  },
+
+  _clearModalContent() {
+    const el = DOMCache.get(CONFIG.SELECTORS.NOTIFICATIONS_MODAL);
+    if (!el) return;
+    el.querySelector('.broadcast-modal-title')?.replaceChildren();
+    el.querySelector('.broadcast-modal-body')?.replaceChildren();
+    delete el.dataset.notificationId;
+  },
+
+  /**
+   * Teardown only: removes every surface WITHOUT calling onDismiss/onAcknowledge/onSnooze,
+   * because a teardown must never record a read, dismissal, acknowledgement or snooze for anyone;
+   * and clears snoozes because they belong to the reader who made them, not to the browser —
+   * a snooze was always promised as "resurfaces on the next real session".
+   */
+  reset() {
+    [...this._liveToasts].forEach((cancel) => cancel());
+    this._liveToasts.clear();
+
+    const banner = DOMCache.get(CONFIG.SELECTORS.NOTIFICATIONS_BANNER);
+    if (banner) {
+      banner.classList.remove(CONFIG.CLASSES.NOTIF_BANNER_OPEN);
+      banner.replaceChildren();
+      banner.className = 'broadcast-banner';
+      delete banner.dataset.notificationId;
+    }
+
+    if (this._activeModal) {
+      this._activeModal.suppress();
+      this._activeModal = null;
+    } else {
+      this._clearModalContent();
+    }
+
+    this._snoozed.clear();
+    try {
+      for (let i = sessionStorage.length - 1; i >= 0; i -= 1) {
+        const key = sessionStorage.key(i);
+        if (key && key.startsWith('sfda-notif-snooze-')) sessionStorage.removeItem(key);
+      }
+    } catch {
+      /* storage disabled — the in-memory set above is already clear */
+    }
   },
 };
