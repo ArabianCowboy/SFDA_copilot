@@ -63,7 +63,7 @@ bottom of this file: [How this file works](#how-this-file-works).
 - [Confirm the backup schedule, and rehearse a restore once](#confirm-the-backup-schedule-and-rehearse-a-restore-once) — dashboard task; the recovery position is currently an assumption.
 - [Measure the real statement and lock timeouts on the write path](#measure-the-real-statement-and-lock-timeouts-on-the-write-path) — needs a call through PostgREST, not MCP.
 - [Run the database assertions somewhere other than by hand](#run-the-database-assertions-somewhere-other-than-by-hand) — `supabase/tests/` exists and runs by hand only.
-- [A revoked session leaves the conversation id in the address bar](#a-revoked-or-expired-session-clears-the-transcript-but-leaves-the-conversation-id-in-the-address-bar) — in progress under [its plan](docs/revoked-session-url-reset-plan.md); commit 1 of 4 shipped the URL reset at the `SIGNED_OUT` call site.
+- [A revoked session leaves the conversation id in the address bar](#a-revoked-or-expired-session-clears-the-transcript-but-leaves-the-conversation-id-in-the-address-bar) — in progress under [its plan](docs/revoked-session-url-reset-plan.md); commits 1-3 of 4 shipped (the URL reset, the full teardown, Back and bfcache); `/account` and `/admin` remain.
 - [One logout-button press sends `POST /auth/logout` three times](#one-logout-button-press-sends-post-authlogout-three-times) — pre-existing, harmless beyond spending the per-IP budget three times as fast; not started.
 - [One Realtime socket per reader, not one per visible tab](#one-realtime-socket-per-reader-not-one-per-visible-tab) — not started; costs nothing measurable yet, written down because the cost is the interesting half.
 

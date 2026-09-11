@@ -545,3 +545,24 @@ def test_back_between_conversations_clears_the_old_transcript_before_the_session
         "() => { window.__supabaseState.getSessionGate = null; window.__releaseGetSession(); }"
     )
     expect(page.locator("#messages")).to_contain_text("Answer one")
+
+
+def test_back_into_a_conversation_after_the_session_ended_elsewhere_lands_on_root(
+    browser_page: Page,
+) -> None:
+    """A fresh Back load into /c/<id> after session ended lands on root (§4b).
+
+    The default headless browser does not use bfcache, so Back from /privacy
+    loads /c/<CONV> fresh as a back_forward navigation. With the session removed
+    from storage, init resets the URL to / and renders unauthenticated.
+    """
+    page = browser_page
+    _open_conversation(page)
+    page.goto("/privacy")
+    page.evaluate("() => localStorage.removeItem('__mock_supabase_user')")
+    page.go_back()
+    expect(page.locator("#unauthenticated-view")).to_be_visible()
+    expect(page).to_have_url(AT_ROOT)
+    assert (
+        page.evaluate("() => performance.getEntriesByType('navigation')[0].type") == "back_forward"
+    )

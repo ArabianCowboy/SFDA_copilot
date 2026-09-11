@@ -90,6 +90,12 @@ export function createClient() {
   return {
     auth: {
       async getSession() {
+        // Opt-in realism for the bfcache tests — the real client re-reads storage
+        // on every getSession (GoTrueClient __loadSession), so a page frozen while
+        // signed in must see the session another page removed. Opt-in because tests
+        // such as test_history_notice.py:124-131 set state.user directly without
+        // touching storage.
+        if (window.__mockSessionFromStorage) state.user = readStoredUser();
         if (state.sessionErrorOnce) {
           const message = state.sessionErrorOnce;
           state.sessionErrorOnce = null;

@@ -1,7 +1,7 @@
 # Fix: an ended session leaves reader A's traces for reader B
 
-STATUS: APPROVED PLAN — IN PROGRESS. Written and approved 2026-09-11; commits 1 and 2 of 4
-(§1-§6, §9) shipped 2026-09-11 — see _Implementation notes_ for where the build departed from
+STATUS: APPROVED PLAN — IN PROGRESS. Written and approved 2026-09-11; commits 1-3 of 4
+(§1-§7, §9) shipped 2026-09-11 — see _Implementation notes_ for where the build departed from
 this text.
 Closes the TODO.md entry _A revoked or expired session clears the transcript but leaves the
 conversation id in the address bar_ once all four commits below land; archive this file then
@@ -578,6 +578,25 @@ fixes_. Accepted and fixed in a follow-up commit:
 Declined: OpenCode's note that `app.js`'s "a reload would drop nothing the teardown has not
 already dropped" was false — it was, until commit 2 cleared the Notification Center, and is true
 now.
+
+**Commit 3 (§4b, §7):**
+
+- **The whole `<body>` is concealed, not `#authenticated-view`.** The toast stack, the banner,
+  both notification modals and `#toast` sit outside that view (`web/templates/index.html`), so
+  hiding the view alone would still have frozen reader A's notices into the snapshot. There is
+  therefore no `AuthView.concealForRestore()`; `pagehide` sets `document.body.hidden`, and
+  `reconcileRestoredSession` clears it on every path that keeps the page (same reader, testing
+  mode, recovery, no Supabase, landing view).
+- **The same reader is revealed by un-hiding, not by `AuthView.render(user)`.** Nothing about the
+  view changed while the page was frozen, so re-running the 300 ms sign-in transition would only
+  animate. `handlePopState` (wired to the same `pageshow` by `Route.init`, and registered first)
+  still re-derives the transcript.
+- **Tests 15-18** (renumbered): test 15 is §4b in the default browser; 16-18 are in
+  `test_bfcache_session.py` and each asserts a recorded `pageshow.persisted === true` before
+  anything else. 15, 16 and 18 fail on the pre-change code; 17 (same reader, nothing to fix) is
+  the guard and passes on both. The three bfcache tests passed 9 of 9 consecutive runs. They
+  launch `channel="chromium"`, which the CI job's `playwright install --with-deps chromium`
+  provides on the unpinned current Playwright; that has not yet been observed in CI.
 
 ## Review record
 

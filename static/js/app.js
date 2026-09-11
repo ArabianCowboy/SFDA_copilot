@@ -279,6 +279,46 @@ const App = {
     }
   },
 
+  /**
+   * §7 of docs/revoked-session-url-reset-plan.md. Runs on a bfcache restore.
+   * Same reader still in storage → reveal the restored page as it was. Anyone else, or
+   * nobody → a fresh load of "/" (the ordinary, tested init path) rather than tearing the
+   * restored page down in place and re-deriving auth. getSession error → reload this URL:
+   * unknown is not absent. Never synthesizes an auth event.
+   */
+  async reconcileRestoredSession() {
+    const reveal = () => {
+      document.body.hidden = false;
+    };
+    const shownFor = this._settledFor;
+    if (
+      !shownFor ||
+      AppState.get('recoveryMode') ||
+      !Services.supabase ||
+      window.location.search.includes('testing=true')
+    ) {
+      reveal();
+      return;
+    }
+    document.body.hidden = true; // idempotent with pagehide; covers a restore pagehide did not conceal
+    let session;
+    try {
+      const { data, error } = await Services.supabase.auth.getSession();
+      if (error) throw error;
+      session = data?.session ?? null;
+    } catch (error) {
+      logError(error, 'reconcileRestoredSession');
+      window.location.reload();
+      return;
+    }
+    const user = session?.user ?? null;
+    if (user && (user.id || user.email) === shownFor) {
+      reveal();
+      return;
+    }
+    window.location.replace(Route.homeHref());
+  },
+
   async handleTestingModeInit() {
     console.log('[App] Testing mode enabled - bypassing authentication.');
     AuthView.render({ email: 'test@example.com' });
@@ -303,6 +343,25 @@ const App = {
     // can still navigate, and the popstate handler itself is what decides
     // whether there is anything to hydrate.
     Route.init((navigation) => Handlers.handlePopState(navigation));
+    /* §7: bfcache restore (docs/revoked-session-url-reset-plan.md §7). A restored
+       page runs no init(), and supabase-js emits no SIGNED_OUT for storage it
+       finds empty, so a page frozen while reader A was signed in comes back
+       showing A after A's session ended elsewhere. The snapshot is concealed on
+       the way OUT (pagehide) because there is no portable guarantee a pageshow
+       handler runs before the restored page is painted. Concealing the WHOLE
+       body rather than only #authenticated-view ensures Notification Center
+       surfaces, modals, and toasts that live outside the view are also hidden.
+       Route.init's own pageshow handler (handlePopState) still runs first and
+       re-derives the transcript — this handler only decides whose page it is.
+       Wired here, before any testing/recovery early returns below, so every
+       restored page is reconciled (reconcileRestoredSession itself skips the
+       modes it must not touch, and always un-hides on those paths). */
+    window.addEventListener('pagehide', (event) => {
+      if (event.persisted && this._settledFor) document.body.hidden = true;
+    });
+    window.addEventListener('pageshow', (event) => {
+      if (event.persisted) this.reconcileRestoredSession();
+    });
     ThemeManager.init();
     UI.hydrateTimestamps();
     initCitationInteractions(DOMCache.get(CONFIG.SELECTORS.MESSAGES));
@@ -578,6 +637,19 @@ const App = {
       } else {
         AuthView.render(null);
         this.settleTranscript(null);
+        /* §4b: A fresh load reached by Back/Forward into /c/<id> with nobody
+           signed in is reader A's history entry being revisited, not a deep link
+           someone opened — so the id comes out of the address bar (§4b). A cold
+           deep link (`navigate`) and a reload keep their path, so §4.5's
+           deep-link-across-sign-in is untouched. Navigation Timing's `type`
+           describes this document's own load and never changes afterwards, which
+           is why this check belongs here, run once, and nowhere reusable. */
+        if (
+          Route.current() &&
+          performance.getEntriesByType('navigation')[0]?.type === 'back_forward'
+        ) {
+          Route.replace(null);
+        }
       }
     } catch (error) {
       logError(error, 'App.init.checkInitialSession');

@@ -112,6 +112,13 @@ export const Route = {
     );
   },
 
+  /** Where a fresh, conversation-less load goes: "/" plus the carried params
+   *  (?lang=, ?testing=) — the same URL Route.replace(null) would write. For
+   *  callers that must NAVIGATE there (a full document load), not rewrite the entry. */
+  homeHref() {
+    return pathFor(null);
+  },
+
   /**
    * Deliberate navigation — a sidebar click, New chat. PUSHES a new entry.
    * `popstate` must never call this: pushing over a traversal the reader
