@@ -63,7 +63,8 @@ if (event === 'SIGNED_OUT' || event === 'USER_DELETED') {
 
 - **Which helper:** `Route.replace` (`route.js:107`) is the documented non-deliberate reset.
   `Route` is already imported (`app.js:21`).
-- **Why not `location.replace('/')`:**
+- **Why `Route.replace` and not `location.replace('/')`** (each point below is true of
+  `Route.replace`; `location.replace('/')` is a full navigation that has none of them):
   - It doesn't reload, so it doesn't cancel the unawaited `/auth/logout` POST that
     `clearSessionState` fires. That POST does `session.clear()`, purges the legacy
     `chat_history`, and evicts the token from the verification cache _when the request carries
@@ -556,6 +557,27 @@ against the pre-change code, and the two guard branches were mutation-tested.
 - **Tests 10-13** (numbered past the original 12 because test 7 became tests 12 and 13): the two
   race tests call the handlers directly through the page's own module graph and await the stale
   call, so they cannot pass by winning a timing race. All four fail on the pre-change code.
+
+**Post-commit review of commits 1 and 2** (OpenCode · Muse Spark 1.3 xhigh and Codex ·
+gpt-5.6-terra high, independently, read-only, on a clean worktree). Both returned _ship with
+fixes_. Accepted and fixed in a follow-up commit:
+
+- **A sign-out during a request's token read left reader B's composer disabled** (Codex, and
+  OpenCode for the mascot half). The request sets the sending state before it awaits the token,
+  and that await cannot be aborted, so B's composer, send button and mascot stayed in A's
+  "sending" state until A's read settled — whose `finally` could then clobber a newer request's
+  state. The teardown now resets the sending UI itself, and the stale `finally` only resets what
+  is still its own.
+- **The Back guard's await left the old transcript under the new URL** (Codex). Clearing moved
+  back ahead of the session check, as it was before the guard existed.
+- **Two wrong sentences:** `clearReaderScopedUI`'s reason for not POSTing `/auth/logout` (the
+  Flask session is rebound on the next request, not already B's; the real reason is that the
+  POST would revoke A upstream), and this plan's §1 wording, which read as if
+  `location.replace('/')` kept the query string.
+
+Declined: OpenCode's note that `app.js`'s "a reload would drop nothing the teardown has not
+already dropped" was false — it was, until commit 2 cleared the Notification Center, and is true
+now.
 
 ## Review record
 

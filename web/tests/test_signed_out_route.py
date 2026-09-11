@@ -18,11 +18,19 @@ import re
 import pytest
 from playwright.sync_api import Page, expect
 
-from .conftest import chat_history, route_chat_history, stored_answer
+from .conftest import (
+    chat_history,
+    chat_sessions,
+    route_chat_history,
+    route_chat_sessions,
+    stored_answer,
+    stored_session,
+)
 
 pytestmark = pytest.mark.browser
 
 CONV = "c0ffee00-0000-4000-8000-000000000001"
+CONV2 = "c0ffee00-0000-4000-8000-000000000002"
 AT_ROOT = re.compile(r"^[^?#]*://[^/]+/$")
 
 
@@ -231,6 +239,9 @@ def test_chat_request_whose_token_read_outlives_sign_out_writes_no_url_and_sends
     expect(page.locator(".user-message")).to_have_count(1)
 
     _revoke(page)
+    expect(
+        page.locator("#query-input")
+    ).to_be_enabled()  # the teardown, not the stale request, re-enabled the composer
     page.evaluate(
         "() => { window.__supabaseState.getSessionGate = null; window.__releaseGetSession(); }"
     )
@@ -484,3 +495,53 @@ def test_late_mark_read_failure_for_reader_a_shows_reader_b_no_error(
     }"""
     )
     assert "Could not update that notification." not in toast_text
+
+
+def test_back_between_conversations_clears_the_old_transcript_before_the_session_check(
+    browser_page: Page,
+) -> None:
+    """Traversing Back between conversations clears the old transcript synchronously.
+
+    The transcript is cleared before awaiting getSessionToken so a slow session
+    check cannot leave conversation X's transcript visible under conversation Y's URL.
+    """
+    page = browser_page
+    route_chat_sessions(
+        page,
+        chat_sessions(
+            [
+                stored_session(CONV, "Conversation one"),
+                stored_session(CONV2, "Conversation two"),
+            ]
+        ),
+    )
+
+    def handle(route):
+        which = CONV2 if CONV2 in route.request.url else CONV
+        text = "Answer two" if which == CONV2 else "Answer one"
+        route.fulfill(
+            status=200,
+            content_type="application/json",
+            body=chat_history(stored_answer(f"Question for {text}", text), conversation_id=which),
+        )
+
+    page.context.route("**/api/chat/history*", handle)
+    page.goto("/")
+    _sign_in(page)
+    row = "#history-sidebar-section .history-item"
+    page.locator(f'{row}[data-session-id="{CONV}"] [data-history-action="open"]').click()
+    expect(page.locator("#messages")).to_contain_text("Answer one")
+    page.locator(f'{row}[data-session-id="{CONV2}"] [data-history-action="open"]').click()
+    expect(page.locator("#messages")).to_contain_text("Answer two")
+    page.evaluate(
+        "() => { window.__supabaseState.getSessionGate = new Promise((r) => { window.__releaseGetSession = r; }); }"
+    )
+    page.go_back()
+    expect(page).to_have_url(re.compile(rf"/c/{CONV}$"))
+    expect(page.locator("#messages")).not_to_contain_text(
+        "Answer two"
+    )  # cleared while the session check is still parked
+    page.evaluate(
+        "() => { window.__supabaseState.getSessionGate = null; window.__releaseGetSession(); }"
+    )
+    expect(page.locator("#messages")).to_contain_text("Answer one")

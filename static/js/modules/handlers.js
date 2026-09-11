@@ -493,11 +493,14 @@ export const Handlers = {
       ErrorHandler.showToast(I18n.t('chat.sendFailed'), true);
       RobotStateManager.showError();
     } finally {
-      UI.setSendingState(false);
-      /* All three mark the same moment — this request is over. Here rather
-         than inside streamChat because this is the one exit every path shares,
-         including the one that rethrows. */
-      activeStreamConversationId = null;
+      /* This request is over. Here rather than inside streamChat because this is
+         the one exit every path shares, including the one that rethrows. A request
+         whose generation moved was ended by New chat or a teardown, which already
+         reset the sending UI themselves; resetting it again here could clobber a
+         newer request started since, and the stream id is only cleared if it is
+         still this request's. */
+      if (startGeneration === resetGeneration) UI.setSendingState(false);
+      if (activeStreamConversationId === conversation?.id) activeStreamConversationId = null;
 
       /* Re-read the list rather than patching it optimistically. The client
          cannot know what the row should say: the title is minted server-side by
@@ -864,6 +867,14 @@ export const Handlers = {
       return;
     }
 
+    /* The URL has already moved by the time popstate fires, so what is on screen
+       must stop claiming to be the old conversation BEFORE anything is awaited —
+       otherwise a slow session check leaves X's transcript under Y's URL, and a
+       question typed then is filed in Y. */
+    UI.clearTranscript();
+    SourcePanel.reset();
+    resetCitationState();
+
     /* A signed-out reader traversing Back into /c/<id> (e.g. the entry reader A
        was on before a revocation) would otherwise put A's id back in the
        address bar. ONLY a confirmed absence (`null`) scrubs: getSessionToken
@@ -885,9 +896,6 @@ export const Handlers = {
     if (epoch !== transcriptEpoch) return;
     if (token === null) {
       Route.replace(null);
-      UI.clearTranscript();
-      SourcePanel.reset();
-      resetCitationState();
       UI.History.setActive(null);
       return;
     }
@@ -902,16 +910,10 @@ export const Handlers = {
          note), and an uncommitted entry restored from bfcache is equally
          stale regardless of which way it was reached. */
       Route.replace(null);
-      UI.clearTranscript();
-      SourcePanel.reset();
-      resetCitationState();
       UI.History.setActive(null);
       return;
     }
 
-    UI.clearTranscript();
-    SourcePanel.reset();
-    resetCitationState();
     UI.History.setActive(id);
 
     try {
@@ -1168,10 +1170,12 @@ export const Handlers = {
    * `SIGNED_OUT` in between).
    *
    * It is `clearReaderLocalState` and nothing else; it deliberately does NOT
-   * POST /auth/logout, because on a switch the Flask session already belongs
-   * to the new reader. It used to be a narrower, separate teardown; the two
-   * diverged (no stream cancel, no composer, no identity-check bump) and were
-   * merged so they cannot drift again.
+   * POST /auth/logout: that request would carry the previous reader's stored
+   * cookie token, revoking their session upstream and signing them out of other
+   * devices as a side effect of someone else signing in here (the next
+   * authenticated request rotates the Flask session anyway). It used to be a
+   * narrower, separate teardown; the two diverged (no stream cancel, no
+   * composer, no identity-check bump) and were merged so they cannot drift again.
    */
   clearReaderScopedUI() {
     this.clearReaderLocalState();
@@ -2192,6 +2196,12 @@ export const Handlers = {
     // An in-flight answer would otherwise keep streaming into the hidden
     // transcript and repopulate the citation map after logout.
     Services.cancelChatRequest();
+    // The request may still be parked on its token read, which cannot be aborted;
+    // its finally will not run until that read settles, so the teardown owns the
+    // sending UI now — the same three calls handleNewChat makes when it ends a request.
+    UI.toggleTypingIndicator(false);
+    UI.setSendingState(false);
+    RobotStateManager.resetToIdle();
     UI.clearTranscript();
     UI.hideAccountDisabledNotice();
     // Unlike the history notice (unconditionally redrawn for the new reader

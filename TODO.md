@@ -355,7 +355,8 @@ pages that reviewing this entry turned up. Commit 1 of 4 shipped the URL reset a
 `SIGNED_OUT` call site (exactly where this entry said it belonged), one local teardown shared by
 sign-out and a direct reader switch, the late-request guards and a signed-out Back guard. This
 entry closes when the last commit lands. One claim above was wrong: the suite _did_ have a
-revocation-from-elsewhere fixture (`test_history_notice.py:120-131`); the new tests reuse it.
+revocation-from-elsewhere fixture (`test_history_notice.py:120-131`); the new tests' `_revoke`
+helper follows the same pattern, and also clears the browser double's stored session.
 
 ### One logout-button press sends `POST /auth/logout` three times
 
