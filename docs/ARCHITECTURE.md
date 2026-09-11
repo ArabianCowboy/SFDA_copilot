@@ -351,7 +351,11 @@ three frontends meet it differently, on purpose.
 
 **The chat page tears down in place and never reloads.** `SIGNED_OUT`/`USER_DELETED` runs
 `Handlers.clearSessionState()` (the local teardown plus `POST /auth/logout`) and then, if the
-address bar names `/c/<id>`, `Route.replace(null)`. A direct switch to a different reader runs
+address bar names `/c/<id>`, `Route.replace(null)`. One sign-out posts once from this tab: the
+logout button and `endRecovery` post through `Services.logout`, first, and run only the local
+teardown themselves, and `clearSessionState` skips its POST while that call is running; the
+listener posts for every sign-out the tab did not start. Each other open chat tab posts once more
+on a broadcast sign-out, by design. A direct switch to a different reader runs
 `clearReaderScopedUI()` (the local teardown without the POST, which would revoke A upstream) and
 the same URL reset. Both are one function, `clearReaderLocalState()`: **it is the single list
 of reader-scoped state, so new reader-scoped UI is cleared there**. The URL is deliberately not

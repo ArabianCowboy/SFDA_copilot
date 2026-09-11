@@ -74,6 +74,7 @@ export function createClient() {
     lastUserUpdate: null,
     updateUserError: null,
     lastSignOutScope: null,
+    signOutError: null,       // signOut() returns this error, keeps the session, emits nothing
     signUpError: null,
     // Password-change reauthentication (account/handlers.js). Off by
     // default — most tests exercise the plain updateUser({password}) path.
@@ -143,9 +144,21 @@ export function createClient() {
         // else" must not sign the reader out of the tab they clicked it
         // from). Only 'global'/'local' end THIS session in the mock.
         if (scope === 'others') return { error: null };
+        // supabase-js 2.74.0's _signOut returns a failed revocation's error
+        // BEFORE _removeSession, so the session survives and no SIGNED_OUT fires.
+        if (state.signOutError) return { error: new Error(state.signOutError) };
         state.user = null;
         writeStoredUser(null);
-        queueMicrotask(() => state.authCallback?.('SIGNED_OUT', null));
+        // Opt-in realism for test_logout_single_post.py: the real client's
+        // _removeSession AWAITS every subscriber (_notifyAllSubscribers), so
+        // the SIGNED_OUT listener runs to completion inside signOut(). The
+        // default fires it on a microtask after signOut returns instead, and
+        // stays the default so no other test's ordering changes.
+        if (window.__mockSignOutAwaitsSubscribers) {
+          await state.authCallback?.('SIGNED_OUT', null);
+        } else {
+          queueMicrotask(() => state.authCallback?.('SIGNED_OUT', null));
+        }
         return { error: null };
       },
       /* Password-change reauthentication (account/handlers.js). Sets a flag

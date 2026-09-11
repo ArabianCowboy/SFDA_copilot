@@ -63,7 +63,6 @@ bottom of this file: [How this file works](#how-this-file-works).
 - [Confirm the backup schedule, and rehearse a restore once](#confirm-the-backup-schedule-and-rehearse-a-restore-once) — dashboard task; the recovery position is currently an assumption.
 - [Measure the real statement and lock timeouts on the write path](#measure-the-real-statement-and-lock-timeouts-on-the-write-path) — needs a call through PostgREST, not MCP.
 - [Run the database assertions somewhere other than by hand](#run-the-database-assertions-somewhere-other-than-by-hand) — `supabase/tests/` exists and runs by hand only.
-- [One logout-button press sends `POST /auth/logout` three times](#one-logout-button-press-sends-post-authlogout-three-times) — pre-existing, harmless beyond spending the per-IP budget three times as fast; not started.
 - [One Realtime socket per reader, not one per visible tab](#one-realtime-socket-per-reader-not-one-per-visible-tab) — not started; costs nothing measurable yet, written down because the cost is the interesting half.
 
 ---
@@ -309,42 +308,6 @@ costs nothing on the uncontended path. That is probably the right answer, and it
 measured rather than assumed: `for share` on `profiles` sits on the hot path of every admin
 mutation, and `profiles` is also the table every reader request reads.
 
-### One logout-button press sends `POST /auth/logout` three times
-
-**Where:** `Handlers.handleLogout` and `Handlers.clearSessionState`
-(`static/js/modules/handlers.js`), `Services.logout` and `Services.endServerSession`
-(`static/js/modules/services.js`), and the `SIGNED_OUT` branch of `onAuthStateChange` in
-`static/js/app.js`. The budget arithmetic is in the rate-limit comment at the top of
-`web/api/auth.py`.
-
-**What is wrong.** One press posts three times. `Services.logout` posts first. Its `signOut()`
-awaits every auth subscriber (supabase-js `GoTrueClient`: `_signOut` → `_removeSession` →
-`_notifyAllSubscribers('SIGNED_OUT')`),
-so the `SIGNED_OUT` listener's `clearSessionState` posts second, and `handleLogout` then calls
-`clearSessionState` itself and posts a third time. Every other open tab's listener adds one more
-on a broadcast sign-out. The endpoint is idempotent, so nothing breaks, but `logout` runs at the
-global per-IP defaults (10/minute, 200/day), so the real ceiling is about 3 presses a minute.
-`web/api/auth.py` said two until 2026-09-11, and the tombstone entry below still records "two".
-
-**Who it reaches.** Nobody visibly today. A refused (429) POST does not stop the sign-out — the
-browser-direct `signOut({ scope: 'global' })` still revokes the session upstream. The cost is
-budget: under the unresolved proxy question every reader shares one key, so sign-outs across all
-readers spend one pool three times as fast as the comment used to say.
-
-**How it was found.** agy's (Gemini 3.8 Flash) security review of
-the revoked-session plan (now [`docs/archive/2026-09-11_revoked-session-url-reset.md`](docs/archive/2026-09-11_revoked-session-url-reset.md)) on 2026-09-11, then confirmed by reading the three call
-sites and the supabase-js 2.74.0 source. Pre-existing: that plan neither adds nor removes a POST
-on this path.
-
-**What fixing it would disturb.** One owner has to be chosen for the server teardown — for
-example `handleLogout` stops calling `clearSessionState` once the listener has run, or
-`clearSessionState` skips `endServerSession` when `Services.logout` already sent it. Either
-reopens the "deliberately duplicated, documented idempotent" contract in `clearSessionState`'s
-comment, and must keep working on the three paths where no `SIGNED_OUT` arrives (the
-`?testing=true` demo, a `signOut` that throws, `sessionMissing`), which today rely on
-`handleLogout`'s own call. The cross-tab duplicates cannot be removed per tab: each tab only
-knows its own listener ran. Needs a browser test that counts POSTs per press.
-
 ---
 
 ## Planned work
@@ -400,8 +363,10 @@ delete on, and a hit is a caller to find first.
 Also landed: the module comment claiming a logout exemption that never existed is
 gone (logout keeps the global defaults, and one sign-out press spends two of them —
 `Services.logout` and `clearSessionState` each POST to `/auth/logout`; _corrected
-2026-09-11: three, because `clearSessionState` runs twice — see
-[One logout-button press sends `POST /auth/logout` three times](#one-logout-button-press-sends-post-authlogout-three-times)_), and
+2026-09-11: it was three, because `clearSessionState` ran twice; fixed 2026-09-12 to one
+per press, plus one per other open chat tab on a broadcast sign-out — see
+the closed "One logout-button press sends `POST /auth/logout` three times" entry in
+[`docs/archive/TODO-resolved.md`](docs/archive/TODO-resolved.md)_), and
 `web/tests/test_auth.py` was deleted whole. **That deletion left the `integration`
 pytest marker with no users at all** — `pytest.ini:6` still defines it and
 `CLAUDE.md` still tells contributors to run those tests by hand, so
@@ -960,6 +925,20 @@ None touches the code that work changed, and a clean full re-run passed 310/310.
 still names one file because that is where the entry started; the symptom is suite-wide. The
 runs kept only the summary line, so no failure text was captured for any of the three — nothing
 to add on the cause.
+
+**2026-09-12 — one failure per full run, a different test each time, and one traceback at last.**
+Two back-to-back full `-m browser` runs during the logout work, on the same unchanged tree: the
+first failed `test_password_recovery.py::test_switching_language_mid_recovery_stays_in_recovery`
+(329 passed), the second errored at the setup of
+`test_account_security.py::test_sign_out_others_button_ends_other_sessions_only` (329 passed).
+Each passed in isolation, and running the changed file beside the recovery file passed 32/32.
+The second is the first captured traceback of this shape: the shared `authenticated_page`
+fixture (`conftest.py:675`) timed out after 30 s waiting for `#authenticated-view` to lose
+`d-none` after a real login-form submit — the page navigated, the element resolved, and the view
+simply never opened inside the window. That is the mocked sign-in not completing in time, not a
+dead page or context, which narrows "a fixture that outlives its page" and fits the contention
+half of the theory. `page` is function-scoped, so no state crosses tests. Still undiagnosed;
+`--tracing retain-on-failure` on a full run is still the thing to capture.
 
 ---
 

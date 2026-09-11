@@ -69,6 +69,25 @@ let resetCooldownTimer = null;
    and the guard has to outlive it. */
 let recoverySubmitInFlight = false;
 
+/* How many of this tab's own sign-outs are inside Services.logout right now.
+   Services.logout has always posted /auth/logout by the time it can emit
+   SIGNED_OUT, so clearSessionState skips its own POST while this is non-zero.
+   Scoped to the call itself, not to "until the next sign-in": the listener runs
+   inside that window under both orderings — supabase-js awaits it inside
+   signOut(), and the test mock queues it on a microtask that runs before
+   Services.logout's own continuation. A count rather than a flag, so a second
+   press cannot end the first one's window early. */
+let ownSignOutsInFlight = 0;
+
+async function logoutThisTab() {
+  ownSignOutsInFlight += 1;
+  try {
+    return await Services.logout();
+  } finally {
+    ownSignOutsInFlight -= 1;
+  }
+}
+
 /* Notification polling backoff configuration (plan item P7).
    A fixed interval hammered a hard-down backend indefinitely; completion-based
    scheduling with capped exponential backoff and jitter backs off progressively
@@ -2121,29 +2140,31 @@ export const Handlers = {
    *
    * Driven from here rather than from the SIGNED_OUT event: that event never
    * fires in the demo path, and may not fire if sign-out errors — either of
-   * which would leave the reader on a form whose work is done. The event handler
-   * in app.js still runs this path too, so both are idempotent.
+   * which would leave the reader on a form whose work is done. The recovery
+   * branch in app.js still runs its half when the event does arrive, so both
+   * are idempotent. The POST is Services.logout's alone; see clearSessionState.
    */
   async endRecovery() {
     try {
-      await Services.logout();
+      await logoutThisTab();
     } catch (error) {
       logError(error, 'endRecovery.logout');
     }
     this.clearLocalAuthData();
     AppState.set('recoveryMode', false);
     AuthView.leaveRecovery(null);
-    this.clearSessionState();
+    this.clearReaderLocalState();
   },
 
   async handleLogout(event) {
     event.preventDefault();
     try {
-      const result = await Services.logout();
+      const result = await logoutThisTab();
       this.clearLocalAuthData();
       AuthView.render(null);
       AppState.set('userProfile', null);
-      this.clearSessionState();
+      // Local only: Services.logout has already posted, on every path.
+      this.clearReaderLocalState();
       ErrorHandler.showToast(
         result?.testing ? 'Logged out successfully (testing mode)' : 'Logged out successfully',
       );
@@ -2157,7 +2178,7 @@ export const Handlers = {
       this.clearLocalAuthData();
       AuthView.render(null);
       AppState.set('userProfile', null);
-      this.clearSessionState();
+      this.clearReaderLocalState();
       ErrorHandler.showToast('Logged out (session cleared)', false);
       // Fallback reload when no SIGNED_OUT event arrives; see comment in try above.
       this.redirectToHomeIfNeeded();
@@ -2268,19 +2289,27 @@ export const Handlers = {
   /**
    * The sign-out teardown = clearReaderLocalState + ending the Flask session.
    *
-   * Called from the SIGNED_OUT branch in app.js, from handleLogout, from
-   * endRecovery and from the recovery branch in app.js.
+   * Called only from app.js's auth listener: its SIGNED_OUT/USER_DELETED branch
+   * and its recovery branch. handleLogout and endRecovery call
+   * clearReaderLocalState instead, because Services.logout posts first on every
+   * one of their paths — the demo, a failed or throwing signOut, sessionMissing
+   * and a missing client included.
    */
   clearSessionState() {
     this.clearReaderLocalState();
     /* This is the only difference from clearReaderLocalState — it also ends the
        Flask session (POST /auth/logout: session.clear(), the legacy
        chat_history purge, and token-cache eviction when the request carries a
-       token). Not awaited, because this is the synchronous teardown. On the
-       logout-button path it duplicates the call inside Services.logout(); the
-       endpoint is idempotent (a TODO entry tracks that one press currently
-       sends it three times). */
-    Services.endServerSession();
+       token). Not awaited, because this is the synchronous teardown.
+
+       One POST per sign-out from this tab. Skipped while this tab's own
+       Services.logout is running (logoutThisTab), which has already sent it;
+       sent for every sign-out this tab did not start — revocation, a failed
+       refresh, account deletion, another tab's sign-out — because nothing else
+       ends the Flask session on those paths. Each other open chat tab still
+       posts once on a broadcast sign-out: a tab cannot know another already
+       has, and the endpoint is idempotent. */
+    if (ownSignOutsInFlight === 0) Services.endServerSession();
   },
 
   clearLocalAuthData() {

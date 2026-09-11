@@ -470,10 +470,18 @@ export const Services = {
    * End the session on BOTH sides.
    *
    * Signing out of Supabase drops the access token; it does nothing to the
-   * Flask session cookie, which carries `conv_id` — the key into the
-   * server-side conversation history. Without the call below that cookie
-   * survived logout intact, and the next reader to sign in on this browser
-   * had the previous reader's conversation fed to the model as context.
+   * Flask session cookie. That cookie carries no conversation pointer any more
+   * — since per-tab deep linking the URL is the pointer — but it still holds
+   * the reader's cached access token and identity markers, plus any legacy
+   * pre-migration `chat_history` keys, and the server's `logout` clears all of
+   * them and evicts the token from its verification cache. It used to carry
+   * `conv_id`, which is why this call exists: without it the cookie survived
+   * logout and the next reader on this browser inherited the previous one's
+   * conversation as model context.
+   *
+   * Posted once per sign-out from this tab: here, first, on the logout-button
+   * and recovery paths (`logout` below), or by `Handlers.clearSessionState`
+   * for a sign-out this tab did not start.
    *
    * The server call goes FIRST and its failure is not fatal: a network error
    * must not leave the reader signed in, and the server rotates conversation

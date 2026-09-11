@@ -32,15 +32,16 @@ auth_bp = Blueprint("auth", __name__)
 # address, so exempting it would mint a second unmetered proxy of the shape
 # the `/login` tombstone below closes.
 #
-# Divide those numbers by three before judging them: one sign-out button press
-# spends THREE of the budget, because `Services.logout` posts here, then the
-# `SIGNED_OUT` listener's `Handlers.clearSessionState` (in
-# `static/js/modules/handlers.js`) posts here, then `handleLogout`'s own
-# `Handlers.clearSessionState` posts here; each other open tab adds one more
-# on a broadcast sign-out (deduplicating it is tracked in TODO.md). So the real
-# ceiling is about 3 sign-outs a minute and about 66 a day per key, and "per key"
-# is `get_remote_address()`, which under the unresolved proxy question collapses
-# to one address for every reader on earth.
+# One sign-out spends one of the budget from the tab that pressed the button:
+# `Services.logout` posts here first, and the `SIGNED_OUT` listener's
+# `Handlers.clearSessionState` (in `static/js/modules/handlers.js`) skips its
+# own POST while that call is running. (It spent three until 2026-09-12.) Each
+# OTHER open chat tab still adds one on a broadcast sign-out — its listener
+# cannot know the pressing tab already posted — so a reader with N chat tabs
+# open spends N. That leaves about 10 sign-outs a minute, 50 an hour and 200 a
+# day per key for a reader with one chat tab open, divided by N for one with
+# N; and "per key" is `get_remote_address()`, which under the unresolved proxy
+# question collapses to one address for every reader on earth.
 # A refused logout still signs the reader out: `Services.endServerSession`
 # (`static/js/modules/services.js`) only catches network errors, and a 429 is
 # a successful HTTP response, so the caller proceeds to the browser-direct

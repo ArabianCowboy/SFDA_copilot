@@ -580,10 +580,12 @@ const App = {
            nothing the teardown has not already dropped, and would reload every
            open tab on a broadcast sign-out), and it keeps ?lang=/?testing=.
            Guarded by Route.current() so "/" and its query string are left alone.
-           The reset lives HERE, not inside clearSessionState, because
-           endRecovery and the recovery branch above also call clearSessionState
-           and must keep the recovery form's path — the recovery branch returns
-           before reaching this line. */
+           The reset lives HERE, not inside clearSessionState, because the
+           recovery branch above also calls clearSessionState (and endRecovery
+           its local half, clearReaderLocalState), and both must keep the
+           recovery form's path — the recovery branch returns before reaching
+           this line. clearSessionState skips its POST when the logout button
+           caused this event; Services.logout has already sent it. */
         if (event === 'SIGNED_OUT' || event === 'USER_DELETED') {
           Handlers.clearSessionState();
           if (Route.current()) Route.replace(null);

@@ -43,6 +43,78 @@ recording.
 
 ## [HISTORICAL] Resolved bugs
 
+### [HISTORICAL] ~~One logout-button press sends `POST /auth/logout` three times~~ — FIXED 2026-09-12
+
+> **Closed 2026-09-12** on branch `fix/logout-single-post`. One sign-out now posts once from the
+> tab that started it, on every path. `handleLogout` and `endRecovery` reach `Services.logout`
+> through a module-private `logoutThisTab()` in `static/js/modules/handlers.js`, which counts this
+> tab's own sign-outs in flight and resets the count in a `finally`; `clearSessionState` skips its
+> POST while that count is non-zero, and `handleLogout` and `endRecovery` now run only the local
+> teardown (`clearReaderLocalState`) themselves. A `SIGNED_OUT` or `USER_DELETED` the tab did not
+> start — revocation, a failed refresh, another tab, account deletion, the recovery branch when
+> `endRecovery` did not cause it — still posts once from the listener. Pinned by
+> `web/tests/test_logout_single_post.py`, which counts POSTs per press under both event orderings:
+> supabase-js awaiting the listener inside `signOut()` (a new opt-in
+> `__mockSignOutAwaitsSubscribers` knob on the conftest mock) and the mock's default microtask.
+> Measured before the fix: three per press on the normal path, recovery cancel and recovery
+> submit, under both orderings; two on the demo, a failed `signOut`, `sessionMissing`, a
+> `getSession` error, a missing client and the demo's recovery cancel. After: one on every one.
+>
+> **What the entry got wrong.** (1) It said the paths where no `SIGNED_OUT` arrives "rely on
+> `handleLogout`'s own call". They never did: `Services.logout` posts as its first line, before
+> the demo's early return and before anything can throw, so those paths sent two, and
+> `handleLogout`'s call was a duplicate on every path. (2) Its _Where_ missed `endRecovery`
+> (recovery cancel and submit), which had the same triple through the listener's recovery branch.
+> (3) The triple did not depend on supabase-js awaiting its subscribers: the mock's microtask
+> ordering also runs the listener before `Services.logout` resumes, and measured three as well.
+> (4) The global defaults are 10/minute, 50/hour and 200/day; the entry dropped the hourly one.
+> (5) "Nothing breaks" was too categorical. Codex (gpt-6-astra), reviewing this independently on
+> 2026-09-12, pointed out that the duplicates were also an accidental retry: `endServerSession`
+> never checks the response, so when the first POST was refused (429) or failed in flight, a later
+> duplicate carrying the same Flask cookie could be the one that actually tore the session down.
+> That retry is gone by design — one attempt per sign-out — and a refused attempt now leaves the
+> Flask session standing until the next identity change rotates it, which is what the rate-limit
+> comment in `web/api/auth.py` already describes. Deliberate: a retry nobody asked for, spending
+> three times the budget to buy it, is the wrong trade.
+>
+> **Left by design:** each other open chat tab still posts once on a broadcast sign-out. Its
+> listener cannot know the pressing tab already posted, and the endpoint is idempotent. `/account`
+> and `/admin` post nothing — they reload into their signed-out states instead.
+
+**Where:** `Handlers.handleLogout` and `Handlers.clearSessionState`
+(`static/js/modules/handlers.js`), `Services.logout` and `Services.endServerSession`
+(`static/js/modules/services.js`), and the `SIGNED_OUT` branch of `onAuthStateChange` in
+`static/js/app.js`. The budget arithmetic is in the rate-limit comment at the top of
+`web/api/auth.py`.
+
+**What is wrong.** One press posts three times. `Services.logout` posts first. Its `signOut()`
+awaits every auth subscriber (supabase-js `GoTrueClient`: `_signOut` → `_removeSession` →
+`_notifyAllSubscribers('SIGNED_OUT')`),
+so the `SIGNED_OUT` listener's `clearSessionState` posts second, and `handleLogout` then calls
+`clearSessionState` itself and posts a third time. Every other open tab's listener adds one more
+on a broadcast sign-out. The endpoint is idempotent, so nothing breaks, but `logout` runs at the
+global per-IP defaults (10/minute, 200/day), so the real ceiling is about 3 presses a minute.
+`web/api/auth.py` said two until 2026-09-11, and the tombstone entry below still records "two".
+
+**Who it reaches.** Nobody visibly today. A refused (429) POST does not stop the sign-out — the
+browser-direct `signOut({ scope: 'global' })` still revokes the session upstream. The cost is
+budget: under the unresolved proxy question every reader shares one key, so sign-outs across all
+readers spend one pool three times as fast as the comment used to say.
+
+**How it was found.** agy's (Gemini 3.8 Flash) security review of
+the revoked-session plan (now [`docs/archive/2026-09-11_revoked-session-url-reset.md`](2026-09-11_revoked-session-url-reset.md)) on 2026-09-11, then confirmed by reading the three call
+sites and the supabase-js 2.74.0 source. Pre-existing: that plan neither adds nor removes a POST
+on this path.
+
+**What fixing it would disturb.** One owner has to be chosen for the server teardown — for
+example `handleLogout` stops calling `clearSessionState` once the listener has run, or
+`clearSessionState` skips `endServerSession` when `Services.logout` already sent it. Either
+reopens the "deliberately duplicated, documented idempotent" contract in `clearSessionState`'s
+comment, and must keep working on the three paths where no `SIGNED_OUT` arrives (the
+`?testing=true` demo, a `signOut` that throws, `sessionMissing`), which today rely on
+`handleLogout`'s own call. The cross-tab duplicates cannot be removed per tab: each tab only
+knows its own listener ran. Needs a browser test that counts POSTs per press.
+
 ### [HISTORICAL] ~~A revoked or expired session clears the transcript but leaves the conversation id in the address bar~~ — FIXED 2026-09-11
 
 > **Closed 2026-09-11** by the series on branch `fix/signed-out-route-reset`, planned in
