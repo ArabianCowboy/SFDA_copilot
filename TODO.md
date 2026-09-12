@@ -32,6 +32,7 @@ bottom of this file: [How this file works](#how-this-file-works).
 
 ## Open now
 
+- [Live code cites plan sections instead of the live contract](#live-code-cites-plan-sections-instead-of-the-live-contract) — 43 citations in 19 files; blocks archiving two finished plans.
 - [Leaked-password protection is disabled in Supabase Auth](#leaked-password-protection-is-disabled-in-supabase-auth) — blocked on a Pro-plan upgrade, not code.
 - [`POST /auth/login` is a 410 tombstone pending deletion](#post-authlogin-is-a-410-tombstone-pending-deletion) — tombstone shipped; the bare deletion is still owed next release.
 - [A silent truncation from a provider that omits `finish_reason` is still undetected](#a-silent-truncation-from-a-provider-that-omits-finish_reason-is-still-undetected) — diagnosed; needs `include_usage`, not a different default.
@@ -68,6 +69,45 @@ bottom of this file: [How this file works](#how-this-file-works).
 ---
 
 ## Known bugs
+
+### Live code cites plan sections instead of the live contract
+
+**Where:** 43 citations across 19 files. The per-tab set was repointed at
+`docs/archive/2026-08-22_per-tab-deep-linking.md` on 2026-09-12; `registrations-pause-plan.md`
+(18 files) and `notification-center-plan.md` (25 files) are still cited in `docs/`. Two
+migration headers still name the pre-archive path:
+`supabase/migrations/20260822143317_chat_session_exists.sql:3` and
+`20260822143411_chat_append_turn_allow_create.sql:3`.
+
+**What is wrong.** `CLAUDE.md` says to treat anything under `docs/archive/` as "evidence about
+the past, never as current behaviour" and to "confirm against `docs/ARCHITECTURE.md` or the
+code and cite that instead". Forty-one live comments now cite the archive for **present-tense**
+behaviour ("THE URL IS THE POINTER now (docs/archive/… §1)"), which is the prohibited form.
+The archive is also excluded from search by `/.ignore`, so those pointers aim at content the
+default search cannot reach, and the file they open says not to trust it — a circle back to
+`ARCHITECTURE.md`, which is what should have been cited. `docs/ARCHITECTURE.md:21` already
+names itself first authority and the archived plan second; citing only the second inverts that
+in 41 places.
+
+**Who it reaches.** Every contributor or agent following the reasoning behind the
+URL-as-pointer model, the registrations pause, or the Notification Center — which is most of
+the load-bearing code in this app.
+
+**How it was found.** An adversarial review of `019b8aa` (`opencode/muse-spark-1.3`, xhigh).
+That commit fixed 41 dangling citations but chose section precision over currency, and its own
+closing note conceded `ARCHITECTURE.md` "does not carry the plan's section numbers" — which is
+an argument for adding anchors, not for citing history.
+
+**What fixing it would disturb.** `docs/ARCHITECTURE.md` grows anchors where a `§X` reference
+is load-bearing (pointer §1, preflight §3.4, CSRF §3.5, deletions §5.x, headers §6.1), then
+citations become `live authority; reasoning in archive §Z` — archive-only for genuinely
+historical asides. It spans ~19 files and should not ride along with an unrelated change. Doing
+it is also what makes archiving the two remaining finished plans a `git mv` again instead of a
+rewrite, so it blocks that cleanup.
+
+**The two migration headers are a deliberate exception.** An applied migration's file is a
+point-in-time record of what ran; editing it after the fact breaks the property that the
+recorded file is the applied file. They keep the pre-archive path. Do not "fix" them.
 
 ### A silent truncation from a provider that omits `finish_reason` is still undetected
 

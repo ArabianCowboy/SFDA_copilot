@@ -2,12 +2,13 @@ STATUS: IMPLEMENTED. Written 2026-08-23; built 2026-08-24.
 
 # Admin Broadcast & Reader Notification Center
 
-> **Do not archive this file without budgeting for the citation rewrite.** Eighteen files
-> cite it by section, including eleven under `static/js/`, `web/api/admin.py`,
-> `web/api/app.py`, `web/utils/icons.py`, `DESIGN.md` and two test files. Archiving it is
-> that rewrite, not a `git mv`. `docs/archive/TODO-resolved.md`'s _Ten source comments cite a
-> plan file that has been archived_ is what happens when that is skipped: it was filed as ten
-> and turned out to be forty-one.
+> **Do not archive this file without budgeting for the citation rewrite.** Twenty-five files
+> cite it by section, nine of them under `static/js/` (`app.js`, four `modules/`, three
+> `admin/`), plus `web/api/app.py`, `admin.py`, `web/utils/icons.py`, `web/config.yaml`,
+> `web/i18n/en.yaml`, three templates, two stylesheets, a migration, two test files,
+> `DESIGN.md`, `TODO.md` and `docs/security-hardening-plan.md`. Archiving it is that rewrite,
+> not a `git mv`. See `TODO.md`'s _Live code cites plan sections instead of the live contract_
+> for the decision that has to come first.
 
 **Source:** `TODO.md` → [Admin broadcast & Reader Notification Center](../TODO.md#admin-broadcast--reader-notification-center-popups-banners-and-inbox-history) — see that entry's own status line for the current one-paragraph summary.
 

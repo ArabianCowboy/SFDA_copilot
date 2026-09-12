@@ -80,7 +80,7 @@ reasoning behind the URL-as-pointer model _is_ history; `docs/ARCHITECTURE.md` h
 current. `ARCHITECTURE.md` was therefore not given matching anchors.
 
 **The count in the title was wrong, and by a lot.** It said ten comments in four files. The
-real figure was **41 references across 17 files** — `web/api/app.py` alone had nine, plus
+real figure was **43 references across 19 files** (reported as 41 across 17 when it was closed - the sweep that produced that number filtered on `.py`, `.yaml` and `.js`, so it missed two `.sql` migration headers, which are deliberately left alone; see `TODO.md`) — `web/api/app.py` alone had nine, plus
 `auth.py`, `config.yaml`, `en.yaml`, `chat_store.py`, `conftest.py`, three `static/js/modules/`
 files and nine test files. Five of them were line-wrapped across two lines, so a
 whole-path search missed them and only a partial-string sweep found them. Anyone estimating
