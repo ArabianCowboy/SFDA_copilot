@@ -5,13 +5,14 @@ TODO.md entry this plan closed carries the short summary of what shipped.
 
 # Registrations Pause
 
-> **Do not archive this file without budgeting for the citation rewrite.** Eighteen files cite
-> it by section — `web/api/app.py`, `admin.py`, `auth.py`, `web/services/settings_service.py`,
-> `web/config.yaml`, `web/i18n/en.yaml`, `web/templates/admin.html`, `index.html`,
-> `static/js/admin/ui.js`, `static/css/components.css`, four test files, `TODO.md`,
-> `docs/ARCHITECTURE.md`, `docs/OPERATIONS.md` and `docs/auth-login-rate-limit-plan.md`.
-> Archiving it is that rewrite, not a `git mv`. See `TODO.md`'s _Live code cites plan sections
-> instead of the live contract_ for the decision that has to come first.
+> **Do not archive this file without budgeting for the citation rewrite.** Live code,
+> templates, stylesheets and tests cite it by section, so archiving it is that rewrite, not
+> a `git mv`. Count them before you estimate, and do not trust a figure written here or
+> anywhere else — run `git ls-files -z | xargs -0 grep -l 'docs/registrations-pause-plan.md'`. Editor search is
+> not a substitute: it honours `/.ignore`, which excludes `docs/archive/`, and `--include`
+> filters silently skip `.sql`, `.html` and `.css`. Both mistakes were made while writing
+> this note, which is why it no longer states a number. See `TODO.md`'s _Live code cites
+> plan sections instead of the live contract_ for the decision that has to come first.
 
 **Source:** `TODO.md` → [Registrations pause — let an operator pause new signups](../TODO.md#registrations-pause--let-an-operator-pause-new-signups).
 

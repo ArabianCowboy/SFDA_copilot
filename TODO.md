@@ -32,7 +32,7 @@ bottom of this file: [How this file works](#how-this-file-works).
 
 ## Open now
 
-- [Live code cites plan sections instead of the live contract](#live-code-cites-plan-sections-instead-of-the-live-contract) — 43 citations in 19 files; blocks archiving two finished plans.
+- [Live code cites plan sections instead of the live contract](#live-code-cites-plan-sections-instead-of-the-live-contract) — blocks archiving two finished plans; count citations, do not trust a written figure.
 - [Leaked-password protection is disabled in Supabase Auth](#leaked-password-protection-is-disabled-in-supabase-auth) — blocked on a Pro-plan upgrade, not code.
 - [`POST /auth/login` is a 410 tombstone pending deletion](#post-authlogin-is-a-410-tombstone-pending-deletion) — tombstone shipped; the bare deletion is still owed next release.
 - [A silent truncation from a provider that omits `finish_reason` is still undetected](#a-silent-truncation-from-a-provider-that-omits-finish_reason-is-still-undetected) — diagnosed; needs `include_usage`, not a different default.
@@ -72,10 +72,12 @@ bottom of this file: [How this file works](#how-this-file-works).
 
 ### Live code cites plan sections instead of the live contract
 
-**Where:** 43 citations across 19 files. The per-tab set was repointed at
-`docs/archive/2026-08-22_per-tab-deep-linking.md` on 2026-09-12; `registrations-pause-plan.md`
-(18 files) and `notification-center-plan.md` (25 files) are still cited in `docs/`. Two
-migration headers still name the pre-archive path:
+**Where:** the per-tab set was repointed at
+`docs/archive/2026-08-22_per-tab-deep-linking.md` on 2026-09-12;
+`registrations-pause-plan.md` and `notification-center-plan.md` are still cited from `docs/`.
+Count the citing files with `git ls-files -z | xargs -0 grep -l '<path>'` rather than trusting
+any figure — every hand-written count of this in the repo has been wrong, including the ones
+written while filing this entry. Two migration headers still name the pre-archive path:
 `supabase/migrations/20260822143317_chat_session_exists.sql:3` and
 `20260822143411_chat_append_turn_allow_create.sql:3`.
 
