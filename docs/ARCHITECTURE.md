@@ -104,7 +104,14 @@ a pasted URL.
 gunicorn --workers 1 --threads 8 --timeout 300 "web.api.app:create_app()"
 ```
 
-The app logs a warning at startup if `WEB_CONCURRENCY` is not `1`.
+The app logs a warning at startup if it is launched with more than one worker, reading the
+three places the count is set here: `--workers`/`-w` on the command line, the same flag
+inside `GUNICORN_CMD_ARGS`, and `WEB_CONCURRENCY` (`_configured_worker_count`). It read the
+environment variable alone until 2026-09-12, which is how a deployment came to run two
+workers for a week in silence — that variable was set nowhere, and the count came from the
+flag. **It infers the count from how the process was launched, so it is a report, not an
+enforcement**: a count set in a gunicorn config file, or changed afterwards by signalling
+the master (`TTIN`/`TTOU`), is not seen. Nothing here uses either.
 
 **The current reason is the in-RAM FAISS index and the sentence-transformers model.**
 A second worker means a second copy of both.
@@ -114,7 +121,7 @@ WSGI server iterates a streaming body, so conversation history had to live in a
 process-local store — **is retired**. History is durable in Postgres now. The
 constraint outlived its original justification; the justification did not.
 
-Two things still depend on single-worker and would need replacing before it changes:
+Four things still depend on single-worker and would need replacing before it changes:
 
 - `ConversationStore` — the computed prompt window, keyed `(owner, conversation)`. It
   is **not** a cache of the stored rows; making it write-through would let a restart
@@ -123,6 +130,18 @@ Two things still depend on single-worker and would need replacing before it chan
 - `_InFlightGenerations` — a counted claim on `(owner, conversation)`. Select and
   delete answer **409 `generation_in_flight`** while a claim is held. The replacement
   at multi-worker is a tombstone table, not a bigger dict.
+- `IdentityFlagsCache` — one per process, so an admin's disable or retier only reaches the
+  worker that served it and the others answer from their own copy until it expires. The
+  console itself is not at risk: an admin request resolves identity fresh. The shipped
+  `TokenVerificationCache` is process-local too but stores nothing (TTL 0), so at
+  multi-worker it costs duplicate verification calls, not stale credentials — raising that
+  TTL is what would make it the same problem.
+- **Every Flask-Limiter limit**, because the Limiter is built with `storage_uri="memory://"`
+  and each worker therefore counts alone: aggregate enforcement allows up to N times each
+  published `rate_limit.*` number. Not the daily message allowance, which is a durable
+  atomic RPC and survives any worker count intact. The replacement at multi-worker is
+  shared storage, and every number in `web/config.yaml` would have to be re-judged
+  against it.
 
 Per-tab conversations make eight simultaneous SSE streams from one reader legitimate.
 That capacity question is open and unsized.

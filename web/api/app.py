@@ -18,6 +18,7 @@ import json
 import logging
 import math
 import re
+import shlex
 import sys
 import threading
 import time
@@ -359,6 +360,128 @@ ACCOUNT_MODULE_FILENAMES: tuple[str, ...] = tuple(
 # ──────────────────────────────────────────────────────────
 # Helper Functions
 # ──────────────────────────────────────────────────────────
+
+
+#: What running more than one worker actually costs, said once and reused by both
+#: warnings below. Deliberately narrower than the first draft of this text: the
+#: shipped token-verification cache holds nothing (TTL 0), and an admin request
+#: resolves its identity fresh (`_authenticate_request`), so a demoted
+#: administrator does not keep the console by landing on another worker.
+_MULTI_WORKER_COST = (
+    "ConversationStore, _InFlightGenerations, IdentityFlagsCache and Flask-Limiter's "
+    "in-memory counters are all process-local — conversations split across workers and "
+    "readers lose context, a disabled or retiered reader keeps being served from another "
+    "worker's cached flags until they expire, the 409 generation_in_flight claim stops "
+    "holding, and aggregate rate limiting allows up to N times each configured limit "
+    "because every worker counts alone. This app must run single-worker anyway (in-RAM "
+    "FAISS index); use --workers 1 --threads 8."
+)
+
+
+def _worker_count_from_argv(argv: list[str]) -> str | None:
+    """Return the worker count a gunicorn argument list resolves to, or None.
+
+    Follows gunicorn's own parser rather than a convenient approximation of it
+    (`gunicorn/config.py`, the `-w`/`--workers` setting and `Config.parser`):
+
+    - every spelling it accepts — ``-w 2``, ``-w2``, ``--workers 2``,
+      ``--workers=2``;
+    - ``type=int``, so ``+2`` is two and ``01`` is one. A value `int()` refuses
+      is skipped, because gunicorn would refuse to start on it anyway;
+    - a repeated option stores the LAST occurrence, not the first;
+    - nothing after ``--`` is an option.
+
+    Returns the count in canonical decimal form, so the caller can compare it to
+    "1" without ``01`` reading as a second worker. None means the list names no
+    count at all, which is not the same as naming one.
+    """
+    count: str | None = None
+    for index, token in enumerate(argv):
+        if token == "--":
+            break
+        value: str | None = None
+        if token in ("-w", "--workers"):
+            value = argv[index + 1] if index + 1 < len(argv) else None
+        elif token.startswith("--workers="):
+            value = token.split("=", 1)[1]
+        elif token.startswith("-w") and len(token) > 2:
+            value = token[2:]
+        if value is None:
+            continue
+        try:
+            count = str(int(value))
+        except ValueError:
+            continue
+    return count
+
+
+def _gunicorn_config_file_in_play(argv: list[str]) -> bool:
+    """Could a gunicorn config file be setting the worker count here?
+
+    Either named with ``-c``/``--config``, or discovered by gunicorn itself: it
+    loads ``gunicorn.conf.py`` from the working directory without being asked
+    (`get_default_config_file` in `gunicorn/config.py`), so the absence of the
+    flag proves nothing.
+    """
+    for index, token in enumerate(argv):
+        if token == "--":
+            break
+        if token in ("-c", "--config") and index + 1 < len(argv):
+            return True
+        if token.startswith("--config=") or (token.startswith("-c") and len(token) > 2):
+            return True
+    return os.path.exists(os.path.join(os.getcwd(), "gunicorn.conf.py"))
+
+
+def _configured_worker_count() -> tuple[str, str]:
+    """Return (worker count, where it was set), for the single-worker warning.
+
+    "unknown" as the count means the launch could set it somewhere this cannot
+    read; the caller says so rather than claiming a number.
+
+    This read `WEB_CONCURRENCY` alone until 2026-09-12, and that is why a
+    deployment ran two workers for a week without the warning ever firing: the
+    count came from gunicorn's `--workers 2`, so the variable was simply absent
+    and the check read its own default "1" and stayed quiet. A guard that covers
+    only the spelling nobody uses is worse than none, because the documents
+    promise it works.
+
+    The command line is readable from inside the app for the same reason that
+    miss was invisible: gunicorn imports this module in the master process under
+    `--preload`, and a forked worker inherits `sys.argv` either way. Precedence
+    follows gunicorn's own (`gunicorn/app/base.py`): command line, then
+    `GUNICORN_CMD_ARGS`, then the config file, then the `WEB_CONCURRENCY`
+    default — and `GUNICORN_CMD_ARGS` is split the way gunicorn splits it, with
+    `shlex`, or `--workers "2"` reads as a quoted string and says nothing.
+
+    Two things it cannot see, both stated rather than papered over: a count
+    inside a gunicorn config file (reported as "unknown"), and a count changed
+    after startup by signalling the master (`TTIN`/`TTOU`). It infers the
+    configured count; it does not measure the running one.
+
+    The gunicorn sources are read only when gunicorn is what launched this
+    process. `python web/api/app.py --workers 2` runs Flask's development
+    server, which ignores the flag — warning about it would be a false alarm,
+    and a guard that cries wolf is the one nobody reads.
+    """
+    argv = sys.argv[1:]
+    if "gunicorn" in os.path.basename(sys.argv[0]).lower():
+        if argv_workers := _worker_count_from_argv(argv):
+            return argv_workers, f"the command line sets {argv_workers} workers"
+        try:
+            cmd_args = shlex.split(os.getenv("GUNICORN_CMD_ARGS", ""))
+        except ValueError:
+            cmd_args = []
+        if env_workers := _worker_count_from_argv(cmd_args):
+            return env_workers, f"GUNICORN_CMD_ARGS sets {env_workers} workers"
+        if _gunicorn_config_file_in_play(argv):
+            return "unknown", "a gunicorn config file is in play and this check cannot read it"
+    concurrency = os.getenv("WEB_CONCURRENCY", "1")
+    try:
+        concurrency = str(int(concurrency))
+    except ValueError:
+        return "unknown", f"WEB_CONCURRENCY={concurrency!r} is not a number"
+    return concurrency, f"WEB_CONCURRENCY={concurrency}"
 
 
 def _get_token_from_request() -> str | None:
@@ -2423,18 +2546,13 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
         )(app.view_functions["account.delete_all_conversations"]),
     )
 
-    workers = os.getenv("WEB_CONCURRENCY", "1")
-    if workers != "1":
+    workers, source = _configured_worker_count()
+    if workers == "unknown":
         logger.warning(
-            "WEB_CONCURRENCY=%s but ConversationStore, IdentityFlagsCache and "
-            "TokenVerificationCache are all process-local — conversations will split "
-            "across workers, users will randomly lose context, and an admin "
-            "invalidation (disable, demote, revoke sessions) will only take effect on "
-            "the worker that served it, leaving the others serving stale or revoked "
-            "credentials for their full TTL. This app must run single-worker anyway "
-            "(in-RAM FAISS index); use --workers 1 --threads 8.",
-            workers,
+            "Cannot verify the single-worker requirement: %s. %s", source, _MULTI_WORKER_COST
         )
+    elif workers != "1":
+        logger.warning("%s. %s", source, _MULTI_WORKER_COST)
 
     @app.context_processor
     def inject_template_globals() -> dict[str, Any]:

@@ -43,6 +43,107 @@ recording.
 
 ## [HISTORICAL] Resolved bugs
 
+### [HISTORICAL] ~~Production runs two workers and binds wider than loopback~~ — FIXED 2026-09-12
+
+> **Closed 2026-09-12**, the same day it was filed, by a one-line change to the systemd unit
+> on the VPS: `--bind 127.0.0.1:5001 --workers 1 --threads 8`, with `--preload`, both
+> `--max-requests` flags, `--chdir` and the app callable left byte-identical. Verified after
+> the restart: one master and one worker, the listening socket on `127.0.0.1:5001` only, a
+> clean boot (`Listening at: http://127.0.0.1:5001`, `Using worker: gthread`, the search
+> index loaded and its manifest verified), no restarts since, and HTTP 200 both directly on
+> loopback and through nginx on the public domain. The five co-tenant applications on the
+> same host were untouched — `daemon-reload` rereads unit files without restarting anything.
+> System memory used fell by about 400 MB, more than the ~190 MB predicted, though the fresh
+> worker's copy-on-write pages had not yet diverged, so the steady-state saving will be
+> smaller. Request slots went from four to eight.
+>
+> **The `Restart=` policy this entry asked for: `Restart=always`, with `RestartSec=10`.**
+> That is the fact any future argument about making the startup guard refuse to boot turns
+> on, and it argues against refusing: a fatal guard under `Restart=always` is a crash loop,
+> not a stable, visible outage. The guard stays a warning.
+>
+> **Where the durable half now lives:** [`docs/OPERATIONS.md`](../OPERATIONS.md), section
+> _How the application server is actually launched_ — the corrected `ExecStart`, why each
+> argument is there, and the two divergences below. That file, not this entry, is what to
+> read.
+>
+> **Two divergences from the documented line survive, both deliberate.** The unit sets no
+> `--timeout`, so gunicorn's 30-second default applies where `ARCHITECTURE.md`'s example
+> writes `--timeout 300`. On the `gthread` worker that is not the hazard it looks like: the
+> accept loop calls `notify()` about once a second however long a request thread runs
+> (`gunicorn/workers/gthread.py`, its `run` loop), so a long SSE answer never starves the
+> arbiter's heartbeat. And `--max-requests 1000` recycles the single worker about every
+> thousand requests; the retiring worker waits only `graceful_timeout` (30 seconds by
+> default) for work in flight, so an answer still streaming past that would be cut. Raising
+> `--graceful-timeout` is the fix if that is ever observed.
+>
+> **Still owed, and only a human can do it:** confirm on the live site that an answer still
+> arrives token by token rather than in one block. Nothing in the change should have altered
+> it — `web/services/sse.py` sets `X-Accel-Buffering: no`, which is what stops nginx
+> buffering — but it was not verified after the restart.
+
+**Where:** the systemd unit on the VPS, not in this repository. Its `ExecStart` runs gunicorn
+with two workers, two threads and a bind address wider than loopback, where
+[`docs/ARCHITECTURE.md`](../ARCHITECTURE.md#single-worker) and
+[`README.md`](../../README.md#running-in-production) both specify `--workers 1 --threads 8` behind
+an nginx that proxies to `127.0.0.1:5001`.
+
+**What is wrong.** Two things in one line.
+
+_Two workers._ Confirmed by process inspection on 2026-09-12: a master and two forked
+workers, running that way for about a week. `ConversationStore` (the computed prompt window),
+`_InFlightGenerations` (the 409 `generation_in_flight` claim), `IdentityFlagsCache` and
+Flask-Limiter's `memory://` counters are all process-local, so a reader's turns can land on a
+worker that never saw the previous one, an admin's disable or demote only takes effect on the
+worker that served it until that worker's own copy expires — the console is not at risk,
+because an admin request resolves identity fresh — and aggregate rate limiting allows up to
+twice each published Flask-Limiter number. Not the daily message allowance —
+that is a durable atomic RPC. Not `TokenVerificationCache` either: it ships with a TTL of
+zero, so at two workers it costs duplicate verification calls rather than stale credentials. `--preload` builds the FAISS index and the model
+once before forking, so their pages start shared; that is the only part of this `--preload`
+helps, and nothing here has measured how long they stay shared.
+
+_Bound wider than nginx needs._ nginx connects to `127.0.0.1:5001` and nothing else has any
+reason to, but the app is not bound to loopback. That matters because `BEHIND_PROXY=true`
+makes it trust one `X-Forwarded-For` hop, so any client that could reach it without passing
+through nginx would get a fresh rate-limit bucket per forged header — the second failure
+state [`docs/auth-login-rate-limit-plan.md`](../auth-login-rate-limit-plan.md) §1.1
+describes — and would also choose what `web/services/audit.py` records as the client address
+of a privileged action.
+
+**Who it reaches.** Readers, invisibly, through the first half. Nothing through the second so
+far: the host firewall denies inbound on that port, so the app is reachable only through
+nginx. That was read from inside the box and has never been tested from outside it, and it
+leaves the app's correctness resting on a firewall rule nobody owns. Binding to `127.0.0.1`
+removes the dependence entirely, which is why it belongs in the same one-line fix.
+
+**How it was found.** A factual audit of the VPS on 2026-09-12 — nginx config, the unit file,
+the running process's environment, listening sockets and firewall rules — prompted by the
+question of whether IP-keyed rate limits see real client addresses. They do: `X-Forwarded-For`
+is set with exactly one hop and `ProxyFix` trusts exactly one, so neither failure state in
+§1.1 is live. That question is answered and closed; this is what the audit turned up on the
+way.
+
+**Why the app did not say so.** Its startup guard read `WEB_CONCURRENCY`, which this
+deployment never sets — the count comes from the `--workers` flag. Fixed 2026-09-12
+(`_configured_worker_count`, `web/api/app.py`), so the next launch of this kind says so in the
+log. That fix reports the mistake; it cannot correct it, and it infers the count from the
+launch line rather than measuring it.
+
+**What fixing it would disturb.** One line in the unit file —
+`--bind 127.0.0.1:5001 --workers 1 --threads 8` — then `systemctl daemon-reload` and a
+restart, which drops in-flight SSE streams. Nobody has scheduled that restart, and throughput
+after it is a genuine question: one worker with eight threads against two workers with two
+threads each is more request slots, not fewer, but it has never been measured here. The
+capacity question `docs/ARCHITECTURE.md` already records as "open and unsized" is the same one.
+
+**Two things to capture when this closes.** The unit's `Restart=` policy, which nobody has
+read and which decides any future argument about whether the guard should refuse to start
+rather than warn — a crash loop and a stable outage are different answers. And the corrected
+`ExecStart`, which belongs in [`docs/OPERATIONS.md`](../OPERATIONS.md) (it holds the state
+this repo deliberately does not), because this entry is transient by design and the fact is
+not.
+
 ### [HISTORICAL] ~~One logout-button press sends `POST /auth/logout` three times~~ — FIXED 2026-09-12
 
 > **Closed 2026-09-12** on branch `fix/logout-single-post`. One sign-out now posts once from the

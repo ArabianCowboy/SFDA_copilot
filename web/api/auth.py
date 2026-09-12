@@ -40,8 +40,18 @@ auth_bp = Blueprint("auth", __name__)
 # cannot know the pressing tab already posted — so a reader with N chat tabs
 # open spends N. That leaves about 10 sign-outs a minute, 50 an hour and 200 a
 # day per key for a reader with one chat tab open, divided by N for one with
-# N; and "per key" is `get_remote_address()`, which under the unresolved proxy
-# question collapses to one address for every reader on earth.
+# N; and "per key" is `get_remote_address()`, which resolves to the real client
+# address only under the topology this app requires: exactly one reverse proxy
+# in front, setting `X-Forwarded-For`, with `BEHIND_PROXY=true` so `ProxyFix`
+# trusts exactly that one hop, and the app itself bound where only that proxy
+# can reach it. `docs/auth-login-rate-limit-plan.md` §1.1 describes both ways
+# that goes wrong — every key collapsing to one address, or a forged header
+# minting a fresh bucket per request — and neither is detectable from inside
+# the app, so every number here rests on the deployment being right.
+#
+# These counters are per-process (`storage_uri="memory://"`), so a deployment
+# running more than one worker multiplies every number below by the worker
+# count. `_configured_worker_count` in `web/api/app.py` warns at startup.
 #
 # That N is ACCEPTED, decided 2026-09-12 after an adversarial review of both
 # candidate fixes. Sign-outs are human-rate against these windows, the duplicate

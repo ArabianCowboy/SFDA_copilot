@@ -1,7 +1,8 @@
-STATUS: CURRENT AUTHORITY — state this repository cannot hold. Last verified 2026-09-07.
+STATUS: CURRENT AUTHORITY — state this repository cannot hold. Last verified 2026-09-12.
 
-This file records configuration that lives in the Supabase dashboard, in DNS, and in a
-third-party mail provider — none of it in version control, some of it write-only once saved.
+This file records configuration that lives in the Supabase dashboard, in DNS, in a
+third-party mail provider, and on the VPS itself — none of it in version control, some of it
+write-only once saved.
 That is why it is written down at all: six months from now the only other way to recover any
 of it is to go and look.
 
@@ -11,9 +12,9 @@ Three things belong here and are not yet written up, all filed as open entries i
 section below records as an assumption precisely because nobody has looked. When any of
 them is settled, the answer goes in this file.
 
-Four sections follow: transactional email, the registrations pause, database recovery,
-and Supabase API keys. As other out-of-repo state gets documented, add it as a sibling
-section rather than a new file.
+Five sections follow: transactional email, the registrations pause, database recovery,
+Supabase API keys, and how the application server is launched. As other out-of-repo state
+gets documented, add it as a sibling section rather than a new file.
 
 ---
 
@@ -406,11 +407,11 @@ need at 2am.
 
 Three credentials, three blast radii. Confusing them is most of the diagnostic difficulty.
 
-| Variable | Client | If it breaks |
-| --- | --- | --- |
-| `SUPABASE_ANON_KEY` | the browser, and Flask's GoTrue calls (`web/utils/supabase_client.py`, `SupabaseClient`) | **Sign-in stops working.** It is also rendered into every page, so the browser's own Supabase calls fail too. |
-| `SUPABASE_SECRET_KEY`, falling back to `SUPABASE_SERVICE_ROLE_KEY` | the service-role client (`SupabaseAdminClient`) | **Everything privileged**: conversation history, notifications, the daily allowance, `/admin`. Sign-in keeps working. |
-| `SUPABASE_PROJECT_REF` | the Realtime CSP origin only | Realtime falls back to a wildcard origin. Not an outage. |
+| Variable                                                           | Client                                                                                   | If it breaks                                                                                                          |
+| ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `SUPABASE_ANON_KEY`                                                | the browser, and Flask's GoTrue calls (`web/utils/supabase_client.py`, `SupabaseClient`) | **Sign-in stops working.** It is also rendered into every page, so the browser's own Supabase calls fail too.         |
+| `SUPABASE_SECRET_KEY`, falling back to `SUPABASE_SERVICE_ROLE_KEY` | the service-role client (`SupabaseAdminClient`)                                          | **Everything privileged**: conversation history, notifications, the daily allowance, `/admin`. Sign-in keeps working. |
+| `SUPABASE_PROJECT_REF`                                             | the Realtime CSP origin only                                                             | Realtime falls back to a wildcard origin. Not an outage.                                                              |
 
 The asymmetry is the thing to internalise: **you can be signed in, with a working session,
 while every privileged read fails.** That is what a broken service key looks like, and it
@@ -521,3 +522,56 @@ which presents completely differently — chat returns 500 and the log carries
 `openai.AuthenticationError: invalid_api_key` — and is unrelated to Supabase. When
 something breaks right after a credential fix, check whether it is a _different_ credential
 before assuming the fix failed or that a recent commit caused it.
+
+---
+
+# How the application server is actually launched
+
+Added 2026-09-12, after an audit found the running deployment disagreeing with
+`docs/ARCHITECTURE.md` and nobody able to say so from the repository. The unit file is not
+in version control and cannot be — it holds paths, a user, and a bind address belonging to
+one host — so what it contains is written here instead. `TODO.md`'s closed entry
+_Production runs two workers and binds wider than loopback_ (now in
+[`docs/archive/TODO-resolved.md`](archive/TODO-resolved.md)) records how the divergence was
+found and what it cost.
+
+**The unit:** a systemd service on the VPS, `Restart=always` with `RestartSec=10`, running
+gunicorn from the deployment's own virtualenv. Its `ExecStart` arguments, as corrected on
+2026-09-12:
+
+```text
+--bind 127.0.0.1:5001 --workers 1 --threads 8 --preload
+--max-requests 1000 --max-requests-jitter 100
+--chdir <deployment root> web.api.app:create_app()
+```
+
+Why each of the load-bearing ones:
+
+- **`--workers 1`** is the requirement in [`ARCHITECTURE.md`](ARCHITECTURE.md#single-worker),
+  not a tuning choice. It ran with two for about a week; the app now warns at startup when
+  it is launched with more (`_configured_worker_count`, `web/api/app.py`).
+- **`--bind 127.0.0.1`** because nginx is the only thing that should reach it. Bound wider,
+  a caller who could skip nginx would choose their own `X-Forwarded-For` — and therefore
+  their own rate-limit bucket and their own address in the audit log — because
+  `BEHIND_PROXY=true` makes the app trust one hop.
+- **`--threads 8`** gives eight request slots, which per-tab conversations need: one reader
+  can legitimately hold several SSE streams open at once.
+- **`--preload`** builds the FAISS index and the model once in the master before forking.
+
+**Two things this line does not say, both deliberate for now:**
+
+- **No `--timeout`,** so gunicorn's 30-second default applies where `ARCHITECTURE.md`'s
+  example writes `--timeout 300`. On the `gthread` worker this is not the hazard it looks
+  like: the worker's accept loop calls `notify()` about once a second no matter how long a
+  request thread runs (`gunicorn/workers/gthread.py`, its `run` loop), so a long SSE answer
+  does not starve the arbiter's heartbeat and is not killed. Adding `--timeout 300` would
+  match the documented line and cost nothing; it is not urgent.
+- **`--max-requests 1000`** recycles the single worker roughly every thousand requests. The
+  replacement forks from the preloaded master and the listen backlog covers the gap, but the
+  retiring worker only waits `graceful_timeout` (30 seconds by default) for work in flight,
+  so an answer still streaming after that point would be cut. Raising
+  `--graceful-timeout` to match the longest expected answer is the fix if that is ever seen;
+  removing `--max-requests` is not, since it is what bounds this process's memory growth.
+
+**This host runs several other applications** on the same two vCPUs. Anything measured here
+— throughput, memory, latency — is measured against that, not against an idle box.
