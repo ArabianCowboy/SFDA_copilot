@@ -32,6 +32,7 @@ bottom of this file: [How this file works](#how-this-file-works).
 
 ## Open now
 
+- [Production is eight commits behind and is missing the logout-revocation fix](#production-is-eight-commits-behind-and-is-missing-the-logout-revocation-fix) — **live security exposure; the fix is already committed, it just is not deployed.**
 - [Leaked-password protection is disabled in Supabase Auth](#leaked-password-protection-is-disabled-in-supabase-auth) — blocked on a Pro-plan upgrade, not code.
 - [`POST /auth/login` is a 410 tombstone pending deletion](#post-authlogin-is-a-410-tombstone-pending-deletion) — tombstone shipped; the bare deletion is still owed next release.
 - [A silent truncation from a provider that omits `finish_reason` is still undetected](#a-silent-truncation-from-a-provider-that-omits-finish_reason-is-still-undetected) — diagnosed; needs `include_usage`, not a different default.
@@ -64,10 +65,41 @@ bottom of this file: [How this file works](#how-this-file-works).
 - [Measure the real statement and lock timeouts on the write path](#measure-the-real-statement-and-lock-timeouts-on-the-write-path) — needs a call through PostgREST, not MCP.
 - [Run the database assertions somewhere other than by hand](#run-the-database-assertions-somewhere-other-than-by-hand) — `supabase/tests/` exists and runs by hand only.
 - [One Realtime socket per reader, not one per visible tab](#one-realtime-socket-per-reader-not-one-per-visible-tab) — not started; costs nothing measurable yet, written down because the cost is the interesting half.
+- [Confirm on the live site that chat streaming arrives token by token](#confirm-on-the-live-site-that-chat-streaming-arrives-token-by-token) — post-restart verification; circumstantial log evidence says yes, owed by a human.
 
 ---
 
 ## Known bugs
+
+### Production is eight commits behind and is missing the logout-revocation fix
+
+**Where:** the live VPS deployment, not this repository. `/var/www/sfda-copilot` last pulled
+`origin/main` on 2026-09-04; the fix is `38254e2`, authored 2026-09-05.
+
+**What is wrong.** Before `38254e2`, `POST /auth/logout` called the no-argument
+`supabase.auth.sign_out()` on the **process-global** anon client. That form reads the session
+stored on the client and revokes it globally, so once any request had authenticated through
+the singleton, the next caller's logout signed out _somebody else_ — including a caller
+presenting no credentials at all. Production is still running that code. It breaks the
+guarantee that a sign-out is bound to the caller, and it is externally triggerable by an
+unauthenticated request.
+
+**Who it reaches.** Any signed-in reader, at any time, with no action of their own: their
+session can be revoked by an unrelated caller hitting `/auth/logout`. Availability and session
+integrity, not data disclosure — but it needs no account to trigger. The single worker makes it
+_more_ likely, not less, since every request shares the one process-global client.
+
+**How it was found.** A read of the live deployment on 2026-09-12 (`git pull` reflog and
+`origin/main` comparison) during the worker-count guard work, confirmed against `38254e2`'s own
+commit message. Independently flagged as urgent High by an adversarial security review.
+
+**What fixing it would disturb.** Nothing in this repository — the fix is already committed and
+tested. It is a deployment action: `git pull` in `/var/www/sfda-copilot` and restart the
+service. The other seven undeployed commits come with it and should be read first, notably
+`fix(chat): refuse and refund an empty answer on both chat routes` and `fix(chat): tell the
+reader when an answer was cut short`. Deploying is also the only way to pick up
+`gunicorn.conf.py`. Because deployment is `git pull` **into** the live working tree, confirm
+the tree is clean on the box first — commits have been authored there directly before.
 
 ### A silent truncation from a provider that omits `finish_reason` is still undetected
 
@@ -311,6 +343,30 @@ mutation, and `profiles` is also the table every reader request reads.
 ---
 
 ## Planned work
+
+### Confirm on the live site that chat streaming arrives token by token
+
+**Where:** the live production site (`POST /api/chat/stream` behind nginx).
+
+**What is wrong.** After the 2026-09-12 production restart, no human has directly
+verified on the live site that a chat answer still arrives token-by-token rather
+than buffering into a single block. Nothing in the configuration changes should
+have altered it — `web/services/sse.py` sets `X-Accel-Buffering: no` (which stops
+nginx from buffering), the nginx vhost sets no conflicting `proxy_buffering`,
+and production logs show incremental chunk delivery — but it has not been
+observed firsthand by a reader.
+
+**Who it reaches.** Any signed-in or anonymous reader asking a question in chat
+on production. If buffering occurred, the token-by-token stream would stall and
+dump the complete text at the end.
+
+**How it was found.** Lifted out of `docs/archive/TODO-resolved.md` (finding F10 in
+`docs/worker-count-guard-fix-plan.md`). The entry was resolved and archived, but
+left an unresolved verification instruction that belongs in active tracking.
+
+**What fixing it would disturb.** No code changes. A human logs in, asks a question
+on the production site, and confirms visually that tokens stream incrementally.
+Once confirmed, this entry can be closed and moved to `docs/archive/TODO-resolved.md`.
 
 ### `POST /auth/login` is a 410 tombstone pending deletion
 

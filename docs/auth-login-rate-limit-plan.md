@@ -469,11 +469,18 @@ belongs in GoTrue's config, not in Flask — same sentence as §2's closing para
 Neither option is worth much until these are done. Each deserves its own TODO entry;
 none belongs in the same commit.
 
-- **C1 — Answer the proxy question (blocking, and not code).** Does nginx front this
-  deployment, and does it set `X-Forwarded-For`? Then either set `BEHIND_PROXY=true`
-  _and_ add `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;` to the
-  documented snippet, or bind gunicorn to `127.0.0.1` and say so. Until this is answered,
-  §1.1 means every IP-keyed limit in the app is either one global bucket or no bucket.
+- **C1 — ~~Answer the proxy question (blocking, and not code).~~ ANSWERED 2026-09-12, and the
+  answer is the safe one.** The live vhost sets
+  `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;` (plus `X-Real-IP`, `Host` and
+  `X-Forwarded-Proto`), `BEHIND_PROXY=true` makes `ProxyFix` trust exactly one hop, and
+  gunicorn is bound to `127.0.0.1:5001` so the header cannot be forged from outside. Every
+  IP-keyed limit therefore keys on the real client address — neither §1.1 failure is live. The
+  vhost is quoted in [`OPERATIONS.md`](OPERATIONS.md#nginx-what-the-proxy-actually-sets).
+  **This unblocks C2**, whose number must still be derived from measured per-IP volume.
+  One trap for whoever re-verifies: `sites-enabled/` is all symlinks and `grep -r` does not
+  follow them, so `-r` returns nothing on a correctly-configured host. Use `grep -R` or
+  `nginx -T`. The snippet `README.md` documents still omits the header and should be
+  corrected to match what is deployed.
 - **C2 — Restore a ceiling that a route limit cannot erase.** Flask-Limiter's
   `application_limits` applies regardless of route-level limits (current upstream docs).
   An application limit would have made §0.2's regression impossible and would cover

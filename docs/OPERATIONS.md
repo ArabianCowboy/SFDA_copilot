@@ -536,20 +536,57 @@ _Production runs two workers and binds wider than loopback_ (now in
 found and what it cost.
 
 **The unit:** a systemd service on the VPS, `Restart=always` with `RestartSec=10`, running
-gunicorn from the deployment's own virtualenv. Its `ExecStart` arguments, as corrected on
-2026-09-12:
+gunicorn from the deployment's own virtualenv. The production unit, read 2026-09-12:
 
-```text
---bind 127.0.0.1:5001 --workers 1 --threads 8 --preload
---max-requests 1000 --max-requests-jitter 100
---chdir <deployment root> web.api.app:create_app()
+```ini
+[Service]
+User=www-data
+WorkingDirectory=/var/www/sfda-copilot
+Environment=PATH=/var/www/sfda-copilot/venv/bin
+EnvironmentFile=/var/www/sfda-copilot/.env
+ExecStart=/var/www/sfda-copilot/venv/bin/gunicorn --bind 127.0.0.1:5001 \
+  --workers 1 --threads 8 --preload --max-requests 1000 --max-requests-jitter 100 \
+  --chdir /var/www/sfda-copilot web.api.app:create_app()
+Restart=always
+RestartSec=10
+Environment=BEHIND_PROXY=true
 ```
 
-Why each of the load-bearing ones:
+Key facts from this service definition:
 
-- **`--workers 1`** is the requirement in [`ARCHITECTURE.md`](ARCHITECTURE.md#single-worker),
-  not a tuning choice. It ran with two for about a week; the app now warns at startup when
-  it is launched with more (`_configured_worker_count`, `web/api/app.py`).
+- **`WorkingDirectory=/var/www/sfda-copilot`:** gunicorn's launch cwd **is** the repo root,
+  so a committed `gunicorn.conf.py` is discovered automatically
+  (`gunicorn/config.py:583` resolves `./gunicorn.conf.py` against the launch cwd).
+- **`--chdir` targets that same directory:** Launch cwd and `--chdir` target coincide.
+  `Application.chdir()` (`gunicorn/app/base.py:83-90`) runs `sys.path.insert(0, self.cfg.chdir)`
+  which makes `web.api.app:create_app()` importable.
+- **`EnvironmentFile=/var/www/sfda-copilot/.env`:** `systemd` injects `.env` **before**
+  gunicorn starts, so gunicorn and the app see the same values. `Environment=BEHIND_PROXY=true`
+  is redundant with `.env` but harmless.
+- **Deployment is `git pull` into `/var/www/sfda-copilot`:** The deployment root is the live
+  working tree, so committed files arrive with no extra machinery.
+- **Gunicorn version divergence:** Production runs gunicorn **23.0.0**; the development tree
+  runs **26.0.0** (due to unpinned `requirements.txt`). Cwd config discovery and `raw_env`
+  injection before `--preload` were verified empirically on 23.0.0.
+
+**Rule: `ExecStart` must NOT name `--workers`. NOT YET APPLIED — the unit above is what is
+running today, `--workers 1` included.** Command-line settings are applied last
+(`gunicorn/app/base.py:189`) and silently win over config files, which is how `--workers 2`
+drifted unreviewed for months. The worker count belongs in `gunicorn.conf.py` under version
+control (`workers = 1`, deriving `raw_env`), which is now committed and will arrive on the next
+`git pull` — but it stays **inert** until an operator removes the flag. Until then the guard
+reads the command line and the file is decorative. The target line, once that edit is made:
+
+```ini
+ExecStart=/var/www/sfda-copilot/venv/bin/gunicorn --bind 127.0.0.1:5001 \
+  --threads 8 --preload --max-requests 1000 --max-requests-jitter 100 \
+  --chdir /var/www/sfda-copilot web.api.app:create_app()
+```
+
+Why each of the load-bearing arguments:
+
+- **Worker count (`workers = 1`)** is in `gunicorn.conf.py` per [`ARCHITECTURE.md`](ARCHITECTURE.md#single-worker).
+  The app warns at startup if launched with more than one worker (`_configured_worker_count`, `web/api/app.py`).
 - **`--bind 127.0.0.1`** because nginx is the only thing that should reach it. Bound wider,
   a caller who could skip nginx would choose their own `X-Forwarded-For` — and therefore
   their own rate-limit bucket and their own address in the audit log — because
@@ -574,4 +611,55 @@ Why each of the load-bearing ones:
   removing `--max-requests` is not, since it is what bounds this process's memory growth.
 
 **This host runs several other applications** on the same two vCPUs. Anything measured here
-— throughput, memory, latency — is measured against that, not against an idle box.
+— throughput, memory, latency — is measured against that, not against an idle box. A baseline
+read on 2026-09-12, after the worker had served 71 requests: true footprint by PSS is master
+652 MB plus worker 783 MB, about **1.4 GB**; box-wide 2.8 GB of 7.9 GB used, swap untouched.
+RSS is misleading here — under `--preload` master and worker share roughly 426 MB dirty, and a
+freshly forked worker reads as ~8 MB private until copy-on-write pages diverge.
+
+**Two operational details that look like trivia until they cost an hour:**
+
+- The production virtualenv is `venv/`, while this repository's is `.venv/`. A command copied
+  from `CLAUDE.md` runs the wrong interpreter on the box, and vice versa.
+- There is **no `.service.d/` drop-in directory**. When triaging a setting that does not match
+  this file, that rules out an override rather than leaving it as an open question.
+
+## nginx: what the proxy actually sets
+
+Read 2026-09-12 from `/etc/nginx/sites-enabled/sfda-copilot` (a symlink into
+`sites-available/`). Beware: **`grep -r` does not follow symlinks found during recursion, so it
+returns nothing here and reads as "not configured" — use `grep -R`, or `nginx -T`.**
+
+```nginx
+proxy_pass http://127.0.0.1:5001;
+proxy_set_header Host $host;
+proxy_set_header X-Real-IP $remote_addr;
+proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+proxy_set_header X-Forwarded-Proto $scheme;
+```
+
+The vhost's only non-Certbot include is `snippets/security-headers.conf`, which sets six
+`add_header` directives and no `proxy_set_header`. So every proxy header is the list above.
+
+**This settles the open proxy question** in
+[`auth-login-rate-limit-plan.md`](auth-login-rate-limit-plan.md) §4 C1. `X-Forwarded-For` is
+set with the appending `$proxy_add_x_forwarded_for` form, `BEHIND_PROXY=true` makes `ProxyFix`
+trust exactly one hop, and gunicorn is loopback-only so the header cannot be forged from
+outside. Rate-limit keys are therefore per-reader, not one global bucket.
+
+**Streaming rests on one application header, with no nginx backstop.** `proxy_buffering`
+appears **nowhere** in `/etc/nginx/`, so it is at nginx's default of **on**. SSE works only
+because the app sends `X-Accel-Buffering: no` (`web/services/sse.py:40`), which nginx honours
+per response. If that header were ever dropped, or a streaming response were built without
+going through `sse.py`, nginx would buffer whole answers and streaming would die silently with
+nothing in the nginx config to catch it. Note this diverges from the snippet `README.md`
+documents, which puts `proxy_buffering off` in a `location /api/chat/stream` block that the
+live vhost does not have. Adding `proxy_buffering off;` to the vhost would make it
+belt-and-braces; it is a safe, zero-risk edit.
+
+Compression is not a risk: `nginx.conf:53`'s `gzip_types` omits `text/event-stream`, and the
+app also sends `Cache-Control: no-cache, no-transform` (`web/services/sse.py:37`).
+
+**Firewall:** UFW only, active, default-deny inbound, with 22, 80 and 443 open. There is no
+cloud-provider firewall in front of it — the box is a KVM guest with a NoCloud (ISO-seeded)
+datasource, so there is no provider metadata service or network filtering layer to check.
