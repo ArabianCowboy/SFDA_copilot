@@ -1,0 +1,17 @@
+[Unit]
+Description=SFDA Copilot Service
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/sfda-copilot
+Environment=PATH=/var/www/sfda-copilot/venv/bin
+EnvironmentFile=/var/www/sfda-copilot/.env
+ExecStart=/var/www/sfda-copilot/venv/bin/gunicorn --bind 127.0.0.1:5001 --threads 8 --preload --max-requests 1000 --max-requests-jitter 100 --chdir /var/www/sfda-copilot web.api.app:create_app()
+Restart=always
+RestartSec=10
+Environment=BEHIND_PROXY=true
+[Install]
+WantedBy=multi-user.target

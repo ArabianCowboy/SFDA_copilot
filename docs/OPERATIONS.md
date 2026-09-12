@@ -528,31 +528,33 @@ before assuming the fix failed or that a recent commit caused it.
 # How the application server is actually launched
 
 Added 2026-09-12, after an audit found the running deployment disagreeing with
-`docs/ARCHITECTURE.md` and nobody able to say so from the repository. The unit file is not
-in version control and cannot be — it holds paths, a user, and a bind address belonging to
-one host — so what it contains is written here instead. `TODO.md`'s closed entry
+`docs/ARCHITECTURE.md` and nobody able to say so from the repository. `TODO.md`'s closed entry
 _Production runs two workers and binds wider than loopback_ (now in
 [`docs/archive/TODO-resolved.md`](archive/TODO-resolved.md)) records how the divergence was
 found and what it cost.
 
-**The unit:** a systemd service on the VPS, `Restart=always` with `RestartSec=10`, running
-gunicorn from the deployment's own virtualenv. **This file has no copy in the repository, so
-this block is the only reviewable record of it — when the unit changes, change this block in
-the same session, or the next reader is misled the way the `--workers` drift misled everyone.**
-Read from the live box on 2026-09-12, after `--workers` was removed:
+**Reversed later the same day.** This section first said the unit "is not in version control
+and cannot be — it holds paths, a user, and a bind address belonging to one host", and carried
+a hand-copied transcript of it instead. That reasoning does not hold: host-specific values are
+a reason the committed file **cannot be applied automatically**, not a reason it cannot be
+_reviewed_. A transcript drifts exactly the way `--workers` drifted, and for the same reason —
+nothing ever compares it to the real thing. The unit is now committed at
+[`deploy/sfda-copilot.service`](../deploy/sfda-copilot.service), byte-identical to the live
+file, and this section points at it instead of restating it: still exactly one reviewable
+record, but one a machine can check.
 
-```ini
-[Service]
-User=www-data
-WorkingDirectory=/var/www/sfda-copilot
-Environment=PATH=/var/www/sfda-copilot/venv/bin
-EnvironmentFile=/var/www/sfda-copilot/.env
-ExecStart=/var/www/sfda-copilot/venv/bin/gunicorn --bind 127.0.0.1:5001 \
-  --threads 8 --preload --max-requests 1000 --max-requests-jitter 100 \
-  --chdir /var/www/sfda-copilot web.api.app:create_app()
-Restart=always
-RestartSec=10
-Environment=BEHIND_PROXY=true
+**The unit:** a systemd service on the VPS, `Restart=always` with `RestartSec=10`, running
+gunicorn from the deployment's own virtualenv. Read it at
+[`deploy/sfda-copilot.service`](../deploy/sfda-copilot.service).
+
+**The committed copy does not deploy itself.** It is a reference copy, not a mechanism — git
+has no write access to `/etc`. Changing the unit still means editing
+`/etc/systemd/system/sfda-copilot.service` on the box, running `systemctl daemon-reload &&
+systemctl restart sfda-copilot`, and updating the committed copy in the same session. The two
+agreeing is a one-line check, and prints nothing when they do:
+
+```bash
+diff /etc/systemd/system/sfda-copilot.service deploy/sfda-copilot.service
 ```
 
 **There is deliberately no `--workers` here.** The count lives in `gunicorn.conf.py` at the
