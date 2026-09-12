@@ -77,10 +77,9 @@ recording.
 > default) for work in flight, so an answer still streaming past that would be cut. Raising
 > `--graceful-timeout` is the fix if that is ever observed.
 >
-> **Still owed, and only a human can do it:** confirm on the live site that an answer still
-> arrives token by token rather than in one block. Nothing in the change should have altered
-> it — `web/services/sse.py` sets `X-Accel-Buffering: no`, which is what stops nginx
-> buffering — but it was not verified after the restart.
+> **Historical note (2026-09-12):** the verification instruction previously here
+> (confirming on the live site that an answer arrives token-by-token rather than in one block)
+> was lifted into `TODO.md` per the rule that open work is never left inside an archived file.
 
 **Where:** the systemd unit on the VPS, not in this repository. Its `ExecStart` runs gunicorn
 with two workers, two threads and a bind address wider than loopback, where

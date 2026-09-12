@@ -50,7 +50,7 @@ auth_bp = Blueprint("auth", __name__)
 # the app, so every number here rests on the deployment being right.
 #
 # These counters are per-process (`storage_uri="memory://"`), so a deployment
-# running more than one worker multiplies every number below by the worker
+# running more than one worker multiplies every number above by the worker
 # count. `_configured_worker_count` in `web/api/app.py` warns at startup.
 #
 # That N is ACCEPTED, decided 2026-09-12 after an adversarial review of both

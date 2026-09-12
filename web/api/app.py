@@ -128,6 +128,15 @@ DOTENV_PATH = PROJECT_ROOT / ".env"
 # logging is configured — see there for why.
 _dotenv_values = dotenv_values(DOTENV_PATH) if DOTENV_PATH.exists() else {}
 _shadowed = sorted(name for name in _dotenv_values if os.getenv(name) is not None)
+_LAUNCH_ENV = {
+    k: os.getenv(k)
+    for k in (
+        "SERVER_SOFTWARE",
+        "GUNICORN_CMD_ARGS",
+        "SFDA_CONFIG_WORKERS",
+        "WEB_CONCURRENCY",
+    )
+}
 load_dotenv(dotenv_path=DOTENV_PATH, override=False)
 
 # ──────────────────────────────────────────────────────────
@@ -378,6 +387,14 @@ _MULTI_WORKER_COST = (
 )
 
 
+def _as_count(value: str | None) -> str | None:
+    """Canonical decimal, or None. `01` must read as one worker, not two."""
+    try:
+        return str(int(value))  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+
+
 def _worker_count_from_argv(argv: list[str]) -> str | None:
     """Return the worker count a gunicorn argument list resolves to, or None.
 
@@ -408,80 +425,55 @@ def _worker_count_from_argv(argv: list[str]) -> str | None:
             value = token[2:]
         if value is None:
             continue
-        try:
-            count = str(int(value))
-        except ValueError:
-            continue
+        if (parsed := _as_count(value)) is not None:
+            count = parsed
     return count
-
-
-def _gunicorn_config_file_in_play(argv: list[str]) -> bool:
-    """Could a gunicorn config file be setting the worker count here?
-
-    Either named with ``-c``/``--config``, or discovered by gunicorn itself: it
-    loads ``gunicorn.conf.py`` from the working directory without being asked
-    (`get_default_config_file` in `gunicorn/config.py`), so the absence of the
-    flag proves nothing.
-    """
-    for index, token in enumerate(argv):
-        if token == "--":
-            break
-        if token in ("-c", "--config") and index + 1 < len(argv):
-            return True
-        if token.startswith("--config=") or (token.startswith("-c") and len(token) > 2):
-            return True
-    return os.path.exists(os.path.join(os.getcwd(), "gunicorn.conf.py"))
 
 
 def _configured_worker_count() -> tuple[str, str]:
     """Return (worker count, where it was set), for the single-worker warning.
 
-    "unknown" as the count means the launch could set it somewhere this cannot
-    read; the caller says so rather than claiming a number.
+    Gunicorn-only by construction. `Arbiter.__init__` sets SERVER_SOFTWARE
+    (arbiter.py:54) before it imports this app under --preload (arbiter.py:138),
+    and forked workers inherit it, so it is a reliable marker and — unlike
+    argv[0] — survives `python -m gunicorn`.
 
-    This read `WEB_CONCURRENCY` alone until 2026-09-12, and that is why a
-    deployment ran two workers for a week without the warning ever firing: the
-    count came from gunicorn's `--workers 2`, so the variable was simply absent
-    and the check read its own default "1" and stayed quiet. A guard that covers
-    only the spelling nobody uses is worse than none, because the documents
-    promise it works.
+    Sources are tried in gunicorn's own precedence order (app/base.py:172-195).
+    Every value comes from the snapshot taken before `load_dotenv`: gunicorn
+    resolves `workers` at import time (config.py:690) and parses
+    GUNICORN_CMD_ARGS at base.py:170, both before this module loads, so a value
+    that reached the process only via python-dotenv is one gunicorn never saw.
 
-    The command line is readable from inside the app for the same reason that
-    miss was invisible: gunicorn imports this module in the master process under
-    `--preload`, and a forked worker inherits `sys.argv` either way. Precedence
-    follows gunicorn's own (`gunicorn/app/base.py`): command line, then
-    `GUNICORN_CMD_ARGS`, then the config file, then the `WEB_CONCURRENCY`
-    default — and `GUNICORN_CMD_ARGS` is split the way gunicorn splits it, with
-    `shlex`, or `--workers "2"` reads as a quoted string and says nothing.
+    SFDA_CONFIG_WORKERS is how `gunicorn.conf.py` declares itself; see that file.
+    Reading the config file directly is not an option — gunicorn *executes* it
+    (app/base.py:110), and re-running it here would duplicate its side effects.
 
-    Two things it cannot see, both stated rather than papered over: a count
-    inside a gunicorn config file (reported as "unknown"), and a count changed
-    after startup by signalling the master (`TTIN`/`TTOU`). It infers the
-    configured count; it does not measure the running one.
-
-    The gunicorn sources are read only when gunicorn is what launched this
-    process. `python web/api/app.py --workers 2` runs Flask's development
-    server, which ignores the flag — warning about it would be a false alarm,
-    and a guard that cries wolf is the one nobody reads.
+    Two things it cannot see, stated rather than guessed at: a count changed
+    after startup by signalling the master (TTIN/TTOU), and any non-gunicorn
+    host. It infers the configured count; it does not measure the running one.
     """
-    argv = sys.argv[1:]
-    if "gunicorn" in os.path.basename(sys.argv[0]).lower():
-        if argv_workers := _worker_count_from_argv(argv):
-            return argv_workers, f"the command line sets {argv_workers} workers"
-        try:
-            cmd_args = shlex.split(os.getenv("GUNICORN_CMD_ARGS", ""))
-        except ValueError:
-            cmd_args = []
-        if env_workers := _worker_count_from_argv(cmd_args):
-            return env_workers, f"GUNICORN_CMD_ARGS sets {env_workers} workers"
-        if _gunicorn_config_file_in_play(argv):
-            return "unknown", "a gunicorn config file is in play and this check cannot read it"
-    concurrency = os.getenv("WEB_CONCURRENCY", "1")
+    argv0 = os.path.basename(sys.argv[0]).lower() if sys.argv else ""
+    if not (
+        (_LAUNCH_ENV["SERVER_SOFTWARE"] or "").lower().startswith("gunicorn/")
+        or "gunicorn" in argv0
+    ):
+        return "1", "not a gunicorn launch"
+
     try:
-        concurrency = str(int(concurrency))
+        cmd_args = shlex.split(_LAUNCH_ENV["GUNICORN_CMD_ARGS"] or "")
     except ValueError:
-        return "unknown", f"WEB_CONCURRENCY={concurrency!r} is not a number"
-    return concurrency, f"WEB_CONCURRENCY={concurrency}"
+        return "unknown", "GUNICORN_CMD_ARGS cannot be parsed"
+
+    for source, count in (
+        ("the command line", _worker_count_from_argv(sys.argv[1:])),
+        ("GUNICORN_CMD_ARGS", _worker_count_from_argv(cmd_args)),
+        ("gunicorn.conf.py", _as_count(_LAUNCH_ENV["SFDA_CONFIG_WORKERS"])),
+        ("WEB_CONCURRENCY", _as_count(_LAUNCH_ENV["WEB_CONCURRENCY"])),
+    ):
+        if count:
+            return count, f"{source} sets {count} workers"
+
+    return "unknown", "gunicorn names no worker count this check can read"
 
 
 def _get_token_from_request() -> str | None:

@@ -104,14 +104,14 @@ a pasted URL.
 gunicorn --workers 1 --threads 8 --timeout 300 "web.api.app:create_app()"
 ```
 
-The app logs a warning at startup if it is launched with more than one worker, reading the
-three places the count is set here: `--workers`/`-w` on the command line, the same flag
-inside `GUNICORN_CMD_ARGS`, and `WEB_CONCURRENCY` (`_configured_worker_count`). It read the
-environment variable alone until 2026-09-12, which is how a deployment came to run two
-workers for a week in silence — that variable was set nowhere, and the count came from the
-flag. **It infers the count from how the process was launched, so it is a report, not an
-enforcement**: a count set in a gunicorn config file, or changed afterwards by signalling
-the master (`TTIN`/`TTOU`), is not seen. Nothing here uses either.
+The app logs a warning at startup under gunicorn if it is launched with more than one worker,
+checking the four sources in gunicorn's precedence order: the command line (`--workers`/`-w`),
+`GUNICORN_CMD_ARGS`, `gunicorn.conf.py` (via `SFDA_CONFIG_WORKERS`), and `WEB_CONCURRENCY`
+(`_configured_worker_count`). `gunicorn.conf.py` owns the committed worker count (`workers = 1`);
+any `--workers` flag in the `systemd` `ExecStart` overrides it because command-line flags
+silently win. The check is gunicorn-only (the dev server and pytest stay quiet). **It infers
+the configured count from how the process was launched, so it is a report, not an enforcement**:
+a count changed afterwards by signalling the master (`TTIN`/`TTOU`) is not seen.
 
 **The current reason is the in-RAM FAISS index and the sentence-transformers model.**
 A second worker means a second copy of both.

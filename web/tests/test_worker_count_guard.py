@@ -18,9 +18,9 @@ import logging
 
 import pytest
 
+import web.api.app as app_module
 from web.api.app import (
     _configured_worker_count,
-    _gunicorn_config_file_in_play,
     _worker_count_from_argv,
 )
 
@@ -32,7 +32,7 @@ from web.api.app import (
         (["--workers=4"], "4"),
         (["-w", "3"], "3"),
         (["-w2"], "2"),
-        # The real production line, verbatim apart from the paths.
+        # The drifted regression vector: 0.0.0.0, 2 workers, 2 threads.
         (
             [
                 "--bind",
@@ -74,52 +74,26 @@ def test_the_argument_list_is_read_the_way_gunicorn_reads_it(
     assert _worker_count_from_argv(argv) == expected
 
 
-@pytest.mark.parametrize(
-    ("argv", "expected"),
-    [
-        (["-c", "gunicorn.conf.py"], True),
-        (["--config", "gunicorn.conf.py"], True),
-        (["--config=gunicorn.conf.py"], True),
-        (["-cgunicorn.conf.py"], True),
-        ([], False),
-        (["--threads", "8"], False),
-        (["--", "-c", "gunicorn.conf.py"], False),
-    ],
-)
-def test_a_config_file_is_noticed_however_it_is_named(
-    argv: list[str], expected: bool, monkeypatch: pytest.MonkeyPatch, tmp_path
-) -> None:
-    """The default-discovery half is covered separately below; this pins the
-    flag spellings, from a directory with no `gunicorn.conf.py` in it."""
-    monkeypatch.chdir(tmp_path)
-    assert _gunicorn_config_file_in_play(argv) is expected
-
-
-def test_a_discovered_config_file_counts_even_with_no_flag(
-    monkeypatch: pytest.MonkeyPatch, tmp_path
-) -> None:
-    """gunicorn loads ./gunicorn.conf.py without being asked, so the absence of
-    `-c` proves nothing."""
-    monkeypatch.chdir(tmp_path)
-    (tmp_path / "gunicorn.conf.py").write_text("workers = 2\n", encoding="utf-8")
-    assert _gunicorn_config_file_in_play([]) is True
-
-
 def test_the_command_line_beats_the_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     """The precedence gunicorn itself uses — and the case that went unnoticed."""
+    monkeypatch.setitem(app_module._LAUNCH_ENV, "SERVER_SOFTWARE", "gunicorn/26.0.0")
+    monkeypatch.setitem(app_module._LAUNCH_ENV, "GUNICORN_CMD_ARGS", None)
+    monkeypatch.setitem(app_module._LAUNCH_ENV, "SFDA_CONFIG_WORKERS", None)
+    monkeypatch.setitem(app_module._LAUNCH_ENV, "WEB_CONCURRENCY", "1")
     monkeypatch.setattr("sys.argv", ["/usr/bin/gunicorn", "--workers", "2"])
-    monkeypatch.setenv("WEB_CONCURRENCY", "1")
     count, source = _configured_worker_count()
     assert count == "2"
-    assert "command line" in source
+    assert "the command line" in source
 
 
 def test_gunicorn_cmd_args_is_read_when_the_command_line_is_silent(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setitem(app_module._LAUNCH_ENV, "SERVER_SOFTWARE", "gunicorn/26.0.0")
+    monkeypatch.setitem(app_module._LAUNCH_ENV, "GUNICORN_CMD_ARGS", "--workers=3 --threads 2")
+    monkeypatch.setitem(app_module._LAUNCH_ENV, "SFDA_CONFIG_WORKERS", None)
+    monkeypatch.setitem(app_module._LAUNCH_ENV, "WEB_CONCURRENCY", None)
     monkeypatch.setattr("sys.argv", ["gunicorn", "web.api.app:create_app()"])
-    monkeypatch.setenv("GUNICORN_CMD_ARGS", "--workers=3 --threads 2")
-    monkeypatch.delenv("WEB_CONCURRENCY", raising=False)
     count, source = _configured_worker_count()
     assert count == "3"
     assert "GUNICORN_CMD_ARGS" in source
@@ -130,29 +104,21 @@ def test_gunicorn_cmd_args_is_split_the_way_gunicorn_splits_it(
 ) -> None:
     """gunicorn uses `shlex.split`, so a quoted value is still a number. Plain
     `str.split` would read `"2"` with its quotes and report nothing."""
+    monkeypatch.setitem(app_module._LAUNCH_ENV, "SERVER_SOFTWARE", "gunicorn/26.0.0")
+    monkeypatch.setitem(app_module._LAUNCH_ENV, "GUNICORN_CMD_ARGS", '--workers "2"')
+    monkeypatch.setitem(app_module._LAUNCH_ENV, "SFDA_CONFIG_WORKERS", None)
+    monkeypatch.setitem(app_module._LAUNCH_ENV, "WEB_CONCURRENCY", None)
     monkeypatch.setattr("sys.argv", ["gunicorn"])
-    monkeypatch.setenv("GUNICORN_CMD_ARGS", '--workers "2"')
-    monkeypatch.delenv("WEB_CONCURRENCY", raising=False)
     assert _configured_worker_count()[0] == "2"
 
 
 def test_unbalanced_quoting_does_not_raise(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setitem(app_module._LAUNCH_ENV, "SERVER_SOFTWARE", "gunicorn/26.0.0")
+    monkeypatch.setitem(app_module._LAUNCH_ENV, "GUNICORN_CMD_ARGS", '--workers "2')
+    monkeypatch.setitem(app_module._LAUNCH_ENV, "SFDA_CONFIG_WORKERS", None)
+    monkeypatch.setitem(app_module._LAUNCH_ENV, "WEB_CONCURRENCY", None)
     monkeypatch.setattr("sys.argv", ["gunicorn"])
-    monkeypatch.setenv("GUNICORN_CMD_ARGS", '--workers "2')
-    monkeypatch.delenv("WEB_CONCURRENCY", raising=False)
-    assert _configured_worker_count() == ("1", "WEB_CONCURRENCY=1")
-
-
-def test_a_config_file_launch_says_unknown_rather_than_one(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """The blind spot must not be reported as a verified single worker."""
-    monkeypatch.setattr("sys.argv", ["gunicorn", "-c", "gunicorn.conf.py"])
-    monkeypatch.delenv("GUNICORN_CMD_ARGS", raising=False)
-    monkeypatch.delenv("WEB_CONCURRENCY", raising=False)
-    count, source = _configured_worker_count()
-    assert count == "unknown"
-    assert "config file" in source
+    assert _configured_worker_count() == ("unknown", "GUNICORN_CMD_ARGS cannot be parsed")
 
 
 def test_a_non_gunicorn_launch_ignores_gunicorn_arguments(
@@ -160,33 +126,41 @@ def test_a_non_gunicorn_launch_ignores_gunicorn_arguments(
 ) -> None:
     """`python web/api/app.py --workers 2` runs Flask's development server,
     which ignores the flag. Warning about it would be a false alarm."""
+    monkeypatch.setitem(app_module._LAUNCH_ENV, "SERVER_SOFTWARE", None)
+    monkeypatch.setitem(app_module._LAUNCH_ENV, "GUNICORN_CMD_ARGS", "--workers=4")
+    monkeypatch.setitem(app_module._LAUNCH_ENV, "SFDA_CONFIG_WORKERS", None)
+    monkeypatch.setitem(app_module._LAUNCH_ENV, "WEB_CONCURRENCY", None)
     monkeypatch.setattr("sys.argv", ["web/api/app.py", "--workers", "2"])
-    monkeypatch.setenv("GUNICORN_CMD_ARGS", "--workers=4")
-    monkeypatch.delenv("WEB_CONCURRENCY", raising=False)
-    assert _configured_worker_count() == ("1", "WEB_CONCURRENCY=1")
+    assert _configured_worker_count() == ("1", "not a gunicorn launch")
 
 
 def test_web_concurrency_still_answers_when_nothing_else_does(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setitem(app_module._LAUNCH_ENV, "SERVER_SOFTWARE", "gunicorn/26.0.0")
+    monkeypatch.setitem(app_module._LAUNCH_ENV, "GUNICORN_CMD_ARGS", None)
+    monkeypatch.setitem(app_module._LAUNCH_ENV, "SFDA_CONFIG_WORKERS", None)
+    monkeypatch.setitem(app_module._LAUNCH_ENV, "WEB_CONCURRENCY", "4")
     monkeypatch.setattr("sys.argv", ["gunicorn"])
-    monkeypatch.delenv("GUNICORN_CMD_ARGS", raising=False)
-    monkeypatch.setenv("WEB_CONCURRENCY", "4")
-    assert _configured_worker_count() == ("4", "WEB_CONCURRENCY=4")
+    assert _configured_worker_count() == ("4", "WEB_CONCURRENCY sets 4 workers")
 
 
 def test_web_concurrency_is_compared_as_a_number(monkeypatch: pytest.MonkeyPatch) -> None:
     """`WEB_CONCURRENCY=01` is one worker, and must not warn."""
+    monkeypatch.setitem(app_module._LAUNCH_ENV, "SERVER_SOFTWARE", "gunicorn/26.0.0")
+    monkeypatch.setitem(app_module._LAUNCH_ENV, "GUNICORN_CMD_ARGS", None)
+    monkeypatch.setitem(app_module._LAUNCH_ENV, "SFDA_CONFIG_WORKERS", None)
+    monkeypatch.setitem(app_module._LAUNCH_ENV, "WEB_CONCURRENCY", "01")
     monkeypatch.setattr("sys.argv", ["gunicorn"])
-    monkeypatch.delenv("GUNICORN_CMD_ARGS", raising=False)
-    monkeypatch.setenv("WEB_CONCURRENCY", "01")
     assert _configured_worker_count()[0] == "1"
 
 
 def test_a_single_worker_launch_is_quiet(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setitem(app_module._LAUNCH_ENV, "SERVER_SOFTWARE", "gunicorn/26.0.0")
+    monkeypatch.setitem(app_module._LAUNCH_ENV, "GUNICORN_CMD_ARGS", None)
+    monkeypatch.setitem(app_module._LAUNCH_ENV, "SFDA_CONFIG_WORKERS", None)
+    monkeypatch.setitem(app_module._LAUNCH_ENV, "WEB_CONCURRENCY", None)
     monkeypatch.setattr("sys.argv", ["gunicorn", "--workers", "1", "--threads", "8"])
-    monkeypatch.delenv("GUNICORN_CMD_ARGS", raising=False)
-    monkeypatch.delenv("WEB_CONCURRENCY", raising=False)
     assert _configured_worker_count()[0] == "1"
 
 
@@ -196,8 +170,10 @@ def _warnings_from_a_launch(
     from web.api.app import create_app
 
     monkeypatch.setattr("sys.argv", argv)
-    monkeypatch.delenv("GUNICORN_CMD_ARGS", raising=False)
-    monkeypatch.delenv("WEB_CONCURRENCY", raising=False)
+    monkeypatch.setitem(app_module._LAUNCH_ENV, "SERVER_SOFTWARE", "gunicorn/26.0.0")
+    monkeypatch.setitem(app_module._LAUNCH_ENV, "GUNICORN_CMD_ARGS", None)
+    monkeypatch.setitem(app_module._LAUNCH_ENV, "SFDA_CONFIG_WORKERS", None)
+    monkeypatch.setitem(app_module._LAUNCH_ENV, "WEB_CONCURRENCY", None)
     with caplog.at_level(logging.WARNING):
         create_app(testing=True)
     return [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
@@ -232,9 +208,104 @@ def test_a_single_worker_launch_warns_about_nothing(
 def test_an_unreadable_launch_says_so_at_startup(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
-    """A config-file launch must produce the "cannot verify" warning, not
-    silence — silence is what a fabricated "1" would buy."""
-    warnings = _warnings_from_a_launch(monkeypatch, caplog, ["gunicorn", "-c", "gunicorn.conf.py"])
+    """A gunicorn launch without any worker declaration must produce the
+    "cannot verify" warning, not silence — silence is what a fabricated "1"
+    would buy."""
+    warnings = _warnings_from_a_launch(monkeypatch, caplog, ["gunicorn"])
     cannot_verify = [m for m in warnings if "Cannot verify" in m]
     assert cannot_verify, f"no cannot-verify warning in {warnings}"
-    assert "config file" in cannot_verify[0]
+    assert "names no worker count" in cannot_verify[0]
+
+
+def test_python_m_gunicorn_is_recognized_via_server_software(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setitem(app_module._LAUNCH_ENV, "SERVER_SOFTWARE", "gunicorn/26.0.0")
+    monkeypatch.setitem(app_module._LAUNCH_ENV, "GUNICORN_CMD_ARGS", None)
+    monkeypatch.setitem(app_module._LAUNCH_ENV, "SFDA_CONFIG_WORKERS", None)
+    monkeypatch.setitem(app_module._LAUNCH_ENV, "WEB_CONCURRENCY", None)
+    monkeypatch.setattr("sys.argv", ["__main__.py", "--workers", "2"])
+    count, source = _configured_worker_count()
+    assert count == "2"
+    assert "the command line sets 2 workers" in source
+
+
+def test_dev_server_ignores_web_concurrency_when_not_gunicorn(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setitem(app_module._LAUNCH_ENV, "SERVER_SOFTWARE", None)
+    monkeypatch.setitem(app_module._LAUNCH_ENV, "GUNICORN_CMD_ARGS", None)
+    monkeypatch.setitem(app_module._LAUNCH_ENV, "SFDA_CONFIG_WORKERS", None)
+    monkeypatch.setitem(app_module._LAUNCH_ENV, "WEB_CONCURRENCY", "4")
+    monkeypatch.setattr("sys.argv", ["web/api/app.py"])
+    assert _configured_worker_count() == ("1", "not a gunicorn launch")
+
+
+def test_sfda_config_workers_declares_config_file_count(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setitem(app_module._LAUNCH_ENV, "SERVER_SOFTWARE", "gunicorn/26.0.0")
+    monkeypatch.setitem(app_module._LAUNCH_ENV, "GUNICORN_CMD_ARGS", None)
+    monkeypatch.setitem(app_module._LAUNCH_ENV, "SFDA_CONFIG_WORKERS", "1")
+    monkeypatch.setitem(app_module._LAUNCH_ENV, "WEB_CONCURRENCY", None)
+    monkeypatch.setattr("sys.argv", ["gunicorn"])
+    assert _configured_worker_count() == ("1", "gunicorn.conf.py sets 1 workers")
+
+
+def test_command_line_overrides_sfda_config_workers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setitem(app_module._LAUNCH_ENV, "SERVER_SOFTWARE", "gunicorn/26.0.0")
+    monkeypatch.setitem(app_module._LAUNCH_ENV, "GUNICORN_CMD_ARGS", None)
+    monkeypatch.setitem(app_module._LAUNCH_ENV, "SFDA_CONFIG_WORKERS", "4")
+    monkeypatch.setitem(app_module._LAUNCH_ENV, "WEB_CONCURRENCY", None)
+    monkeypatch.setattr("sys.argv", ["gunicorn", "--workers", "1"])
+    count, source = _configured_worker_count()
+    assert count == "1"
+    assert "the command line sets 1 workers" in source
+
+
+def test_guard_never_calls_getcwd(monkeypatch: pytest.MonkeyPatch) -> None:
+    def _exploding_getcwd() -> str:
+        raise AssertionError("os.getcwd() was called by the guard")
+
+    monkeypatch.setitem(app_module._LAUNCH_ENV, "SERVER_SOFTWARE", "gunicorn/26.0.0")
+    monkeypatch.setitem(app_module._LAUNCH_ENV, "GUNICORN_CMD_ARGS", None)
+    monkeypatch.setitem(app_module._LAUNCH_ENV, "SFDA_CONFIG_WORKERS", "1")
+    monkeypatch.setitem(app_module._LAUNCH_ENV, "WEB_CONCURRENCY", None)
+    monkeypatch.setattr("sys.argv", ["gunicorn"])
+    with monkeypatch.context() as m:
+        m.setattr("os.getcwd", _exploding_getcwd)
+        count, _ = _configured_worker_count()
+    assert count == "1"
+
+
+def test_post_step_0_production_line_boots_silently(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    monkeypatch.setitem(app_module._LAUNCH_ENV, "SERVER_SOFTWARE", "gunicorn/26.0.0")
+    monkeypatch.setitem(app_module._LAUNCH_ENV, "GUNICORN_CMD_ARGS", None)
+    monkeypatch.setitem(app_module._LAUNCH_ENV, "SFDA_CONFIG_WORKERS", "1")
+    monkeypatch.setitem(app_module._LAUNCH_ENV, "WEB_CONCURRENCY", None)
+    prod_argv = [
+        "/var/www/sfda-copilot/venv/bin/gunicorn",
+        "--bind",
+        "127.0.0.1:5001",
+        "--threads",
+        "8",
+        "--preload",
+        "--max-requests",
+        "1000",
+        "--max-requests-jitter",
+        "100",
+        "--chdir",
+        "/var/www/sfda-copilot",
+        "web.api.app:create_app()",
+    ]
+    from web.api.app import create_app
+
+    monkeypatch.setattr("sys.argv", prod_argv)
+    with caplog.at_level(logging.WARNING):
+        create_app(testing=True)
+    warnings = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
+    assert not [m for m in warnings if "single-worker" in m], warnings
