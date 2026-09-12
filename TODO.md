@@ -37,7 +37,6 @@ bottom of this file: [How this file works](#how-this-file-works).
 - [A silent truncation from a provider that omits `finish_reason` is still undetected](#a-silent-truncation-from-a-provider-that-omits-finish_reason-is-still-undetected) — diagnosed; needs `include_usage`, not a different default.
 - [An empty answer toasts "failed to send", which is the wrong thing](#an-empty-answer-toasts-failed-to-send-which-is-the-wrong-thing) — cosmetic, needs a bilingual key pair.
 - [`max_tokens` has no floor, and a low one guarantees empty answers](#max_tokens-has-no-floor-and-a-low-one-guarantees-empty-answers) — not started; prevention rather than the reporting that now exists.
-- [Ten source comments cite a plan file that has been archived](#ten-source-comments-cite-a-plan-file-that-has-been-archived) — doc rot, mechanical to fix.
 - [Security email is English-only](#security-email-is-english-only-on-a-product-that-is-bilingual-by-construction) — blocked in the Supabase dashboard, not code.
 - [SettingsService's two cache slots each query the settings row independently](#settingsservices-two-cache-slots-each-query-the-settings-row-independently) — not a correctness issue; recorded in case the round trip ever becomes measurable.
 - [Answer from a second provider](#answer-from-a-second-provider--and-why-the-code-is-the-easy-half) — the citation-fidelity harness is built (2026-08-22); still blocked on running it for real against the API.
@@ -52,7 +51,7 @@ bottom of this file: [How this file works](#how-this-file-works).
 - [The browser suite flakes intermittently in test_source_panel.py](#the-browser-suite-flakes-intermittently-in-test_source_panelpy) — undiagnosed; resource-contention evidence only.
 - [Know what people actually ask](#know-what-people-actually-ask--without-reading-anyones-conversation) — an identity-free question log; not started, gated on scale.
 - [Enable the token-verification cache once production numbers justify it](#enable-the-token-verification-cache-once-production-numbers-justify-it) — single-flight (the worker-starvation fix) shipped 2026-08-27 at no revocation cost; the optional positive cache stays off, gated on measurement.
-- [Admin broadcast & Reader Notification Center](#admin-broadcast--reader-notification-center-popups-banners-and-inbox-history) — implemented 2026-08-24; live login/session smoke-tested against production 2026-08-29 (by hand), which also surfaced and closed a real `mark-read` 500 the same day ([fix write-up](docs/notification-mark-read-500-fix.md)); still owes a live Realtime-push check; the sign-out teardown shipped 2026-09-11 and the reauthenticate path needs none; the `mypy web` caveat closed 2026-09-08.
+- [Admin broadcast & Reader Notification Center](#admin-broadcast--reader-notification-center-popups-banners-and-inbox-history) — implemented 2026-08-24; live login/session smoke-tested against production 2026-08-29 (by hand), which also surfaced and closed a real `mark-read` 500 the same day ([fix write-up](docs/archive/2026-08-29_notification-mark-read-500.md)); still owes a live Realtime-push check; the sign-out teardown shipped 2026-09-11 and the reauthenticate path needs none; the `mypy web` caveat closed 2026-09-08.
 - [The privacy policy (/privacy) is a draft, not reviewed legal text](#the-privacy-policy-privacy-is-a-draft-not-reviewed-legal-text) — consent shipped against this draft; the legal review of the text is what is still owed.
 - [Account deletion (Spec 4)](#account-deletion-spec-4--blocked-on-a-product-decision-not-on-engineering) — blocked on an unclosed product decision; both migrations written.
 - [A conversation id now reaches the access log](#a-conversation-id-now-reaches-the-access-log) — a verification task, possibly already fine; unverified either way.
@@ -152,36 +151,6 @@ A floor needs a number, and the honest number is model-dependent, so it probably
 belongs in `allowed_models` in `config.yaml` beside each model's ceiling rather
 than as one global constant. That reopens the shape of the model contract, which is
 why it was not done alongside the reporting.
-
----
-
-### Ten source comments cite a plan file that has been archived
-
-**Where:** `static/js/app.js:122`, `static/js/modules/handlers.js:457`,
-`static/js/modules/route.js:4`, `static/js/modules/services.js:496,662,793`, and
-`web/api/app.py:1356,1406,1677,2435`.
-
-**What is wrong.** All of them cite `docs/per-tab-conversation-deep-linking-plan.md`
-by section. That path no longer exists: the file is
-`docs/archive/2026-08-22_per-tab-deep-linking.md`, carrying `status: superseded`.
-So a reader following any of these citations finds nothing, and one who locates the
-archived file is reading a document the archive itself marks as not-current —
-exactly the failure mode `CLAUDE.md` warns about for `docs/archive/`.
-
-**Who it reaches.** Every contributor who tries to follow the reasoning behind the
-URL-as-pointer conversation model, which is most of them, because these comments
-sit on the load-bearing parts of it.
-
-**How it was found.** While editing `route.js` for the demo-flag fix; the citation
-at its line 4 was checked and did not resolve.
-
-**What fixing it would disturb.** Nothing functional — it is ten comment edits. The
-real decision is what to point them AT: `docs/ARCHITECTURE.md` now holds the live
-contract, but it does not carry the plan's section numbers (§1, §3.4, §5.1 and so
-on) that these comments cite precisely. Either the citations lose that precision,
-or ARCHITECTURE.md grows anchors to match. Deliberately not bundled into the
-demo-flag commit: one concern per commit, and this one spans four files that change
-for no other reason.
 
 ---
 
@@ -330,7 +299,7 @@ on production. If buffering occurred, the token-by-token stream would stall and
 dump the complete text at the end.
 
 **How it was found.** Lifted out of `docs/archive/TODO-resolved.md` (finding F10 in
-`docs/worker-count-guard-fix-plan.md`). The entry was resolved and archived, but
+`docs/archive/2026-09-12_worker-count-guard.md`). The entry was resolved and archived, but
 left an unresolved verification instruction that belongs in active tracking.
 
 **What fixing it would disturb.** No code changes. A human logs in, asks a question
@@ -1161,7 +1130,7 @@ genuinely broken production code throughout. **Fixed 2026-08-29** in both the ro
 response dict explicitly rather than via colliding kwargs) and the in-memory double (made its
 return shape match the real RPC's, so this class of bug fails a test from now on). Full
 diagnosis, root cause and verification:
-[`docs/notification-mark-read-500-fix.md`](docs/notification-mark-read-500-fix.md). 864-test
+[`docs/archive/2026-08-29_notification-mark-read-500.md`](docs/archive/2026-08-29_notification-mark-read-500.md). 864-test
 non-browser suite green afterward, and the operator independently confirmed it live the same
 day after restarting the server: four `mark-read` calls and one `mark-all-read` call all `200`,
 toast/banner/modal/inbox all rendering correctly, no further `TypeError`. This is the second

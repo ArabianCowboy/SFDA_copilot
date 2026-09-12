@@ -1,6 +1,6 @@
 """Two tabs, one browser context: the collision this feature exists to remove.
 
-docs/per-tab-conversation-deep-linking-plan.md §7.2. Two Playwright `Page`s in
+docs/archive/2026-08-22_per-tab-deep-linking.md §7.2. Two Playwright `Page`s in
 one `BrowserContext` — cookies and `localStorage` shared, same signed-in
 reader, while `sessionStorage` and the DOM are per-page — is a REAL second
 tab. §7.1 built the fixture-level plumbing this file depends on:

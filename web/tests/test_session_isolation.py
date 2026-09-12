@@ -1,6 +1,6 @@
 """One browser, two readers: the second must never inherit the first's chat.
 
-Before docs/per-tab-conversation-deep-linking-plan.md this rested partly on a
+Before docs/archive/2026-08-22_per-tab-deep-linking.md this rested partly on a
 `conv_id` in the Flask session cookie, which keyed the server-side
 `ConversationStore` that both the streaming and blocking routes feed straight
 back to the model. That cookie is gone (§1, §5.1): every request now names its
@@ -262,8 +262,8 @@ def test_a_second_reader_cannot_load_the_first_readers_session(app, client):
     """The assertion isolation now actually rests on.
 
     There is no cookie rotation to lean on any more — it never was the
-    guarantee, only a convenience (docs/per-tab-conversation-deep-linking-
-    plan.md §1). What keeps one reader's regulatory questions out of another's
+    guarantee, only a convenience
+    (docs/archive/2026-08-22_per-tab-deep-linking.md §1). What keeps one reader's regulatory questions out of another's
     is the owner filter inside the RPC, and nothing above this line tests it.
     """
     response = drain(client.post("/api/chat/stream", json={"query": "first"}, headers=AUTH))
@@ -276,7 +276,7 @@ def test_a_second_reader_cannot_load_the_first_readers_session(app, client):
 
 # NO MORE "resume" TESTS HERE. `_resolve_conversation_id`'s resume branch and
 # `CHAT_RESUME_LATEST_SESSION` are deleted
-# (docs/per-tab-conversation-deep-linking-plan.md §5.5, Decision 1a): `/` is
+# (docs/archive/2026-08-22_per-tab-deep-linking.md §5.5, Decision 1a): `/` is
 # always a new conversation, and there is no cookie-held "most recent
 # session" for a returning reader — or a stranger on their browser — to pick
 # up. What replaces it, a client-supplied id under the wrong owner being

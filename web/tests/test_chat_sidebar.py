@@ -255,7 +255,7 @@ def test_opening_a_conversation_draws_its_transcript(browser_page: Page):
 def test_the_open_conversation_is_marked_active(browser_page: Page):
     """The highlight is a claim about which conversation the reader's NEXT
     question joins. It comes from the URL now (§5.3 of
-    docs/per-tab-conversation-deep-linking-plan.md) rather than the server's
+    docs/archive/2026-08-22_per-tab-deep-linking.md) rather than the server's
     signed-cookie `active` field: that field is per-BROWSER, and per-tab
     conversations mean it is routinely wrong for every tab but one — "worse
     than one that highlights none", by its own former rationale. The client

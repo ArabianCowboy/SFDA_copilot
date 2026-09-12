@@ -327,7 +327,7 @@ class ChatBackend(Protocol):
         depth against resurrecting a deleted conversation, not an authorization
         control: the real refusal is Flask's preflight against
         ``session_exists`` before any generation happens
-        (docs/per-tab-conversation-deep-linking-plan.md §3.4).
+        (docs/archive/2026-08-22_per-tab-deep-linking.md §3.4).
         """
         ...
 

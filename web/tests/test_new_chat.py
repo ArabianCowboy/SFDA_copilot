@@ -1,6 +1,6 @@
 """New chat: end a conversation without ending the session.
 
-Decision 2 of docs/per-tab-conversation-deep-linking-plan.md: "New chat" is a
+Decision 2 of docs/archive/2026-08-22_per-tab-deep-linking.md: "New chat" is a
 client-side navigation from `/c/<id>` to `/`, not a server round trip. There
 is no `/api/conversation/reset` any more — its entire job was rotating a
 session-held `conv_id` and, on `undo`, restoring a set-aside `prev_conv_id`,
@@ -284,7 +284,7 @@ def test_clearing_keeps_the_faq_rail(authenticated_page):
 
 
 def test_new_chat_navigates_to_the_root_url(authenticated_page):
-    """Decision 2 (docs/per-tab-conversation-deep-linking-plan.md): "New chat"
+    """Decision 2 (docs/archive/2026-08-22_per-tab-deep-linking.md): "New chat"
     is a navigation from `/c/<id>` to `/`, not a server round trip."""
     send(authenticated_page)
     expect(authenticated_page).to_have_url(re.compile(r"/c/[0-9a-f-]{36}$"))

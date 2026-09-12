@@ -43,6 +43,50 @@ recording.
 
 ## [HISTORICAL] Resolved bugs
 
+### [HISTORICAL] ~~Ten source comments cite a plan file that has been archived~~ — FIXED 2026-09-12
+
+**Where:** `static/js/app.js:122`, `static/js/modules/handlers.js:457`,
+`static/js/modules/route.js:4`, `static/js/modules/services.js:496,662,793`, and
+`web/api/app.py:1356,1406,1677,2435`.
+
+**What is wrong.** All of them cite `docs/per-tab-conversation-deep-linking-plan.md`
+by section. That path no longer exists: the file is
+`docs/archive/2026-08-22_per-tab-deep-linking.md`, carrying `status: superseded`.
+So a reader following any of these citations finds nothing, and one who locates the
+archived file is reading a document the archive itself marks as not-current —
+exactly the failure mode `CLAUDE.md` warns about for `docs/archive/`.
+
+**Who it reaches.** Every contributor who tries to follow the reasoning behind the
+URL-as-pointer conversation model, which is most of them, because these comments
+sit on the load-bearing parts of it.
+
+**How it was found.** While editing `route.js` for the demo-flag fix; the citation
+at its line 4 was checked and did not resolve.
+
+**What fixing it would disturb.** Nothing functional — it is ten comment edits. The
+real decision is what to point them AT: `docs/ARCHITECTURE.md` now holds the live
+contract, but it does not carry the plan's section numbers (§1, §3.4, §5.1 and so
+on) that these comments cite precisely. Either the citations lose that precision,
+or ARCHITECTURE.md grows anchors to match. Deliberately not bundled into the
+demo-flag commit: one concern per commit, and this one spans four files that change
+for no other reason.
+
+**Closed 2026-09-12.** All citations now point at
+`docs/archive/2026-08-22_per-tab-deep-linking.md`. The section numbers were kept: they are
+the precise thing these comments cite, and the archived file still carries them, so losing
+them to gain a live-document link would have traded precision for tidiness. The archive
+banner already tells a reader it is history — which is the correct signal here, because the
+reasoning behind the URL-as-pointer model _is_ history; `docs/ARCHITECTURE.md` holds what is
+current. `ARCHITECTURE.md` was therefore not given matching anchors.
+
+**The count in the title was wrong, and by a lot.** It said ten comments in four files. The
+real figure was **41 references across 17 files** — `web/api/app.py` alone had nine, plus
+`auth.py`, `config.yaml`, `en.yaml`, `chat_store.py`, `conftest.py`, three `static/js/modules/`
+files and nine test files. Five of them were line-wrapped across two lines, so a
+whole-path search missed them and only a partial-string sweep found them. Anyone estimating
+this kind of cleanup should count first: the entry was filed after spotting the problem in
+one file and generalising.
+
 ### [HISTORICAL] ~~Production is eight commits behind and is missing the logout-revocation fix~~ — DEPLOYED 2026-09-12
 
 **Where:** the live VPS deployment, not this repository. `/var/www/sfda-copilot` last pulled
@@ -1366,7 +1410,7 @@ still unwritten at first — dropping it became its own, separate `TODO.md` entr
 
 ### [HISTORICAL] ~~Every real call to `/api/notifications/mark-read` crashed with a 500~~ — FIXED 2026-08-29
 
-**Full diagnosis and fix:** [`docs/notification-mark-read-500-fix.md`](../notification-mark-read-500-fix.md).
+**Full diagnosis and fix:** [`docs/archive/2026-08-29_notification-mark-read-500.md`](2026-08-29_notification-mark-read-500.md).
 
 **Where:** `web/api/app.py`'s `handle_notifications_mark_read` (the `/api/notifications/mark-read`
 route), and `web/services/notification_store.py`'s `InMemoryNotificationBackend.mark_read`.

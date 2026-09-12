@@ -727,7 +727,7 @@ SEED_SUPABASE_SESSION = (
 )
 
 # `/` never fetches history any more — Decision 1(a) of
-# docs/per-tab-conversation-deep-linking-plan.md — so a test that wants a
+# docs/archive/2026-08-22_per-tab-deep-linking.md — so a test that wants a
 # stored transcript to hydrate on load must reload AT the conversation's own
 # URL, not at "/". The mock behind `route_chat_history` returns the same
 # canned body regardless of which id is asked for, so any well-formed uuid
@@ -988,7 +988,7 @@ def test_late_history_cannot_resurrect_a_conversation_the_reader_ended(browser_p
     Hydration opens a door the URL alone cannot close: the transcript request
     is dispatched at sign-in and not awaited, so a reader who presses New chat
     — a navigation to `/`, per Decision 2 of
-    docs/per-tab-conversation-deep-linking-plan.md — while it is still
+    docs/archive/2026-08-22_per-tab-deep-linking.md — while it is still
     travelling would have the ended conversation drawn back onto the screen
     when it lands.
 

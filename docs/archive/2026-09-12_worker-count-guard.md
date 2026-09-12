@@ -1,4 +1,49 @@
-# Fixing the single-worker startup guard
+---
+authority: historical
+status: superseded
+do_not_implement: true
+archived: 2026-09-12
+supersedes_note: >
+  A finished plan. Every step in it was built, committed and deployed to production
+  on the day it was written, so its own "STATUS: PROPOSAL - nothing here is built"
+  line was already false when it was archived. Three of its verdicts reversed
+  earlier drafts and are marked REVERSED in place; two further corrections arrived
+  after it was written and are stated below.
+live_authority:
+  - docs/OPERATIONS.md
+  - docs/ARCHITECTURE.md
+  - deploy/sfda-copilot.service
+  - gunicorn.conf.py
+---
+
+> [!CAUTION]
+> **You are reading history, not a specification.** Do not implement anything found
+> in this file without first confirming it against `docs/OPERATIONS.md` or the code.
+> Every heading below is prefixed `[HISTORICAL]` so a search result cannot be mistaken
+> for current design.
+>
+> **Final position, so no reading order is required.** All of this shipped on
+> 2026-09-12 and is live: the guard was rewritten (`_configured_worker_count` in
+> `web/api/app.py`), `_gunicorn_config_file_in_play` was deleted, `gunicorn.conf.py`
+> was committed at the repo root, and `--workers` was removed from the production
+> `ExecStart`. Verified on the box - no `--workers` in the running command line, one
+> master plus one worker, HTTPS 200, `NRestarts=0`.
+>
+> **Reversed after this was written - the systemd unit IS in version control.** §2
+> argues it cannot be, and that `docs/OPERATIONS.md` should carry a transcript of it
+> instead. Overturned the same day: host-specific paths stop a committed unit from
+> being _applied_ automatically, they do not stop it being _reviewed_, and a
+> hand-copied transcript drifts exactly the way `--workers` drifted. The unit is now
+> at `deploy/sfda-copilot.service`, byte-identical to the live file, and
+> `OPERATIONS.md` points at it rather than restating it.
+>
+> **Corrected after this was written - `--chdir` plays NO part in config discovery.**
+> §2 says discovery follows the launch cwd rather than the `--chdir` target. Measured
+> on the box, `--chdir` contributes nothing at all, and `--print-config` reports
+> `config = ./gunicorn.conf.py` either way - only `raw_env` distinguishes them.
+> `WorkingDirectory=` is the load-bearing line and must never be removed.
+
+# [HISTORICAL] Fixing the single-worker startup guard
 
 STATUS: PROPOSAL 2026-09-12 — nothing here is built. Written against `a482614`, which shipped
 the guard this plan corrects. Three verdicts in here are **REVERSED** from earlier drafts and
@@ -8,7 +53,7 @@ below was read from the installed sources, not recalled.
 
 ---
 
-## 1. Why this exists
+## [HISTORICAL] 1. Why this exists
 
 The app must run single-worker: the in-RAM FAISS index, `ConversationStore`,
 `_InFlightGenerations`, `IdentityFlagsCache` and Flask-Limiter's counters are all
@@ -32,7 +77,7 @@ Two things to hold onto, because they decide every trade below:
 
 ---
 
-## 2. What the VPS reading changed
+## [HISTORICAL] 2. What the VPS reading changed
 
 The production unit, read 2026-09-12:
 
@@ -61,7 +106,7 @@ which is the live working tree. Production runs gunicorn **23.0.0**; this dev tr
 | Deployment is `git pull` into the live tree | A committed config file arrives with no new deploy machinery.                                                                       |
 | `EnvironmentFile=.env`                      | `systemd` injects `.env` **before** gunicorn starts, so gunicorn and the app see the same values. F15 is real but cannot bite here. |
 
-### REVERSED — F9: "ship a `gunicorn.conf.py`" was rejected on a false premise
+### [HISTORICAL] REVERSED — F9: "ship a `gunicorn.conf.py`" was rejected on a false premise
 
 Both earlier reviews rejected a committed `gunicorn.conf.py` because `systemd` supposedly
 starts from `/`, so cwd-based discovery (`gunicorn/config.py:583`) would never find a repo-root
@@ -72,7 +117,7 @@ The rejection's second leg survives and shapes step 0: command-line settings are
 (`gunicorn/app/base.py:189`, "Lastly, update the configuration with any command line settings"),
 verified on the box — `workers = 7` in the file plus `--workers 1` on the CLI resolved to **1**.
 
-### REVERSED — F3: real mechanism, unreachable here
+### [HISTORICAL] REVERSED — F3: real mechanism, unreachable here
 
 `gunicorn/app/base.py:163` calls `self.chdir()` while `cfg.chdir` is still its default (the
 launch cwd, `config.py:1103`), _then_ discovers the config file at `:177`, and only applies
@@ -82,7 +127,7 @@ those are the same directory. The probe is still deleted (step 1) — not for F3
 once `gunicorn.conf.py` exists in the repo root the probe returns `True` on every run
 everywhere, permanently forcing `"unknown"`.
 
-### REVERSED — an earlier draft of step 0 would have warned on every boot, forever
+### [HISTORICAL] REVERSED — an earlier draft of step 0 would have warned on every boot, forever
 
 `muse-spark-1.3` caught this and it is the most important finding in the review. A draft of
 step 0 removed `--workers 1` from `ExecStart` and put `workers = 1` in the config file. But the
@@ -97,7 +142,7 @@ in the file — but then the file is inert (the CLI wins) and the root cause is 
 step 0 takes a third route instead: the config file **declares its own resolved count into the
 environment**, where the guard can read it without executing anything.
 
-### Not a bug: the archive salts
+### [HISTORICAL] Not a bug: the archive salts
 
 The VPS reading flagged `ARCHIVE_OWNER_SALT`/`ARCHIVE_SESSION_SALT` as unset, "so the archive
 is silently off in production." That is the intended, documented state. `README.md:243-244`
@@ -109,9 +154,9 @@ refuse exactly that. No action — **do not set them without reading that guard 
 
 ---
 
-## 3. The plan
+## [HISTORICAL] 3. The plan
 
-### Step 0 — ops, on the VPS (the only step that addresses the root cause)
+### [HISTORICAL] Step 0 — ops, on the VPS (the only step that addresses the root cause)
 
 Commit `gunicorn.conf.py` to the repo root. **Two lines:**
 
@@ -177,7 +222,7 @@ the first `chdir()` at `:163` precedes the import — but only via a default eva
 gunicorn's import time that silently depends on `WorkingDirectory=` never being removed.
 `--chdir` cannot drift dangerously; `--workers` can. Move the one flag that caused the outage.
 
-### Step 1 — rewrite the guard (`web/api/app.py`)
+### [HISTORICAL] Step 1 — rewrite the guard (`web/api/app.py`)
 
 At module top level, **after** the `dotenv_values(...)` read at `:129` and **before** the
 `load_dotenv(...)` call at `:131` (`dotenv_values` is side-effect-free, which is why that gap
@@ -277,7 +322,7 @@ because under `--preload` the app is imported at `arbiter.py:138` inside `setup(
 `__init__` at `:63`, _before_ `on_starting` at `:162`. `raw_env` at `:133-136` is the only hook
 that runs early enough.
 
-### Step 2 — tests (`web/tests/test_worker_count_guard.py`)
+### [HISTORICAL] Step 2 — tests (`web/tests/test_worker_count_guard.py`)
 
 **The one thing an implementer will get wrong.** The snapshot is taken at module import, so
 `monkeypatch.setenv("SERVER_SOFTWARE", …)` is a **no-op** for this function. Every test must
@@ -309,7 +354,7 @@ Fix the false comment at `:35`: that vector is `0.0.0.0`, 2 workers, 2 threads, 
 `--max-requests`, no `--chdir` — the **drifted** line, not "the real production line, verbatim
 apart from the paths" (F13). Keep it, relabelled as the regression vector.
 
-### Step 3 — documents, same commit
+### [HISTORICAL] Step 3 — documents, same commit
 
 | File                               | Change                                                                                                                                                                                                                                               | Finding |
 | ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
@@ -329,7 +374,7 @@ On F10: the VPS reading is strong circumstantial evidence streaming works —
 buffering would have prevented. That is inference from logs, not the direct check, so the
 `TODO.md` entry stays open.
 
-### Step 4 — deliberately not doing
+### [HISTORICAL] Step 4 — deliberately not doing
 
 - **Pinning `gunicorn`** (F14). After step 1 the guard imports nothing from gunicorn, and every
   other line in `requirements.txt` is unpinned. **But see §4.1** — it deserves its own decision.
@@ -341,7 +386,7 @@ buffering would have prevented. That is inference from logs, not the direct chec
 
 ---
 
-## 4. Separate decisions this turned up
+## [HISTORICAL] 4. Separate decisions this turned up
 
 1. **Production runs gunicorn 23.0.0; this dev tree has 26.0.0** — same unpinned
    `requirements.txt`, two majors apart. Every citation here was read from 26.0.0; the two
@@ -361,7 +406,7 @@ reader when an answer was cut short`, `fix(auth): bind logout revocation to the 
 
 ---
 
-## 5. Repo obligations this triggers
+## [HISTORICAL] 5. Repo obligations this triggers
 
 - **No `APP_VERSION` bump** (`web/api/app.py:313`) — `CLAUDE.md` rule 9 fires only on edits to
   `CLAUDE.md` itself, and there are none.

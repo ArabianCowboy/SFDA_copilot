@@ -542,7 +542,7 @@ export const Handlers = {
   /**
    * End the conversation without ending the session.
    *
-   * DECISION 2 (docs/per-tab-conversation-deep-linking-plan.md): "New chat"
+   * DECISION 2 (docs/archive/2026-08-22_per-tab-deep-linking.md): "New chat"
    * is a navigation from `/c/<id>` to `/`, and undo is the Back button —
    * free, per-tab, already understood. There is no server call here any
    * more, and that is not an omission: a client-supplied conversation id has

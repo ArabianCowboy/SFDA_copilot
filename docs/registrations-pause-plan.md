@@ -5,6 +5,14 @@ TODO.md entry this plan closed carries the short summary of what shipped.
 
 # Registrations Pause
 
+> **Do not archive this file without budgeting for the citation rewrite.** Fourteen files
+> cite it by section — `web/api/auth.py`, `web/api/app.py`, `web/services/settings_service.py`,
+> `web/config.yaml`, `static/js/admin/ui.js`, `static/css/components.css`, four test files,
+> `docs/ARCHITECTURE.md` and `docs/OPERATIONS.md`. Archiving it is that rewrite, not a
+> `git mv`. `docs/archive/TODO-resolved.md`'s _Ten source comments cite a plan file that has
+> been archived_ is what happens when that is skipped: it was filed as ten and turned out to
+> be forty-one.
+
 **Source:** `TODO.md` → [Registrations pause — let an operator pause new signups](../TODO.md#registrations-pause--let-an-operator-pause-new-signups).
 
 **Read the correction in §1 before anything else.** The filed entry's central premise is
@@ -522,7 +530,6 @@ behaviour, and guarantees no test ever sends real confirmation mail.
 ```python
 sent = []
 
-
 def capture(route):
     sent.append(route.request.post_data_json)
     route.fulfill(
@@ -530,7 +537,6 @@ def capture(route):
         content_type="application/json",
         body='{"message":"User created successfully","user":{"id":"u1","email":"new@example.com"}}',
     )
-
 
 browser_page.route("**/auth/signup", capture)
 ```
@@ -570,10 +576,8 @@ signup_enabled: true
 ```python
 NON_GENERATION_KEYS: tuple[str, ...] = ("signup_enabled",)
 
-
 def deployed_non_generation_defaults() -> dict[str, Any]:
     return {"signup_enabled": config.get("server", "signup_enabled", True)}
-
 
 class SettingsService:
     def __init__(

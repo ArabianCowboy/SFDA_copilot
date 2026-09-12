@@ -1,6 +1,6 @@
 """The `/c/<id>` deep-linking contract: the server half.
 
-docs/per-tab-conversation-deep-linking-plan.md §3. Client-side navigation
+docs/archive/2026-08-22_per-tab-deep-linking.md §3. Client-side navigation
 (route.js, the history.state lifecycle, the multi-tab proof) is tested in
 `test_multi_tab_conversations.py` — this file is the request/response
 contract a browser is not required to prove: a client-supplied
@@ -138,7 +138,7 @@ def test_a_client_supplied_conversation_id_writes_no_cookie(client, ask):
 def test_an_absent_conversation_id_starts_a_new_conversation(client, ask):
     """§8 step 6: the cookie fallback is gone. ABSENT is no longer a signal
     that only a cookie could resolve — `/` is always a new conversation
-    (Decision 1a of docs/per-tab-conversation-deep-linking-plan.md) — so it is
+    (Decision 1a of docs/archive/2026-08-22_per-tab-deep-linking.md) — so it is
     minted right here, exactly like a malformed value, and touches no
     session state either."""
     response = ask(client)

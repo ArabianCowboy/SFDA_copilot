@@ -499,7 +499,7 @@ def chat_history(messages=(), *, conversation_id="c0ffee00-0000-4000-8000-000000
     """A `GET /api/chat/history` body.
 
     No `resumed` field — the fallback it described is deleted
-    (docs/per-tab-conversation-deep-linking-plan.md §5.5, Decision 1a).
+    (docs/archive/2026-08-22_per-tab-deep-linking.md §5.5, Decision 1a).
 
     The transcript is drawn from this endpoint on every sign-in since step 6, so
     a test that does not route it gets whatever the live test server holds —
@@ -584,7 +584,7 @@ def chat_sessions(sessions=(), *, next_cursor=None):
     """A `GET /api/chat/sessions` body.
 
     No `active` field — the client knows its own current conversation from
-    its own URL now (§5.3 of docs/per-tab-conversation-deep-linking-plan.md).
+    its own URL now (§5.3 of docs/archive/2026-08-22_per-tab-deep-linking.md).
 
     Empty by default, which matters for every test that is NOT about the
     sidebar: the tab defaults to Chats when the list comes back with rows and to

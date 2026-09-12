@@ -1,7 +1,7 @@
 /**
  * The conversation pointer — and the URL is the whole of it.
  *
- * docs/per-tab-conversation-deep-linking-plan.md §1, §4.1. There is no
+ * docs/archive/2026-08-22_per-tab-deep-linking.md §1, §4.1. There is no
  * per-tab store here, deliberately: §1.2 found that `sessionStorage` is
  * cloned verbatim on tab duplication, which reintroduces the exact
  * cross-tab collision this module exists to remove. No new web-storage key

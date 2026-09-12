@@ -38,7 +38,7 @@ runtime:
     jumpToLatest: "Jump to latest"
     jumpToLatestAria: "Scroll to the latest message"
     # "New chat" is a client-side navigation to `/` now (Decision 2 of
-    # docs/per-tab-conversation-deep-linking-plan.md); Back is the undo, so
+    # docs/archive/2026-08-22_per-tab-deep-linking.md); Back is the undo, so
     # there is no undo action, no restored/resetFailed/restoreFailed string,
     # and no resumed-conversation disclosure to catalogue here any more.
     cleared: "Conversation cleared"

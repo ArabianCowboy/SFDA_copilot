@@ -125,7 +125,7 @@ SIGNUP_METADATA_KEYS = (
 # the purge below cannot drift from whatever else reads this list.
 #
 # NEITHER KEY IS WRITTEN BY EITHER CHAT ROUTE ANY MORE
-# (docs/per-tab-conversation-deep-linking-plan.md §5.1, §5.4): the URL is the
+# (docs/archive/2026-08-22_per-tab-deep-linking.md §5.1, §5.4): the URL is the
 # pointer now, not a cookie, and `ConversationStore` is keyed
 # `(owner_id, conversation_id)` — a second reader on the same browser cannot
 # reach the first reader's RAM window merely by signing in, because nothing

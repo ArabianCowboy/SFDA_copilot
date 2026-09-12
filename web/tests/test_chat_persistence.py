@@ -101,7 +101,7 @@ def frames(response) -> list[tuple[str, dict]]:
 def conversation_of(response) -> str:
     """The id a chat response's turn landed under.
 
-    THE URL IS THE POINTER now (docs/per-tab-conversation-deep-linking-plan.md
+    THE URL IS THE POINTER now (docs/archive/2026-08-22_per-tab-deep-linking.md
     §1) — there is no session-held `conv_id` to read any more. Every chat
     route echoes the resolved id on the wire (§3.2), streaming inside the
     `meta`/`final`/`done` frames and blocking in the JSON body, so this reads
@@ -474,7 +474,7 @@ def test_loading_an_unowned_session_is_indistinguishable_from_an_empty_one(backe
 
 # NO MORE "CURRENT-SESSION RULE" SECTION. `_resolve_conversation_id`, the
 # cookie it resolved, `/api/conversation/reset` and its `undo`/`forget`
-# branches are all deleted (docs/per-tab-conversation-deep-linking-plan.md
+# branches are all deleted (docs/archive/2026-08-22_per-tab-deep-linking.md
 # §5.1, §5.4) — there is no session-held pointer left for a resurrection to
 # exploit, because every request names its conversation explicitly and
 # `ConversationStore` never resolves one on its own. "New chat" ending one
@@ -607,8 +607,8 @@ def test_conversation_ids_are_minted_in_the_canonical_dashed_form(client):
 
 def test_a_legacy_undashed_conversation_id_is_canonicalised_in_place(client, backend):
     """`_validate_chat_request` canonicalises the CLIENT-SUPPLIED id the same
-    way the deleted cookie rule used to (docs/per-tab-conversation-deep-
-    linking-plan.md §5.1) — a request naming a 32-char undashed id, which
+    way the deleted cookie rule used to
+    (docs/archive/2026-08-22_per-tab-deep-linking.md §5.1) — a request naming a 32-char undashed id, which
     predates the dashed form shipping, must still land under the dashed id a
     `uuid` column round-trips to."""
     legacy = "b6b1a3f0c4d94e2a9f1b7c8d2e3f4a5b"
@@ -822,8 +822,8 @@ def test_persistence_ships_on():
 
     There is no second flag to check any more. `CHAT_RESUME_LATEST_SESSION`
     waited for the TRANSCRIPT (`GET /api/chat/history`) and was retired the
-    moment the URL became the pointer (docs/per-tab-conversation-deep-
-    linking-plan.md §5.5, Decision 1a): `/` is always a new conversation, with
+    moment the URL became the pointer
+    (docs/archive/2026-08-22_per-tab-deep-linking.md §5.5, Decision 1a): `/` is always a new conversation, with
     no cookie-held "most recent session" left to resume.
 
     Read off a non-testing app, because under TESTING the in-memory backend is
@@ -850,7 +850,7 @@ def test_persistence_ships_on():
 
 def hydrate(client, conversation_id, headers=AUTH, **params):
     """`?c=<id>` names the conversation (Decision 4 of
-    docs/per-tab-conversation-deep-linking-plan.md) — there is no cookie left
+    docs/archive/2026-08-22_per-tab-deep-linking.md) — there is no cookie left
     to fall back to, so every caller must name one explicitly."""
     return client.get(
         "/api/chat/history", query_string={"c": conversation_id, **params}, headers=headers
@@ -982,7 +982,7 @@ def test_a_second_reader_cannot_hydrate_the_first_readers_transcript(client):
     filters. This proves the route did not hand B a way around it — a
     CLIENT-SUPPLIED id naming a conversation the requester does not own
     answers 404, not an empty transcript (§3.3 of
-    docs/per-tab-conversation-deep-linking-plan.md): `chat_load_session`
+    docs/archive/2026-08-22_per-tab-deep-linking.md): `chat_load_session`
     cannot otherwise tell "not yours" from "yours, but empty".
     """
     response = ask(client, "a question from the first reader", headers=AUTH)
@@ -1025,7 +1025,7 @@ def test_a_storage_failure_is_not_reported_as_an_empty_history(app, client, back
 
 # NO MORE "resume" TESTS HERE. `_resolve_conversation_id`'s resume branch,
 # `latest_session` (all three implementations) and the `resumed` field on the
-# wire are all deleted (docs/per-tab-conversation-deep-linking-plan.md §5.5,
+# wire are all deleted (docs/archive/2026-08-22_per-tab-deep-linking.md §5.5,
 # Decision 1a) — `/` is always a new conversation now, with no cookie-driven
 # fallback for an outage to corrupt.
 

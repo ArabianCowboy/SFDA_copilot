@@ -2,6 +2,13 @@ STATUS: IMPLEMENTED. Written 2026-08-23; built 2026-08-24.
 
 # Admin Broadcast & Reader Notification Center
 
+> **Do not archive this file without budgeting for the citation rewrite.** Eighteen files
+> cite it by section, including eleven under `static/js/`, `web/api/admin.py`,
+> `web/api/app.py`, `web/utils/icons.py`, `DESIGN.md` and two test files. Archiving it is
+> that rewrite, not a `git mv`. `docs/archive/TODO-resolved.md`'s _Ten source comments cite a
+> plan file that has been archived_ is what happens when that is skipped: it was filed as ten
+> and turned out to be forty-one.
+
 **Source:** `TODO.md` → [Admin broadcast & Reader Notification Center](../TODO.md#admin-broadcast--reader-notification-center-popups-banners-and-inbox-history) — see that entry's own status line for the current one-paragraph summary.
 
 **Implementation note (2026-08-24):** every section below shipped as designed, including the SDK upgrade §7 Step 4a treats as mandatory-not-conditional — `@supabase/supabase-js` is now pinned at `2.74.0` (up from `2.39.7`; `realtime-js@2.74.0` carries the `private` channel option this plan's own research proved `2.9.3` lacked entirely). That upgrade was preceded by a full read of `auth-js`'s changelog across the whole version span (no breaking change found to the `onAuthStateChange`/session-storage/PKCE behavior this app's own code depends on), and followed by the full non-browser and browser suites passing, including the auth/recovery-adjacent tests — but **not** by a login against a real Supabase project, which no tool available in that session could do. Treat the auth flow as diligently reviewed, not as production-verified, until it has been exercised against a live project once.

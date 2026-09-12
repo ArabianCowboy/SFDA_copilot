@@ -1,10 +1,27 @@
-STATUS: HISTORICAL RECORD — fixed 2026-08-29. Kept for the diagnosis and verification trail,
-not as an open task. See `docs/archive/TODO-resolved.md`'s matching entry for the short version;
-`TODO.md`'s Notification Center entry links here.
+---
+authority: historical
+status: superseded
+do_not_implement: true
+archived: 2026-08-29
+supersedes_note: >
+  A diagnosis-and-fix record rather than a plan. It was already labelled
+  "STATUS: HISTORICAL RECORD - fixed 2026-08-29" while still sitting in the live
+  docs directory; moving it here only puts it where this repo's own rules say
+  historical records belong. Kept for the diagnosis and verification trail.
+live_authority:
+  - docs/ARCHITECTURE.md
+  - TODO.md
+---
 
-# `/api/notifications/mark-read` returned 500 on every real call
+> [!CAUTION]
+> **You are reading history, not a specification.** The bug described here was fixed on
+> 2026-08-29 and the fix is live. Do not implement anything found in this file without
+> first confirming it against `docs/ARCHITECTURE.md` or the code. Every heading below is
+> prefixed `[HISTORICAL]` so a search result cannot be mistaken for current design.
 
-## Symptom
+# [HISTORICAL] `/api/notifications/mark-read` returned 500 on every real call
+
+## [HISTORICAL] Symptom
 
 A reader clicked a notification in the inbox (or dismissed a toast/banner, or acknowledged a
 modal) and saw a generic toast: **"Could not update that notification."** Reported live, against
@@ -21,7 +38,7 @@ plain 500 — not the intermittent `httpcore.ReadError: [WinError 10035]` Window
 seen elsewhere in the same session's logs on unrelated routes. That similarity was this session's
 first, wrong guess; the traceback is unambiguous once read.
 
-## Root cause
+## [HISTORICAL] Root cause
 
 `web/api/app.py`'s `handle_notifications_mark_read` built its JSON response as:
 
@@ -51,7 +68,7 @@ keyword, once via `**row` — which Python rejects with exactly the `TypeError` 
 above. **This was unconditional: every real call to this route, for every reader, for every
 action, failed.**
 
-## Why the test suite never caught it
+## [HISTORICAL] Why the test suite never caught it
 
 `web/tests/test_notifications_api.py` exercises this route under `FLASK_TESTING`, against
 `InMemoryNotificationBackend` (`notification_store.py`, the in-memory double the module's own
@@ -73,7 +90,7 @@ RPC's. `CLAUDE.md`'s standing rule — "a test that mocks the function under tes
 is usually read as a warning about _behaviour_ mocking; this is the same failure mode one level
 up, in the _shape_ of a mocked return value.
 
-## The fix
+## [HISTORICAL] The fix
 
 Two changes, both required — one fixes the crash, the other makes the test suite able to catch
 this class of bug again in the future:
@@ -101,7 +118,7 @@ Mirrors `notifications_mark_read`'s actual return columns, so a future Flask-sid
 collides against `notification_id` or `user_id` fails a test instead of only showing up against
 the real database.
 
-## Verification
+## [HISTORICAL] Verification
 
 Fix 2 alone, with fix 1 temporarily reverted, was run against the suite first — confirming the
 bug is real and the new mock shape is what actually catches it:
@@ -122,14 +139,14 @@ web/tests/test_notification_fanout_pagination.py — 77 passed
 python -m pytest -m "not browser and not integration" — 864 passed, 1 skipped
 ```
 
-## What this disturbed
+## [HISTORICAL] What this disturbed
 
 Nothing outside the two files above. No schema change, no migration, no i18n change, no CSS/JS
 touched (so no `ASSET_VERSION` bump). The three-test regression coverage above is what protects
 this route now; no new test file was added, since the existing tests became meaningful once the
 double's shape was corrected.
 
-## Confirmed live, 2026-08-29, same day
+## [HISTORICAL] Confirmed live, 2026-08-29, same day
 
 The operator restarted the local server after the fix and re-tested against the real Supabase
 project: clicking a notification, dismissing a toast/banner, acknowledging a modal, and "Mark
@@ -141,7 +158,7 @@ on other routes (`/api/notifications/active`, `/api/identity`, `touch_last_seen`
 transient Windows non-blocking-socket glitch documented elsewhere in this session, self-resolving
 on retry, not a Notification Center defect.
 
-## What this does not cover
+## [HISTORICAL] What this does not cover
 
 This fix is scoped to the `notification_id` collision. It does not re-verify the Realtime
 private-channel push path or the sign-out/reauthenticate flows — see `TODO.md`'s Notification

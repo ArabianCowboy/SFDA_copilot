@@ -501,7 +501,7 @@ export const Services = {
   },
 
   // NO `resetConversation`. `/api/conversation/reset` is deleted server-side
-  // (docs/per-tab-conversation-deep-linking-plan.md §5.1, §5.4) — "New chat"
+  // (docs/archive/2026-08-22_per-tab-deep-linking.md §5.1, §5.4) — "New chat"
   // is a client-side navigation to `/` now (Decision 2), with no server round
   // trip at all. See `Handlers.handleNewChat`.
 
@@ -667,7 +667,7 @@ export const Services = {
 
   /**
    * One conversation's durable rows, named by the URL (Decision 4 of
-   * docs/per-tab-conversation-deep-linking-plan.md).
+   * docs/archive/2026-08-22_per-tab-deep-linking.md).
    *
    * `conversationId` is `Route.current()` — the caller never calls this with
    * nothing to ask for; `/` is a new conversation and has no history to fetch
@@ -798,7 +798,7 @@ export const Services = {
   },
 
   // NO `selectSession`. `/api/chat/sessions/<id>/select` is deleted
-  // server-side (docs/per-tab-conversation-deep-linking-plan.md §5.2) — its
+  // server-side (docs/archive/2026-08-22_per-tab-deep-linking.md §5.2) — its
   // entire job was repointing a cookie that no longer exists. Selecting a
   // conversation is navigating to its `/c/<id>` URL now (`Route.go`), and
   // the sidebar re-reads `/api/chat/history?c=<id>` directly.

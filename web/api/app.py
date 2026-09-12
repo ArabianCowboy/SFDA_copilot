@@ -313,7 +313,7 @@ SUPPORTED_FAQ_LANGS = ("en", "ar")
 # that mixes a fresh template with a stale module is worse than a stale page —
 # post-icon-migration it would render an <i class="bi"> with no icon font behind
 # it, or print a glyph NAME as text. MODULE_IMPORT_MAP below closes that.
-ASSET_VERSION = "warm82"
+ASSET_VERSION = "warm83"
 
 # Product release, rendered in the landing footer. The single source — do not
 # hand-type this value into a JS docstring or any other comment; that duplication
@@ -1597,7 +1597,7 @@ def _persist_turn(
             title=title,
             # Defence in depth only — the real refusal already ran in
             # `_preflight_conversation`, before generation. See its docstring
-            # and docs/per-tab-conversation-deep-linking-plan.md §3.4.
+            # and docs/archive/2026-08-22_per-tab-deep-linking.md §3.4.
             allow_create=allow_create,
         )
     except PersistenceUnavailable:
@@ -1647,7 +1647,7 @@ def _preflight_conversation(
     write the turn into the in-RAM prompt window unconditionally, and only
     THEN fail to persist — leaving the reader a complete answer for a
     conversation that no longer exists.
-    See docs/per-tab-conversation-deep-linking-plan.md §3.4.
+    See docs/archive/2026-08-22_per-tab-deep-linking.md §3.4.
 
     An outage answers True — fails open, the same posture `_durable_owner`
     takes: refusing a legitimate question because the existence check itself
@@ -1785,8 +1785,8 @@ def _configure_app(app: Flask, testing: bool, enforce_rate_limits: bool = False)
         # Applied 2026-08-20: supabase/migrations/20260820131914_chat_session_
         # persistence.sql is live (`list_migrations` confirms it), so
         # config.yaml now defaults this on. Turns are recorded and hydrated
-        # from the URL the client names (docs/per-tab-conversation-deep-
-        # linking-plan.md) — there is no separate "resume my last
+        # from the URL the client names
+        # (docs/archive/2026-08-22_per-tab-deep-linking.md) — there is no separate "resume my last
         # conversation" fallback any more; see §1 and §5.5 for why the
         # cookie-keyed pointer this used to gate is gone rather than merely
         # turned off.
@@ -1919,7 +1919,7 @@ def _init_extensions(app: Flask, testing: bool) -> Limiter:
         # so a future flask-talisman upgrade, or a config refactor that drops
         # this call's defaults, cannot regress either one without the change
         # being visible here. See
-        # docs/per-tab-conversation-deep-linking-plan.md §6.1 and §3.5.
+        # docs/archive/2026-08-22_per-tab-deep-linking.md §6.1 and §3.5.
         referrer_policy="strict-origin-when-cross-origin",
         session_cookie_samesite="Lax",
     )
@@ -2691,7 +2691,7 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
         """A conversation's URL. Renders exactly what `/` renders.
 
         Three properties, each a decision — see
-        docs/per-tab-conversation-deep-linking-plan.md §3.1 for the full
+        docs/archive/2026-08-22_per-tab-deep-linking.md §3.1 for the full
         argument, verified against this app's actual CSRF/oracle posture in
         the security review:
 
@@ -2888,7 +2888,7 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
         # (services.js), so nothing legitimate depends on `force=True`; a
         # text/plain form cannot forge a real JSON content type past
         # `silent=True` alone. See
-        # docs/per-tab-conversation-deep-linking-plan.md §3.5.
+        # docs/archive/2026-08-22_per-tab-deep-linking.md §3.5.
         body = request.get_json(silent=True) or {}
         query = (body.get("query") or "").strip()
         category = (body.get("category") or "all").lower()
@@ -2969,7 +2969,7 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
         """One conversation's durable rows, named by `?c=<uuid>`.
 
         THE URL IS THE POINTER (§1 of
-        docs/per-tab-conversation-deep-linking-plan.md). `?c=` absent means
+        docs/archive/2026-08-22_per-tab-deep-linking.md). `?c=` absent means
         `/` — a new conversation, Decision 1(a) — and this route answers an
         empty transcript without touching the backend at all: there is
         nothing to look up, and no session state to read or write either way.
@@ -3208,7 +3208,7 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
         )
 
     # NO /select ROUTE. Its entire job was moving the cookie that named the
-    # current conversation (docs/per-tab-conversation-deep-linking-plan.md
+    # current conversation (docs/archive/2026-08-22_per-tab-deep-linking.md
     # §5.2) — with no cookie, selecting a conversation is navigating to its
     # URL, which the client does directly. Deleting it also closes a live CSRF
     # hole incidentally: it parsed no body at all, so any cross-site
@@ -3571,7 +3571,7 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
             # create it". Refused HERE — before retrieval, before a token is
             # generated, before any response frame — rather than discovered after
             # the answer has already streamed. See `_preflight_conversation` and
-            # docs/per-tab-conversation-deep-linking-plan.md §3.4.
+            # docs/archive/2026-08-22_per-tab-deep-linking.md §3.4.
             if not allow_create and not _preflight_conversation(
                 persistence, owner_id, conversation_id
             ):
@@ -4147,7 +4147,7 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
     # that named the current conversation and, on `undo`, restore a set-aside
     # one — both cookie-keyed mechanisms §5.1 and §5.4 remove. Under
     # URL-as-truth, "New chat" is a client-side navigation from `/c/<id>` to
-    # `/` (Decision 2 of docs/per-tab-conversation-deep-linking-plan.md) with
+    # `/` (Decision 2 of docs/archive/2026-08-22_per-tab-deep-linking.md) with
     # nothing for a server round trip to do, and undo is the Back button —
     # free, per-tab, already understood — rather than a server-held
     # `prev_conv_id`. `Handlers.handleNewChat` (static/js/modules/handlers.js)

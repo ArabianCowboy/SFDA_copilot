@@ -61,7 +61,7 @@ server:
   # from — so a reload, a language toggle and a different device all show the
   # conversation the model remembers, with its citations openable rather than
   # neutralised. There is no "resume my last conversation" fallback any more:
-  # the URL is the pointer (docs/per-tab-conversation-deep-linking-plan.md
+  # the URL is the pointer (docs/archive/2026-08-22_per-tab-deep-linking.md
   # §1), and the gap that fallback's cookie could not close on its own — a
   # reset followed immediately by a sign-out — closes as a side effect of
   # having no cookie left to look up (§2 Decision 1).

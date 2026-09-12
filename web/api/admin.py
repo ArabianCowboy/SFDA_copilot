@@ -974,7 +974,7 @@ def patch_user(user_id: str) -> Response | tuple[Response, int]:
     # own `id` column, this would quietly report *that* value instead of
     # crashing — the same "explicit key merged with a backend dict" shape as the
     # jsonify() collision fixed in handle_notifications_mark_read
-    # (docs/notification-mark-read-500-fix.md), just failing silently here
+    # (docs/archive/2026-08-29_notification-mark-read-500.md), just failing silently here
     # instead of loudly. Not live-broken today (admin_set_user_flags selects
     # only role/tier/is_disabled — supabase/migrations/
     # 20260828001543_admin_rpcs_require_an_enabled_actor.sql), but building the
