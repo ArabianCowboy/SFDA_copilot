@@ -536,7 +536,10 @@ _Production runs two workers and binds wider than loopback_ (now in
 found and what it cost.
 
 **The unit:** a systemd service on the VPS, `Restart=always` with `RestartSec=10`, running
-gunicorn from the deployment's own virtualenv. The production unit, read 2026-09-12:
+gunicorn from the deployment's own virtualenv. **This file has no copy in the repository, so
+this block is the only reviewable record of it — when the unit changes, change this block in
+the same session, or the next reader is misled the way the `--workers` drift misled everyone.**
+Read from the live box on 2026-09-12, after `--workers` was removed:
 
 ```ini
 [Service]
@@ -545,12 +548,18 @@ WorkingDirectory=/var/www/sfda-copilot
 Environment=PATH=/var/www/sfda-copilot/venv/bin
 EnvironmentFile=/var/www/sfda-copilot/.env
 ExecStart=/var/www/sfda-copilot/venv/bin/gunicorn --bind 127.0.0.1:5001 \
-  --workers 1 --threads 8 --preload --max-requests 1000 --max-requests-jitter 100 \
+  --threads 8 --preload --max-requests 1000 --max-requests-jitter 100 \
   --chdir /var/www/sfda-copilot web.api.app:create_app()
 Restart=always
 RestartSec=10
 Environment=BEHIND_PROXY=true
 ```
+
+**There is deliberately no `--workers` here.** The count lives in `gunicorn.conf.py` at the
+repo root, which is in git and gets diffed like any other file. A flag restated here would be
+applied last (`gunicorn/app/base.py:189`) and would silently win, which is the drift this whole
+arrangement exists to prevent. Verified live after the change: no `--workers` in the running
+command line, one master plus exactly one worker, HTTPS 200, `NRestarts=0`.
 
 Key facts from this service definition:
 
@@ -560,8 +569,20 @@ Key facts from this service definition:
   **Do not remove this line thinking `--chdir` covers it — it does not.** Proved on the box
   with `gunicorn --print-config`: run from the repo root the output carries
   `raw_env = ['SFDA_CONFIG_WORKERS=1']`, and run from `/tmp` with `--chdir` pointing at the
-  repo it carries `raw_env = []`. Discovery follows the launch cwd only. (`workers = 1` shows
-  in both, because that is also gunicorn's default — `raw_env` is the real evidence.)
+  repo it carries `raw_env = []`. **`--chdir` plays no part in discovery at all** — and note
+  that `--print-config` reports `config = ./gunicorn.conf.py` in _both_ cases, so that line is
+  not evidence of anything. `raw_env` is. (`workers = 1` also shows either way, because that is
+  gunicorn's own default.) If someone later tidies the unit and drops `WorkingDirectory=` as
+  "redundant next to `--chdir`", the config file goes silently decorative again — the same
+  failure as the original drift, with a new cause.
+
+  **Do not try to verify this through `/proc/<pid>/environ`.** `SFDA_CONFIG_WORKERS` will be
+  absent there even when everything is working: gunicorn assigns `raw_env` into `os.environ`
+  _after_ exec, and `/proc/<pid>/environ` only ever shows the original exec-time block. The
+  ordering is still correct for the app — the assignment happens before `preload_app` imports
+  it (`arbiter.py:112`/`:117` on production's 23.0.0, `:133-136`/`:138` on 26.0.0) — but the
+  proof is `--print-config`, not `/proc`.
+
 - **`--chdir` targets that same directory:** Launch cwd and `--chdir` target coincide.
   `Application.chdir()` (`gunicorn/app/base.py:83-90`) runs `sys.path.insert(0, self.cfg.chdir)`
   which makes `web.api.app:create_app()` importable.
@@ -586,19 +607,12 @@ Key facts from this service definition:
   runs **26.0.0** (due to unpinned `requirements.txt`). Cwd config discovery and `raw_env`
   injection before `--preload` were verified empirically on 23.0.0.
 
-**Rule: `ExecStart` must NOT name `--workers`. NOT YET APPLIED — the unit above is what is
-running today, `--workers 1` included.** Command-line settings are applied last
-(`gunicorn/app/base.py:189`) and silently win over config files, which is how `--workers 2`
-drifted unreviewed for months. The worker count belongs in `gunicorn.conf.py` under version
-control (`workers = 1`, deriving `raw_env`), which is now committed and will arrive on the next
-`git pull` — but it stays **inert** until an operator removes the flag. Until then the guard
-reads the command line and the file is decorative. The target line, once that edit is made:
-
-```ini
-ExecStart=/var/www/sfda-copilot/venv/bin/gunicorn --bind 127.0.0.1:5001 \
-  --threads 8 --preload --max-requests 1000 --max-requests-jitter 100 \
-  --chdir /var/www/sfda-copilot web.api.app:create_app()
-```
+**How the worker count got here, 2026-09-12.** The unit carried `--workers 1` directly until
+this date, and had carried `--workers 2` for months before that without anyone noticing,
+because nothing reviews the file. The count moved into `gunicorn.conf.py` and the flag was
+removed from `ExecStart` the same day; the app's own guard was rewritten in the same commit to
+read the config file's declaration. The flag and the file cannot both name it — see the note
+above the unit block.
 
 Why each of the load-bearing arguments:
 
