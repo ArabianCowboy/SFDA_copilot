@@ -43,6 +43,62 @@ recording.
 
 ## [HISTORICAL] Resolved bugs
 
+### [HISTORICAL] ~~Production is eight commits behind and is missing the logout-revocation fix~~ — DEPLOYED 2026-09-12
+
+**Where:** the live VPS deployment, not this repository. `/var/www/sfda-copilot` last pulled
+`origin/main` on 2026-09-04; the fix is `38254e2`, authored 2026-09-05.
+
+**What is wrong.** Before `38254e2`, `POST /auth/logout` called the no-argument
+`supabase.auth.sign_out()` on the **process-global** anon client. That form reads the session
+stored on the client and revokes it globally, so once any request had authenticated through
+the singleton, the next caller's logout signed out _somebody else_ — including a caller
+presenting no credentials at all. Production was running that code until 2026-09-12. It breaks the
+guarantee that a sign-out is bound to the caller, and it is externally triggerable by an
+unauthenticated request.
+
+**Who it reaches.** Any signed-in reader, at any time, with no action of their own: their
+session can be revoked by an unrelated caller hitting `/auth/logout`. Availability and session
+integrity, not data disclosure — but it needs no account to trigger. The single worker makes it
+_more_ likely, not less, since every request shares the one process-global client.
+
+**How it was found.** A read of the live deployment on 2026-09-12 (`git pull` reflog and
+`origin/main` comparison) during the worker-count guard work, confirmed against `38254e2`'s own
+commit message. Independently flagged as urgent High by an adversarial security review.
+
+**What fixing it would disturb.** Nothing in this repository — the fix is already committed and
+tested. It is a deployment action: `git pull` in `/var/www/sfda-copilot` and restart the
+service. The other seven undeployed commits come with it and should be read first, notably
+`fix(chat): refuse and refund an empty answer on both chat routes` and `fix(chat): tell the
+reader when an answer was cut short`. Deploying is also the only way to pick up
+`gunicorn.conf.py`. Because deployment is `git pull` **into** the live working tree, confirm
+the tree is clean on the box first — commits have been authored there directly before.
+
+**Closed 2026-09-12 by deploying, not by a code change.** The VPS pulled `5522da5 → b89f55d`
+and restarted; the site returned 200 over HTTPS, `NRestarts=0`, and the five co-tenant apps
+were untouched. The exposure is gone.
+
+**The "eight commits" in this entry's title was wrong, and the correction is the useful part.**
+The real gap was **36 commits, 73 files, +9,300/−497** — `app.py` alone gained 502 lines, plus
+auth rewrites, new quota/PostgREST modules, CSS/JS and i18n. The figure came from a `fetch`
+dated 2026-09-07 and was repeated into this entry and a commit message without being re-checked
+against what was actually deployed. The operator caught it, and correctly treated the pull as a
+significant deploy rather than the config drop it had been described as: they verified no
+`requirements.txt` change (no `pip install` needed), no new migrations (the schema-before-code
+rule was not in play), `.env` untracked and absent from the incoming tree, and a clean
+fast-forward — then smoke-booted the new code as a second gunicorn on `127.0.0.1:5099` before
+restarting the live one.
+
+Two behaviours they cleared on the way, both worth knowing: `load_dotenv` flipped
+`override=True → override=False` in this range, so `systemd`'s `EnvironmentFile=` parser now
+wins permanently over python-dotenv's — checked safe because all nine `.env` assignments are
+plain, with no inline `#`, `$` or quoting edge cases. And the new worker-count guard only ever
+returns strings, so it cannot raise under `--preload` and cannot put the service into a
+`Restart=always` loop.
+
+**Still open after this deploy**, tracked separately: `--workers 1` is still in `ExecStart`, so
+the committed `gunicorn.conf.py` remains decorative and the root cause — a launch line nobody
+diffs — is not yet closed.
+
 ### [HISTORICAL] ~~Production runs two workers and binds wider than loopback~~ — FIXED 2026-09-12
 
 > **Closed 2026-09-12**, the same day it was filed, by a one-line change to the systemd unit

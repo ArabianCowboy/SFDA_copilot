@@ -557,6 +557,11 @@ Key facts from this service definition:
 - **`WorkingDirectory=/var/www/sfda-copilot`:** gunicorn's launch cwd **is** the repo root,
   so a committed `gunicorn.conf.py` is discovered automatically
   (`gunicorn/config.py:583` resolves `./gunicorn.conf.py` against the launch cwd).
+  **Do not remove this line thinking `--chdir` covers it — it does not.** Proved on the box
+  with `gunicorn --print-config`: run from the repo root the output carries
+  `raw_env = ['SFDA_CONFIG_WORKERS=1']`, and run from `/tmp` with `--chdir` pointing at the
+  repo it carries `raw_env = []`. Discovery follows the launch cwd only. (`workers = 1` shows
+  in both, because that is also gunicorn's default — `raw_env` is the real evidence.)
 - **`--chdir` targets that same directory:** Launch cwd and `--chdir` target coincide.
   `Application.chdir()` (`gunicorn/app/base.py:83-90`) runs `sys.path.insert(0, self.cfg.chdir)`
   which makes `web.api.app:create_app()` importable.
@@ -565,6 +570,18 @@ Key facts from this service definition:
   is redundant with `.env` but harmless.
 - **Deployment is `git pull` into `/var/www/sfda-copilot`:** The deployment root is the live
   working tree, so committed files arrive with no extra machinery.
+  **`chown -R www-data:www-data` afterwards is a required step, not tidying.** A pull run as
+  root leaves the new working-tree files and `.git` objects owned `root:root`. Nothing breaks
+  loudly — mode 644 means gunicorn still reads them — but the _next_ pull run as `www-data`
+  fails on those objects. Running `git status` or `git diff` as root afterwards rewrites
+  `.git/index` back to `root:root`, so do the `chown` **last**, after any root-run git command,
+  and verify with `ls -l .git/index`.
+- **Check the size of the gap before pulling.** On 2026-09-12 a pull described as "a config
+  file lands" was in fact 36 commits, 73 files, +9,300/−497. `git log --oneline HEAD..origin/main`
+  and `git diff --stat HEAD..origin/main` first, then confirm whether `requirements.txt`
+  changed (a `pip install` is needed) and whether `supabase/migrations/` gained anything
+  (schema goes before code). Smoke-booting the new code as a second gunicorn on a spare
+  loopback port before restarting the live one turns the restart into a known quantity.
 - **Gunicorn version divergence:** Production runs gunicorn **23.0.0**; the development tree
   runs **26.0.0** (due to unpinned `requirements.txt`). Cwd config discovery and `raw_env`
   injection before `--preload` were verified empirically on 23.0.0.
