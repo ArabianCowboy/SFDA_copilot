@@ -49,6 +49,33 @@ export function newRequestId() {
 }
 
 /**
+ * The Error a chat request throws when the server refuses it before answering.
+ *
+ * Status and code ride along. Flattening to a message string loses the
+ * difference between "you are blocked" and "the network failed", and the
+ * reader is owed different words for each.
+ *
+ * The daily-allowance body rides along on a 429 so handlers.js can tell the
+ * reader their own numbers without a second round trip. Transport only — this
+ * module still imports no view and no state.
+ */
+async function chatFailure(response) {
+  const errorJson = await response.json().catch(() => ({}));
+  const failure = new Error(errorJson.error || `Network error (${response.status})`);
+  failure.status = response.status;
+  failure.code = errorJson.error;
+  if (response.status === 429 && errorJson.error === 'quota_exhausted') {
+    failure.quota = {
+      used: errorJson.used,
+      limit: errorJson.limit,
+      remaining: errorJson.remaining,
+      resets_at: errorJson.resets_at,
+    };
+  }
+  return failure;
+}
+
+/**
  * Parse one SSE frame into { event, data }.
  * Returns null for comment-only frames (keep-alive pings) and unparseable data.
  */
@@ -211,27 +238,7 @@ export const Services = {
       }),
     });
 
-    if (!response.ok) {
-      const errorJson = await response.json().catch(() => ({}));
-      // Status and code ride along. Flattening to a message string loses the
-      // difference between "you are blocked" and "the network failed", and the
-      // reader is owed different words for each.
-      const failure = new Error(errorJson.error || `Network error (${response.status})`);
-      failure.status = response.status;
-      failure.code = errorJson.error;
-      /* The daily-allowance body rides along on a 429 so handlers.js can tell the
-         reader their own numbers without a second round trip. Transport only —
-         this module still imports no view and no state. */
-      if (response.status === 429 && errorJson.error === 'quota_exhausted') {
-        failure.quota = {
-          used: errorJson.used,
-          limit: errorJson.limit,
-          remaining: errorJson.remaining,
-          resets_at: errorJson.resets_at,
-        };
-      }
-      throw failure;
-    }
+    if (!response.ok) throw await chatFailure(response);
     return response.json();
   },
 
@@ -284,24 +291,7 @@ export const Services = {
 
     // Failures before the first frame still carry a real status code, so the
     // caller can distinguish them from an in-band `error` event.
-    if (!response.ok) {
-      const errorJson = await response.json().catch(() => ({}));
-      const failure = new Error(errorJson.error || `Network error (${response.status})`);
-      failure.status = response.status;
-      failure.code = errorJson.error;
-      /* The daily-allowance body rides along on a 429 so handlers.js can tell the
-         reader their own numbers without a second round trip. Transport only —
-         this module still imports no view and no state. */
-      if (response.status === 429 && errorJson.error === 'quota_exhausted') {
-        failure.quota = {
-          used: errorJson.used,
-          limit: errorJson.limit,
-          remaining: errorJson.remaining,
-          resets_at: errorJson.resets_at,
-        };
-      }
-      throw failure;
-    }
+    if (!response.ok) throw await chatFailure(response);
     if (!response.body) throw new Error('STREAM_UNSUPPORTED');
 
     const reader = response.body.getReader();

@@ -185,11 +185,10 @@ export function setRegistrationsSaving(isSaving) {
   if (isSaving) toggle.textContent = I18n.t('admin.registrations.saving');
 }
 
-/** Same shape as showPeopleMessage/showAuditMessage/showSettingsMessage —
- * this panel's own load-failure message, not a hand-rolled one-off, so a
- * failed load reads the same way every other panel's failed load does. */
-export function showRegistrationsMessage(message) {
-  const body = el('registrations-body');
+/** A panel's load-failure message, in place of its content. One function
+ * for every panel, so a failed load reads the same way wherever it happens. */
+export function showPanelMessage(containerId, message) {
+  const body = el(containerId);
   if (!body) return;
   body.textContent = '';
   const p = document.createElement('p');
@@ -881,17 +880,6 @@ export function renderUsers({
   }
 }
 
-export function showPeopleMessage(message) {
-  setPeopleLoading(false);
-  const body = el('people-list');
-  if (!body) return;
-  body.textContent = '';
-  const p = document.createElement('p');
-  p.className = 'admin-empty';
-  p.textContent = message;
-  body.appendChild(p);
-}
-
 /* ── Activity ────────────────────────────────────────────────────────────── */
 
 /** A recorded action as one sentence, rather than a raw action code. */
@@ -1035,26 +1023,6 @@ export function renderAudit(entries, { append = false } = {}) {
     row.append(when, who, what, change, note);
     tbody.appendChild(row);
   });
-}
-
-export function showAuditMessage(message) {
-  const body = el('audit-body');
-  if (!body) return;
-  body.textContent = '';
-  const p = document.createElement('p');
-  p.className = 'admin-empty';
-  p.textContent = message;
-  body.appendChild(p);
-}
-
-export function showSettingsMessage(message) {
-  const body = el('settings-body');
-  if (!body) return;
-  body.textContent = '';
-  const p = document.createElement('p');
-  p.className = 'admin-empty';
-  p.textContent = message;
-  body.appendChild(p);
 }
 
 /**
@@ -2848,16 +2816,6 @@ export function renderNotificationsPanel() {
   loadMore.textContent = I18n.t('admin.audit.more');
   loadMoreRow.appendChild(loadMore);
   body.appendChild(loadMoreRow);
-}
-
-export function showNotificationHistoryMessage(message) {
-  const body = el('notification-history-body');
-  if (!body) return;
-  body.textContent = '';
-  const p = document.createElement('p');
-  p.className = 'admin-empty';
-  p.textContent = message;
-  body.appendChild(p);
 }
 
 /**

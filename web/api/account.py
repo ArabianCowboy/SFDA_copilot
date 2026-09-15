@@ -40,7 +40,7 @@ from flask import (
     stream_with_context,
 )
 
-from web.services.chat_store import ChatBackend, PersistenceUnavailable, export_all_sessions
+from web.services.chat_store import PersistenceUnavailable, export_all_sessions
 from web.services.conversation_store import ConversationStore
 
 # datetime.UTC is Python 3.11+; the VPS production floor is 3.10.
@@ -124,34 +124,6 @@ def page() -> Response:
     return response
 
 
-def _persistence_precondition() -> tuple[
-    str | None, ChatBackend | None, tuple[Response, int] | None
-]:
-    """(owner_id, persistence, error) for both Data-rights routes below.
-
-    Mirrors `app.py`'s own `_sidebar_preconditions`: persistence OFF is a
-    deployment choice and stays quiet (owner_id/persistence come back falsy,
-    no error); persistence ON with no backend reachable is a live
-    misconfiguration and says so. Not imported from `app.py` — that
-    function is a closure local to `create_app`, not a module-level name.
-    """
-    from web.api.app import _chat_persistence, _durable_owner
-
-    owner_id = _durable_owner()
-    persistence = _chat_persistence()
-
-    if persistence is None and current_app.config.get("CHAT_PERSISTENCE_ENABLED", False):
-        return (
-            None,
-            None,
-            (
-                jsonify(error="Your data could not be reached.", code="history_unavailable"),
-                503,
-            ),
-        )
-    return owner_id, persistence, None
-
-
 @account_bp.route("/api/export", methods=["GET"], endpoint="export")
 def export() -> Response | tuple[Response, int]:
     """Every owned conversation, streamed as NDJSON — one line of metadata,
@@ -179,7 +151,11 @@ def export() -> Response | tuple[Response, int]:
     "no quiet untruth" posture `/api/chat/history` already takes on a
     fetch failure, adapted to a response that cannot fail after it starts).
     """
-    owner_id, persistence, error = _persistence_precondition()
+    # Imported here, not at module scope: app.py imports this blueprint, so a
+    # top-level import back would be a cycle (see `_gate`).
+    from web.api.app import _persistence_preconditions
+
+    owner_id, persistence, error = _persistence_preconditions("Your data could not be reached.")
     if error:
         return error
 
@@ -238,9 +214,9 @@ def delete_all_conversations() -> Response | tuple[Response, int]:
     a live stream's `chat_append_turn` finishing after the delete would
     resurrect the row it lands on via `on conflict (id) do nothing`.
     """
-    from web.api.app import _generations
+    from web.api.app import _generations, _persistence_preconditions
 
-    owner_id, persistence, error = _persistence_precondition()
+    owner_id, persistence, error = _persistence_preconditions("Your data could not be reached.")
     if error:
         return error
 

@@ -661,3 +661,43 @@ def test_a_new_chat_still_leaves_the_conversation_behind_it_in_the_sidebar(clien
 
     titles = [s["title"] for s in listing(client).get_json()["sessions"]]
     assert titles == ["An unrelated second conversation", "The conversation being left"]
+
+
+SESSION_UUID = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        pytest.param(lambda c: listing(c), id="list"),
+        pytest.param(
+            lambda c: c.patch(
+                f"/api/chat/sessions/{SESSION_UUID}", json={"title": "x"}, headers=AUTH
+            ),
+            id="rename",
+        ),
+        pytest.param(
+            lambda c: c.delete(f"/api/chat/sessions/{SESSION_UUID}", headers=AUTH), id="delete"
+        ),
+    ],
+)
+def test_persistence_enabled_with_no_backend_is_a_503_on_every_session_route(app, caplog, call):
+    """Persistence on with no backend is a misconfiguration, not an empty
+    history — and it is logged, because nobody else will notice it."""
+    import logging
+
+    app.config["chat_backend"] = lambda: None
+    app.config["CHAT_PERSISTENCE_ENABLED"] = True
+
+    with caplog.at_level(logging.ERROR):
+        response = call(app.test_client())
+
+    assert response.status_code == 503
+    assert response.get_json() == {
+        "error": "Your conversations could not be loaded.",
+        "code": "history_unavailable",
+    }
+    assert any(
+        "Chat persistence is enabled but no backend is configured" in record.getMessage()
+        for record in caplog.records
+    )

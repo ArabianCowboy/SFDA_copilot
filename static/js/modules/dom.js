@@ -309,6 +309,25 @@ export const ErrorHandler = {
 /** Shorthand used throughout the codebase. */
 export const logError = (error, context = '') => ErrorHandler.log(error, context);
 
+/**
+ * Hide a Bootstrap modal, retrying once if its fade-in swallowed the call.
+ *
+ * Bootstrap ignores hide() while a transition is still running. Two things
+ * land in that window: fast mocked auth resolving before the auth modal has
+ * finished opening, and a reader's "Got it" on an urgent notice, which would
+ * otherwise leave it open with no sign the click was heard at all.
+ *
+ * Null-safe on both arguments; resolving the instance stays with the caller.
+ */
+export function hideBootstrapModal(el, modal) {
+  modal?.hide();
+  if (el?.classList.contains('fade')) {
+    setTimeout(() => {
+      if (el.classList.contains('show')) modal?.hide();
+    }, 350);
+  }
+}
+
 /* ——————————————— NOTIFICATION CENTER (broadcast notices) ——————————————— */
 /* docs/notification-center-plan.md §4. A sibling to ErrorHandler above, not
    an extension of it: ErrorHandler owns the single #toast slot for this
@@ -510,19 +529,7 @@ export const BroadcastNotice = {
 
     let acknowledged = false;
     let suppressed = false;
-    // Bootstrap ignores hide() while its own fade-in transition is still
-    // running (see handlers.js's hideModal, which documents this same
-    // limitation for the auth modal) — a click landing in that window would
-    // otherwise be silently swallowed, leaving an urgent notice open with no
-    // sign the reader's own "Got it" was heard at all.
-    const requestHide = () => {
-      modal.hide();
-      if (el.classList.contains('fade')) {
-        setTimeout(() => {
-          if (el.classList.contains('show')) modal.hide();
-        }, 350);
-      }
-    };
+    const requestHide = () => hideBootstrapModal(el, modal);
     const onAckClick = () => {
       acknowledged = true;
       requestHide();

@@ -188,6 +188,66 @@ def _admin_console(
     expect(page.locator("#admin-console")).to_be_visible()
 
 
+@pytest.mark.parametrize(
+    ("container", "failing_request", "tab", "message"),
+    [
+        pytest.param(
+            "notification-history-body",
+            "**/admin/api/notifications/history*",
+            "#tab-notifications",
+            "Could not load notification history.",
+            id="notification-history",
+        ),
+        pytest.param(
+            "audit-body",
+            "**/admin/api/audit*",
+            "#tab-audit",
+            "Could not load the activity log.",
+            id="audit",
+        ),
+        pytest.param(
+            "people-list",
+            "**/admin/api/users*",
+            "#tab-people",
+            "Could not load accounts.",
+            id="people",
+        ),
+        pytest.param(
+            "registrations-body",
+            "**/admin/api/registrations",
+            "#tab-settings",
+            "Could not load the registrations setting.",
+            id="registrations",
+        ),
+        pytest.param(
+            "settings-body",
+            "**/admin/api/settings",
+            "#tab-settings",
+            "Could not load settings.",
+            id="settings",
+        ),
+    ],
+)
+def test_a_panel_that_fails_to_load_says_so_in_place(
+    browser_page: Page, container, failing_request, tab, message
+):
+    """One sentence in the panel's own body, and nothing that looks like data.
+
+    500 rather than 503: the console's GET retries a 503 once, which would make
+    this a test of the retry instead of the message.
+    """
+    _route_identity(browser_page, status=200, body=ADMIN_IDENTITY)
+    browser_page.route(failing_request, lambda route: route.fulfill(status=500))
+    browser_page.goto("/admin?testing=true")
+    expect(browser_page.locator("#admin-console")).to_be_visible()
+    browser_page.locator(tab).click()
+
+    body = browser_page.locator(f"#{container}")
+    expect(body.locator("p.admin-empty")).to_have_count(1)
+    expect(body.locator("p.admin-empty")).to_have_text(message)
+    expect(body.locator("table, ul, ol")).to_have_count(0)
+
+
 def test_the_settings_form_renders_the_allowlist_and_current_values(browser_page: Page):
     _admin_console(browser_page)
     browser_page.locator("#tab-settings").click()
@@ -1010,6 +1070,21 @@ def test_a_failed_account_load_says_so_instead_of_showing_nothing(browser_page: 
 
     expect(browser_page.locator("#account-error")).to_be_visible()
     # And there is a way back out of the failure.
+    expect(browser_page.locator("#account-back")).to_be_visible()
+
+
+def test_an_unreadable_account_answer_is_a_failed_load(browser_page: Page):
+    """A 200 whose body will not parse reaches the view as `null`, not as an
+    exception, so it must still end in the failure message rather than a blank
+    or half-drawn account."""
+    _open_people(browser_page)
+    browser_page.route(
+        "**/admin/api/users/*",
+        lambda route: route.fulfill(status=200, content_type="text/html", body="<html>oops"),
+    )
+    browser_page.locator(".admin-account-open", has_text="test@example.com").click()
+
+    expect(browser_page.locator("#account-error")).to_be_visible()
     expect(browser_page.locator("#account-back")).to_be_visible()
 
 

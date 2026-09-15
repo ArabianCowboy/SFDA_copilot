@@ -127,22 +127,53 @@ function historyNoticeKey(identity) {
 /* Both wrapped, because localStorage throws rather than degrades in private
    mode and behind some enterprise policies — the convention every other storage
    access in this app already follows. A storage failure means the notice is
-   shown again, which is the safe direction for a disclosure. */
-function historyNoticeSeen(identity) {
+   shown again, which is the safe direction for a disclosure. `key` is one of
+   the reader-scoped keys, `historyNoticeKey` or `profileNoticeKey`. */
+function noticeSeen(key) {
   try {
-    return localStorage.getItem(historyNoticeKey(identity)) !== null;
+    return localStorage.getItem(key) !== null;
   } catch (error) {
-    logError(error, 'historyNoticeSeen');
+    logError(error, 'noticeSeen');
     return false;
   }
 }
 
-function rememberHistoryNotice(identity) {
+function rememberNotice(key) {
   try {
-    localStorage.setItem(historyNoticeKey(identity), String(Date.now()));
+    localStorage.setItem(key, String(Date.now()));
   } catch (error) {
-    logError(error, 'rememberHistoryNotice');
+    logError(error, 'rememberNotice');
   }
+}
+
+/**
+ * The scaffolding every in-transcript notice shares; the caller fills `body`
+ * and places `notice`.
+ *
+ * `data-non-turn` is load-bearing: without it `isTranscriptTurn` would count a
+ * notice as a turn. The dismiss button removes the node BEFORE `onDismiss`
+ * runs, because the history notice's `onDismiss` releases the queued profile
+ * strip, which positions itself by looking up `#history-notice`.
+ */
+function buildNotice({ id, modifier, dismissLabel, onDismiss }) {
+  const notice = DOMCache.createElement('div', 'history-notice', ...(modifier ? [modifier] : []));
+  notice.id = id;
+  notice.setAttribute('role', 'note');
+  notice.setAttribute('data-non-turn', '');
+
+  const body = DOMCache.createElement('div', 'history-notice-body');
+
+  const dismiss = DOMCache.createElement('button', 'history-notice-dismiss');
+  dismiss.type = 'button';
+  dismiss.setAttribute('aria-label', dismissLabel);
+  dismiss.innerHTML = iconMarkup('close', 14);
+  dismiss.addEventListener('click', () => {
+    notice.remove();
+    onDismiss?.();
+  });
+
+  notice.append(body, dismiss);
+  return { notice, body };
 }
 
 /* The first-run completion strip (docs/profile-refactor-plan.md §12.6). */
@@ -175,23 +206,6 @@ const PROFILE_NOTICE_VERSION = 1;
 
 function profileNoticeKey(identity) {
   return `sfda-profile-notice:${identity}:v${PROFILE_NOTICE_VERSION}`;
-}
-
-function profileNoticeSeen(identity) {
-  try {
-    return localStorage.getItem(profileNoticeKey(identity)) !== null;
-  } catch (error) {
-    logError(error, 'profileNoticeSeen');
-    return false;
-  }
-}
-
-function rememberProfileNotice(identity) {
-  try {
-    localStorage.setItem(profileNoticeKey(identity), String(Date.now()));
-  } catch (error) {
-    logError(error, 'rememberProfileNotice');
-  }
 }
 
 /**
@@ -841,14 +855,21 @@ export const UI = {
        first is what makes this safe to call on an identity change: the next
        reader's own acknowledgement decides whether one is drawn again. */
     this.hideHistoryNotice();
-    if (historyNoticeSeen(identity)) return;
+    if (noticeSeen(historyNoticeKey(identity))) return;
 
-    const notice = DOMCache.createElement('div', 'history-notice');
-    notice.id = HISTORY_NOTICE_ID;
-    notice.setAttribute('role', 'note');
-    notice.setAttribute('data-non-turn', '');
-
-    const body = DOMCache.createElement('div', 'history-notice-body');
+    const { notice, body } = buildNotice({
+      id: HISTORY_NOTICE_ID,
+      dismissLabel: I18n.t('chat.historyNoticeDismiss'),
+      /* Recorded on dismissal, not on display. A notice that was drawn and never
+         read is not an acknowledgement, and stamping it on render would silently
+         spend the one showing this reader gets. */
+      onDismiss: () => {
+        rememberNotice(historyNoticeKey(identity));
+        // Releases the strip this notice's own presence deferred, if any —
+        // see NoticeCoordinator's own comment.
+        NoticeCoordinator.release(identity);
+      },
+    });
 
     const text = DOMCache.createElement('p', 'history-notice-text');
     text.textContent = I18n.t('chat.historyNotice');
@@ -857,23 +878,6 @@ export const UI = {
     warning.textContent = I18n.t('chat.historyNoticeWarning');
 
     body.append(text, warning);
-
-    const dismiss = DOMCache.createElement('button', 'history-notice-dismiss');
-    dismiss.type = 'button';
-    dismiss.setAttribute('aria-label', I18n.t('chat.historyNoticeDismiss'));
-    dismiss.innerHTML = iconMarkup('close', 14);
-    /* Recorded on dismissal, not on display. A notice that was drawn and never
-       read is not an acknowledgement, and stamping it on render would silently
-       spend the one showing this reader gets. */
-    dismiss.addEventListener('click', () => {
-      rememberHistoryNotice(identity);
-      notice.remove();
-      // Releases the strip this notice's own presence deferred, if any —
-      // see NoticeCoordinator's own comment.
-      NoticeCoordinator.release(identity);
-    });
-
-    notice.append(body, dismiss);
 
     const intro = container.querySelector('[data-chat-intro]');
     if (intro) intro.after(notice);
@@ -899,7 +903,7 @@ export const UI = {
    * the bug the first design had.
    */
   queueProfileCompletionNotice(identity) {
-    if (!identity || profileNoticeSeen(identity)) return;
+    if (!identity || noticeSeen(profileNoticeKey(identity))) return;
     NoticeCoordinator.claim(identity, () => this.showProfileCompletionNotice(identity));
   },
 
@@ -907,14 +911,14 @@ export const UI = {
     const container = DOMCache.get(CONFIG.SELECTORS.MESSAGES);
     if (!container || !identity) return;
     this.hideProfileCompletionNotice();
-    if (profileNoticeSeen(identity)) return;
+    if (noticeSeen(profileNoticeKey(identity))) return;
 
-    const notice = DOMCache.createElement('div', 'history-notice', 'profile-notice');
-    notice.id = PROFILE_NOTICE_ID;
-    notice.setAttribute('role', 'note');
-    notice.setAttribute('data-non-turn', '');
-
-    const body = DOMCache.createElement('div', 'history-notice-body');
+    const { notice, body } = buildNotice({
+      id: PROFILE_NOTICE_ID,
+      modifier: 'profile-notice',
+      dismissLabel: I18n.t('profile.finishDismissAria'),
+      onDismiss: () => rememberNotice(profileNoticeKey(identity)),
+    });
     const text = DOMCache.createElement('p', 'history-notice-text');
     text.textContent = I18n.t('profile.finishPrompt');
 
@@ -923,17 +927,6 @@ export const UI = {
     openLink.textContent = I18n.t('profile.finishOpen');
 
     body.append(text, openLink);
-
-    const dismiss = DOMCache.createElement('button', 'history-notice-dismiss');
-    dismiss.type = 'button';
-    dismiss.setAttribute('aria-label', I18n.t('profile.finishDismissAria'));
-    dismiss.innerHTML = iconMarkup('close', 14);
-    dismiss.addEventListener('click', () => {
-      rememberProfileNotice(identity);
-      notice.remove();
-    });
-
-    notice.append(body, dismiss);
 
     // After the history notice's own slot — whether that notice is still on
     // screen (queued case releases here) or was never shown at all (already
@@ -968,13 +961,13 @@ export const UI = {
     // must leave one notice, not three.
     this.hideQuotaNotice();
 
-    const notice = DOMCache.createElement('div', 'history-notice', 'quota-notice');
-    notice.id = QUOTA_NOTICE_ID;
-    notice.setAttribute('role', 'note');
-    notice.setAttribute('data-non-turn', '');
+    const { notice, body } = buildNotice({
+      id: QUOTA_NOTICE_ID,
+      modifier: 'quota-notice',
+      dismissLabel: I18n.t('chat.quota.dismiss'),
+    });
     notice.setAttribute('aria-live', 'polite');
 
-    const body = DOMCache.createElement('div', 'history-notice-body');
     const title = DOMCache.createElement('p', 'history-notice-title');
     title.textContent = I18n.t('chat.quota.title');
 
@@ -995,14 +988,6 @@ export const UI = {
     if (parts[1]) message.append(document.createTextNode(parts[1]));
 
     body.append(title, message);
-
-    const dismiss = DOMCache.createElement('button', 'history-notice-dismiss');
-    dismiss.type = 'button';
-    dismiss.setAttribute('aria-label', I18n.t('chat.quota.dismiss'));
-    dismiss.innerHTML = iconMarkup('close', 14);
-    dismiss.addEventListener('click', () => notice.remove());
-
-    notice.append(body, dismiss);
     container.append(notice);
     this.followStream?.();
   },

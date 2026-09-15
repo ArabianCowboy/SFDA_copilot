@@ -32,7 +32,7 @@ import logging
 import os
 import threading
 import uuid
-from dataclasses import dataclass, field, replace
+from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timezone
 from typing import Any, Protocol
 
@@ -398,6 +398,19 @@ class SupabaseChatBackend:
     def __init__(self, client) -> None:
         self._client = client
 
+    def _rpc(self, name: str, params: dict):
+        """Call one RPC. Any failure becomes :class:`PersistenceUnavailable`.
+
+        The message is `describe_api_error`'s, not ``str(exception)``: bounded,
+        stripped of credentials, and recovering the real gateway error when the
+        PostgREST client hid it behind its "JSON could not be generated"
+        placeholder.
+        """
+        try:
+            return self._client.rpc(name, params).execute()
+        except Exception as exception:
+            raise PersistenceUnavailable(describe_api_error(exception)) from exception
+
     def append_turn(
         self,
         *,
@@ -417,33 +430,30 @@ class SupabaseChatBackend:
         title=None,
         allow_create=True,
     ) -> AppendResult:
-        try:
-            response = self._client.rpc(
-                "chat_append_turn",
-                {
-                    "p_title": clamp_title(title),
-                    "p_owner_id": owner_id,
-                    "p_session_id": session_id,
-                    "p_client_request_id": client_request_id,
-                    "p_question": question,
-                    "p_answer": answer,
-                    "p_sources": sources,
-                    "p_lang": lang,
-                    "p_category": category,
-                    "p_model": model,
-                    "p_corpus_revision": corpus_revision,
-                    "p_owner_key": owner_key,
-                    "p_session_key": session_key,
-                    # Belt to archive_keys' braces: a missing salt opts the
-                    # archive row out here rather than letting the RPC decide.
-                    "p_archive_opted_out": bool(archive_opted_out)
-                    or owner_key is None
-                    or session_key is None,
-                    "p_allow_create": bool(allow_create),
-                },
-            ).execute()
-        except Exception as exception:
-            raise PersistenceUnavailable(str(exception)) from exception
+        response = self._rpc(
+            "chat_append_turn",
+            {
+                "p_title": clamp_title(title),
+                "p_owner_id": owner_id,
+                "p_session_id": session_id,
+                "p_client_request_id": client_request_id,
+                "p_question": question,
+                "p_answer": answer,
+                "p_sources": sources,
+                "p_lang": lang,
+                "p_category": category,
+                "p_model": model,
+                "p_corpus_revision": corpus_revision,
+                "p_owner_key": owner_key,
+                "p_session_key": session_key,
+                # Belt to archive_keys' braces: a missing salt opts the
+                # archive row out here rather than letting the RPC decide.
+                "p_archive_opted_out": bool(archive_opted_out)
+                or owner_key is None
+                or session_key is None,
+                "p_allow_create": bool(allow_create),
+            },
+        )
 
         rows = getattr(response, "data", None) or []
         row = (
@@ -457,88 +467,70 @@ class SupabaseChatBackend:
         )
 
     def session_exists(self, owner_id, session_id) -> bool:
-        try:
-            response = self._client.rpc(
-                "chat_session_exists",
-                {"p_owner_id": owner_id, "p_session_id": session_id},
-            ).execute()
-        except Exception as exception:
-            raise PersistenceUnavailable(str(exception)) from exception
+        response = self._rpc(
+            "chat_session_exists",
+            {"p_owner_id": owner_id, "p_session_id": session_id},
+        )
         return bool(_scalar(response, "chat_session_exists"))
 
     def load_session(
         self, owner_id, session_id, *, limit=DEFAULT_LOAD_LIMIT, before_seq=None
     ) -> list[StoredMessage]:
-        try:
-            response = self._client.rpc(
-                "chat_load_session",
-                {
-                    "p_owner_id": owner_id,
-                    "p_session_id": session_id,
-                    "p_limit": clamp_load_limit(limit),
-                    "p_before_seq": before_seq,
-                },
-            ).execute()
-        except Exception as exception:
-            raise PersistenceUnavailable(str(exception)) from exception
+        response = self._rpc(
+            "chat_load_session",
+            {
+                "p_owner_id": owner_id,
+                "p_session_id": session_id,
+                "p_limit": clamp_load_limit(limit),
+                "p_before_seq": before_seq,
+            },
+        )
 
         return [_row_to_message(row) for row in (getattr(response, "data", None) or [])]
 
     def list_sessions(self, owner_id, *, limit=DEFAULT_LIST_LIMIT, cursor=None) -> SessionPage:
         limit = clamp_list_limit(limit)
         cursor_updated_at, cursor_id = cursor if cursor else (None, None)
-        try:
-            response = self._client.rpc(
-                "chat_list_sessions",
-                {
-                    "p_owner_id": owner_id,
-                    "p_limit": limit,
-                    "p_cursor_updated_at": cursor_updated_at,
-                    "p_cursor_id": cursor_id,
-                },
-            ).execute()
-        except Exception as exception:
-            raise PersistenceUnavailable(describe_api_error(exception)) from exception
+        response = self._rpc(
+            "chat_list_sessions",
+            {
+                "p_owner_id": owner_id,
+                "p_limit": limit,
+                "p_cursor_updated_at": cursor_updated_at,
+                "p_cursor_id": cursor_id,
+            },
+        )
 
         rows = getattr(response, "data", None) or []
         sessions = [_row_to_summary(row) for row in rows]
         return SessionPage(sessions=sessions, next_cursor=_cursor_after(sessions, limit))
 
     def rename_session(self, owner_id, session_id, title) -> bool:
-        try:
-            response = self._client.rpc(
-                "chat_rename_session",
-                {
-                    "p_owner_id": owner_id,
-                    "p_session_id": session_id,
-                    # Clamped here, not in SQL. The column's CHECK would turn an
-                    # over-long title into a 500 raised inside a `security
-                    # definer` function; this makes it a shorter title.
-                    "p_title": clamp_title(title),
-                },
-            ).execute()
-        except Exception as exception:
-            raise PersistenceUnavailable(str(exception)) from exception
+        response = self._rpc(
+            "chat_rename_session",
+            {
+                "p_owner_id": owner_id,
+                "p_session_id": session_id,
+                # Clamped here, not in SQL. The column's CHECK would turn an
+                # over-long title into a 500 raised inside a `security
+                # definer` function; this makes it a shorter title.
+                "p_title": clamp_title(title),
+            },
+        )
         return bool(_scalar(response, "chat_rename_session"))
 
     def delete_session(self, owner_id, session_id) -> bool:
-        try:
-            response = self._client.rpc(
-                "chat_delete_session",
-                {"p_owner_id": owner_id, "p_session_id": session_id},
-            ).execute()
-        except Exception as exception:
-            raise PersistenceUnavailable(str(exception)) from exception
+        response = self._rpc(
+            "chat_delete_session",
+            {"p_owner_id": owner_id, "p_session_id": session_id},
+        )
         return bool(_scalar(response, "chat_delete_session"))
 
     def delete_all_sessions(self, owner_id) -> list[str]:
-        try:
-            response = self._client.rpc(
-                "chat_delete_all_sessions",
-                {"p_owner_id": owner_id},
-            ).execute()
-        except Exception as exception:
-            raise PersistenceUnavailable(str(exception)) from exception
+        response = self._rpc(
+            "chat_delete_all_sessions",
+            {"p_owner_id": owner_id},
+        )
         rows = getattr(response, "data", None) or []
         return [str(row["session_id"]) for row in rows if row.get("session_id")]
 
@@ -624,12 +616,12 @@ def export_all_sessions(backend: ChatBackend, owner_id: str):
     while True:
         page = backend.list_sessions(owner_id, limit=MAX_LIST_LIMIT, cursor=cursor)
         for summary in page.sessions:
+            # `asdict` keys follow field order, so the export's shape IS the
+            # dataclasses' shape. test_the_export_schema_is_exactly_these_keys pins
+            # it: a field that must not be exported means going back to an
+            # explicit mapping here, not deleting keys after the fact.
             yield {
-                "session_id": summary.session_id,
-                "title": summary.title,
-                "created_at": summary.created_at,
-                "updated_at": summary.updated_at,
-                "message_count": summary.message_count,
+                **asdict(summary),
                 "messages": list(_export_session_messages(backend, owner_id, summary.session_id)),
             }
         if page.next_cursor is None:
@@ -665,18 +657,7 @@ def _export_session_messages(backend: ChatBackend, owner_id: str, session_id: st
 
     for batch in reversed(batches):
         for message in batch:
-            yield {
-                "message_id": message.message_id,
-                "seq": message.seq,
-                "role": message.role,
-                "content": message.content,
-                "created_at": message.created_at,
-                "corpus_revision": message.corpus_revision,
-                "model": message.model,
-                "lang": message.lang,
-                "category": message.category,
-                "sources": message.sources,
-            }
+            yield asdict(message)
 
 
 class InMemoryChatBackend:

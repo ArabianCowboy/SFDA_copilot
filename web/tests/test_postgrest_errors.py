@@ -176,8 +176,15 @@ def test_normal_postgrest_error_without_placeholder():
     assert description == "42P01 relation 'profiles' does not exist"
 
 
-def test_chat_store_list_sessions_raises_persistence_unavailable_with_described_error():
-    """list_sessions wraps APIError into PersistenceUnavailable carrying the recovered description."""
+def _chat_error_cases():
+    from web.tests.test_rpc_payloads import CHAT_CALLS
+
+    return [pytest.param(invoke, id=case_id) for case_id, invoke, _name, _args in CHAT_CALLS]
+
+
+@pytest.mark.parametrize("invoke", _chat_error_cases())
+def test_chat_store_raises_persistence_unavailable_with_described_error(invoke):
+    """Every chat RPC wraps APIError into PersistenceUnavailable carrying the recovered description."""
     from unittest.mock import MagicMock
 
     from web.services.chat_store import PersistenceUnavailable, SupabaseChatBackend
@@ -193,7 +200,7 @@ def test_chat_store_list_sessions_raises_persistence_unavailable_with_described_
 
     backend = SupabaseChatBackend(mock_client)
     with pytest.raises(PersistenceUnavailable) as exc_info:
-        backend.list_sessions("usr_test_123")
+        invoke(backend)
 
     assert "401 Unregistered API key" in str(exc_info.value)
     assert "JSON could not be generated" not in str(exc_info.value)

@@ -151,3 +151,37 @@ def test_delete_all_sessions_removes_every_owned_session_and_returns_their_ids()
 def test_delete_all_sessions_on_an_empty_history_is_a_quiet_no_op():
     backend = InMemoryChatBackend()
     assert backend.delete_all_sessions(OWNER) == []
+
+
+def test_the_export_schema_is_exactly_these_keys():
+    """The export is a data-rights file whose header declares `export_version: 1`.
+
+    Exact equality, not a subset: a field added to the stored models must not
+    reach a reader's download without someone deciding it should, and bumping
+    the version when it does."""
+    backend = InMemoryChatBackend()
+    seed_turns(backend, OWNER, "schema", 1)
+
+    [session] = list(export_all_sessions(backend, OWNER))
+
+    assert set(session) == {
+        "session_id",
+        "title",
+        "created_at",
+        "updated_at",
+        "message_count",
+        "messages",
+    }
+    for message in session["messages"]:
+        assert set(message) == {
+            "message_id",
+            "seq",
+            "role",
+            "content",
+            "created_at",
+            "corpus_revision",
+            "model",
+            "lang",
+            "category",
+            "sources",
+        }

@@ -4,7 +4,7 @@
  */
 
 import { CONFIG } from './config.js';
-import { DOMCache, ErrorHandler, logError, BroadcastNotice } from './dom.js';
+import { DOMCache, ErrorHandler, logError, BroadcastNotice, hideBootstrapModal } from './dom.js';
 import { AppState } from './state.js';
 import { AuthView } from './auth-view.js';
 import { UI } from './ui.js';
@@ -780,9 +780,7 @@ export const Handlers = {
     Route.go(sessionId);
     ErrorHandler.hideActionToast();
 
-    UI.clearTranscript();
-    SourcePanel.reset();
-    resetCitationState();
+    this._clearConversationView();
     UI.History.setActive(sessionId);
     this.closeSidebarDrawer();
 
@@ -827,6 +825,17 @@ export const Handlers = {
   },
 
   /**
+   * Take the previous conversation off screen: its turns, its passages and its
+   * citation state, together. Reset, not close: close() only hides, which would
+   * leave the previous answer's passages sitting in the panel's DOM.
+   */
+  _clearConversationView() {
+    UI.clearTranscript();
+    SourcePanel.reset();
+    resetCitationState();
+  },
+
+  /**
    * The shared "this conversation could not be opened" path (§4.5). Used by
    * a failed sidebar navigation (`previousId` is where to roll back to) and
    * by a deep link or a Back/Forward traversal that 404s (`previousId` is
@@ -836,9 +845,7 @@ export const Handlers = {
    */
   _conversationUnreachable(previousId) {
     Route.replace(previousId || null);
-    UI.clearTranscript();
-    SourcePanel.reset();
-    resetCitationState();
+    this._clearConversationView();
     UI.History.setActive(previousId || null);
     ErrorHandler.showToast(I18n.t('sessions.switchFailed'), true);
   },
@@ -879,9 +886,7 @@ export const Handlers = {
 
     if (!id) {
       // "/" — always a new chat (Decision 1a). Nothing to hydrate.
-      UI.clearTranscript();
-      SourcePanel.reset();
-      resetCitationState();
+      this._clearConversationView();
       UI.History.setActive(null);
       return;
     }
@@ -890,9 +895,7 @@ export const Handlers = {
        must stop claiming to be the old conversation BEFORE anything is awaited —
        otherwise a slow session check leaves X's transcript under Y's URL, and a
        question typed then is filed in Y. */
-    UI.clearTranscript();
-    SourcePanel.reset();
-    resetCitationState();
+    this._clearConversationView();
 
     /* A signed-out reader traversing Back into /c/<id> (e.g. the entry reader A
        was on before a revocation) would otherwise put A's id back in the
@@ -1017,9 +1020,7 @@ export const Handlers = {
         this.beginTranscriptEpoch();
         Route.replace(null);
         ErrorHandler.hideActionToast();
-        UI.clearTranscript();
-        SourcePanel.reset();
-        resetCitationState();
+        this._clearConversationView();
         UI.History.setActive(null);
       }
     } catch (error) {
@@ -2342,14 +2343,6 @@ export const Handlers = {
     const modal =
       AppState.get(stateKey) ||
       (modalElement && window.bootstrap?.Modal?.getOrCreateInstance(modalElement));
-    modal?.hide();
-
-    // Bootstrap ignores hide() while a fade-in transition is still running.
-    // Fast mocked auth can resolve inside that window, so retry once after it.
-    if (modalElement?.classList.contains('fade')) {
-      setTimeout(() => {
-        if (modalElement.classList.contains('show')) modal?.hide();
-      }, 350);
-    }
+    hideBootstrapModal(modalElement, modal);
   },
 };

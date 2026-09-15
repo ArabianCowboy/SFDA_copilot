@@ -911,6 +911,34 @@ def test_only_the_cited_passages_reach_the_transcript(client, backend):
     assert answer["retrieved"] == 4, "the passage count stopped counting what was retrieved"
 
 
+def test_every_source_field_survives_the_round_trip_through_storage():
+    """Write-side and read-side projections name the same eight passthrough
+    fields. A field dropped from either one is gone from every restored citation,
+    and nothing else in the suite gives each field a value of its own."""
+    from web.api.app import _hydration_sources, _persistable_sources
+
+    passthrough = {
+        "document": "Doc_7.pdf",
+        "page": 7,
+        "category": "category-7",
+        "score": 0.71,
+        "semantic_score": 0.62,
+        "lexical_score": 0.53,
+        "chunk_id": "chunk-7",
+        "snippet": "snippet seven",
+    }
+    retrieved = [{"index": 7, **passthrough}, {"index": 8, **passthrough, "chunk_id": "chunk-8"}]
+
+    stored = _persistable_sources(retrieved, cited=[7])
+    restored = _hydration_sources(stored)
+
+    assert stored[0] == {"source_index": 7, "cited": True, **passthrough}
+    assert restored == [
+        {"index": 7, "cited": True, **passthrough},
+        {"index": 8, "cited": False, **passthrough, "chunk_id": "chunk-8"},
+    ]
+
+
 def test_a_user_message_carries_no_evidence_fields(client):
     """A question has no sources. Emitting empty ones would invite the client to
     render a source control under the reader's own words."""

@@ -31,7 +31,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Protocol
 
-from web.services.admin_store import AdminActionRefused
+from web.services.admin_store import AdminActionRefused, _require_uuid
 from web.utils.supabase_client import get_supabase_admin
 
 logger = logging.getLogger(__name__)
@@ -113,19 +113,6 @@ def _parse_iso(value: object) -> datetime | None:
     if not value:
         return None
     return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
-
-
-def _require_uuid(value: str, refusal_code: str) -> None:
-    """Same reasoning as ``SupabaseAdminBackend.set_user_flags``/
-    ``update_profile``: a non-uuid identifies no real row, and that is a
-    refusal the route maps to 404, not a 500 from a failed Postgres cast.
-    Deliberately backend-only — the in-memory testing double's fixtures use
-    non-uuid ids on purpose, and this check must never see them.
-    """
-    try:
-        uuid.UUID(str(value))
-    except (ValueError, AttributeError, TypeError):
-        raise AdminActionRefused(refusal_code) from None
 
 
 class NotificationBackend(Protocol):
@@ -215,6 +202,26 @@ class SupabaseNotificationBackend:
     def __init__(self, client) -> None:
         self._client = client
 
+    def _rpc(self, name: str, args: dict):
+        """Call one RPC, converting this module's SQLSTATEs into a refusal.
+
+        Uses this module's own `_refusal_from`, never admin_store's: the two
+        map different SQLSTATE families.
+        """
+        try:
+            return self._client.rpc(name, args).execute()
+        except Exception as exception:
+            raise _refusal_from(exception) from exception
+
+    def _lifecycle(self, rpc_name: str, notification_id: str, actor) -> dict:
+        """Deactivate, delete or purge: the same arguments and the same guard."""
+        _require_uuid(notification_id, "no_such_notification")
+        response = self._rpc(
+            rpc_name,
+            {"p_notification_id": notification_id, **actor.as_rpc_args(with_email=True)},
+        )
+        return getattr(response, "data", None) or {}
+
     def preview_audience(
         self, *, target_kind: str, target_role, target_tier, target_user_id
     ) -> int:
@@ -293,84 +300,36 @@ class SupabaseNotificationBackend:
             target_user_id,
             expires_at,
         )
-        try:
-            response = self._client.rpc(
-                "admin_create_notification",
-                {
-                    "p_type": type,
-                    "p_severity": severity,
-                    "p_title_en": title_en,
-                    "p_title_ar": title_ar,
-                    "p_body_en": body_en,
-                    "p_body_ar": body_ar,
-                    "p_target_kind": target_kind,
-                    "p_target_role": target_role,
-                    "p_target_tier": target_tier,
-                    "p_target_user_id": target_user_id,
-                    "p_expires_at": expires_at,
-                    "p_resend_of": resend_of,
-                    "p_client_request_id": client_request_id,
-                    "p_request_payload_hash": payload_hash,
-                    "p_actor_id": actor.user_id,
-                    "p_actor_email": actor.email,
-                    "p_request_ip": actor.request_ip,
-                    "p_user_agent": actor.user_agent,
-                },
-            ).execute()
-        except Exception as exception:
-            raise _refusal_from(exception) from exception
+        response = self._rpc(
+            "admin_create_notification",
+            {
+                "p_type": type,
+                "p_severity": severity,
+                "p_title_en": title_en,
+                "p_title_ar": title_ar,
+                "p_body_en": body_en,
+                "p_body_ar": body_ar,
+                "p_target_kind": target_kind,
+                "p_target_role": target_role,
+                "p_target_tier": target_tier,
+                "p_target_user_id": target_user_id,
+                "p_expires_at": expires_at,
+                "p_resend_of": resend_of,
+                "p_client_request_id": client_request_id,
+                "p_request_payload_hash": payload_hash,
+                **actor.as_rpc_args(with_email=True),
+            },
+        )
         return getattr(response, "data", None) or {}
 
     def deactivate(self, notification_id: str, *, actor) -> dict:
-        _require_uuid(notification_id, "no_such_notification")
-        try:
-            response = self._client.rpc(
-                "admin_deactivate_notification",
-                {
-                    "p_notification_id": notification_id,
-                    "p_actor_id": actor.user_id,
-                    "p_actor_email": actor.email,
-                    "p_request_ip": actor.request_ip,
-                    "p_user_agent": actor.user_agent,
-                },
-            ).execute()
-        except Exception as exception:
-            raise _refusal_from(exception) from exception
-        return getattr(response, "data", None) or {}
+        return self._lifecycle("admin_deactivate_notification", notification_id, actor)
 
     def delete(self, notification_id: str, *, actor) -> dict:
-        _require_uuid(notification_id, "no_such_notification")
-        try:
-            response = self._client.rpc(
-                "admin_delete_notification",
-                {
-                    "p_notification_id": notification_id,
-                    "p_actor_id": actor.user_id,
-                    "p_actor_email": actor.email,
-                    "p_request_ip": actor.request_ip,
-                    "p_user_agent": actor.user_agent,
-                },
-            ).execute()
-        except Exception as exception:
-            raise _refusal_from(exception) from exception
-        return getattr(response, "data", None) or {}
+        return self._lifecycle("admin_delete_notification", notification_id, actor)
 
     def purge(self, notification_id: str, *, actor) -> dict:
-        _require_uuid(notification_id, "no_such_notification")
-        try:
-            response = self._client.rpc(
-                "admin_purge_notification",
-                {
-                    "p_notification_id": notification_id,
-                    "p_actor_id": actor.user_id,
-                    "p_actor_email": actor.email,
-                    "p_request_ip": actor.request_ip,
-                    "p_user_agent": actor.user_agent,
-                },
-            ).execute()
-        except Exception as exception:
-            raise _refusal_from(exception) from exception
-        return getattr(response, "data", None) or {}
+        return self._lifecycle("admin_purge_notification", notification_id, actor)
 
     def list_history(self, *, limit: int, offset: int, status: str) -> tuple:
         response = self._client.rpc(
@@ -403,13 +362,10 @@ class SupabaseNotificationBackend:
 
     def mark_read(self, notification_id: str, user_id: str, action: str) -> dict:
         _require_uuid(notification_id, "no_such_notification")
-        try:
-            response = self._client.rpc(
-                "notifications_mark_read",
-                {"p_notification_id": notification_id, "p_user_id": user_id, "p_action": action},
-            ).execute()
-        except Exception as exception:
-            raise _refusal_from(exception) from exception
+        response = self._rpc(
+            "notifications_mark_read",
+            {"p_notification_id": notification_id, "p_user_id": user_id, "p_action": action},
+        )
         return getattr(response, "data", None) or {}
 
     def mark_all_read(self, user_id: str) -> int:

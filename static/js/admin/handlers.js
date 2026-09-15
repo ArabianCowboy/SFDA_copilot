@@ -28,15 +28,12 @@ import {
   setPeopleLoading,
   showAccountList,
   showAccountMessage,
-  showAuditMessage,
   showComposerError,
-  showNotificationHistoryMessage,
-  showPeopleMessage,
+  showPanelMessage,
   readProfileForm,
   readSettingsDisplay,
   readSettingsForm,
   renderRegistrations,
-  showRegistrationsMessage,
   renderSettings,
   selectTab,
   setProfileSaving,
@@ -45,7 +42,6 @@ import {
   showGateMessage,
   stageRevert,
   showSettingsErrors,
-  showSettingsMessage,
   syncNotificationTargetFields,
   tabIds,
   renderTiers,
@@ -321,7 +317,10 @@ export async function initNotificationsTab(services) {
       if (loadMore) loadMore.hidden = rows.length < historyLimit;
     } catch {
       if (mine !== historyGeneration) return;
-      showNotificationHistoryMessage(I18n.t('admin.notifications.history.loadFailed'));
+      showPanelMessage(
+        'notification-history-body',
+        I18n.t('admin.notifications.history.loadFailed'),
+      );
     } finally {
       if (mine === historyGeneration) setHistoryControlsDisabled(false);
     }
@@ -789,7 +788,7 @@ export async function loadAudit(services) {
     const { entries } = await services.audit();
     renderAudit(entries);
   } catch {
-    showAuditMessage(I18n.t('admin.audit.loadFailed'));
+    showPanelMessage('audit-body', I18n.t('admin.audit.loadFailed'));
   }
 }
 
@@ -894,7 +893,7 @@ export async function initPeopleTab(services) {
       }
       if (mine !== generation || seq !== requestSequence) return;
       showAccountList();
-      showPeopleMessage(I18n.t('admin.people.loadFailed'));
+      showPanelMessage('people-list', I18n.t('admin.people.loadFailed'));
     } finally {
       if (seq === requestSequence) {
         loading = false;
@@ -937,25 +936,30 @@ export async function initPeopleTab(services) {
     }
     const mine = ++generation;
     try {
+      // All three requests start together, but the account itself is awaited
+      // first, so a failed open shows its message without waiting on the other
+      // two. Each of those carries its own fallback from the moment it starts,
+      // so neither can reject, and an early return leaves nothing unhandled.
+      //
+      // The activity is allowed to fail on its own: a log outage should not stop
+      // an operator seeing who they are looking at. `null` means "could not
+      // tell", which the detail renders differently from an empty history.
+      const entriesPending = services
+        .audit({ targetType: 'user', targetId: userId })
+        .then((payload) => payload.entries)
+        .catch(() => null);
+      // The tier list backs the quota zone's <select>, and is allowed to fail on
+      // its own for the same reason the activity log is: an operator must still
+      // see who they are looking at. An empty list simply renders a select with
+      // no options rather than no account.
+      const tiersPending = services
+        .tiers()
+        .then((payload) => payload.tiers || [])
+        .catch(() => []);
+      // A rejection, or an unreadable 200 that arrives as `null`, throws into the
+      // failure message below.
       const { user, self_id: selfId } = await services.user(userId);
-      // The activity is a second request and is allowed to fail on its own: a
-      // log outage should not stop an operator seeing who they are looking at.
-      let entries = [];
-      try {
-        entries = (await services.audit({ targetType: 'user', targetId: userId })).entries;
-      } catch {
-        entries = null;
-      }
-      // The tier list backs the quota zone's <select>. A third request, and
-      // allowed to fail on its own for the same reason the activity log is:
-      // an operator must still see who they are looking at. An empty list
-      // simply renders a select with no options rather than no account.
-      let tiers = [];
-      try {
-        tiers = (await services.tiers()).tiers || [];
-      } catch {
-        tiers = [];
-      }
+      const [entries, tiers] = await Promise.all([entriesPending, tiersPending]);
       if (mine !== generation) return;
       renderAccountDetail(user, entries, selfId, tiers);
     } catch {
@@ -1278,7 +1282,7 @@ export async function initRegistrationsTab(services) {
     currentState = await services.registrations();
     renderRegistrations(currentState);
   } catch {
-    showRegistrationsMessage(I18n.t('admin.registrations.loadFailed'));
+    showPanelMessage('registrations-body', I18n.t('admin.registrations.loadFailed'));
     ErrorHandler.showToast(I18n.t('admin.registrations.loadFailed'), true);
     return;
   }
@@ -1610,7 +1614,7 @@ export async function initSettingsTab(services) {
     currentActive = loaded.active || {};
     renderSettings(loaded);
   } catch {
-    showSettingsMessage(I18n.t('admin.settings.loadFailed'));
+    showPanelMessage('settings-body', I18n.t('admin.settings.loadFailed'));
     ErrorHandler.showToast(I18n.t('admin.settings.loadFailed'), true);
     return;
   }

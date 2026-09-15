@@ -49,6 +49,23 @@ class AdminActionRefused(Exception):
         self.code = code
 
 
+def _require_uuid(value: str, refusal_code: str) -> None:
+    """Refuse an id that is not a uuid before it reaches the database.
+
+    A uuid is what the storage requires, so it is checked in the backend rather
+    than in the route: the route's contract is about the payload, and a non-uuid
+    simply identifies no row. Left to the driver it would surface as a 500 from a
+    failed Postgres cast for what is really a 404-shaped mistake.
+
+    Deliberately backend-only: the in-memory testing doubles' fixtures use
+    non-uuid ids on purpose, and this check must never see them.
+    """
+    try:
+        uuid.UUID(str(value))
+    except (ValueError, AttributeError, TypeError):
+        raise AdminActionRefused(refusal_code) from None
+
+
 # Postgres SQLSTATEs raised by admin_set_user_flags, mapped to the codes the
 # console has strings for. Kept next to the exception so the two cannot drift.
 _REFUSAL_CODES = {
@@ -290,6 +307,18 @@ class SupabaseAdminBackend:
     def __init__(self, client) -> None:
         self._client = client
 
+    def _rpc(self, name: str, args: dict):
+        """Call one RPC, converting a guard's SQLSTATE into a refusal.
+
+        Every writer goes through here. A writer that skipped the conversion
+        would hand a demoted or disabled administrator an unconverted PostgREST
+        exception on the generic error path instead of the AD004 refusal.
+        """
+        try:
+            return self._client.rpc(name, args).execute()
+        except Exception as exception:
+            raise _refusal_from(exception) from exception
+
     def fetch_identity(self, user_id: str, email: str | None) -> IdentityFlags | None:
         response = (
             self._client.table("profiles")
@@ -350,32 +379,20 @@ class SupabaseAdminBackend:
         actually changed is a field that cannot be trusted. A BEFORE trigger
         now sets it, matching how public.profiles has always done it, and the
         column is not in any payload.
-        """
-        try:
-            response = self._client.rpc(
-                "admin_write_settings",
-                {
-                    "p_settings": settings,
-                    "p_actor_id": actor.user_id,
-                    "p_actor_email": actor.email,
-                    "p_before": before,
-                    "p_after": after,
-                    "p_request_ip": actor.request_ip,
-                    "p_user_agent": actor.user_agent,
-                },
-            ).execute()
-        except Exception as exception:
-            # admin_write_settings had no refusal to raise until the migration
-            # that made an enabled administrator mandatory, so this method was
-            # the one writer with no `except` — the same shape update_profile
-            # and set_user_flags have carried since they were written. Without
-            # it a demoted or disabled administrator saving settings gets an
-            # unconverted PostgREST exception on the generic error path
-            # instead of the AD004 refusal, and it is not one surface but
-            # three: the settings page, the registration pause control and the
-            # notification purge-retention control all reach this method.
-            raise _refusal_from(exception) from exception
 
+        Three surfaces reach this method (the settings page, the registration
+        pause control and the notification purge-retention control), so its
+        refusal conversion in `_rpc` covers all three.
+        """
+        response = self._rpc(
+            "admin_write_settings",
+            {
+                "p_settings": settings,
+                "p_before": before,
+                "p_after": after,
+                **actor.as_rpc_args(with_email=True),
+            },
+        )
         return getattr(response, "data", None) or {}
 
     def list_audit(
@@ -423,31 +440,20 @@ class SupabaseAdminBackend:
         expected_updated_at,
         actor,
     ) -> dict:
-        try:
-            uuid.UUID(str(user_id))
-        except (ValueError, AttributeError, TypeError):
-            raise AdminActionRefused("no_such_account") from None
-
-        try:
-            response = self._client.rpc(
-                "admin_update_profile",
-                {
-                    "p_user_id": user_id,
-                    "p_first_name": first_name,
-                    "p_family_name": family_name,
-                    "p_age": age,
-                    "p_organization": organization,
-                    "p_specialization": specialization,
-                    "p_expected_updated_at": expected_updated_at,
-                    "p_actor_id": actor.user_id,
-                    "p_actor_email": actor.email,
-                    "p_request_ip": actor.request_ip,
-                    "p_user_agent": actor.user_agent,
-                },
-            ).execute()
-        except Exception as exception:
-            raise _refusal_from(exception) from exception
-
+        _require_uuid(user_id, "no_such_account")
+        response = self._rpc(
+            "admin_update_profile",
+            {
+                "p_user_id": user_id,
+                "p_first_name": first_name,
+                "p_family_name": family_name,
+                "p_age": age,
+                "p_organization": organization,
+                "p_specialization": specialization,
+                "p_expected_updated_at": expected_updated_at,
+                **actor.as_rpc_args(with_email=True),
+            },
+        )
         return getattr(response, "data", None) or {}
 
     def append_audit(
@@ -484,8 +490,9 @@ class SupabaseAdminBackend:
         ).execute()
 
     def get_user(self, user_id: str) -> dict | None:
-        # Same reasoning as `set_user_flags` below: a non-uuid identifies no
-        # account, and that is a "not found", not a crash.
+        # Same reasoning as `_require_uuid`: a non-uuid identifies no account,
+        # and that is a "not found", not a crash. None rather than a refusal,
+        # because a read has nothing to refuse.
         try:
             uuid.UUID(str(user_id))
         except (ValueError, AttributeError, TypeError):
@@ -498,49 +505,32 @@ class SupabaseAdminBackend:
     def set_user_flags(
         self, user_id: str, *, role=None, is_disabled=None, reason=None, actor
     ) -> dict:
-        # A uuid is what THIS storage requires, so it is checked here rather
-        # than in the route — the route's contract is about the payload, and an
-        # id that is not a uuid simply identifies no account. Left to the driver
-        # it would surface as a 500 for what is really a 404-shaped mistake.
-        try:
-            uuid.UUID(str(user_id))
-        except (ValueError, AttributeError, TypeError):
-            raise AdminActionRefused("no_such_account") from None
-
-        try:
-            response = self._client.rpc(
-                "admin_set_user_flags",
-                {
-                    "p_user_id": user_id,
-                    "p_role": role,
-                    "p_is_disabled": is_disabled,
-                    "p_reason": reason,
-                    "p_actor_id": actor.user_id,
-                    "p_actor_email": actor.email,
-                    "p_request_ip": actor.request_ip,
-                    "p_user_agent": actor.user_agent,
-                },
-            ).execute()
-        except Exception as exception:
-            # The guards come back as PostgREST errors carrying the SQLSTATE.
-            raise _refusal_from(exception) from exception
-
+        _require_uuid(user_id, "no_such_account")
+        # The guards come back as PostgREST errors carrying the SQLSTATE.
+        response = self._rpc(
+            "admin_set_user_flags",
+            {
+                "p_user_id": user_id,
+                "p_role": role,
+                "p_is_disabled": is_disabled,
+                "p_reason": reason,
+                **actor.as_rpc_args(with_email=True),
+            },
+        )
         return getattr(response, "data", None) or {}
 
     # -- tiers and the reader quota ------------------------------------------
-
-    def _quota_rpc(self, name: str, args: dict):
-        try:
-            return self._client.rpc(name, args).execute()
-        except Exception as exception:
-            raise _refusal_from(exception) from exception
+    #
+    # No p_actor_email on any of these: the functions resolve the email from the
+    # id they just validated, so a caller-supplied address can never reach the
+    # audit trail. See the migration.
 
     def list_tiers(self) -> list[dict]:
-        response = self._quota_rpc("admin_list_tiers", {})
+        response = self._rpc("admin_list_tiers", {})
         return list(getattr(response, "data", None) or [])
 
     def create_tier(self, *, key, label_en, label_ar, daily_message_limit, ordering, actor) -> dict:
-        response = self._quota_rpc(
+        response = self._rpc(
             "admin_create_tier",
             {
                 "p_key": key,
@@ -548,12 +538,7 @@ class SupabaseAdminBackend:
                 "p_label_ar": label_ar,
                 "p_daily_message_limit": daily_message_limit,
                 "p_ordering": ordering,
-                # No p_actor_email on any of these: the functions resolve the
-                # email from the id they just validated, so a caller-supplied
-                # address can never reach the audit trail. See the migration.
-                "p_actor_id": actor.user_id,
-                "p_request_ip": actor.request_ip,
-                "p_user_agent": actor.user_agent,
+                **actor.as_rpc_args(with_email=False),
             },
         )
         return getattr(response, "data", None) or {}
@@ -561,7 +546,7 @@ class SupabaseAdminBackend:
     def update_tier(
         self, key: str, *, label_en, label_ar, daily_message_limit, ordering, actor
     ) -> dict:
-        response = self._quota_rpc(
+        response = self._rpc(
             "admin_update_tier",
             {
                 "p_key": key,
@@ -569,44 +554,31 @@ class SupabaseAdminBackend:
                 "p_label_ar": label_ar,
                 "p_daily_message_limit": daily_message_limit,
                 "p_ordering": ordering,
-                "p_actor_id": actor.user_id,
-                "p_request_ip": actor.request_ip,
-                "p_user_agent": actor.user_agent,
+                **actor.as_rpc_args(with_email=False),
             },
         )
         return getattr(response, "data", None) or {}
 
     def delete_tier(self, key: str, *, actor) -> dict:
-        response = self._quota_rpc(
-            "admin_delete_tier",
-            {
-                "p_key": key,
-                "p_actor_id": actor.user_id,
-                "p_request_ip": actor.request_ip,
-                "p_user_agent": actor.user_agent,
-            },
+        response = self._rpc(
+            "admin_delete_tier", {"p_key": key, **actor.as_rpc_args(with_email=False)}
         )
         return getattr(response, "data", None) or {}
 
     def set_reader_quota(
         self, user_id: str, *, tier, override, starts_at, expires_at, reason, actor
     ) -> dict:
-        try:
-            uuid.UUID(str(user_id))
-        except (ValueError, AttributeError, TypeError):
-            raise AdminActionRefused("no_such_account") from None
-        response = self._quota_rpc(
+        _require_uuid(user_id, "no_such_account")
+        response = self._rpc(
             "admin_set_reader_quota",
             {
                 "p_user_id": user_id,
                 "p_tier": tier,
                 "p_daily_message_limit_override": override,
                 "p_reason": reason,
-                "p_actor_id": actor.user_id,
                 "p_override_starts_at": starts_at,
                 "p_override_expires_at": expires_at,
-                "p_request_ip": actor.request_ip,
-                "p_user_agent": actor.user_agent,
+                **actor.as_rpc_args(with_email=False),
             },
         )
         return getattr(response, "data", None) or {}

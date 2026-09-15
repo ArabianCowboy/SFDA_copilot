@@ -121,7 +121,9 @@ too small to act on alone:
    `showPeopleMessage`/`showAuditMessage`/`showSettingsMessage` already implement, with a
    different CSS class — added `showRegistrationsMessage` as the fourth instance of the same
    established (if itself repeated) pattern, rather than a one-off that looked different from
-   every sibling panel's failure state.
+   every sibling panel's failure state. _(2026-09-16: all five were later merged into one
+   `showPanelMessage(containerId, message)`; see
+   `docs/archive/2026-09-16_simplification-pass.md` step 1.4.)_
 7. **Accepted, not fixed here:** `SettingsService.snapshot()`/`_publish()` has the identical
    race pattern item 1 of the earlier post-build review fixed for the operational cache — this
    pass independently found the same gap and confirmed it is already tracked in `TODO.md`.

@@ -313,7 +313,7 @@ SUPPORTED_FAQ_LANGS = ("en", "ar")
 # that mixes a fresh template with a stale module is worse than a stale page —
 # post-icon-migration it would render an <i class="bi"> with no icon font behind
 # it, or print a glyph NAME as text. MODULE_IMPORT_MAP below closes that.
-ASSET_VERSION = "warm83"
+ASSET_VERSION = "warm84"
 
 # Product release, rendered in the landing footer. The single source — do not
 # hand-type this value into a JS docstring or any other comment; that duplication
@@ -970,6 +970,41 @@ def _chat_persistence() -> Any | None:
     return factory() if factory else None
 
 
+def _persistence_preconditions(
+    error_message: str,
+) -> tuple[str | None, Any | None, tuple[Response, int] | None]:
+    """(owner, backend, error) for every route that reads or deletes history.
+
+    The session routes and the account's export and bulk delete must agree
+    about what "history is not available" means, and the failure this guards
+    against is one of them quietly deciding an outage is an empty list.
+    `/api/chat/history` already refuses to make that claim; a sidebar that
+    renders "no conversations", or an export that holds only its header line,
+    over an unreachable store makes the same false statement in a louder place.
+
+    `error_message` is the only thing that differs: each surface words its own
+    503. A falsy owner or a None backend with no error means "nothing was ever
+    filed", and callers answer that honestly as empty.
+    """
+    owner_id = _durable_owner()
+    persistence = _chat_persistence()
+
+    if persistence is None or not owner_id:
+        # Persistence ON with no backend is a live misconfiguration and says
+        # so; OFF is a deployment choice and stays quiet. The same split
+        # `_persist_turn` and the transcript route already make.
+        if persistence is None and current_app.config.get("CHAT_PERSISTENCE_ENABLED", False):
+            logger.error("Chat persistence is enabled but no backend is configured.")
+            return (
+                None,
+                None,
+                (jsonify(error=error_message, code="history_unavailable"), 503),
+            )
+        return owner_id, None, None
+
+    return owner_id, persistence, None
+
+
 def _quota() -> Any | None:
     """The daily-allowance backend for this request, or None."""
     factory = current_app.config.get("quota_backend")
@@ -1253,6 +1288,21 @@ def _load_history(
     )
 
 
+# The source fields that pass through storage unchanged, in both directions.
+# Only the index (`index` on the wire, `source_index` in the row) and `cited`
+# differ between the two projections, so only those are spelled out in each.
+_SOURCE_PASSTHROUGH_FIELDS = (
+    "document",
+    "page",
+    "category",
+    "score",
+    "semantic_score",
+    "lexical_score",
+    "chunk_id",
+    "snippet",
+)
+
+
 def _persistable_sources(retrieved: list[dict[str, Any]], cited: list[int]) -> list[dict[str, Any]]:
     """Every RETRIEVED passage, flagged with whether the answer cited it.
 
@@ -1274,14 +1324,7 @@ def _persistable_sources(retrieved: list[dict[str, Any]], cited: list[int]) -> l
         {
             "source_index": source["index"],
             "cited": source["index"] in cited_indices,
-            "document": source.get("document"),
-            "page": source.get("page"),
-            "category": source.get("category"),
-            "score": source.get("score"),
-            "semantic_score": source.get("semantic_score"),
-            "lexical_score": source.get("lexical_score"),
-            "chunk_id": source.get("chunk_id"),
-            "snippet": source.get("snippet"),
+            **{name: source.get(name) for name in _SOURCE_PASSTHROUGH_FIELDS},
         }
         for source in retrieved
     ]
@@ -1334,23 +1377,17 @@ def _hydration_sources(stored: list[dict[str, Any]]) -> list[dict[str, Any]]:
     control that resolves to nothing — which is precisely the state hydration
     exists to end, arrived at by a different route.
 
-    Keep this function and `_persistable_sources` adjacent and change them
-    together. One projection of these rows already drifted from another once;
-    that is why the write-side remap is a named function rather than a dict
-    literal inside the route, and the read side gets the same treatment.
+    One projection of these rows already drifted from another once; that is why
+    the write-side remap is a named function rather than a dict literal inside
+    the route, and the read side gets the same treatment. The fields both sides
+    copy unchanged now come from one tuple, `_SOURCE_PASSTHROUGH_FIELDS`, so they
+    cannot drift; only the two keys that differ are spelled out in each.
     """
     return [
         {
             "index": source.get("source_index"),
             "cited": bool(source.get("cited")),
-            "document": source.get("document"),
-            "page": source.get("page"),
-            "category": source.get("category"),
-            "score": source.get("score"),
-            "semantic_score": source.get("semantic_score"),
-            "lexical_score": source.get("lexical_score"),
-            "chunk_id": source.get("chunk_id"),
-            "snippet": source.get("snippet"),
+            **{name: source.get(name) for name in _SOURCE_PASSTHROUGH_FIELDS},
         }
         for source in stored
     ]
@@ -3083,43 +3120,6 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
     # leaked anon key, not the coordinator of a workflow spanning a cookie, a
     # process-local cache and three tables.
 
-    def _sidebar_preconditions() -> tuple[str | None, Any | None, tuple[Response, int] | None]:
-        """(owner, backend, error) for every session route.
-
-        Factored out because the four routes below must agree about what
-        "history is not available" means, and the failure this guards against is
-        one of them quietly deciding an outage is an empty list. `/api/chat/history`
-        already refuses to make that claim; a sidebar that renders "no
-        conversations" over an unreachable store makes the same false statement
-        in a louder place.
-        """
-        owner_id = _durable_owner()
-        persistence = _chat_persistence()
-
-        if persistence is None or not owner_id:
-            # Persistence ON with no backend is a live misconfiguration and says
-            # so; OFF is a deployment choice and stays quiet. The same split
-            # `_persist_turn` and the transcript route already make.
-            if persistence is None and current_app.config.get("CHAT_PERSISTENCE_ENABLED", False):
-                logger.error(
-                    "Chat persistence is enabled but no backend is configured; "
-                    "the conversation list cannot be served."
-                )
-                return (
-                    None,
-                    None,
-                    (
-                        jsonify(
-                            error="Your conversations could not be loaded.",
-                            code="history_unavailable",
-                        ),
-                        503,
-                    ),
-                )
-            return owner_id, None, None
-
-        return owner_id, persistence, None
-
     def _owned_session_id(raw: str) -> str | None:
         """A canonical uuid, or None when this cannot name a session.
 
@@ -3149,7 +3149,9 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
         NOTE this does NOT touch session state. Listing conversations is not
         starting one.
         """
-        owner_id, persistence, error = _sidebar_preconditions()
+        owner_id, persistence, error = _persistence_preconditions(
+            "Your conversations could not be loaded."
+        )
         if error:
             return error
 
@@ -3230,7 +3232,9 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
         the sidebar renders with its untitled fallback, so "clear the name" is a
         reachable, meaningful action rather than an error.
         """
-        owner_id, persistence, error = _sidebar_preconditions()
+        owner_id, persistence, error = _persistence_preconditions(
+            "Your conversations could not be loaded."
+        )
         if error:
             return error
 
@@ -3288,7 +3292,9 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
         being attempted: the write is already committed to landing and would
         recreate the row after the delete. See `_InFlightGenerations`.
         """
-        owner_id, persistence, error = _sidebar_preconditions()
+        owner_id, persistence, error = _persistence_preconditions(
+            "Your conversations could not be loaded."
+        )
         if error:
             return error
 

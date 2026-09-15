@@ -42,6 +42,22 @@ class AuditActor:
     request_ip: str | None = None
     user_agent: str | None = None
 
+    def as_rpc_args(self, *, with_email: bool) -> dict[str, str | None]:
+        """The actor half of an audited RPC's arguments.
+
+        ``with_email`` has no default so every call site states the decision.
+        Functions that resolve the email from the id they validate take none: a
+        caller-supplied address must never be able to reach the audit trail.
+        """
+        args = {
+            "p_actor_id": self.user_id,
+            "p_request_ip": self.request_ip,
+            "p_user_agent": self.user_agent,
+        }
+        if with_email:
+            args["p_actor_email"] = self.email
+        return args
+
 
 def actor_from_request(identity) -> AuditActor:
     """Build an actor from the resolved identity plus the request.

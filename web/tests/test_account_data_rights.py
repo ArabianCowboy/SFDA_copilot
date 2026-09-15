@@ -190,3 +190,38 @@ def test_delete_all_conversations_is_refused_while_any_answer_is_generating(app)
 
     assert refused.status_code == 409
     assert refused.get_json()["code"] == "generation_in_flight"
+
+
+# ── A misconfigured deployment ───────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        pytest.param(lambda c: c.get("/account/api/export", headers=AUTH), id="export"),
+        pytest.param(
+            lambda c: c.delete("/account/api/conversations", headers=AUTH), id="delete_all"
+        ),
+    ],
+)
+def test_persistence_enabled_with_no_backend_is_a_503_before_anything_starts(app, caplog, call):
+    """Refused before the stream opens or the delete runs: a file with only a
+    header line would read as "you have no conversations". And logged, the same
+    as the sidebar, because nobody else will notice the misconfiguration."""
+    import logging
+
+    app.config["chat_backend"] = lambda: None
+    app.config["CHAT_PERSISTENCE_ENABLED"] = True
+
+    with caplog.at_level(logging.ERROR):
+        response = call(app.test_client())
+
+    assert response.status_code == 503
+    assert response.get_json() == {
+        "error": "Your data could not be reached.",
+        "code": "history_unavailable",
+    }
+    assert any(
+        "Chat persistence is enabled but no backend is configured" in record.getMessage()
+        for record in caplog.records
+    )

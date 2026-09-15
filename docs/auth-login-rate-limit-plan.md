@@ -448,7 +448,8 @@ belongs in GoTrue's config, not in Flask — same sentence as §2's closing para
    to this exact anti-pattern: bounded to 300 characters, redacts JWTs and `sb_secret_`
    values, and is documented never to raise. `admin_store.py` and `chat_store.py`
    already use it. Note its scope limit, which matters here: every existing caller feeds
-   it to a logger or to an internal exception message (`chat_store.py:501`), never into
+   it to a logger or to an internal exception message (`SupabaseChatBackend._rpc` in
+   `chat_store.py`), never into
    a response body, and it changes no status code or control flow. So it does nothing
    about §1.3's separate defect of returning `str(e)` to an anonymous caller — step 3 is
    what closes that, and the two must not be conflated.
