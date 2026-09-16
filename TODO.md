@@ -57,6 +57,10 @@ bottom of this file: [How this file works](#how-this-file-works).
 - [Account deletion (Spec 4)](#account-deletion-spec-4--blocked-on-a-product-decision-not-on-engineering) — blocked on an unclosed product decision; both migrations written.
 - [A conversation id now reaches the access log](#a-conversation-id-now-reaches-the-access-log) — a verification task, possibly already fine; unverified either way.
 - [Six of the seven admin RPCs validate the actor without holding a lock](#six-of-the-seven-admin-rpcs-validate-the-actor-without-holding-a-lock) — a check-then-act window; pre-existing, not introduced by the actor gate.
+- [Two search artifacts are unpickled before anything has validated them](#two-search-artifacts-are-unpickled-before-anything-has-validated-them) — not started; needs a format change and a corpus rebuild, not a hash.
+- [Nothing ever deletes an old search build](#nothing-ever-deletes-an-old-search-build) — not started; 16 on disk, 8 of them failed runs; the cleanup step is the risky half.
+- [`IndexFlatL2` shifts every id above a deleted vector](#indexflatl2-shifts-every-id-above-a-deleted-vector) — nothing is wrong today; **mandatory** in any commit that adds incremental delete or update.
+- [Every candidate's TF-IDF cosine is computed twice per question](#every-candidates-tf-idf-cosine-is-computed-twice-per-question) — not started; 561 µs a question, recorded because the cost of fixing it is the interesting half.
 - [A retention policy, and the bounds that depend on one](#a-retention-policy-and-the-bounds-that-depend-on-one) — blocked on a retention period nobody owns; covers the assistant-message and audit_log text bounds too.
 - [`chat_sessions.owner_id` still has no foreign key](#chat_sessionsowner_id-still-has-no-foreign-key) — sequenced behind account deletion; the migration is small and the header's reasoning is already corrected.
 - [Does "disabled" freeze an account's own profile edits?](#does-disabled-freeze-an-accounts-own-profile-edits-or-only-its-use-of-the-product) — blocked on a product decision, not on engineering.
@@ -319,6 +323,109 @@ with the `for update` that `admin_set_user_flags` already takes on a demotion ta
 costs nothing on the uncontended path. That is probably the right answer, and it should be
 measured rather than assumed: `for share` on `profiles` sits on the hot path of every admin
 mutation, and `profiles` is also the table every reader request reads.
+
+### Two search artifacts are unpickled before anything has validated them
+
+**Where:** `web/services/search_index.py` — `_load_tfidf_vectorizer` and `_load_tfidf_matrix`,
+called at `load()` steps 5 and 6, before `_validate_dimensions` and `_validate_manifest` run.
+Also `build_registry.validate_build_dir`, which unpickles both "only to confirm it is not
+corrupt".
+
+**What is wrong.** `tfidf_vectorizer.pkl` and `tfidf_matrix.pkl` are Python pickles, and
+`pickle.load` executes opcodes as it reads them — a crafted stream runs code the microsecond it
+is loaded, not when loading finishes. Every check this app performs on those files happens
+afterwards, so no check can protect the process from them. This is a property of the ordering,
+not a weak guard: a verification placed after `pickle.load` is mechanically incapable of firing
+before the thing it guards against.
+
+**Who it reaches.** Nobody today, and the honest reason is that nothing untrusted reaches this
+path: the app builds these artifacts itself, from its own corpus, into a gitignored directory on
+its own disk. It matters if that ever stops being true — a restored backup, an artifact copied
+between machines, a CI runner that fetches a prebuilt index.
+
+**How it was found.** The adversarial security review of the 2026-09-16 integrity work
+(`gemini-3.8-flash-high`) rated it HIGH; `gpt-5.6-sol` independently flagged the same ordering.
+A web-research pass then found the supporting precedent: seven picklescan bypass CVEs during
+2025 (Sonatype's four, JFrog's three at CVSS 9.3), malicious models served live on Hugging Face,
+and `CVE-2025-32434`, which defeated PyTorch's own `weights_only=True` mitigation.
+
+**What fixing it would disturb.** The two halves are not equal. `tfidf_matrix.pkl` is nearly
+free to move — `scipy.sparse.save_npz`/`load_npz` is a plain, non-executable format, and the
+matrix is the larger file. `tfidf_vectorizer.pkl` is the awkward one: `TfidfVectorizer.idf_` is
+a read-only property with no setter, so a non-pickle round trip means extracting `vocabulary_`
+and `idf_` and reconstructing the object by hand — [documented since
+2015](https://thiagomarzagao.com/2015/12/08/saving-TfidfVectorizer-without-pickles/) and still
+true. `safetensors` cannot hold either object; it stores tensors, not Python object graphs.
+Changing the format also changes `REQUIRED_ARTIFACTS`, so every existing build stops loading and
+the corpus must be rebuilt — which is the real cost, and the reason this did not ride along with
+the fail-closed change. **Note what is _not_ the answer:** a SHA-256 recorded beside the artifact
+it vouches for. That was the original plan and it was dropped; it gives corruption detection, not
+tamper resistance, because a writer who can replace the pickle can rewrite the manifest.
+[scikit-learn's own persistence guidance](https://scikit-learn.org/stable/model_persistence.html)
+does not mention hashing at all — it says load only from a trusted source, or change format.
+
+### Nothing ever deletes an old search build
+
+**Where:** `web/services/build_registry.py` — `new_build_id` mints a fresh directory per run and
+no code path removes one. `web/processed_data/builds/` holds 16 on the development machine.
+
+**What is wrong.** Builds accumulate without bound. Eight of the sixteen here are **failed
+runs**: they contain `chunks_data.csv` and both TF-IDF pickles but no FAISS index and no
+manifest, so they died inside `_create_faiss_index` and left their partial output behind. Two of
+those failures (`20260808T175236248701Z`, `20260808T184831545766Z`) are newer than the active
+build, so the directory listing reads as though the corpus moved on when it did not.
+
+**Who it reaches.** Nobody yet. Each complete build is about 27 MB, so sixteen is roughly 400 MB
+on a VPS nobody is watching the disk of.
+
+**How it was found.** Counted while verifying a claim about manifest coverage during the
+2026-09-16 integrity work, then checked against practice: Capistrano and Deployer default to
+keeping 3–5 releases and Uber's index blue/green keeps exactly 2.
+
+**What fixing it would disturb.** The number is the easy part; the cleanup step is where the real
+incidents are. [Capistrano #1907](https://github.com/capistrano/capistrano/issues/1907) deleted
+the oldest _good_ release while a newer failed one survived, and
+[Deployer #1004](https://github.com/deployphp/deployer/issues/1004) had its `keep_releases` limit
+silently fail to enforce itself. Both are the failure this repo already names: a guard that
+cannot fire. So a retention cap needs a test that proves the cap actually fires, it must never
+delete the active build, and it should probably treat a manifest-less partial directory as
+garbage collectable immediately rather than counting it as one of the N kept. Note also that
+`activate` is the rollback tool, so any cap sets a hard floor on how far back a rollback can go.
+
+### `IndexFlatL2` shifts every id above a deleted vector
+
+**Where:** `web/services/data_processing.py:466` — `index.add(embeddings_array)` is the only
+FAISS mutation in the repository, and it only ever writes into a freshly-created build directory.
+
+**What is wrong.** Nothing, today, and that is the entire point of writing it down. FAISS
+documents that for sequential indexes — `IndexFlat`, `IndexPQ`, `IndexLSH` — [removal "shifts
+the ids of vectors above the removed vector
+id"](https://github.com/facebookresearch/faiss/wiki/Special-operations-on-indexes). Delete row 5
+of 1000 and rows 6–1000 silently become 5–999, while the DataFrame keeps its own numbering. The
+row-count check cannot see it, because both stores can legitimately end up the same length.
+
+**Who it reaches.** Nobody, because this app never deletes or updates a vector: every ingest is a
+full rebuild into a new directory. It reaches every reader on the day that stops being true.
+
+**How it was found.** A web-research pass over real incidents during the 2026-09-16 integrity
+work. This exact mechanism produced
+[mem0 #3246](https://github.com/mem0ai/mem0/issues/3246) and
+[#3787](https://github.com/mem0ai/mem0/issues/3787),
+[Haystack #6228](https://github.com/deepset-ai/haystack/issues/6228),
+[LangChain #9019](https://github.com/langchain-ai/langchain/issues/9019), and FAISS's own
+[#255](https://github.com/facebookresearch/faiss/issues/255) — in every case triggered by an
+in-place delete or partial add, never by a clean rebuild. Worth knowing that LangChain's own
+FAISS wrapper uses the same positional coupling this repo does, which is why the bug keeps
+recurring there.
+
+**What fixing it would disturb.** **Any commit that adds incremental delete or update to the
+index must ship stable ids in the same commit** — `IndexIDMap2` with `add_with_ids`, keyed on the
+existing namespaced `chunk_id`, or mem0's shipped answer of reconstructing every surviving
+vector and rebuilding from scratch. Note that `IndexIDMap` had [its own desync
+bug](https://github.com/facebookresearch/faiss/issues/255) on add→remove→add, so it is not free
+either. Adding ids also means the TF-IDF matrix needs the same treatment, since it is positionally
+bound too. Doing it speculatively now would be machinery guarding a code path that does not
+exist; the trigger is what matters.
 
 ---
 
@@ -859,6 +966,48 @@ latency to Supabase is. Invisible at the current scale.
 other two reopens that decision, so this is not a mechanical merge — it is a request to
 revisit a scoping choice that was made on purpose, and it should be argued on its own
 terms rather than folded in as a performance tidy-up.
+
+### Every candidate's TF-IDF cosine is computed twice per question
+
+**Where:** `LexicalSearcher.search` (`web/services/lexical_searcher.py:71-72`) scores the query
+against the whole matrix and keeps the top _k_; `ResultCombiner._compute_lexical_scores`
+(`web/services/result_combiner.py:219-228`) then transforms the same query again and re-scores
+the candidate union. Both are reached from `SearchEngine.search`
+(`web/services/search_engine.py:296-310`), fourteen lines apart, with the same `lexical_query`.
+
+**What is wrong.** Nothing incorrect — the two agree, and the second call exists for a real
+reason. `search` has already computed every chunk's similarity and discarded all but _k_; the
+combiner then pays for a second `transform()` and a second cosine to recover numbers that were
+in hand a moment earlier. It cannot simply read the returned top-_k_ instead, because the union
+also contains semantic-only candidates the lexical leg never returned and which therefore have
+no score yet. The full similarity array would answer both; the top-_k_ list answers only half.
+
+**Who it reaches.** Every question, at a cost nobody can perceive. Measured against the live
+build's 4545×5000 matrix with a representative registration query and a 30-candidate union:
+`transform()` 186 µs plus 376 µs for the slice cosine, so **561 µs per question** would
+disappear. For scale, the full-corpus cosine `search` already pays is 8.0 ms, and the model call
+downstream is three orders of magnitude larger again. _(An earlier pass put this at 795 µs;
+561 µs is the re-measured figure — the 30-row slice is cheaper than that estimate assumed.)_
+
+**How it was found.** `/code-review` over the uncommitted combiner work on 2026-09-16, and
+deliberately left out of `4b35351`: that commit was a correctness fix, and this one changes a
+public return contract.
+
+**What fixing it would disturb.** `LexicalSearcher.search` returns a `list[dict]` of the top _k_.
+The fix is to hand back the full `similarities` array as well, so the combiner indexes into it
+instead of recomputing — which changes that method's signature, `SearchEngine.search`'s call
+site, and `web/tests/test_retrieval_failures.py`, the only file that constructs a
+`LexicalSearcher` directly. It also couples two components that are independent today: the
+combiner would need a defined behaviour for a caller that supplies no array — every test in
+`test_result_combiner.py` constructs a `ResultCombiner` directly and hands `combine()` candidate
+lists built by hand, with no searcher anywhere, and `search_engine.py:418` is the only place in
+production that builds one. So the array has to be optional and the recompute has to survive as
+the fallback, which means the duplicated code does not actually go away; it just stops running on
+the hot path. That is a real design decision in exchange for 561 µs, which is why this is
+recorded rather than done. _(An earlier draft of this entry also named the citation-fidelity
+harness as a hand-built caller. That was wrong — `scripts/eval_citations.py:151-172` either calls
+`engine.search()` or constructs `SearchResult` objects directly, and never reaches
+`ResultCombiner.combine` at all.)_
 
 ### `history_api` and `sessions_api` are still rate-limited by IP, not by account
 

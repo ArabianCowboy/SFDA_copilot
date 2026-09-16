@@ -43,6 +43,70 @@ recording.
 
 ## [HISTORICAL] Resolved bugs
 
+### [HISTORICAL] ~~The FAISS index and the chunk table are aligned only by row count~~ — FIXED 2026-09-16
+
+**Opened and closed on the same day**, so it never appears in a shipped `TODO.md`. It is
+recorded here anyway, because the useful part is not the fix — it is that the first plan for it
+was wrong in a way that took four independent reviews to see, and that plan is written out below
+rather than quietly replaced.
+
+**Where:** `web/services/search_index.py` — `_validate_dimensions` and `_validate_manifest`;
+`build_registry.rows_consistent`; `validate_build_dir`.
+
+**What was wrong.** A search result is assembled from two independent stores at one shared
+offset: `ResultCombiner._compute_semantic_scores` scores FAISS vector _i_, while the text,
+document name and page printed beside that score are read from DataFrame row _i_. Nothing
+checked that vector _i_ and row _i_ describe the same chunk. `rows_consistent` compares three
+integers, so a permuted or offset index passed it exactly as a correct one did, and the failure
+was silent and confident: a real SFDA guideline, a real page number, and a passage that is not
+on it.
+
+**Who it reached.** Nobody, measured rather than assumed — five rows sampled across
+`chunks_data.csv` and re-embedded scored `cos = 1.0000` against `reconstruct(i)`.
+
+**How it was found.** An adversarial security review of `4b35351` (`agy`,
+`gemini-3.8-flash-high`) raised it as its only Medium finding.
+
+**What actually shipped, and how the original plan was wrong.** The first plan had three parts.
+Two of them were dropped after four independent reviews (`gpt-5.6-sol`, `opencode/muse-spark-1.3`,
+`gemini-3.8-flash-high`, and four web-research passes) agreed they were theatre:
+
+- **The proposed build-time check was circular and is recorded here because it was believed for
+  several hours.** It compared `reconstruct(i)` against the `embeddings_array` the index had
+  just been built from. For `IndexFlatL2` that can only fail on a FAISS bug — it never touches
+  the CSV, so it could not detect the DataFrame↔index misalignment it was named for, and it
+  would pass unchanged if the embedding client returned its batches out of order, which is the
+  one way the invariant can actually break. **What shipped instead** is
+  `DataProcessor._verify_vectors_match_their_rows`: re-read the CSV _from disk_, re-embed 32
+  evenly-spaced rows with the live client, and require `cos ≥ 0.99` against
+  `reconstruct_batch`. Verified on the real corpus — a one-row rotation scores 0.057, and
+  `test_build_alignment.py` pins that `validate_build_dir` accepts the same misaligned build
+  the probe rejects.
+- **SHA-256 artifact hashes in `manifest.json` were dropped entirely.** An unkeyed hash stored
+  in the same directory as the artifact it vouches for is not a control against a writer who
+  can reach both, and the corruption case it would catch was already covered by
+  `validate_build_dir`'s disk read-back. Its "warn and skip" branch would additionally have
+  been dead for all eight existing manifests.
+- **The real defect turned out to be the legacy flat fallback**, which was the only reachable
+  way to get mismatched artifacts. `_resolve_paths` fell back to loose files under
+  `processed_data_dir` whenever `active_build.txt` was missing or dangling, and
+  `_validate_manifest` returned early in exactly that case — so deleting one 22-byte file
+  swapped the live corpus for an unverified one while every citation still rendered as
+  authoritative. Both branches are gone; an unusable pointer now raises
+  `ManifestValidationError`, which crashes startup by design.
+
+**Also closed in the same pass**, from the security review: `build_dir_for` joined an unvalidated
+`build_id` read off disk, so a pointer of `../../..` escaped `builds/` entirely — ids are now
+shape-checked against `BUILD_ID_RE`. And `activate_build` did not validate the build it made
+live, while the operator CLI shipped `--skip-validation`; validation moved _into_ `activate_build`
+and the flag is deleted, so the only step that changes what readers are served can no longer be
+bypassed.
+
+**What was deliberately left open**, each now its own entry in `TODO.md`: the two TF-IDF pickles
+are still `pickle.load`ed before any validation runs; nothing ever deletes an old build; and
+`IndexFlatL2` shifts every id above a removed vector, which makes stable ids mandatory the day
+anyone adds incremental delete.
+
 ### [HISTORICAL] ~~Ten source comments cite a plan file that has been archived~~ — FIXED 2026-09-12
 
 **Where:** `static/js/app.js:122`, `static/js/modules/handlers.js:457`,
@@ -114,7 +178,7 @@ tested. It is a deployment action: `git pull` in `/var/www/sfda-copilot` and res
 service. The other seven undeployed commits come with it and should be read first, notably
 `fix(chat): refuse and refund an empty answer on both chat routes` and `fix(chat): tell the
 reader when an answer was cut short`. Deploying is also the only way to pick up
-`gunicorn.conf.py`. Because deployment is `git pull` **into** the live working tree, confirm
+`gunicorn.conf.py`. Because deployment is `git pull` _into_ the live working tree, confirm
 the tree is clean on the box first — commits have been authored there directly before.
 
 **Closed 2026-09-12 by deploying, not by a code change.** The VPS pulled `5522da5 → b89f55d`
