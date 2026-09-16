@@ -134,19 +134,6 @@ class SearchEngineConfig:
 
 
 # ---------------------------------------------------------------------------
-# Public category map (reference / documentation)
-# ---------------------------------------------------------------------------
-
-CATEGORY_MAP: dict[str, str] = {
-    "biological": "biological_products_and_quality_control",
-    "veterinary": "veterinary_medicines",
-    "pharmacovigilance": "pharmacovigilance",
-    "regulatory": "regulatory",
-    "all": "all",
-}
-
-
-# ---------------------------------------------------------------------------
 # SearchEngine
 # ---------------------------------------------------------------------------
 
@@ -208,7 +195,6 @@ class SearchEngine:
 
         # --- Embedding client ---
         self._embedding_client = self._build_embedding_client()
-        self._embedding_dimension: int = self._embedding_client.embedding_dimension
 
         # --- Lazy-loaded components (populated on first search) ---
         self._index: SearchIndex = SearchIndex(
@@ -434,7 +420,6 @@ class SearchEngine:
             faiss_index=self._index.faiss_index,
             tfidf_vectorizer=self._index.tfidf_vectorizer,
             tfidf_matrix=self._index.tfidf_matrix,
-            embedding_dimension=self._embedding_dimension,
             semantic_weight=self._cfg.semantic_weight,
             lexical_weight=self._cfg.lexical_weight,
         )

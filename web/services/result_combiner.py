@@ -62,7 +62,6 @@ class ResultCombiner:
         faiss_index: Loaded FAISS index used to reconstruct chunk vectors.
         tfidf_vectorizer: Fitted TF-IDF vectorizer.
         tfidf_matrix: Sparse TF-IDF document-term matrix.
-        embedding_dimension: Dimensionality of the embedding vectors.
         semantic_weight: Weight for the semantic component (0–1).
         lexical_weight: Weight for the lexical component (0–1).
     """
@@ -73,7 +72,6 @@ class ResultCombiner:
         faiss_index: Any,
         tfidf_vectorizer: Any,
         tfidf_matrix: Any,
-        embedding_dimension: int,
         semantic_weight: float,
         lexical_weight: float,
     ) -> None:
@@ -81,7 +79,6 @@ class ResultCombiner:
         self._faiss_index = faiss_index
         self._tfidf_vectorizer = tfidf_vectorizer
         self._tfidf_matrix = tfidf_matrix
-        self._embedding_dim = embedding_dimension
         self._semantic_weight = semantic_weight
         self._lexical_weight = lexical_weight
 
@@ -102,9 +99,9 @@ class ResultCombiner:
 
         Steps:
             1. Compute the union of unique chunk indices from both pipelines.
-            2. Re-calculate exact semantic cosine similarity (via FAISS
-               ``reconstruct``) and exact lexical TF-IDF cosine similarity for
-               every candidate.
+            2. Re-calculate exact semantic cosine similarity (one FAISS
+               ``reconstruct_batch`` via ``_compute_semantic_scores``) and exact
+               lexical TF-IDF cosine similarity for every candidate.
             3. Apply weighted fusion: ``hybrid = w_s * sem + w_l * lex``.
             4. Apply domain-specific heuristic penalties (e.g. penalise
                establishment-licensing documents when the query is about
@@ -127,29 +124,31 @@ class ResultCombiner:
             r["index"] for r in lexical_results
         }
 
-        if not union_indices:
+        idx_list: list[int] = []
+        for idx in sorted(union_indices):
+            if 0 <= idx < len(self._df):
+                idx_list.append(idx)
+            else:
+                logger.warning("Invalid index %d — skipping.", idx)
+        if not idx_list:
             return []
 
-        # --- Vectorised lexical scores for all candidates at once ---
-        lexical_scores = self._compute_lexical_scores(union_indices, lexical_query)
+        # --- Vectorised scores for all candidates at once ---
+        lexical_scores = self._compute_lexical_scores(idx_list, lexical_query)
 
         # --- Heuristic flags derived from query text ---
         is_reg_query, asks_establishment = self._classify_query(query_text)
 
         q_emb = query_embedding.flatten()
+        semantic_scores = self._compute_semantic_scores(idx_list, q_emb)
         final_results: list[SearchResult] = []
 
-        for idx in union_indices:
+        for idx, sem_score in zip(idx_list, semantic_scores, strict=True):
             try:
-                sem_score = self._compute_semantic_score(idx, q_emb)
                 lex_score = lexical_scores.get(idx, 0.0)
                 hybrid = self._semantic_weight * sem_score + self._lexical_weight * lex_score
 
                 # --- Build SearchResult ---
-                if idx < 0 or idx >= len(self._df):
-                    logger.warning("Invalid index %d — skipping.", idx)
-                    continue
-
                 chunk = self._df.iloc[idx]
 
                 # --- Heuristic penalty ---
@@ -206,25 +205,20 @@ class ResultCombiner:
 
     def _compute_lexical_scores(
         self,
-        indices: set[int],
+        indices: list[int],
         lexical_query: str,
     ) -> dict[int, float]:
         """Compute exact TF-IDF cosine similarity for every index in *indices*."""
-        idx_list = list(indices)
-        if not idx_list:
-            return {}
         query_vec = self._tfidf_vectorizer.transform([lexical_query])
-        candidate_matrix = self._tfidf_matrix[idx_list]
+        candidate_matrix = self._tfidf_matrix[indices]
         sims = cosine_similarity(query_vec, candidate_matrix).flatten()
-        return {idx: float(sim) for idx, sim in zip(idx_list, sims, strict=True)}
+        return {idx: float(sim) for idx, sim in zip(indices, sims, strict=True)}
 
-    def _compute_semantic_score(self, idx: int, query_vec: np.ndarray) -> float:
-        """Reconstruct chunk vector from FAISS and compute cosine similarity."""
-        chunk_vec = np.zeros(self._embedding_dim, dtype=np.float32)
-        self._faiss_index.reconstruct(idx, chunk_vec)
-        diff = query_vec - chunk_vec
-        distance = float(np.dot(diff, diff))
-        return max(0.0, min(1.0, 1.0 - distance / 2.0))
+    def _compute_semantic_scores(self, indices: list[int], query_vec: np.ndarray) -> list[float]:
+        """Reconstruct every candidate in one FAISS call, then score them together."""
+        diffs = query_vec - self._faiss_index.reconstruct_batch(np.asarray(indices, dtype=np.int64))
+        distances = np.einsum("ij,ij->i", diffs, diffs).tolist()
+        return [max(0.0, min(1.0, 1.0 - d / 2.0)) for d in distances]
 
     @staticmethod
     def _classify_query(query_text: str) -> tuple[bool, bool]:
@@ -303,7 +297,7 @@ def apply_relevance_floor(
     is what lets it.
 
     The units are what make an absolute cutoff meaningful. ``semantic_score``
-    is exactly cosine similarity (see ``_compute_semantic_score``: the query
+    is exactly cosine similarity (see ``_compute_semantic_scores``: the query
     and chunk vectors are both L2-normalised, so ``1 - dist/2`` reduces to
     ``cos``), ``lexical_score`` is TF-IDF cosine, and ``score`` is their
     weighted blend — all in [0, 1].

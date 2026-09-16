@@ -65,8 +65,6 @@ bottom of this file: [How this file works](#how-this-file-works).
 - [Run the database assertions somewhere other than by hand](#run-the-database-assertions-somewhere-other-than-by-hand) — `supabase/tests/` exists and runs by hand only.
 - [One Realtime socket per reader, not one per visible tab](#one-realtime-socket-per-reader-not-one-per-visible-tab) — not started; costs nothing measurable yet, written down because the cost is the interesting half.
 - [Confirm on the live site that chat streaming arrives token by token](#confirm-on-the-live-site-that-chat-streaming-arrives-token-by-token) — post-restart verification; circumstantial log evidence says yes, owed by a human.
-- [`ResultCombiner` reconstructs one FAISS vector per candidate](#resultcombiner-reconstructs-one-faiss-vector-per-candidate-in-a-python-loop) — not started; blocked on a characterization test for `combine`.
-- [`CATEGORY_MAP` in `search_engine.py` has no callers](#category_map-in-search_enginepy-has-no-callers) — not started; a one-commit deletion.
 
 ---
 
@@ -1586,52 +1584,6 @@ multi-context browser tests — `test_multi_tab_conversations.py` is the pattern
 are the slowest and most contention-prone tests in the suite, which is the subject of its
 own entry above. Worth doing when someone can show the duplicate polling costs something;
 not before.
-
-### `ResultCombiner` reconstructs one FAISS vector per candidate, in a Python loop
-
-**Where:** `ResultCombiner.combine` and `_compute_semantic_score` in
-`web/services/result_combiner.py`.
-
-**What is wrong.** For every candidate index, `combine` calls `_compute_semantic_score`.
-That allocates a fresh vector, calls `faiss_index.reconstruct(idx, …)` once, and computes
-the distance in Python. The lexical side already does the batched form: one sparse-matrix
-slice and one `cosine_similarity` call for every candidate. The semantic side could do the
-same with one `reconstruct_batch` and one vectorised distance. This is wasted work on the
-path every question takes, not a correctness fault.
-
-**Who it reaches.** Every reader, on every question, as latency proportional to the
-candidate count. It has not been measured, so how much it costs is unknown.
-
-**How it was found.** A whole-app simplification scan on 2026-09-15. The pass deliberately
-left it out ([archived plan](docs/archive/2026-09-16_simplification-pass.md)) because
-nothing in the suite exercises `combine`. `test_chat_api.py`, `test_citations.py` and
-`test_quota_routes.py` only build `SearchResult`s shaped like its output.
-
-**What fixing it would disturb.** It needs a characterization test first, pinning
-`combine`'s scores and ordering against a small real FAISS index and TF-IDF matrix. The
-numbers must match to float tolerance, since the 0.5/0.5 fusion and the relevance floor sit
-directly on them. Without that test, a batched rewrite that reorders results passes
-everything.
-
-### `CATEGORY_MAP` in `search_engine.py` has no callers
-
-**Where:** `CATEGORY_MAP` in `web/services/search_engine.py`, under the "Public category
-map (reference / documentation)" banner.
-
-**What is wrong.** An 11-line dict that nothing in `web/`, `static/` or `scripts/`
-imports. A "reference" mapping that nothing enforces is a second source of category names
-that can drift from the real ones without anyone noticing.
-
-**Who it reaches.** No reader. It reaches the next person who trusts it as the category
-list.
-
-**How it was found.** A whole-app simplification scan on 2026-09-15, confirmed by grep. It
-was left out of that pass as not worth a step
-([archived plan](docs/archive/2026-09-16_simplification-pass.md)).
-
-**What fixing it would disturb.** Almost nothing. It is a one-commit deletion: grep
-`--include=*.md` for any document that cites it first, and delete the banner comment with
-it.
 
 ---
 

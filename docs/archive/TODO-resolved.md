@@ -1516,6 +1516,82 @@ second dashboard trip rather than a grep. Worth remembering the next time an ent
 
 ## [HISTORICAL] Resolved planned work
 
+### [HISTORICAL] ~~`ResultCombiner` reconstructs one FAISS vector per candidate, in a Python loop~~ — DONE 2026-09-16
+
+**Where:** `ResultCombiner.combine` and `_compute_semantic_score` in
+`web/services/result_combiner.py`.
+
+**What was wrong.** For every candidate index, `combine` calls `_compute_semantic_score`.
+That allocates a fresh vector, calls `faiss_index.reconstruct(idx, …)` once, and computes
+the distance in Python. The lexical side already does the batched form: one sparse-matrix
+slice and one `cosine_similarity` call for every candidate. The semantic side could do the
+same with one `reconstruct_batch` and one vectorised distance. This is wasted work on the
+path every question takes, not a correctness fault.
+
+**Who it reaches.** Every reader, on every question, as latency proportional to the
+candidate count. It has not been measured, so how much it costs is unknown.
+
+**How it was found.** A whole-app simplification scan on 2026-09-15. The pass deliberately
+left it out ([archived plan](2026-09-16_simplification-pass.md)) because
+nothing in the suite exercises `combine`. `test_chat_api.py`, `test_citations.py` and
+`test_quota_routes.py` only build `SearchResult`s shaped like its output.
+
+**What fixing it would disturb.** It needs a characterization test first, pinning
+`combine`'s scores and ordering against a small real FAISS index and TF-IDF matrix. The
+numbers must match to float tolerance, since the 0.5/0.5 fusion and the relevance floor sit
+directly on them. Without that test, a batched rewrite that reorders results passes
+everything.
+
+**Closed 2026-09-16.** Shipped in the order the entry prescribed: first the
+characterization test (`web/tests/test_result_combiner.py` — a real 3-dimensional FAISS
+index and fitted TF-IDF at production's 0.5/0.5 weights, pinning exact scores, penalty and
+ranking, plus a counting proxy proving the batch and tests for the dimension, bounds and
+tie behaviour), then the rewrite. `combine` now scores every candidate with one
+`reconstruct_batch` per call in `_compute_semantic_scores`, replacing the deleted
+per-index `_compute_semantic_score`; the bounds filter moved ahead of all scoring with the
+same warning; candidates are processed in ascending chunk-index order; and the now-dead
+`embedding_dimension` constructor argument went with it, including the `SearchEngine`
+field kept solely to pass it. Four labelled behaviour changes: (1) bug fix — a query
+whose dimension differs from the index's now raises instead of returning `[]`, which used
+to read as "no relevant information"; (2) an out-of-range candidate is skipped with a
+warning before any scoring instead of raising out of `combine`; (3) exact ties break
+toward the lower chunk index; (4) semantic scores may differ from before by less than
+1e-6 (float32 summation order in `einsum`). Measured on the real index (4,545 chunks ×
+768 dimensions, 160 candidates per query, 50 queries × 200 timed rounds): build run
+−1,919µs median (−16%), reviewer re-run with its own seed and workload −1,756µs median
+(−18%); equivalence 50/50 same order with scores within 1.8e-7. The entry's premise held:
+the characterization test was the blocker, and it caught nothing wrong with the rewrite —
+all three characterization tests passed unmodified against the new code.
+
+### [HISTORICAL] ~~`CATEGORY_MAP` in `search_engine.py` has no callers~~ — DONE 2026-09-16
+
+**Where:** `CATEGORY_MAP` in `web/services/search_engine.py`, under the "Public category
+map (reference / documentation)" banner.
+
+**What was wrong.** An 11-line dict that nothing in `web/`, `static/` or `scripts/`
+imports. A "reference" mapping that nothing enforces is a second source of category names
+that can drift from the real ones without anyone noticing.
+
+**Who it reaches.** No reader. It reaches the next person who trusts it as the category
+list.
+
+**How it was found.** A whole-app simplification scan on 2026-09-15, confirmed by grep. It
+was left out of that pass as not worth a step
+([archived plan](2026-09-16_simplification-pass.md)).
+
+**What fixing it would disturb.** Almost nothing. It is a one-commit deletion: grep
+`--include=*.md` for any document that cites it first, and delete the banner comment with
+it.
+
+**Closed 2026-09-16.** Deleted the map and its banner from `web/services/search_engine.py`;
+nothing else in that file changed — the `search` docstring's category examples are
+unrelated (matching is by fuzzy substring) and were left alone. A re-run of
+`git grep -n CATEGORY_MAP -- '*.py' '*.js' '*.md' '*.yaml' '*.html'` beforehand found only
+the definition, this entry, `docs/archive/2026-09-16_simplification-pass.md` and the
+cleanup plan itself, so there was nothing else to update. The entry's "11-line dict" was
+wrong either way: the dict itself is 7 lines (5 entries), 12 lines with its banner and
+blank lines.
+
 ### [HISTORICAL] ~~Give readers a quota, and limits worth having~~ — BUILT 2026-09-03/04
 
 **BUILT 2026-09-03/04.** [`docs/archive/2026-09-04_reader-quota.md`](../../docs/archive/2026-09-04_reader-quota.md) is the
