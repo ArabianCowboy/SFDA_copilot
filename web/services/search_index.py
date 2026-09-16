@@ -147,39 +147,46 @@ class SearchIndex:
     # ------------------------------------------------------------------
 
     def _resolve_paths(self) -> None:
-        """Determine which files to actually load from disk.
+        """Resolve the active build directory, or refuse to load anything.
 
-        If ``web/processed_data/active_build.txt`` names a valid, existing
-        build directory (see :mod:`web.services.build_registry`), assets are
-        loaded from *that* versioned build directory instead of the flat
-        ``processed_data_dir`` paths in :class:`SearchIndexConfig`. This is
-        what makes a newly-activated build actually take effect without
-        requiring any change to how ``SearchEngine`` constructs its (fixed)
-        ``SearchIndexConfig`` paths.
+        ``web/processed_data/active_build.txt`` must name a build directory
+        that exists under ``builds/``. Assets are loaded from there, which is
+        what makes a newly-activated build take effect without changing how
+        ``SearchEngine`` constructs its (fixed) ``SearchIndexConfig`` paths —
+        those now supply only the artifact *filenames*.
 
-        Falls back to the legacy flat layout (files directly under
-        ``processed_data_dir``) when no build has ever been activated, for
-        backward compatibility with deployments that predate this system.
+        There is deliberately no fallback. Until 2026-09-16 a missing or
+        dangling pointer silently loaded whatever loose artifacts happened to
+        sit directly under ``processed_data_dir``, and ``_validate_manifest``
+        skipped every check in exactly that case — so deleting one 22-byte
+        file swapped the live corpus for an unverified one of unknown age
+        while every citation still rendered as authoritative. On a product
+        whose answers are quoted to regulators, a refused start is the honest
+        failure and a silent downgrade is not. The way back is
+        ``python -m web.services.build_registry list`` followed by
+        ``… activate <build_id>``.
         """
         processed_data_dir = Path(self._config.processed_data_dir)
         active_dir = build_registry.resolve_active_build_dir(processed_data_dir)
 
         if active_dir is None:
-            logger.info(
-                "No active_build.txt found under %s — loading legacy flat "
-                "layout directly from processed_data_dir. Run "
-                "`python -m web.services.data_processing` to produce a "
-                "versioned, manifest-backed build.",
-                processed_data_dir,
+            # Distinguish the two causes: `resolve_active_build_dir` collapses
+            # them, but "you never built one" and "the build you named is gone"
+            # need different things done about them.
+            named = build_registry.read_active_build_id(processed_data_dir)
+            detail = (
+                f"names build {named!r}, which is not a directory under "
+                f"{build_registry.builds_root(processed_data_dir)}"
+                if named
+                else f"is missing or empty under {processed_data_dir}"
             )
-            self._active_build_dir = None
-            self._paths = {
-                "faiss": self._config.faiss_index_path,
-                "dataframe": self._config.dataframe_path,
-                "tfidf_vectorizer": self._config.tfidf_vectorizer_path,
-                "tfidf_matrix": self._config.tfidf_matrix_path,
-            }
-            return
+            raise ManifestValidationError(
+                f"Refusing to load a search index: "
+                f"{build_registry.ACTIVE_BUILD_POINTER_NAME} {detail}. Run "
+                f"`python -m web.services.build_registry list` to see the "
+                f"builds on disk and `… activate <build_id>` to select one, or "
+                f"`python -m web.services.data_processing` to build a new one."
+            )
 
         logger.info("Loading active build '%s' from %s", active_dir.name, active_dir)
         self._active_build_dir = active_dir
@@ -298,26 +305,17 @@ class SearchIndex:
         embedding model now has to actually match what the app is
         configured to query with, or the app refuses to load it.
 
-        If no build manifest is available at all (legacy flat layout, i.e.
-        this index predates the build-manifest system), validation is
-        skipped with a loud warning rather than a hard failure, so existing
-        deployments aren't bricked by this change before they've ever run
-        the new pipeline. Once a manifest *is* present, any mismatch is
-        fatal.
+        Every loaded index has a manifest, because ``_resolve_paths`` refuses
+        to resolve anything but a build directory. This method used to return
+        early with a warning when it did not — that skip was the hole that
+        made the legacy flat layout unverifiable, and it went with it.
 
         Raises:
             ManifestValidationError: If the manifest's recorded embedding
                 model name and/or dimension don't match what the
                 currently-configured embedding client actually produces.
         """
-        if self._active_build_dir is None:
-            logger.warning(
-                "Loaded index has no build manifest (legacy flat layout) — "
-                "cannot verify it matches the currently-configured embedding "
-                "client. Rebuild with `python -m web.services.data_processing` "
-                "to get a manifest-backed, validated build."
-            )
-            return
+        assert self._active_build_dir is not None, "_resolve_paths() must run first"
 
         try:
             manifest = build_registry.load_manifest(self._active_build_dir)
@@ -400,16 +398,17 @@ class SearchIndex:
 
     @property
     def active_build_id(self) -> str | None:
-        """The build this engine actually loaded, or None for the legacy layout.
+        """The build this engine actually loaded, or None before it has loaded.
 
         DERIVED FROM WHAT WAS LOADED, never from the pointer file, and the
         distinction is the whole point. `read_active_build_id` reports what
-        `active_build.txt` *says*; this reports what is in RAM. They disagree in
-        two real cases: an activation flipping the pointer between this engine
-        initialising and a later read of the file, and a dangling pointer naming
-        a build that no longer exists — where `resolve_active_build_dir` falls
-        back to the legacy flat corpus while the file still names the missing
-        build.
+        `active_build.txt` *says*; this reports what is in RAM. They disagree
+        whenever an activation flips the pointer between this engine
+        initialising and a later read of the file. (They used to disagree in a
+        second, worse way — a dangling pointer was kept verbatim by
+        `read_active_build_id` while the engine loaded the legacy flat corpus
+        instead. That fallback is gone; a dangling pointer now refuses to
+        load.)
 
         Both matter because this string is what a stored citation is compared
         against. Recording a revision the passages did not come from would let

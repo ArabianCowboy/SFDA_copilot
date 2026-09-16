@@ -43,10 +43,13 @@ def index_config(tmp_path: Path) -> SearchIndexConfig:
 
 @pytest.fixture
 def build_dir_with_manifest(tmp_path: Path) -> Path:
-    build_dir = tmp_path / "builds" / "test_build"
+    # A real build id, not a friendly placeholder: `build_dir_for` validates the
+    # shape before joining it to a path, so a fixture that cannot occur in
+    # production would exercise a path production never takes.
+    build_dir = tmp_path / "builds" / "20260803T211733287685Z"
     build_dir.mkdir(parents=True, exist_ok=True)
     manifest = {
-        "build_id": "test_build",
+        "build_id": "20260803T211733287685Z",
         "embedding_dimension": 768,
         "embedding_model_name": "all-mpnet-base-v2",
         "embedding_type": "local",
@@ -258,6 +261,65 @@ def test_search_index_load_uses_injected_client_without_calling_factory(
         index.load()
         assert index.is_loaded is True
         mock_get_client.assert_not_called()
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# There is no legacy flat layout any more: an unusable pointer refuses to load
+# ──────────────────────────────────────────────────────────────────────────
+
+
+def test_a_missing_pointer_refuses_to_load_instead_of_reading_loose_files(
+    index_config: SearchIndexConfig, tmp_path: Path
+):
+    # The loose artifacts are present and perfectly readable. That is the whole
+    # point: before this changed, they would have been loaded and served.
+    for name in ("faiss_index.bin", "chunks_data.csv", "tfidf_vectorizer.pkl", "tfidf_matrix.pkl"):
+        (tmp_path / name).write_bytes(b"stale but readable")
+
+    with pytest.raises(ManifestValidationError, match="is missing or empty"):
+        SearchIndex(index_config)._resolve_paths()
+
+
+def test_a_dangling_pointer_names_the_build_it_could_not_find(
+    index_config: SearchIndexConfig, tmp_path: Path
+):
+    # Naming the missing build is the difference between "you never built one"
+    # and "the one you chose is gone", which need different things done.
+    (tmp_path / build_registry.ACTIVE_BUILD_POINTER_NAME).write_text(
+        "20260803T233436130912Z", encoding="utf-8"
+    )
+
+    with pytest.raises(ManifestValidationError, match="names build '20260803T233436130912Z'"):
+        SearchIndex(index_config)._resolve_paths()
+
+
+@pytest.mark.parametrize("escape", ["../..", "../../../etc", "builds/../../.."])
+def test_a_pointer_cannot_name_a_directory_outside_builds(
+    index_config: SearchIndexConfig, tmp_path: Path, escape: str
+):
+    # active_build.txt is plain text on disk. Before the id was shape-checked,
+    # `builds_root / "../.."` resolved happily and any directory on the machine
+    # could be loaded as a build.
+    (tmp_path / build_registry.ACTIVE_BUILD_POINTER_NAME).write_text(escape, encoding="utf-8")
+
+    with pytest.raises(ManifestValidationError):
+        SearchIndex(index_config)._resolve_paths()
+
+
+def test_a_valid_pointer_resolves_every_artifact_inside_the_build_dir(
+    index_config: SearchIndexConfig, build_dir_with_manifest: Path, tmp_path: Path
+):
+    (tmp_path / build_registry.ACTIVE_BUILD_POINTER_NAME).write_text(
+        build_dir_with_manifest.name, encoding="utf-8"
+    )
+
+    index = SearchIndex(index_config)
+    index._resolve_paths()
+
+    assert index._active_build_dir == build_dir_with_manifest
+    assert index._paths is not None
+    # Not one of them may resolve back to the flat directory.
+    assert {Path(p).parent for p in index._paths.values()} == {build_dir_with_manifest}
 
 
 def test_noisy_third_party_loggers_configured_to_warning():

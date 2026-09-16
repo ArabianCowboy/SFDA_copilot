@@ -34,6 +34,7 @@ import json
 import logging
 import os
 import pickle
+import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -70,6 +71,11 @@ REQUIRED_ARTIFACTS: tuple[str, ...] = (
 
 BUILDS_SUBDIR = "builds"
 ACTIVE_BUILD_POINTER_NAME = "active_build.txt"
+
+# The exact shape `new_build_id` emits: UTC, microsecond precision, no
+# separators. Used to validate an id read off disk before it is joined to a
+# path — see `build_dir_for`.
+BUILD_ID_RE = re.compile(r"\d{8}T\d{12}Z")
 
 # Bump this string whenever the extraction/chunking *logic* changes in a way
 # that would make old and new chunks meaningfully different (e.g. switching
@@ -109,7 +115,18 @@ def builds_root(processed_data_dir: Path) -> Path:
 
 
 def build_dir_for(processed_data_dir: Path, build_id: str) -> Path:
-    """Return the directory for a specific build id (may not exist yet)."""
+    """Return the directory for a specific build id (may not exist yet).
+
+    The id is checked against the shape :func:`new_build_id` produces before
+    it is joined. It arrives from ``active_build.txt``, which is a plain text
+    file on disk — without this, an id of ``../../..`` escaped ``builds/``
+    entirely and any directory on the machine could be loaded as a build.
+    """
+    if not BUILD_ID_RE.fullmatch(build_id):
+        raise BuildValidationError(
+            f"Not a valid build id: {build_id!r}. Expected the form "
+            f"20260803T211733287685Z (see `new_build_id`)."
+        )
     return builds_root(processed_data_dir) / build_id
 
 
@@ -145,7 +162,14 @@ def resolve_active_build_dir(processed_data_dir: Path) -> Path | None:
     build_id = read_active_build_id(processed_data_dir)
     if not build_id:
         return None
-    candidate = build_dir_for(processed_data_dir, build_id)
+    try:
+        candidate = build_dir_for(processed_data_dir, build_id)
+    except BuildValidationError as exc:
+        # A malformed id is reported the same way as a missing directory: the
+        # caller refuses to load either way, and collapsing them here keeps one
+        # refusal path rather than two.
+        logger.error("%s Refusing to resolve it as a build directory.", exc)
+        return None
     if not candidate.is_dir():
         logger.error(
             "active_build.txt points to build '%s' (%s), but that directory "
@@ -333,12 +357,14 @@ def validate_build_dir(build_dir: Path) -> BuildValidationResult:
 
 
 def activate_build(processed_data_dir: Path, build_id: str) -> None:
-    """Atomically flip the active-build pointer to *build_id*.
+    """Validate *build_id*, then atomically flip the active-build pointer to it.
 
-    This must only be called after :func:`validate_build_dir` has passed
-    for the target build — this function does not re-validate, by design,
-    so that callers control exactly when validation happens relative to
-    activation.
+    Validation happens **here**, not in the caller. It used to be the caller's
+    job "so that callers control exactly when validation happens relative to
+    activation", and the cost of that freedom was an `--skip-validation` flag
+    on the operator CLI that could make an unvalidated build live in one
+    command. Activation is the only step that changes what readers are served,
+    so it is the one step that must not be bypassable.
 
     The pointer file itself is small (a single line of text) and is
     written via write-to-temp-then-``os.replace`` so the flip is atomic on
@@ -350,6 +376,7 @@ def activate_build(processed_data_dir: Path, build_id: str) -> None:
         raise BuildValidationError(
             f"Refusing to activate build '{build_id}': directory {build_dir} does not exist."
         )
+    validate_build_dir(build_dir)
 
     processed_data_dir.mkdir(parents=True, exist_ok=True)
     pointer = active_build_pointer_path(processed_data_dir)
@@ -393,24 +420,13 @@ def _cli_list(processed_data_dir: Path) -> None:
         )
 
 
-def _cli_activate(processed_data_dir: Path, build_id: str, *, skip_validation: bool) -> int:
-    build_dir = build_dir_for(processed_data_dir, build_id)
-    if not build_dir.is_dir():
-        print(f"ERROR: build '{build_id}' does not exist at {build_dir}.")
+def _cli_activate(processed_data_dir: Path, build_id: str) -> int:
+    # `activate_build` validates; there is no path past it, which is the point.
+    try:
+        activate_build(processed_data_dir, build_id)
+    except BuildValidationError as exc:
+        print(f"ERROR: refusing to activate '{build_id}': {exc}")
         return 1
-
-    if not skip_validation:
-        try:
-            result = validate_build_dir(build_dir)
-        except BuildValidationError as exc:
-            print(f"ERROR: refusing to activate '{build_id}' — it fails validation: {exc}")
-            return 1
-        print(
-            f"Validated build '{build_id}': {result.chunk_count} chunks, "
-            f"{result.embedding_dimension}-dim vectors."
-        )
-
-    activate_build(processed_data_dir, build_id)
     print(f"Activated build '{build_id}'. Restart the Flask app for it to take effect.")
     return 0
 
@@ -540,11 +556,6 @@ def main() -> int:
         "activate", help="Make an existing build the live one (used for rollback)."
     )
     activate_parser.add_argument("build_id", help="Build id, e.g. 20260803T120000000000Z")
-    activate_parser.add_argument(
-        "--skip-validation",
-        action="store_true",
-        help="Activate without re-validating the build first (not recommended).",
-    )
 
     diff_parser = subparsers.add_parser(
         "diff", help="Compare two builds: settings, documents added/removed, chunk-count changes."
@@ -562,9 +573,7 @@ def main() -> int:
         _cli_list(processed_data_dir)
         return 0
     if args.command == "activate":
-        return _cli_activate(
-            processed_data_dir, args.build_id, skip_validation=args.skip_validation
-        )
+        return _cli_activate(processed_data_dir, args.build_id)
     if args.command == "diff":
         return _cli_diff(processed_data_dir, args.build_a, args.build_b)
     return 1

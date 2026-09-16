@@ -955,7 +955,7 @@ def test_a_user_message_carries_no_evidence_fields(client):
 
 def test_a_live_answer_is_verified_by_construction(app, client):
     """Asserted on the wire, never compared — including when nothing can be
-    compared. `read_active_build_id` returns None for the legacy flat layout, and
+    compared. `CORPUS_REVISION` is None whenever the engine never loaded, and
     computing the state here would badge every FRESH answer as unverifiable on
     exactly the deployments least able to explain why."""
     app.config["CORPUS_REVISION"] = None

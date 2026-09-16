@@ -1334,11 +1334,13 @@ def _persistable_sources(retrieved: list[dict[str, Any]], cited: list[int]) -> l
 #
 # `verified` means the answer was drawn from the corpus build that is active
 # right now. `stale` means the corpus was rebuilt under it. `unverifiable` means
-# one side or the other has no build id at all — `read_active_build_id` returns
-# None for the legacy flat layout, and a message written before this shipped has
-# no `corpus_revision`. Both of the latter mean the same thing to a reader (we
-# cannot confirm this passage is still in the live corpus) and are kept apart
-# here because they mean different things in a log and in a test.
+# one side or the other has no build id at all — a message written before this
+# shipped has no `corpus_revision`, and the engine exposes none until it has
+# loaded. (It used to mean a third thing: the legacy flat layout, which had no
+# build id by construction. That layout no longer loads at all — see
+# `SearchIndex._resolve_paths`.) Both surviving cases mean the same thing to a
+# reader — we cannot confirm this passage is still in the live corpus — and are
+# kept apart here because they differ in a log and in a test.
 EVIDENCE_VERIFIED = "verified"
 EVIDENCE_STALE = "stale"
 EVIDENCE_UNVERIFIABLE = "unverifiable"
@@ -2240,12 +2242,13 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
     #
     # Reading the POINTER instead of the engine was a real hazard: the engine
     # initialises before this line runs, so an activation in between records a
-    # revision the passages did not come from — and a dangling pointer is kept
-    # verbatim by `read_active_build_id` while the engine silently falls back to
-    # the legacy flat corpus. Either way a stored answer would later compare
-    # equal and render as current evidence when it is not. `active_build_id` is
-    # what was loaded, and it is `None` for the legacy layout, which resolves as
-    # "unverifiable" — never as "verified".
+    # revision the passages did not come from, and a stored answer would later
+    # compare equal and render as current evidence when it is not.
+    # `active_build_id` is what was actually loaded. It is `None` only when the
+    # engine never loaded, which resolves as "unverifiable" — never as
+    # "verified". (A dangling pointer was once the sharper half of this hazard;
+    # it now refuses to load rather than falling back — see
+    # `SearchIndex._resolve_paths`.)
     engine_for_revision = app.config.get("search_engine")
     app.config["CORPUS_REVISION"] = getattr(engine_for_revision, "active_build_id", None)
 
@@ -3752,8 +3755,8 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
                         # evidence is current by construction — there is nothing to
                         # infer. Computing it here would instead make every FRESH
                         # answer `unverifiable` on any deployment where
-                        # `read_active_build_id` finds no pointer (the legacy flat
-                        # layout), badging the one case that is beyond doubt. It
+                        # `CORPUS_REVISION` is unset, badging the one case that is
+                        # beyond doubt. It
                         # ships on the wire so hydration and streaming hand the
                         # client one shape and it never grows two renderers.
                         "evidence_state": EVIDENCE_VERIFIED,
