@@ -1551,12 +1551,16 @@ tie behaviour), then the rewrite. `combine` now scores every candidate with one
 per-index `_compute_semantic_score`; the bounds filter moved ahead of all scoring with the
 same warning; candidates are processed in ascending chunk-index order; and the now-dead
 `embedding_dimension` constructor argument went with it, including the `SearchEngine`
-field kept solely to pass it. Four labelled behaviour changes: (1) bug fix — a query
+field kept solely to pass it. Five labelled behaviour changes: (1) bug fix — a query
 whose dimension differs from the index's now raises instead of returning `[]`, which used
 to read as "no relevant information"; (2) an out-of-range candidate is skipped with a
 warning before any scoring instead of raising out of `combine`; (3) exact ties break
 toward the lower chunk index; (4) semantic scores may differ from before by less than
-1e-6 (float32 summation order in `einsum`). Measured on the real index (4,545 chunks ×
+1e-6 (float32 summation order in `einsum`); (5) a FAISS-side scoring error now fails
+the whole question as `search_unavailable` instead of skipping one passage —
+`_compute_semantic_scores` runs outside the per-candidate `try`/`except`, so its error
+propagates out of `combine` and is wrapped as a `SearchEngineError`. Measured on the
+real index (4,545 chunks ×
 768 dimensions, 160 candidates per query, 50 queries × 200 timed rounds): build run
 −1,919µs median (−16%), reviewer re-run with its own seed and workload −1,756µs median
 (−18%); equivalence 50/50 same order with scores within 1.8e-7. The entry's premise held:

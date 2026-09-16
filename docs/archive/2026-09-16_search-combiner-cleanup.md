@@ -43,7 +43,7 @@ live_authority:
 > **Open work was lifted out, not left here.** None: both `TODO.md` entries closed with
 > this work, and the NaN-document note stays deliberately unfiled.
 
-STATUS: PLAN 2026-09-16, against `ad7cb0a`. Not started. Merges three independent plans (Claude
+STATUS: HISTORICAL RECORD — 2026-09-16, against `ad7cb0a`. Merges three independent plans (Claude
 Opus 5; Codex `gpt-5.6-terra`, high; OpenCode `muse-spark-1.3`, max), then revised over two
 adversarial review rounds with Codex `gpt-5.6-sol`. Each decision names its source.
 
@@ -51,11 +51,11 @@ adversarial review rounds with Codex `gpt-5.6-sol`. Each decision names its sour
 
 Two open `TODO.md` entries, three commits.
 
-| Commit | Closes                                                                                                                                                    | What                                                 |
-| ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
-| 1      | [`CATEGORY_MAP` in `search_engine.py` has no callers](../../TODO.md#category_map-in-search_enginepy-has-no-callers)                                       | Delete the dead map                                  |
-| 2      | —                                                                                                                                                         | Characterization tests for `combine`, no code change |
-| 3      | [`ResultCombiner` reconstructs one FAISS vector per candidate](../../TODO.md#resultcombiner-reconstructs-one-faiss-vector-per-candidate-in-a-python-loop) | Batch the semantic scores, then archive this plan    |
+| Commit | Closes                                                                           | What                                                 |
+| ------ | -------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| 1      | [`CATEGORY_MAP` in `search_engine.py` has no callers](TODO-resolved.md)          | Delete the dead map                                  |
+| 2      | —                                                                                | Characterization tests for `combine`, no code change |
+| 3      | [`ResultCombiner` reconstructs one FAISS vector per candidate](TODO-resolved.md) | Batch the semantic scores, then archive this plan    |
 
 Commit 1 is independent and can land at any time. Commit 3 does not start until every mutation in
 commit 2 has been shown to fail a test.
@@ -349,7 +349,7 @@ Also:
 - `embedding_dimension` becomes dead: only `_compute_semantic_score` read it, to size the
   vector it allocated. Drop the constructor argument and the field, and the
   `self._embedding_dimension` that `SearchEngine` kept solely to pass it
-  (`search_engine.py:198,424`). _Found in review; the first draft of this plan missed it._
+  (`search_engine.py:211,437`). _Found in review; the first draft of this plan missed it._
 - Update the two docstrings that named the old helper: `combine` step 2 and
   `apply_relevance_floor`. The latter keeps its "reduces to cosine" argument, repointed at
   `_compute_semantic_scores`.
