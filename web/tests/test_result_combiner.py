@@ -7,6 +7,8 @@ numbers, so they are recorded here from a small real index. No mocks: a real
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import faiss
 import numpy as np
 import pandas as pd
@@ -14,6 +16,7 @@ import pytest
 from sklearn.feature_extraction.text import TfidfVectorizer
 
 from web.services.result_combiner import ResultCombiner, SearchResult
+from web.services.search_index import SearchIndex, SearchIndexConfig
 
 QUERY_EMBEDDING = np.array([0.8, 0.6, 0.0], dtype=np.float32)
 SEMANTIC_CANDIDATES = [{"index": 0}, {"index": 3}, {"index": 4}]
@@ -94,6 +97,7 @@ class _BatchCountingIndex:
 
     def __init__(self, real_index: faiss.IndexFlatL2) -> None:
         self._real_index = real_index
+        self.ntotal = real_index.ntotal
         self.batch_calls: list[list[int]] = []
 
     def reconstruct_batch(self, keys):
@@ -151,16 +155,22 @@ def test_a_registration_query_that_names_an_establishment_is_not_penalised(
 
 def test_combine_reconstructs_every_candidate_in_one_faiss_call():
     proxy = _BatchCountingIndex(_build_index())
-    _combine(_build_combiner(proxy), REGISTRATION_QUERY, 10)
+    results = _combine(_build_combiner(proxy), REGISTRATION_QUERY, 10)
 
+    assert len(results) == 5
     assert proxy.batch_calls == [[0, 1, 2, 3, 4]]
 
 
+@pytest.mark.parametrize("dim", [1, 4])
 def test_a_query_of_the_wrong_dimension_raises_instead_of_returning_nothing(
-    combiner: ResultCombiner,
+    combiner: ResultCombiner, dim: int
 ):
-    bad_query = np.array([0.8, 0.6, 0.0, 0.0], dtype=np.float32)
-    with pytest.raises(ValueError):
+    # 1 is the case numpy would broadcast silently; 4 is the case it rejects.
+    bad_query = np.zeros(dim, dtype=np.float32)
+    with pytest.raises(
+        ValueError,
+        match=rf"Query embedding dimension {dim} does not match reconstructed vector dimension 3",
+    ):
         combiner.combine(
             SEMANTIC_CANDIDATES,
             LEXICAL_CANDIDATES,
@@ -185,6 +195,115 @@ def test_an_out_of_range_candidate_is_skipped_not_scored(
 
     assert [r.metadata["original_index"] for r in results] == [0]
     assert "Invalid index 99" in caplog.text
+
+
+def test_a_negative_candidate_index_is_skipped_not_scored(
+    combiner: ResultCombiner, caplog: pytest.LogCaptureFixture
+):
+    results = combiner.combine(
+        [{"index": 0}],
+        [{"index": -1}],
+        QUERY_EMBEDDING,
+        LEXICAL_QUERY,
+        REGISTRATION_QUERY,
+        10,
+    )
+
+    assert [r.metadata["original_index"] for r in results] == [0]
+    assert "Invalid index -1" in caplog.text
+
+
+def test_a_candidate_outside_faiss_is_skipped_when_the_dataframe_is_longer(
+    caplog: pytest.LogCaptureFixture,
+):
+    short_index = faiss.IndexFlatL2(3)
+    short_index.add(_build_index().reconstruct_batch(np.arange(4, dtype=np.int64)))
+
+    results = _combine(_build_combiner(short_index), REGISTRATION_QUERY, 10)
+
+    assert [r.metadata["original_index"] for r in results] == [3, 0, 1, 2]
+    assert "Invalid index 4" in caplog.text
+
+
+def test_float_backed_page_values_keep_their_integer_page(combiner: ResultCombiner):
+    combiner._df["page"] = [1, 2, None, 4, 5]
+
+    results = _combine(combiner, REGISTRATION_QUERY, 10)
+
+    assert {r.metadata["original_index"]: r.page for r in results} == {
+        0: 1,
+        1: 2,
+        2: None,
+        3: 4,
+        4: 5,
+    }
+
+
+def test_only_positive_whole_pages_survive_parsing(combiner: ResultCombiner):
+    # A 1-based page is the only thing a reader can check against the PDF.
+    combiner._df["page"] = ["4.5", " 4 ", "-3", 0, "page 4"]
+
+    results = _combine(combiner, REGISTRATION_QUERY, 10)
+
+    assert {r.metadata["original_index"]: r.page for r in results} == {
+        0: 4,
+        1: 4,
+        2: None,
+        3: None,
+        4: None,
+    }
+
+
+def test_nan_semantic_distances_receive_the_minimum_score(combiner: ResultCombiner):
+    query_embedding = np.array([np.nan, 0.6, 0.0], dtype=np.float32)
+
+    results = combiner.combine(
+        SEMANTIC_CANDIDATES,
+        LEXICAL_CANDIDATES,
+        query_embedding,
+        LEXICAL_QUERY,
+        REGISTRATION_QUERY,
+        10,
+    )
+
+    assert [r.metadata["semantic_score"] for r in results] == [0.0] * 5
+
+
+def test_search_index_fills_null_string_columns(tmp_path: Path):
+    dataframe_path = tmp_path / "chunks.csv"
+    pd.DataFrame(
+        {
+            "text": ["alpha", None],
+            "document": ["a.pdf", None],
+            "category": ["regulatory", None],
+            "page": [1, 2],
+            "chunk_id": ["c0", None],
+        }
+    ).to_csv(dataframe_path, index=False)
+    search_index = SearchIndex(
+        SearchIndexConfig(
+            processed_data_dir=str(tmp_path),
+            faiss_index_path="unused.faiss",
+            dataframe_path=str(dataframe_path),
+            tfidf_vectorizer_path="unused-vectorizer.pkl",
+            tfidf_matrix_path="unused-matrix.pkl",
+        )
+    )
+    search_index._paths = {"dataframe": str(dataframe_path)}
+
+    search_index._load_dataframe()
+
+    assert search_index.dataframe is not None
+    columns = ["text", "document", "category", "chunk_id"]
+    assert search_index.dataframe.loc[1, columns].tolist() == ["", "", "", ""]
+    # The populated row must survive untouched — blanking every row would
+    # otherwise satisfy the assertion above.
+    assert search_index.dataframe.loc[0, columns].tolist() == [
+        "alpha",
+        "a.pdf",
+        "regulatory",
+        "c0",
+    ]
 
 
 def test_an_exact_tie_breaks_toward_the_lower_chunk_index():

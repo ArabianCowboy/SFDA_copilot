@@ -235,8 +235,10 @@ class SearchIndex:
         if missing_cols:
             raise DataLoadError(f"DataFrame missing required columns: {missing_cols}")
 
-        # Fill NaN in text to avoid downstream errors
-        self.dataframe["text"] = self.dataframe["text"].fillna("")
+        # Fill NaN in strings to avoid downstream errors (`page` keeps NaN,
+        # which the page parser in ResultCombiner reads as "no page").
+        for column in ("text", "document", "category", "chunk_id"):
+            self.dataframe[column] = self.dataframe[column].fillna("")
 
     def _load_tfidf_vectorizer(self) -> None:
         """Unpickle the fitted TF-IDF vectorizer."""

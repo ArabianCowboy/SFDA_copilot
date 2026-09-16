@@ -106,7 +106,8 @@ class ResultCombiner:
             4. Apply domain-specific heuristic penalties (e.g. penalise
                establishment-licensing documents when the query is about
                product registration).
-            5. Sort by descending hybrid score and return the top *final_k*.
+            5. Sort by descending final (post-penalty) score and return the top
+               *final_k*.
 
         Args:
             semantic_results: Candidates from :class:`SemanticSearcher`.
@@ -124,16 +125,27 @@ class ResultCombiner:
             r["index"] for r in lexical_results
         }
 
+        # A candidate must be addressable in all three backing stores, which
+        # SearchIndex keeps the same length; the floor is cheap insurance
+        # against a corrupt build reaching a raw FAISS or TF-IDF lookup.
+        limit = min(self._faiss_index.ntotal, len(self._df), self._tfidf_matrix.shape[0])
         idx_list: list[int] = []
         for idx in sorted(union_indices):
-            if 0 <= idx < len(self._df):
+            if 0 <= idx < limit:
                 idx_list.append(idx)
             else:
                 logger.warning("Invalid index %d — skipping.", idx)
         if not idx_list:
             return []
 
-        # --- Vectorised scores for all candidates at once ---
+        # --- Slice once, then score everything in two batched calls ---
+        candidates = self._df.iloc[idx_list]
+        texts = candidates["text"].tolist()
+        documents = candidates["document"].tolist()
+        categories = candidates["category"].tolist()
+        pages = pd.to_numeric(candidates["page"], errors="coerce").tolist()
+        chunk_ids = candidates["chunk_id"].tolist()
+
         lexical_scores = self._compute_lexical_scores(idx_list, lexical_query)
 
         # --- Heuristic flags derived from query text ---
@@ -143,16 +155,21 @@ class ResultCombiner:
         semantic_scores = self._compute_semantic_scores(idx_list, q_emb)
         final_results: list[SearchResult] = []
 
-        for idx, sem_score in zip(idx_list, semantic_scores, strict=True):
+        for idx, sem_score, lex_score, text, doc_name, category, page_val, chunk_id in zip(
+            idx_list,
+            semantic_scores,
+            lexical_scores,
+            texts,
+            documents,
+            categories,
+            pages,
+            chunk_ids,
+            strict=True,
+        ):
             try:
-                lex_score = lexical_scores.get(idx, 0.0)
                 hybrid = self._semantic_weight * sem_score + self._lexical_weight * lex_score
 
-                # --- Build SearchResult ---
-                chunk = self._df.iloc[idx]
-
                 # --- Heuristic penalty ---
-                doc_name: str = chunk.get("document", "")
                 boosted_score, penalty = self._apply_penalty_for_chunk(
                     doc_name,
                     hybrid,
@@ -160,21 +177,17 @@ class ResultCombiner:
                     asks_establishment,
                 )
 
-                page_val = chunk.get("page")
-                page: int | None = None
-                if pd.notna(page_val):
-                    page_str = str(page_val).strip()
-                    if page_str.isdigit():
-                        page = int(page_str)
+                # Pages are 1-based in the source PDFs, so anything else is noise.
+                page = int(page_val) if pd.notna(page_val) and page_val > 0 else None
 
                 final_results.append(
                     SearchResult(
-                        text=chunk.get("text", ""),
+                        text=text,
                         score=boosted_score,
-                        document=chunk.get("document", ""),
-                        category=chunk.get("category", "Unknown"),
+                        document=doc_name,
+                        category=category,
                         page=page,
-                        chunk_id=chunk.get("chunk_id"),
+                        chunk_id=chunk_id,
                         metadata={
                             "semantic_score": sem_score,
                             "lexical_score": lex_score,
@@ -195,7 +208,7 @@ class ResultCombiner:
         logger.debug(
             "Returning %d combined results (of %d candidates).",
             min(len(final_results), final_k),
-            len(union_indices),
+            len(idx_list),
         )
         return final_results[:final_k]
 
@@ -207,18 +220,27 @@ class ResultCombiner:
         self,
         indices: list[int],
         lexical_query: str,
-    ) -> dict[int, float]:
+    ) -> list[float]:
         """Compute exact TF-IDF cosine similarity for every index in *indices*."""
         query_vec = self._tfidf_vectorizer.transform([lexical_query])
         candidate_matrix = self._tfidf_matrix[indices]
         sims = cosine_similarity(query_vec, candidate_matrix).flatten()
-        return {idx: float(sim) for idx, sim in zip(indices, sims, strict=True)}
+        return [float(sim) for sim in sims]
 
     def _compute_semantic_scores(self, indices: list[int], query_vec: np.ndarray) -> list[float]:
         """Reconstruct every candidate in one FAISS call, then score them together."""
-        diffs = query_vec - self._faiss_index.reconstruct_batch(np.asarray(indices, dtype=np.int64))
-        distances = np.einsum("ij,ij->i", diffs, diffs).tolist()
-        return [max(0.0, min(1.0, 1.0 - d / 2.0)) for d in distances]
+        vectors = self._faiss_index.reconstruct_batch(np.asarray(indices, dtype=np.int64))
+        if query_vec.size != vectors.shape[1]:
+            raise ValueError(
+                f"Query embedding dimension {query_vec.size} does not match "
+                f"reconstructed vector dimension {vectors.shape[1]}"
+            )
+        diffs = query_vec - vectors
+        distances = np.einsum("ij,ij->i", diffs, diffs)
+        scores = np.clip(1.0 - distances / 2.0, 0.0, 1.0)
+        if nan_count := int(np.isnan(scores).sum()):
+            logger.warning("%d candidate(s) scored NaN — treated as no match.", nan_count)
+        return np.nan_to_num(scores, nan=0.0).tolist()
 
     @staticmethod
     def _classify_query(query_text: str) -> tuple[bool, bool]:
