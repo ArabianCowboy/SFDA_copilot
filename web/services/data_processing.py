@@ -91,6 +91,20 @@ ZERO_VECTOR_FAILURE_THRESHOLD = 0.005  # 0.5%
 # unit-normalised, for the build manifest's "normalization" field.
 NORMALIZATION_TOLERANCE = 1e-3
 
+# A re-embedded chunk must score at least this against the vector stored at its
+# own row before a build may be activated. Not 1.0: the stored vector made a
+# float32 round trip through disk and no embedding client promises to be
+# bit-reproducible.
+#
+# The margin was measured, not guessed, because chunks overlap by 800 characters
+# and neighbouring chunks are therefore genuinely similar — a floor set too high
+# would be tripped by ordinary overlap. On the 4,545-chunk build of 2026-08-07,
+# adjacent-chunk cosine runs mean 0.688 / median 0.736, and only 17 of 4,544
+# adjacent pairs (0.37%) reach 0.99 at all. A one-row shift scores ~0.06. The
+# floor sits in a wide empty gap between float32 noise and real misalignment.
+ALIGNMENT_COSINE_FLOOR = 0.99
+ALIGNMENT_SAMPLE_ROWS = 32
+
 TABLE_REGEXES = [
     r"\+[-+]+\+",  # ASCII tables
     r"\|.*\|",  # Pipe‑delimited tables
@@ -280,6 +294,7 @@ class DataProcessor:
             # present, readable, and internally consistent — this is what
             # gates activation, not just "no exception was raised above".
             validation = validate_build_dir(build_dir)
+            self._verify_vectors_match_their_rows(build_dir)
             LOGGER.info(
                 "Build '%s' validated: %d chunks, %d-dim vectors.",
                 build_id,
@@ -481,6 +496,62 @@ class DataProcessor:
             "zero_vector_count": zero_rows,
             "normalization": normalization,
         }
+
+    def _verify_vectors_match_their_rows(self, build_dir: Path) -> None:
+        """Re-embed a sample of the written CSV and check it against the index.
+
+        Every other check in this pipeline compares artifacts to each other or
+        counts rows. This is the only one that tests the invariant the product
+        actually rests on: **FAISS vector _i_ is the embedding of
+        ``chunks_data.csv`` row _i_**. ``ResultCombiner`` scores vector _i_ and
+        then prints row _i_'s document name and page beside that score, so if
+        the two ever drift, a reader is handed a real SFDA guideline and a real
+        page number for a passage that is not on it.
+
+        Note what this deliberately does *not* do: compare the index against
+        the ``embeddings_array`` still in memory. That array is what the index
+        was built from, so the comparison could only fail on a FAISS bug, and
+        it would pass unchanged if the embedding client had returned its
+        batches out of order — the one way this invariant can actually break
+        today. Re-reading the CSV from disk also puts the ``to_csv``/
+        ``read_csv`` round trip inside the checked path.
+
+        Cosine rather than equality: the stored vector made a float32 round
+        trip through disk and no embedding client promises bit-reproducibility.
+
+        Raises:
+            DataProcessingError: If any sampled row's text does not re-embed to
+                the vector stored at that row's position.
+        """
+        df = pd.read_csv(build_dir / CHUNKS_CSV_NAME)
+        index = faiss.read_index(str(build_dir / FAISS_INDEX_NAME))
+        rows = np.unique(
+            np.linspace(0, len(df) - 1, num=min(ALIGNMENT_SAMPLE_ROWS, len(df)), dtype=np.int64)
+        )
+
+        fresh = np.asarray(
+            self._get_embeddings(df["text"].iloc[rows].astype(str).tolist()), dtype="float32"
+        )
+        stored = index.reconstruct_batch(rows)
+        cosines = np.einsum("ij,ij->i", fresh, stored) / (
+            np.linalg.norm(fresh, axis=1) * np.linalg.norm(stored, axis=1)
+        )
+
+        worst = int(np.argmin(cosines))
+        if cosines[worst] < ALIGNMENT_COSINE_FLOOR:
+            raise DataProcessingError(
+                f"Row {rows[worst]} of {CHUNKS_CSV_NAME} does not match the vector "
+                f"stored at that position (cosine {cosines[worst]:.4f} < "
+                f"{ALIGNMENT_COSINE_FLOOR}). The chunk table and the FAISS index "
+                f"are misaligned, so every citation from this build would name the "
+                f"wrong source. Refusing to activate it."
+            )
+
+        LOGGER.info(
+            "Vector/row alignment verified on %d sampled rows (worst cosine %.4f).",
+            len(rows),
+            float(cosines[worst]),
+        )
 
     def _build_manifest(
         self,
