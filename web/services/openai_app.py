@@ -27,7 +27,11 @@ from web.services.citations import strip_citation_markers
 from web.services.settings_service import model_spec
 from web.utils.config_loader import config
 
-logging.basicConfig(level=logging.INFO)
+# No `basicConfig` here. A library module must not configure root logging on
+# import, and this one never did anyway: `config_loader` above logs at module
+# level, which makes Python install a root handler, after which `basicConfig`
+# returns without setting anything. It was dead on arrival and only looked
+# load-bearing. This logger's level is set explicitly in `web/api/app.py`.
 logger = logging.getLogger(__name__)
 
 
