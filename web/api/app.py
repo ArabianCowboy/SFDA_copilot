@@ -1850,7 +1850,14 @@ def _configure_app(app: Flask, testing: bool, enforce_rate_limits: bool = False)
         # conversation" fallback any more; see §1 and §5.5 for why the
         # cookie-keyed pointer this used to gate is gone rather than merely
         # turned off.
-        CHAT_PERSISTENCE_ENABLED=config.get("server", "chat_persistence", False),
+        #
+        # Required, not defaulted. The `False` fallback that used to sit here was
+        # correct only while the migration was unapplied; once it shipped, the
+        # fallback was a lapsed reason that would have turned durable history off
+        # without saying so if the key ever went missing. Aligning it to `True`
+        # instead would reinstate the original hazard on a deployment whose schema
+        # is not yet live. Neither guess is safe, so state it.
+        CHAT_PERSISTENCE_ENABLED=config.get_section("server")["chat_persistence"],
         # How much of a stored conversation comes back on hydration. Bounded
         # because an unbounded restore meets citations.js's 100-answer tracking
         # cap and drops the citation controls off the oldest answers without

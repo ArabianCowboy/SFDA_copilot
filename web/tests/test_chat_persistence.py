@@ -116,6 +116,22 @@ def conversation_of(response) -> str:
 # ── The turn becomes durable ────────────────────────────────────────────────
 
 
+def test_the_app_refuses_to_boot_without_an_explicit_persistence_setting(monkeypatch):
+    """Durable history must never be decided by a fallback.
+
+    The `False` default that used to sit on this read was correct only while the
+    migration was unapplied. After it shipped, that fallback would have turned
+    history off silently if the key went missing, and aligning it to `True`
+    instead would reinstate the original hazard on a deployment whose schema is
+    not yet live. Neither guess is safe, so an absent key is a refusal.
+    """
+    from web.utils.config_loader import config
+
+    monkeypatch.delitem(config._config["server"], "chat_persistence")
+    with pytest.raises(KeyError, match="chat_persistence"):
+        create_app(testing=True)
+
+
 def test_a_streamed_turn_is_stored_as_a_user_row_and_an_assistant_row(client, backend):
     response = ask(client, "How long is the review?")
     rows = backend.load_session(OWNER, conversation_of(response))
