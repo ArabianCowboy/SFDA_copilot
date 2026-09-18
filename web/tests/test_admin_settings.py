@@ -91,6 +91,20 @@ def test_a_model_outside_the_allowlist_is_refused(service):
     assert service.overrides() == {}, "a refused patch must not be partly applied"
 
 
+def test_an_empty_allowlist_refuses_every_model_instead_of_allowing_any(service):
+    """Fail closed. An allowlist that went missing is not an allowlist of everything."""
+    from web.services import settings_service
+
+    original = settings_service.allowed_models
+    settings_service.allowed_models = list
+    try:
+        errors = service.update({"model": "gpt-4o-mini"}, actor=ACTOR)
+    finally:
+        settings_service.allowed_models = original
+    assert [e.code for e in errors] == ["not_allowed"]
+    assert service.overrides() == {}
+
+
 def test_an_unknown_setting_is_refused_rather_than_ignored(service):
     """Silently dropping it would tell an operator who mistyped a key that
     their change was saved."""

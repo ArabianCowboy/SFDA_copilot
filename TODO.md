@@ -57,7 +57,6 @@ bottom of this file: [How this file works](#how-this-file-works).
 - [Account deletion (Spec 4)](#account-deletion-spec-4--blocked-on-a-product-decision-not-on-engineering) — blocked on an unclosed product decision; both migrations written.
 - [A conversation id now reaches the access log](#a-conversation-id-now-reaches-the-access-log) — a verification task, possibly already fine; unverified either way.
 - [Six of the seven admin RPCs validate the actor without holding a lock](#six-of-the-seven-admin-rpcs-validate-the-actor-without-holding-a-lock) — a check-then-act window; pre-existing, not introduced by the actor gate.
-- [An empty model allowlist disables the allowlist rather than closing it](#an-empty-model-allowlist-disables-the-allowlist-rather-than-closing-it) — admin-only; the fix is an enforcement decision, not a drifted default.
 - [Two search artifacts are unpickled before anything has validated them](#two-search-artifacts-are-unpickled-before-anything-has-validated-them) — not started; needs a format change and a corpus rebuild, not a hash.
 - [Nothing ever deletes an old search build](#nothing-ever-deletes-an-old-search-build) — not started; 16 on disk, 8 of them failed runs; the cleanup step is the risky half.
 - [`IndexFlatL2` shifts every id above a deleted vector](#indexflatl2-shifts-every-id-above-a-deleted-vector) — nothing is wrong today; **mandatory** in any commit that adds incremental delete or update.
@@ -431,37 +430,6 @@ bound too. Doing it speculatively now would be machinery guarding a code path th
 exist; the trigger is what matters.
 
 ---
-
-### An empty model allowlist disables the allowlist rather than closing it
-
-**Where:** `web/services/settings_service.py:172` — `if known_ids and model not in known_ids:`.
-`known_ids` comes from `allowed_models()`, which reads `config.get("openai", "allowed_models", []) or []`.
-
-**What is wrong.** The guard is written so that "no allowlist configured" means "allow anything".
-That is a reasonable reading of an unconfigured system and a dangerous one for a configured system
-that loses the key: an admin could then set the generation model to any string the provider
-accepts, including one outside the reviewed set, and validation would not object.
-
-Reaching it is now narrow but not impossible. Since the config loader stopped swallowing load
-errors (2026-09-18), a corrupt or empty `config.yaml` fails at import, so this needs the
-`openai.allowed_models` key specifically deleted while the rest of the file still parses.
-
-**Who it reaches.** Only an admin, and only through the console's generation settings. No reader
-path. The blast radius is a model swap, not data exposure — but the model is what writes the
-regulatory answers.
-
-**How it was found.** An adversarial review of commit `1444666` (`codex/gpt-5.6-sol`, 2026-09-18)
-while auditing what that commit had left behind. It was deliberately excluded from that commit's
-scope: `[]` is a genuine structural default, so the fix is a decision about enforcement, not a
-drifted literal.
-
-**What fixing it would disturb.** Two directions and they differ in blast radius. Making the key
-required (subscript `get_section`) is consistent with the rest of that commit, but `allowed_models()`
-is called from admin request paths, so a missing key becomes a 500 on `/admin` rather than a
-degraded boot. Making the guard unconditional — always enforce, empty list allows nothing — is
-safer but turns an unconfigured deployment into one where no model validates, which would need a
-deliberate empty-means-empty decision recorded somewhere. Neither is obviously right, which is why
-this is an entry rather than a commit.
 
 ## Planned work
 

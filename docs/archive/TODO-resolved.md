@@ -3196,3 +3196,40 @@ labelled data; `openai.temperature` is still written in two places (consistent n
 again); and a valid-but-wrong YAML value still passes unchallenged.
 
 ---
+
+### [HISTORICAL] ~~An empty model allowlist disables the allowlist rather than closing it~~ — FIXED 2026-09-18
+
+**Where it was:** `web/services/settings_service.py`, in `validate()`:
+`if known_ids and model not in known_ids:`.
+
+**What was wrong.** The leading `known_ids and` meant "no allowlist configured" was treated as
+"allow anything". For an unconfigured system that reads as courtesy; for a configured system that
+lost the key it is an access control that disappears silently. An operator could then set the model
+that writes regulatory answers to any string the provider accepts, and validation would not object.
+
+**How it was found.** An adversarial review of commit `1444666` (`codex/gpt-5.6-sol`, 2026-09-18),
+which was itself reviewing the fix for eleven drifted config defaults. It was filed as an open
+entry rather than fixed in that pass, because `[]` is a genuine structural default and the fix is a
+decision about enforcement semantics, not a drifted literal. It was closed within the hour when the
+user declined to carry a loose end.
+
+**Why the obvious fix was wrong.** Making `openai.allowed_models` a required key — consistent with
+everything else in that commit — would have been a live-traffic outage. `allowed_models()` is
+called by `model_spec()`, and `model_spec()` is called from `OpenAIHandler._request_kwargs`
+(`openai_app.py:358`) on **every chat request**. A missing key would have become a 500 per
+question, not a 500 on `/admin`. The original entry named the admin path as the risk and had that
+wrong.
+
+**What was done.** One line: the guard became unconditional. An empty `known_ids` now refuses every
+model rather than accepting every model. `model_spec()` was deliberately left permissive — its
+docstring already says an unknown id falls through to the conservative parameter shape — so serving
+continues and only _changing_ the model is refused. That split is the point: the read path degrades,
+the control path denies.
+
+**What fixing it disturbed.** Nothing measurable. The shipped `config.yaml` has three entries, so
+`known_ids` is never empty in a valid deployment, and since the loader stopped swallowing parse
+errors (same day) an invalid one no longer boots at all. One test added, verified failing against
+the old guard first. The browser suite was not run for this change; it supplies non-empty
+allowlists in its own fixtures and does not exercise `validate()` directly.
+
+---

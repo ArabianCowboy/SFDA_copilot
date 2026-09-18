@@ -169,8 +169,15 @@ def validate(patch: dict[str, Any], current: dict[str, Any]) -> list[ValidationE
     merged = {**current, **{k: v for k, v in patch.items() if k in GENERATION_KEYS}}
 
     model = merged.get("model")
+    # Deliberately unconditional. This used to read `if known_ids and ...`, so an
+    # empty allowlist disabled the allowlist instead of closing it: lose
+    # `openai.allowed_models` and an operator could set the model that writes
+    # regulatory answers to any string the provider accepts. An access control
+    # that vanishes must deny. `model_spec` stays permissive on purpose — it
+    # falls back to the conservative parameter shape so chat keeps serving; only
+    # changing the model is refused.
     known_ids = [entry["id"] for entry in allowed_models()]
-    if known_ids and model not in known_ids:
+    if model not in known_ids:
         errors.append(ValidationError("model", "not_allowed", limit=known_ids))
 
     temperature = merged.get("temperature")
