@@ -38,7 +38,7 @@ bottom of this file: [How this file works](#how-this-file-works).
 - [A silent truncation from a provider that omits `finish_reason` is still undetected](#a-silent-truncation-from-a-provider-that-omits-finish_reason-is-still-undetected) — diagnosed; needs `include_usage`, not a different default.
 - [An empty answer toasts "failed to send", which is the wrong thing](#an-empty-answer-toasts-failed-to-send-which-is-the-wrong-thing) — cosmetic, needs a bilingual key pair.
 - [`max_tokens` has no floor, and a low one guarantees empty answers](#max_tokens-has-no-floor-and-a-low-one-guarantees-empty-answers) — not started; prevention rather than the reporting that now exists.
-- [Security email is English-only](#security-email-is-english-only-on-a-product-that-is-bilingual-by-construction) — blocked in the Supabase dashboard, not code.
+- [Security email is English-only](#security-email-is-english-only-on-a-product-that-is-bilingual-by-construction) — still blocked in the Supabase dashboard, not code; the mechanism question is now settled (2026-09-18) and the templates are unwritten.
 - [SettingsService's two cache slots each query the settings row independently](#settingsservices-two-cache-slots-each-query-the-settings-row-independently) — not a correctness issue; recorded in case the round trip ever becomes measurable.
 - [Answer from a second provider](#answer-from-a-second-provider--and-why-the-code-is-the-easy-half) — the citation-fidelity harness is built (2026-08-22); still blocked on running it for real against the API.
 - [OpenRouter as one integration instead of several](#openrouter-as-one-integration-instead-of-several) — alternative to the entry above; same harness, same not-yet-run status.
@@ -55,8 +55,10 @@ bottom of this file: [How this file works](#how-this-file-works).
 - [Admin analytics + viewer follow-ups](#admin-analytics--viewer-follow-ups--click-through-feedback-search-daily-counts-audit-display) — not started; seven small adds.
 - [Enable the token-verification cache once production numbers justify it](#enable-the-token-verification-cache-once-production-numbers-justify-it) — single-flight (the worker-starvation fix) shipped 2026-08-27 at no revocation cost; the optional positive cache stays off, gated on measurement.
 - [Admin broadcast & Reader Notification Center](#admin-broadcast--reader-notification-center-popups-banners-and-inbox-history) — implemented 2026-08-24; live login/session smoke-tested against production 2026-08-29 (by hand), which also surfaced and closed a real `mark-read` 500 the same day ([fix write-up](docs/archive/2026-08-29_notification-mark-read-500.md)); still owes a live Realtime-push check; the sign-out teardown shipped 2026-09-11 and the reauthenticate path needs none; the `mypy web` caveat closed 2026-09-08.
-- [The privacy policy (/privacy) is a draft, not reviewed legal text](#the-privacy-policy-privacy-is-a-draft-not-reviewed-legal-text) — consent shipped against this draft; the legal review of the text is what is still owed.
-- [Account deletion (Spec 4)](#account-deletion-spec-4--blocked-on-a-product-decision-not-on-engineering) — blocked on an unclosed product decision; both migrations written.
+- [Deletion step-up blinds GoTrue's own per-IP rate limiter](#deletion-step-up-blinds-gotrues-own-per-ip-rate-limiter) — not live (the feature switch is off); fix before flipping it.
+- [Marketing consent has no re-prompt path](#marketing-consent-has-no-re-prompt-path-and-the-trigger-cannot-record-a-re-affirmation) — deferred by decision 2026-09-18; due when the policy next changes materially.
+- [The privacy policy (/privacy) is a draft, not reviewed legal text](#the-privacy-policy-privacy-is-a-draft-not-reviewed-legal-text) — consent shipped against this draft; deletion copy corrected it to `-draft-2` on 2026-09-18, and the legal review of the text is still owed.
+- [Account deletion (Spec 4)](#account-deletion-spec-4--blocked-on-a-product-decision-not-on-engineering) — decision closed 2026-09-18 (yes, 30-day grace); fully built and gate-green, **applied to nothing** — see `supabase/pending/README.md`.
 - [A conversation id now reaches the access log](#a-conversation-id-now-reaches-the-access-log) — a verification task, possibly already fine; unverified either way.
 - [Six of the seven admin RPCs validate the actor without holding a lock](#six-of-the-seven-admin-rpcs-validate-the-actor-without-holding-a-lock) — a check-then-act window; pre-existing, not introduced by the actor gate.
 - [Two search artifacts are unpickled before anything has validated them](#two-search-artifacts-are-unpickled-before-anything-has-validated-them) — not started; needs a format change and a corpus rebuild, not a hash.
@@ -66,8 +68,8 @@ bottom of this file: [How this file works](#how-this-file-works).
 - [LOG_LEVEL works only because of import order](#log_level-works-only-because-of-import-order-and-nothing-protects-that) — nothing is broken; the one removable hazard shipped 2026-09-18, the ordering dependency remains unguarded.
 - [Every candidate's TF-IDF cosine is computed twice per question](#every-candidates-tf-idf-cosine-is-computed-twice-per-question) — not started; 561 µs a question, recorded because the cost of fixing it is the interesting half.
 - [A retention policy, and the bounds that depend on one](#a-retention-policy-and-the-bounds-that-depend-on-one) — blocked on a retention period nobody owns; covers the assistant-message and audit_log text bounds too.
-- [`chat_sessions.owner_id` still has no foreign key](#chat_sessionsowner_id-still-has-no-foreign-key) — sequenced behind account deletion; the migration is small and the header's reasoning is already corrected.
-- [Does "disabled" freeze an account's own profile edits?](#does-disabled-freeze-an-accounts-own-profile-edits-or-only-its-use-of-the-product) — blocked on a product decision, not on engineering.
+- [`chat_sessions.owner_id` still has no foreign key](#chat_sessionsowner_id-still-has-no-foreign-key) — written 2026-09-18 as `supabase/pending/13`, deliberately **parked** until one real deletion completes end to end.
+- [Does "disabled" freeze an account's own profile edits?](#does-disabled-freeze-an-accounts-own-profile-edits-or-only-its-use-of-the-product) — decided 2026-09-18 (freeze everything but consent withdrawal); built and gate-green, **applied to nothing**.
 - [Confirm the backup schedule, and rehearse a restore once](#confirm-the-backup-schedule-and-rehearse-a-restore-once) — dashboard task; the recovery position is currently an assumption.
 - [Measure the real statement and lock timeouts on the write path](#measure-the-real-statement-and-lock-timeouts-on-the-write-path) — needs a call through PostgREST, not MCP.
 - [Run the database assertions somewhere other than by hand](#run-the-database-assertions-somewhere-other-than-by-hand) — `supabase/tests/` exists and runs by hand only.
@@ -233,6 +235,19 @@ public `EXECUTE` on the `handle_new_user` signup trigger, pinning
 ---
 
 ### Security email is English-only, on a product that is bilingual by construction
+
+**Update 2026-09-18 — the premise changed, the answer did not.** This entry says GoTrue
+"offers no per-request language negotiation" and that this is "not a code change". The first
+half is now false: Supabase's Send Email Hook replaces GoTrue's templating with a function
+that picks language per user, and `web/api/auth.py:219,434` already carries `lang` through
+signup and recovery. It was **rejected anyway, on availability rather than capability** — it
+puts an Edge Function and a third-party SMTP provider on the critical path of signup and
+password recovery, and this repository's rule is that an outage is a 503 and never a 401.
+The decision is to ship **one dual-language template per type, Arabic first**, set `dir` on
+`<table>` and `<td>` (desktop Outlook renders through Word, which ignores `direction: rtl`),
+share one link between both languages, and never interpolate `.Data.*`. Change one template
+first and verify by watching `recovery_sent_at` move — a broken recovery template locks people
+out. Still open: the templates are unwritten, and this remains dashboard work.
 
 **Where:** Supabase → Authentication → Emails. The confirmation, recovery, and
 email-change templates GoTrue sends.
@@ -684,6 +699,10 @@ all given the rate limits, or whether their real role is a demonstration of
 failover rather than a way to serve readers.
 
 ### Refactor the profile page
+
+**Update 2026-09-18.** One of the three remaining items — the `disabled`/consent question —
+was decided and built; see its own entry. The account-menu consolidation and the monogram
+view-transition are untouched and remain appetite-only.
 
 > **Everything between here and the 2026-08-23 update is pre-work material from
 > 2026-08-17, and is now historical.** File paths, line numbers and named tests in it
@@ -1484,6 +1503,23 @@ there is nothing to tear down there. What this entry still owes is the live Real
 
 ### The privacy policy (/privacy) is a draft, not reviewed legal text
 
+**Update 2026-09-18 — the engineering half shipped; the legal half is still owed.**
+Self-serve deletion made `page.policy.retentionBody` false (it promised deletion "is not yet
+self-service"), so it was rewritten, `rightsDelete` was updated, and a new
+`retentionStaysHeading`/`retentionStaysBody` pair now discloses what survives a deletion:
+administrative records written beforehand, the ledger row (identifier and timestamps only),
+`notifications.target_user_id`, backup copies **with no day-count claimed** because
+`docs/OPERATIONS.md` records none, the model provider's own prompt retention, and server logs.
+`PRIVACY_POLICY_VERSION` moved to `2026-09-18-draft-2` and `draftNotice` stays up.
+
+**Still owed, and none of it is an engineer's to write:** the legal review itself; the
+cross-border transfer basis (the project runs in `eu-central-1`, outside the Kingdom, and the
+text does not say so); naming the sub-processors, including whether prompts are excluded from
+model training; and removing the draft label. Two standing cautions: never cite article
+numbers a language model produced — `docs/data-policy-decisions.md` already warns these are
+"exactly what a language model invents" — and the Arabic of every new string above is
+unreviewed.
+
 **Where:** `web/i18n/en.yaml`/`ar.yaml` (`page.policy.*`), `web/templates/privacy.html`,
 `web/api/app.py`'s `PRIVACY_POLICY_VERSION` constant.
 
@@ -1504,6 +1540,35 @@ silently reinterpret consent nobody actually gave to the new text.
 ---
 
 ### Account deletion (Spec 4) — blocked on a product decision, not on engineering
+
+**Update 2026-09-18 — the decision is closed and the whole feature is built. Nothing is
+applied.** The product owner decided: **yes**, with a **30-day grace window**, matching
+`docs/data-policy-decisions.md` §1. Self-serve deletion is refused for `role='admin'`.
+
+Built and gate-green (1166 tests, mypy/ruff/eslint/markdownlint clean): thirteen migrations in
+`supabase/pending/`, three GoTrue dispatcher methods, the request/cancel/status routes with
+server-verified step-up re-authentication, the reader-facing card and pending banner in both
+languages, and a systemd one-shot reconcile driver in `deploy/`.
+
+**Three design corrections worth keeping**, each found by review and verified in code:
+
+- `deletion_pending` is **its own state**, never `is_disabled`. `_authenticate_request`
+  refuses a disabled account (`web/api/app.py:932-933`), so conflating them would have made
+  the cancel path unreachable — the grace window would have been storage, not recovery.
+- **Sessions are revoked with `auth.admin.sign_out(jwt, scope="global")`**, never
+  `revoke_sessions` (which revokes by rotating the password to a value nobody learns,
+  `web/services/auth_admin.py:153-156`) and never a GoTrue ban (which kills token refresh).
+  Either would lock the reader out of the cancel path. Global sign-out kills a thief's session
+  while the owner signs back in with the password they still know.
+- The saga's own rows carry **UUIDs and timestamps only**. The ordinary audit pattern stores
+  `actor_email`, `request_ip` and `user_agent` in an append-only table, which would have
+  preserved the deleted person's email and IP forever.
+
+**Still open:** applying the batch, in the order and against the gates in
+`supabase/pending/README.md` — which includes a confirmed backup schedule and one restore
+rehearsal before the destructive DDL, and installing the reconcile timer, without which
+"deletion in progress" is a promise nothing drives. Arabic review of every new string. No SQL
+in this batch has ever run against a real database.
 
 **Where:** `docs/archive/2026-08-23_profile-refactor.md` §16·4 has the full design (Migration A — FK-action
 fixes on `profiles.disabled_by`/`app_settings.updated_by`, verified live and ready to apply —
@@ -1611,7 +1676,81 @@ an argument for settling the numbers sooner rather than later.
 
 ---
 
+### Deletion step-up blinds GoTrue's own per-IP rate limiter
+
+**Where:** `_verify_current_password` in `web/api/account.py`, and the rule it collides with at
+`docs/ARCHITECTURE.md:345-352`.
+
+**What is wrong.** Requesting account deletion needs a step-up: the reader re-enters their
+current password, and the server verifies it with a `sign_in_with_password` call to GoTrue.
+That is the only server-verifiable step-up this stack offers — the password-change nonce is
+consumed by GoTrue's `updateUser` in the browser and cannot be checked server-side.
+
+But it is the exact shape this repository already removed once. `POST /auth/login` answers
+`410 Gone` because the server-side route "forwarded the caller's traffic to GoTrue from this
+host's single address, blinding GoTrue's own per-IP `/token` limiter to the attacker's real
+address". Every step-up guess now arrives at GoTrue from the VPS. The Flask limit in front of
+it (`account_deletion_api`, 3/hour, keyed per account) bounds per-account guessing, but the
+limiter is `memory://` and its counters reset on every worker recycle — and
+`deploy/sfda-copilot.service` sets `--max-requests 1000`, so recycles are routine. The durable
+throttle is GoTrue's, and this design is the thing that blinds it.
+
+**Who it reaches.** Nobody yet: the feature is behind `account_deletion_self_serve_enabled`,
+which is `false`, and none of `supabase/pending/` has been applied. It becomes live the moment
+that switch is flipped.
+
+**How it was found.** An adversarial debate on the finished implementation, 2026-09-18, which
+matched the new route against the recorded reason the old one was retired.
+
+**What fixing it would disturb.** Three options, none free. A durable per-account attempt
+counter (a table or a column plus a check in the route) survives worker recycles and is the
+smallest real fix. Moving verification browser-side preserves GoTrue's per-IP limiting but
+gives up server verification, which was the whole point of step-up. Dropping the password and
+relying on a typed confirmation alone removes the oracle and weakens the control. Whichever is
+chosen, add a row to _Rules that collide_ — "the server must verify step-up" against "never
+proxy credentials to GoTrue" is a genuine collision, and the next person will otherwise
+re-derive it. Also worth recording next to the `/auth/login` retirement itself, so that
+paragraph stops reading as an unconditional rule.
+
+### Marketing consent has no re-prompt path, and the trigger cannot record a re-affirmation
+
+**Where:** `supabase/migrations/20260823014034_marketing_consent_record.sql:110-124` (the
+trigger's no-op branch) and `web/api/app.py:352-354` (`PRIVACY_POLICY_VERSION`).
+
+**What is wrong.** Every consent record is stamped with the policy version in force when it was
+given, but **nothing compares a stored version to the current one**. Bumping the constant
+silently leaves every existing consent attributed to the older string, and no reader is ever
+re-asked. Worse, a re-affirmation cannot be recorded even by hand: when `marketing_consent` is
+unchanged, the trigger's no-op branch restores all six consent metadata columns from `old`, so
+the only way to restamp is a fake withdraw-then-grant, which would write a false
+`marketing_consent_withdrawn_at`.
+
+**Who it reaches.** Every reader who has granted marketing consent, the first time the policy
+changes materially. Nobody yet — `PRIVACY_POLICY_VERSION` has moved only between draft strings
+(`2026-08-23-draft-1` → `2026-09-18-draft-2` on 2026-09-18), and a draft-to-draft retention edit
+is not a material change to what was consented to.
+
+**How it was found.** An adversarial review of `docs/account-and-trust-plan.md` on 2026-09-18,
+then verified against the trigger source.
+
+**What fixing it would disturb.** Three defects were found together; **two are already fixed**
+and this is the third. The version is now supplied by the server on both paths — the account
+route stamps it (`web/api/account.py`, `consent_grant`) and signup stamps it in
+`_signup_metadata` — and `supabase/pending/03` revokes the direct column grants that let a
+client stamp a version it never saw. What remains is the comparator itself: an explicit
+re-affirm branch in the trigger (so a restamp does not have to lie about a withdrawal), a
+server-side comparison of stored against current, and a prompt. It was deferred deliberately,
+on the grounds that a re-affirm branch with no caller is surface for a feature that does not
+exist. **Decided 2026-09-18: re-prompt on material change only, with materiality judged by a
+human per bump** — so this becomes due the first time the policy changes in substance, which is
+most likely when counsel's review lands and the draft label comes off.
+
 ### `chat_sessions.owner_id` still has no foreign key
+
+**Update 2026-09-18.** Written as `supabase/pending/13` and deliberately **parked**: it adds
+`ON DELETE RESTRICT`, so applying it before one real deletion has completed end to end would
+convert a saga bug into a `23503` that blocks deletion entirely. Run its orphan check first;
+any hit is an incident, not a row to force.
 
 **Where:** `supabase/migrations/20260820131914_chat_session_persistence.sql:37-42`, and
 rule 8 of `supabase/README.md`, which records the correction.
@@ -1653,6 +1792,34 @@ needs no new index: `chat_sessions_owner_updated_idx` leads with `owner_id`.
 ---
 
 ### Does "disabled" freeze an account's own profile edits, or only its use of the product?
+
+**Update 2026-09-18 — decided and built; applied to nothing.** The answer is **freeze
+everything in `public` except marketing-consent withdrawal**. Built as `supabase/pending/01-05`:
+a withdrawal-only `security definer` RPC that a disabled account can still reach, a
+`service_role` grant RPC behind a Flask route (so a disabled account can never _grant_, and so
+the policy version is stamped server-side), `is_active_account()` added to the `profiles`
+UPDATE policy, and the same gate added to `update_own_preferences`.
+
+**Three things this turned up that the entry did not anticipate:**
+
+- `update_own_preferences` was a **second unguarded write path**. It is `security definer`, so
+  it bypasses RLS entirely — freezing the policy alone would have left `theme`, `language` and
+  `search_scope` writable by a disabled account.
+- The privilege-guard trigger **cannot protect an RPC**: it tests
+  `current_user in ('authenticated','anon')`, and inside a `security definer` function
+  `current_user` is the owner. Only the function body protects server-owned columns, which is
+  why the withdrawal RPC uses a static column list and takes no patch.
+- `authenticated` held **INSERT** as well as UPDATE on the four consent columns, and
+  `Services.updateProfile` upserts — so for a profile-less account that upsert is an INSERT.
+  Revoking UPDATE alone would have left the policy version forgeable through it.
+
+**Deliberately not done, and recorded so nobody re-litigates it:** no GoTrue ban accompanies
+`disabled`. A ban kills token refresh, which would make the consent carve-out unreachable —
+the precise hole the carve-out exists to close. "Frozen" is therefore true of this schema and
+not of the provider: a disabled reader can still change their own GoTrue email or password.
+
+**Still open:** applying the batch (`supabase/pending/README.md`), and the consent re-prompt
+comparator, which is deferred — see its own note under the privacy-policy entry.
 
 **Where:** The three RLS policies on `public.profiles`; `web/api/app.py`'s
 `if identity.is_disabled:` refusal; `docs/PRODUCT.md`, which does not say.

@@ -439,6 +439,7 @@ every route below marked that way makes unreachable, because each sits behind a 
 | `POST /auth/signup`                                 | 5/minute                                |
 | `GET /account/api/export`                           | 2 per 10 minutes, **keyed per account** |
 | `DELETE /account/api/conversations`                 | 10/hour, **keyed per account**          |
+| `POST /account/api/consent/grant`                   | 30/hour, **keyed per account**          |
 | `admin_bp` (whole blueprint)                        | 60/minute                               |
 | `admin.revoke_sessions`, `admin.change_email`       | 10/minute                               |
 | `admin.create_notification`                         | 10/hour, **keyed per account**          |
