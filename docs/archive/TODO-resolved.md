@@ -3121,3 +3121,78 @@ doubles read/write a `last_seen_at` dict key that mirrors the RPC's output shape
 raw table column.
 
 ---
+
+### [HISTORICAL] ~~The fusion weights have two sources of truth that disagree~~ — FIXED 2026-09-18
+
+**Where it was:** `web/services/search_engine.py:91-92` defaulted `semantic_weight` to `0.7` and
+`lexical_weight` to `0.3`; `web/config.yaml` sets both to `0.5`.
+
+**The entry understated it by a factor of five, and named the wrong villain.** An AST audit of
+every `config.get(section, key, <literal>)` in `web/` against the shipped `config.yaml` found
+**eleven** drifted scalar defaults, not two — and the weights were the least harmful of them.
+Losing the `search_engine` keys reweights fusion 50/50 → 70/30, but it also drops returned
+passages from 8 to 3 and collapses the candidate pool per arm from k×multiplier = 80 to 9. The
+pool collapse dominates. `data_processing`'s `chunk_size` (7000 vs the shipped 5000) and
+`chunk_overlap` (400 vs 800) were worse still: losing those re-chunks the entire corpus over an
+hour-long rebuild with nothing downstream able to tell.
+
+Four keys were read with **two different code defaults in different files** — `openai.temperature`
+(0.1 and 0.2), `openai.max_context_results` (5 and 8), `search_engine.k` (3, 8, and a non-literal
+`self.max_context_results`), `server.port` (5000 and 5001). Those contradicted each other, not
+just the YAML. And `settings_service.deployed_defaults()`, whose docstring reads _"The values
+config.yaml ships"_, hardcoded `max_tokens: 4096` against the YAML's `16384`.
+
+**The real defect was one level up.** `ConfigLoader._load_config` swallowed both
+`FileNotFoundError` and `yaml.YAMLError` into `self._config = {}`. The in-code defaults were
+therefore not the missing-key path — they were the **corrupt-YAML path**. One bad indent in
+`config.yaml` and the app booted 200 OK on 70/30 weights, a 9-candidate pool, 7000-character
+chunks, and — the one nobody had spotted — `chat_persistence` reading `False`, silently ending
+durable conversation history.
+
+**What was done.**
+
+1. `web/utils/config_loader.py` — the two `except` clauses deleted (−7 lines). `config.yaml` is
+   committed, so a missing or unparseable one is a broken deployment, not a condition to degrade
+   through. PyYAML's `MarkedYAMLError` carries `problem_mark`, so the crash names the line and
+   column. The `or {}` stays: an _empty_ file legitimately parses to `None`.
+2. Required keys now subscript `config.get_section(...)`; genuinely optional ones keep
+   `.get(default)`. The split is the documentation. In `from_yaml` a missing key raises
+   `KeyError`, which the pre-existing `except Exception` wraps into
+   `SearchEngineError("Failed to read search engine config: 'k'")` — naming the key, landing on
+   `app.py`'s broad handler, and degrading to 503-on-chat rather than a crash. That also made
+   the function's `Raises: SearchEngineError` docstring true; it had been false since it was
+   written. `DataProcessor` is constructed only at `data_processing.py:612` in the build CLI's
+   `__main__`, so its `KeyError` can never reach the web app.
+3. Four fallbacks were _aligned_ rather than made required — `openai_app.py`'s `temperature` and
+   `max_context_results`, `settings_service.py`'s `max_tokens`, and `app.py`'s dev-runner `port`.
+   `OpenAIHandler()` is built at `app.py:2133`, **one line before** the `try:` that catches
+   search-engine failures, so raising there would crash startup over a temperature of 0.2 versus
+   0.1. The 503 safety net covers `from_yaml` only.
+4. Seven parametrized tests in `web/tests/test_embedding_factory.py`, verified to fail against
+   the old code before being believed. `from_yaml` had **zero** test coverage — the only test
+   touching it patched it out — which is why the drift survived.
+
+**Why not the alternatives.** Four reviewers argued this out. Matching the literals to the YAML
+(OpenCode `muse-spark-1.3`) is zero lines but keeps two sources of truth and cannot stop a repeat;
+this drift happened exactly that way. A `require()` method plus a `ConfigError` class (the
+orchestrator's first plan) adds a mechanism where subscripting an existing method already does the
+job. An `Ellipsis` sentinel in `get()` (Codex) claimed zero lines, but the one-liner it needs is
+112 characters and `ruff format` expands it to five. A test asserting _"code default == YAML
+value"_ was rejected twice independently: any legitimate retune breaks the suite, and it is
+Google's documented change-detector anti-pattern.
+
+**What was deliberately left alone.** Per-query min-max normalisation was rejected on measurement,
+not taste: across 8 English queries on the live 4,545-chunk build, semantic scores run mean 0.534 /
+std 0.129 against lexical 0.150 / std 0.098. The 3.6× mean gap cannot reorder anything — only
+spread can — so the semantic leg's real share of blended variance is ~56%, and normalising would
+move 56/44 to 50/50 for real complexity. RRF was rejected on the literature (Bruch et al., ACM
+TOIS 2024, arXiv:2210.11934: tuned linear fusion beats RRF by 1–3% nDCG@10 on a calibrated
+corpus) and because its synthetic `1/(k+r)` scores would make the absolute `min_score` floor
+uninterpretable. `config.get(..., {})` and `config.get(..., [])` structural defaults were left
+untouched — for those, empty genuinely means "none configured".
+
+**What is still open.** Whether 0.5/0.5 is the _right_ weight remains unmeasured and needs
+labelled data; `openai.temperature` is still written in two places (consistent now, free to drift
+again); and a valid-but-wrong YAML value still passes unchallenged.
+
+---

@@ -4226,7 +4226,7 @@ if __name__ == "__main__":
 
     is_debug_mode = config.is_debug() and not is_testing_mode
     server_host = config.get("server", "host", "0.0.0.0")
-    server_port = int(config.get("server", "port", 5000))
+    server_port = int(config.get("server", "port", 5001))
 
     if is_debug_mode:
         logger.warning("Flask is running in DEBUG MODE. Not for production deployment.")

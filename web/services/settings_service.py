@@ -112,7 +112,7 @@ def deployed_defaults() -> dict[str, Any]:
     return {
         "model": config.get("openai", "model", "gpt-4o-mini"),
         "temperature": config.get("openai", "temperature", 0.1),
-        "max_tokens": config.get("openai", "max_tokens", 4096),
+        "max_tokens": config.get("openai", "max_tokens", 16384),
         "max_context_results": config.get("openai", "max_context_results", 8),
         # None means "do not send it". Absent is the only correct default: a
         # non-reasoning model rejects the parameter, and a reasoning model has

@@ -263,9 +263,9 @@ class OpenAIHandler:
 
         self.model = setting("model", config.get("openai", "model", "gpt-4o-mini"))
         self.max_tokens = setting("max_tokens", config.get("openai", "max_tokens"))
-        self.temperature = setting("temperature", config.get("openai", "temperature", 0.2))
+        self.temperature = setting("temperature", config.get("openai", "temperature", 0.1))
         self.max_context_results = setting(
-            "max_context_results", config.get("openai", "max_context_results", 5)
+            "max_context_results", config.get("openai", "max_context_results", 8)
         )
         # None means "do not send it", which is correct both for a model that
         # has no such parameter and for a reasoning model whose own default we

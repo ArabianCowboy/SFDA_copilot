@@ -9,6 +9,7 @@ import pytest
 from web.services.data_processing import DataProcessor
 from web.services.search_engine import SearchEngine, SearchEngineConfig
 from web.services.search_exceptions import EmbeddingError, SearchEngineError
+from web.utils.config_loader import config
 from web.utils.embedding_helpers import EmbeddingClientFactory, get_embedding_client
 from web.utils.local_embedding_client import LocalEmbeddingClient
 from web.utils.openai_client import OpenAIClientManager
@@ -115,3 +116,31 @@ def test_data_processor_chains_factory_failure():
         DataProcessor()
 
     assert isinstance(exc_info.value.__cause__, RuntimeError)
+
+
+# --- config.yaml owns these values; a fallback would be a second, silent opinion ---
+#
+# Until 2026-09-18 every key below also had an in-code default that disagreed with
+# the shipped config.yaml. Deleting the key did not fail — it quietly swapped the
+# fusion weights to 70/30, cut returned passages from 8 to 3, collapsed the
+# candidate pool from 80 per arm to 9, and re-chunked the corpus at 7000/400
+# instead of 5000/800. Same 200 OK, different answers. `from_yaml` had no test at
+# all, which is why it went unnoticed.
+
+
+@pytest.mark.parametrize(
+    "key",
+    ["semantic_weight", "lexical_weight", "k", "semantic_multiplier", "lexical_multiplier"],
+)
+def test_from_yaml_refuses_a_search_key_config_yaml_owns(monkeypatch, key):
+    monkeypatch.delitem(config._config["search_engine"], key)
+    with pytest.raises(SearchEngineError, match=key):
+        SearchEngineConfig.from_yaml()
+
+
+@pytest.mark.parametrize("key", ["chunk_size", "chunk_overlap"])
+def test_data_processor_refuses_chunk_geometry_config_yaml_owns(monkeypatch, key):
+    """Read before the embedding client, so this raises without loading a model."""
+    monkeypatch.delitem(config._config["data_processing"], key)
+    with pytest.raises(KeyError, match=key):
+        DataProcessor()

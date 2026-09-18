@@ -67,16 +67,21 @@ class ConfigLoader:
         logging.debug("ConfigLoader initialized from %s", self.config_path)
 
     def _load_config(self) -> None:
-        """Load the YAML configuration file."""
-        try:
-            with open(self.config_path, encoding="utf-8") as f:
-                self._config = yaml.safe_load(f) or {}
-        except FileNotFoundError:
-            logging.warning("Config file not found: %s. Using defaults.", self.config_path)
-            self._config = {}
-        except yaml.YAMLError as e:
-            logging.error("Error parsing config.yaml: %s", e)
-            self._config = {}
+        """Load the YAML configuration file.
+
+        Deliberately does not catch. config.yaml is committed, so a missing or
+        unparseable one is a broken deployment, not a condition to degrade
+        through: swallowing it into ``{}`` silently substituted every in-code
+        default at once — different fusion weights, a 9-candidate retrieval
+        pool, durable history off — while the app answered 200 OK.
+
+        Raises:
+            FileNotFoundError: config.yaml is absent.
+            yaml.YAMLError: config.yaml does not parse. ``MarkedYAMLError``
+                carries the line and column.
+        """
+        with open(self.config_path, encoding="utf-8") as f:
+            self._config = yaml.safe_load(f) or {}
 
     def get(self, section: str, key: str, default: Any = None) -> Any:
         """

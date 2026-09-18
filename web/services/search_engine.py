@@ -88,14 +88,17 @@ class SearchEngineConfig:
             SearchEngineError: If required config keys are missing.
         """
         try:
-            sem_w = float(config.get("search_engine", "semantic_weight", 0.7))
-            lex_w = float(config.get("search_engine", "lexical_weight", 0.3))
-            default_k = int(config.get("search_engine", "k", 3))
-            sem_mult = int(config.get("search_engine", "semantic_multiplier", 3))
-            lex_mult = int(config.get("search_engine", "lexical_multiplier", 3))
-            emb_type = str(config.get("search_engine", "embedding_type", "local"))
-            min_score = float(config.get("search_engine", "min_score", 0.0))
-            min_ratio = float(config.get("search_engine", "min_score_ratio", 0.0))
+            # Subscript = config.yaml owns this value and a fallback here would
+            # be a second, silent opinion. `.get(default)` = genuinely optional.
+            cfg = config.get_section("search_engine")
+            sem_w = float(cfg["semantic_weight"])
+            lex_w = float(cfg["lexical_weight"])
+            default_k = int(cfg["k"])
+            sem_mult = int(cfg["semantic_multiplier"])
+            lex_mult = int(cfg["lexical_multiplier"])
+            emb_type = str(cfg.get("embedding_type", "local"))
+            min_score = float(cfg.get("min_score", 0.0))
+            min_ratio = float(cfg.get("min_score_ratio", 0.0))
         except Exception as exc:
             raise SearchEngineError(f"Failed to read search engine config: {exc}") from exc
 

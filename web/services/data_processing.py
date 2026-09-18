@@ -172,9 +172,13 @@ class DataProcessor:
 
     def __init__(self) -> None:
         """Load settings, prepare embedding client and paths."""
-        self.chunk_size: int = config.get("data_processing", "chunk_size", 7_000)
-        self.chunk_overlap: int = config.get("data_processing", "chunk_overlap", 400)
-        self.embedding_batch_size: int = config.get("data_processing", "embedding_batch_size", 100)
+        # Chunk geometry has no defensible default: a fallback that disagrees
+        # with config.yaml re-chunks the whole corpus over an hour-long rebuild
+        # and nothing downstream can tell.
+        dp = config.get_section("data_processing")
+        self.chunk_size: int = int(dp["chunk_size"])
+        self.chunk_overlap: int = int(dp["chunk_overlap"])
+        self.embedding_batch_size: int = int(dp.get("embedding_batch_size", 100))
 
         embedding_type = config.get("search_engine", "embedding_type", "local")
         self.embedding_type = embedding_type
