@@ -101,8 +101,19 @@ a pasted URL.
 ## Single worker
 
 ```bash
-gunicorn --workers 1 --threads 8 --timeout 300 "web.api.app:create_app()"
+gunicorn --workers 1 --threads 8 "web.api.app:create_app()"
 ```
+
+**That line is the shape, not the deployment.** What production actually runs is committed at
+[`deploy/sfda-copilot.service`](../deploy/sfda-copilot.service) and was verified byte-identical to
+the live unit on 2026-09-18 — read that file, not this snippet. Two differences are worth knowing
+because they have already misled a reader: the worker count is not on the command line at all (it
+is `workers = 1` in `gunicorn.conf.py`, per the precedence note below), and there is no
+`--timeout`, so gunicorn's 30-second default applies rather than the 300 this example used to
+show. That default is **not** a cap on how long a chat answer may take: with `--threads 8` the
+worker is `gthread`, whose main loop heartbeats once a second while requests run in a thread pool,
+so a slow LLM call never looks idle to the arbiter. nginx's `proxy_read_timeout 300s` below is the
+bound that actually matters for a long answer.
 
 The app logs a warning at startup under gunicorn if it is launched with more than one worker,
 checking the four sources in gunicorn's precedence order: the command line (`--workers`/`-w`),
