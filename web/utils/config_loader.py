@@ -81,7 +81,14 @@ class ConfigLoader:
                 carries the line and column.
         """
         with open(self.config_path, encoding="utf-8") as f:
-            self._config = yaml.safe_load(f) or {}
+            loaded = yaml.safe_load(f)
+        if not isinstance(loaded, dict):
+            # An empty file parses to None and a stray scalar parses to str/int.
+            # Both used to become `{}` and read as "every key is missing".
+            raise TypeError(
+                f"{self.config_path} must contain a YAML mapping, got {type(loaded).__name__}."
+            )
+        self._config = loaded
 
     def get(self, section: str, key: str, default: Any = None) -> Any:
         """

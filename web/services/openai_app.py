@@ -262,7 +262,7 @@ class OpenAIHandler:
             return section_default if value is None else value
 
         self.model = setting("model", config.get("openai", "model", "gpt-4o-mini"))
-        self.max_tokens = setting("max_tokens", config.get("openai", "max_tokens"))
+        self.max_tokens = setting("max_tokens", config.get("openai", "max_tokens", 16384))
         self.temperature = setting("temperature", config.get("openai", "temperature", 0.1))
         self.max_context_results = setting(
             "max_context_results", config.get("openai", "max_context_results", 8)

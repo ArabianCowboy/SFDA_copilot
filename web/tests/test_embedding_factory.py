@@ -9,7 +9,7 @@ import pytest
 from web.services.data_processing import DataProcessor
 from web.services.search_engine import SearchEngine, SearchEngineConfig
 from web.services.search_exceptions import EmbeddingError, SearchEngineError
-from web.utils.config_loader import config
+from web.utils.config_loader import ConfigLoader, config
 from web.utils.embedding_helpers import EmbeddingClientFactory, get_embedding_client
 from web.utils.local_embedding_client import LocalEmbeddingClient
 from web.utils.openai_client import OpenAIClientManager
@@ -144,3 +144,26 @@ def test_data_processor_refuses_chunk_geometry_config_yaml_owns(monkeypatch, key
     monkeypatch.delitem(config._config["data_processing"], key)
     with pytest.raises(KeyError, match=key):
         DataProcessor()
+
+
+@pytest.mark.parametrize(
+    ("body", "kind"),
+    [("", "NoneType"), ("just a string", "str"), ("- a\n- b", "list")],
+)
+def test_config_loader_refuses_a_config_that_is_not_a_mapping(tmp_path, body, kind):
+    """Empty and stray-scalar files used to become `{}` and read as "all keys missing"."""
+    path = tmp_path / "config.yaml"
+    path.write_text(body, encoding="utf-8")
+    loader = ConfigLoader.__new__(ConfigLoader)  # bypass the singleton
+    loader.config_path = path
+    with pytest.raises(TypeError, match=kind):
+        loader._load_config()
+
+
+@pytest.mark.parametrize("key", ["embedding_model", "embedding_dimension"])
+def test_openai_embedding_client_refuses_an_unstated_vector_space(monkeypatch, key):
+    """The old fallbacks named ada-002/1536 against the configured mpnet/768."""
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key-not-used")
+    monkeypatch.delitem(config._config["search_engine"], key)
+    with pytest.raises(KeyError, match=key):
+        OpenAIClientManager()

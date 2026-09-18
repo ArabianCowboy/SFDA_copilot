@@ -21,12 +21,14 @@ class OpenAIClientManager:
         # Use provided config or fall back to global config
         # config arg takes precedence if we ever want to inject it
         # The config argument is not currently used, but kept for future factory pattern integration.
-        self.embedding_model = config_loader_module.get(
-            "search_engine", "embedding_model", "text-embedding-ada-002"
-        )
-        self.embedding_dimension = config_loader_module.get(
-            "search_engine", "embedding_dimension", 1536
-        )
+        # Required, not defaulted: the old fallbacks named a different model
+        # (text-embedding-ada-002) in a different dimension (1536) from the
+        # configured all-mpnet-base-v2/768, so losing either key built the
+        # corpus in the wrong vector space — an hour of embedding before
+        # anything noticed.
+        search_cfg = config_loader_module.get_section("search_engine")
+        self.embedding_model = search_cfg["embedding_model"]
+        self.embedding_dimension = search_cfg["embedding_dimension"]
         self.client = OpenAI()
 
     def get_embeddings(self, texts, batch_size=100):

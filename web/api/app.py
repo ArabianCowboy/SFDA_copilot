@@ -306,7 +306,7 @@ from web.utils.supabase_client import _auth_timeout, get_supabase
 # 500 conversations, so ~12MB of history at worst. It is a soft budget — see
 # _truncate, which will exceed it rather than drop the newest exchange.
 DEFAULT_CHAT_HISTORY_CHAR_BUDGET = 60_000
-DEFAULT_MAX_CHAT_MESSAGES_COUNT = 5
+DEFAULT_MAX_CHAT_MESSAGES_COUNT = 10
 # A question, not an essay. `_validate_chat_request` had no length bound at all,
 # so a 200KB body was accepted, embedded, sent to the model and — once questions
 # became durable — stored forever. Set well above any real regulatory question

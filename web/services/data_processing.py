@@ -173,8 +173,9 @@ class DataProcessor:
     def __init__(self) -> None:
         """Load settings, prepare embedding client and paths."""
         # Chunk geometry has no defensible default: a fallback that disagrees
-        # with config.yaml re-chunks the whole corpus over an hour-long rebuild
-        # and nothing downstream can tell.
+        # with config.yaml re-chunks the whole corpus over an hour-long rebuild.
+        # The manifest records the geometry used, but nothing rejects a build
+        # whose geometry is not the configured one.
         dp = config.get_section("data_processing")
         self.chunk_size: int = int(dp["chunk_size"])
         self.chunk_overlap: int = int(dp["chunk_overlap"])
