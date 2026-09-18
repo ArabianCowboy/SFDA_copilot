@@ -60,6 +60,8 @@ bottom of this file: [How this file works](#how-this-file-works).
 - [Two search artifacts are unpickled before anything has validated them](#two-search-artifacts-are-unpickled-before-anything-has-validated-them) — not started; needs a format change and a corpus rebuild, not a hash.
 - [Nothing ever deletes an old search build](#nothing-ever-deletes-an-old-search-build) — not started; 16 on disk, 8 of them failed runs; the cleanup step is the risky half.
 - [`IndexFlatL2` shifts every id above a deleted vector](#indexflatl2-shifts-every-id-above-a-deleted-vector) — nothing is wrong today; **mandatory** in any commit that adds incremental delete or update.
+- [One guideline is silently absent from the corpus](#one-guideline-is-silently-absent-from-the-corpus-and-warehouse-questions-land-elsewhere) — measured 2026-09-18; the cheap half is surfacing `skipped_documents`, the expensive half is OCR.
+- [The fusion weights have two sources of truth that disagree](#the-fusion-weights-have-two-sources-of-truth-that-disagree) — harmless until someone tidies config.yaml; one line to remove the trap.
 - [LOG_LEVEL works only because of import order](#log_level-works-only-because-of-import-order-and-nothing-protects-that) — nothing is broken; the one removable hazard shipped 2026-09-18, the ordering dependency remains unguarded.
 - [Every candidate's TF-IDF cosine is computed twice per question](#every-candidates-tf-idf-cosine-is-computed-twice-per-question) — not started; 561 µs a question, recorded because the cost of fixing it is the interesting half.
 - [A retention policy, and the bounds that depend on one](#a-retention-policy-and-the-bounds-that-depend-on-one) — blocked on a retention period nobody owns; covers the assistant-message and audit_log text bounds too.
@@ -1056,6 +1058,68 @@ suite captures logs in several places. **Do not unify the app and CLI paths with
 both** — the same guard is correct in one and a no-op in the other, and that is now written into
 the comment at the site. A test that boots the app and asserts `logging.getLogger().level` matches
 `LOG_LEVEL` would at least make a future import reshuffle fail loudly.
+
+### One guideline is silently absent from the corpus, and warehouse questions land elsewhere
+
+**Where:** `data/regulatory/2023-11-26_Investor_Guideline_for_Pharmaceutical__Herbal_and_Cosmetic_Products_Warehouse_License.pdf`,
+skipped by `DataProcessor._extract_text_from_pdf` on every build since at least 2026-08-03 and
+recorded in each manifest's `skipped_documents` with the reason.
+
+**What is wrong.** PyPDF2 extracts no text from any page of it — a scanned or image-only PDF — so
+it contributes zero chunks. The pipeline handles this honestly: it warns, records the filename and
+reason in the manifest, and carries on. What nothing handles is the consequence. Measured against
+the live build: **no document in the corpus has "warehouse" in its filename**, and the 19 chunks
+whose text mentions the word belong to nine unrelated documents — a DTTS integration guide, the
+track-and-trace portal manual, a temperature-monitor FAQ, barcoding specifications.
+
+So a reader asking what a warehouse licence requires does not get "nothing found". Retrieval
+returns the least-bad of an unrelated set, and `apply_relevance_floor` only drops results beneath
+a threshold — it cannot know the right document was never indexed. The answer arrives with
+confident citations to guidance about barcode formats.
+
+**Who it reaches.** Anyone asking about warehouse licensing — plausibly a whole category of
+investor-facing question, since the missing file is an _Investor Guideline_. Silently, with no
+signal to the reader or the operator that the corpus has a hole.
+
+**How it was found.** The skip warning has scrolled past every rebuild for weeks. Its consequence
+was only checked on 2026-09-18, by asking the live build which documents actually cover the topic.
+
+**What fixing it would disturb.** Getting the text in means OCR — a new dependency
+(`ocrmypdf`/Tesseract, with Arabic language data), a slower and less deterministic extraction path,
+and a decision about whether OCR output is trustworthy enough to cite by page number on a
+regulatory product. That is a real piece of work and probably its own plan.
+
+The cheaper half is worth separating: **the pipeline knows exactly which documents it dropped and
+never tells anyone afterwards.** `skipped_documents` is in the manifest, and nothing reads it —
+not the admin console, not startup, not `build_registry list`. Surfacing it (a startup warning
+naming the count, or a line in the console's overview) is small, and turns a silent hole into a
+known one. Do that first; it is what makes the OCR decision a choice rather than a discovery.
+
+### The fusion weights have two sources of truth that disagree
+
+**Where:** `web/services/search_engine.py:91-92` defaults `semantic_weight` to `0.7` and
+`lexical_weight` to `0.3`; `web/config.yaml:216-217` sets both to `0.5`.
+
+**What is wrong.** Nothing today — the YAML keys are present, so 0.5/0.5 is what runs, and the
+code defaults are dead. But they are dead in the way that waits: delete or rename those two keys
+and hybrid retrieval silently reweights from an even blend to 70/30 semantic. No error, no log
+line, no failing test. Every answer changes slightly and nothing says so.
+
+A default that duplicates a committed config value is not a safety net; it is a second opinion
+that only speaks when the first goes missing.
+
+**Who it reaches.** Nobody now. Every reader, invisibly, on the day someone tidies `config.yaml`.
+
+**How it was found.** Noted in passing by an adversarial review of the combiner work
+(`opencode/muse-spark-1.3`, 2026-09-16) while confirming the live fusion ratio.
+
+**What fixing it would disturb.** Almost nothing, and the choice is which direction. Matching the
+defaults to the YAML (0.5/0.5) is one line and removes the trap without changing behaviour. Making
+the keys required — `config.get(...)` with no default, failing loudly if absent — is stricter and
+arguably more honest, but it is a behaviour change for any deployment with an older
+`config.yaml`, and `SearchEngineConfig.from_yaml` currently supplies defaults for every key it
+reads, so singling these two out needs a reason. Whichever is chosen, `0.7/0.3` should not survive
+as a number nobody intends.
 
 ### `history_api` and `sessions_api` are still rate-limited by IP, not by account
 
