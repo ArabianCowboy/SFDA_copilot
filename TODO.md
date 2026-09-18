@@ -60,7 +60,7 @@ bottom of this file: [How this file works](#how-this-file-works).
 - [Two search artifacts are unpickled before anything has validated them](#two-search-artifacts-are-unpickled-before-anything-has-validated-them) — not started; needs a format change and a corpus rebuild, not a hash.
 - [Nothing ever deletes an old search build](#nothing-ever-deletes-an-old-search-build) — not started; 16 on disk, 8 of them failed runs; the cleanup step is the risky half.
 - [`IndexFlatL2` shifts every id above a deleted vector](#indexflatl2-shifts-every-id-above-a-deleted-vector) — nothing is wrong today; **mandatory** in any commit that adds incremental delete or update.
-- [LOG_LEVEL works only because of import order](#log_level-works-only-because-of-import-order-and-nothing-protects-that) — nothing is broken; corrected from an earlier wrong claim, and the fragility is real.
+- [LOG_LEVEL works only because of import order](#log_level-works-only-because-of-import-order-and-nothing-protects-that) — nothing is broken; the one removable hazard shipped 2026-09-18, the ordering dependency remains unguarded.
 - [Every candidate's TF-IDF cosine is computed twice per question](#every-candidates-tf-idf-cosine-is-computed-twice-per-question) — not started; 561 µs a question, recorded because the cost of fixing it is the interesting half.
 - [A retention policy, and the bounds that depend on one](#a-retention-policy-and-the-bounds-that-depend-on-one) — blocked on a retention period nobody owns; covers the assistant-message and audit_log text bounds too.
 - [`chat_sessions.owner_id` still has no foreign key](#chat_sessionsowner_id-still-has-no-foreign-key) — sequenced behind account deletion; the migration is small and the header's reasoning is already corrected.
@@ -1014,10 +1014,8 @@ harness as a hand-built caller. That was wrong — `scripts/eval_citations.py:15
 
 **Where:** `web/api/app.py:147-174` — the `if not logging.getLogger().handlers:` guard around
 `basicConfig(level=LOG_LEVEL, format=...)`. The imports that would install a root handler and
-make that guard false — `web/services/openai_app.py` (which calls a bare module-level
-`logging.basicConfig`) at `:242`, and `web/utils/config_loader.py` (whose module-level
-`logging.warning(...)` makes Python call `basicConfig()` implicitly) at `:259` — both sit below
-it.
+make that guard false — `web/utils/config_loader.py`, whose module-level `logging.warning(...)`
+makes Python install a root handler implicitly — is imported at `:259`, below it.
 
 **What is wrong.** Nothing, today, and this entry is a correction of one that claimed otherwise.
 **It previously read "LOG_LEVEL is silently ignored", which was wrong.** That was measured by
@@ -1033,8 +1031,15 @@ What is left is the fragility. The configuration is correct by accident of impor
 construction. Moving any import above line 147, or adding a top-level one that reaches
 `config_loader`, turns `LOG_LEVEL` off across the whole app — silently, with no error, no failing
 test, and no symptom except that the logs a future incident depends on are quieter than the
-operator believes. `openai_app.py:30`'s bare `basicConfig` is the loaded gun: it is a library
-module configuring root logging on import, and it is inert only because of where it is imported.
+operator believes.
+
+**Update 2026-09-18 — the loaded gun is gone; the fragility is not.** `openai_app.py` also
+carried a bare module-level `basicConfig`, which would have configured root at INFO and disabled
+`LOG_LEVEL` application-wide had it ever been imported before `config_loader`. It never was, and
+was measurably a no-op, so deleting it changed nothing — but it is deleted (`a93db81`), because
+dead code that would be catastrophic if it ever ran is not the kind of dead code to keep.
+`config_loader` remains, and it is not removable in the same way: the implicit `basicConfig` there
+is a side effect of logging at import time, not a call anyone wrote.
 
 **Who it reaches.** Nobody now. Whoever is reading production logs during the incident after
 someone tidies the imports.
@@ -1043,9 +1048,8 @@ someone tidies the imports.
 half of this (fixed in `a2285a3`). The scan for the same pattern produced the over-broad claim
 above; a controlled measurement on the server then disproved it and produced this.
 
-**What fixing it would disturb.** Deleting `openai_app.py:30` is the one unambiguous improvement
-and is nearly free — a library module should not configure root logging, and the app sets that
-logger's level explicitly at `app.py:155` anyway. Beyond that, "has a handler" is not the same
+**What fixing it would disturb.** The unambiguous half is done (above). What remains is that
+"has a handler" is not the same
 question as "has been configured by us", and the robust form is `force=True` unconditionally. But
 that changes behaviour under gunicorn, which is the one context currently known to work, and the
 suite captures logs in several places. **Do not unify the app and CLI paths without re-measuring
