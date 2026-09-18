@@ -60,6 +60,7 @@ bottom of this file: [How this file works](#how-this-file-works).
 - [Two search artifacts are unpickled before anything has validated them](#two-search-artifacts-are-unpickled-before-anything-has-validated-them) — not started; needs a format change and a corpus rebuild, not a hash.
 - [Nothing ever deletes an old search build](#nothing-ever-deletes-an-old-search-build) — not started; 16 on disk, 8 of them failed runs; the cleanup step is the risky half.
 - [`IndexFlatL2` shifts every id above a deleted vector](#indexflatl2-shifts-every-id-above-a-deleted-vector) — nothing is wrong today; **mandatory** in any commit that adds incremental delete or update.
+- [`LOG_LEVEL` is silently ignored, and most INFO never reaches the log](#log_level-is-silently-ignored-and-most-info-never-reaches-the-log) — diagnosed and measured locally; needs measuring under gunicorn before the fix.
 - [Every candidate's TF-IDF cosine is computed twice per question](#every-candidates-tf-idf-cosine-is-computed-twice-per-question) — not started; 561 µs a question, recorded because the cost of fixing it is the interesting half.
 - [A retention policy, and the bounds that depend on one](#a-retention-policy-and-the-bounds-that-depend-on-one) — blocked on a retention period nobody owns; covers the assistant-message and audit_log text bounds too.
 - [`chat_sessions.owner_id` still has no foreign key](#chat_sessionsowner_id-still-has-no-foreign-key) — sequenced behind account deletion; the migration is small and the header's reasoning is already corrected.
@@ -1008,6 +1009,51 @@ recorded rather than done. _(An earlier draft of this entry also named the citat
 harness as a hand-built caller. That was wrong — `scripts/eval_citations.py:151-172` either calls
 `engine.search()` or constructs `SearchResult` objects directly, and never reaches
 `ResultCombiner.combine` at all.)_
+
+### `LOG_LEVEL` is silently ignored, and most INFO never reaches the log
+
+**Where:** `web/api/app.py:147-151` — the `if not logging.getLogger().handlers:` guard around the
+deliberate `basicConfig(level=LOG_LEVEL, format=...)`. The handler that makes that guard false is
+installed by `web/utils/config_loader.py`, whose module-level `logging.warning(...)` /
+`logging.debug(...)` calls are root-logger module functions, and those call `basicConfig()`
+themselves when no handler exists yet. `web/services/openai_app.py:30` has a bare module-level
+`logging.basicConfig(level=logging.INFO)` that does the same thing from the other direction.
+
+**What is wrong.** By the time `app.py` reaches its own configuration, the root logger already has
+a handler, so the guard is false and **neither `LOG_LEVEL` nor the format string is ever
+applied**. Root stays at `WARNING`. Every logger in the app inherits that, so `logger.info(...)`
+is dropped everywhere except `web.services.openai_app`, which `app.py:154` raises to INFO by name.
+Setting `LOG_LEVEL=DEBUG` in `.env` changes nothing at all — measured, not inferred.
+
+The comment at `app.py:87-97` shows this exact battle was already fought once and half-won: the
+`logging.info(...)` module-function calls were replaced with a named logger for precisely this
+reason. The mechanism that made them harmful is still in `config_loader`.
+
+**Who it reaches.** Whoever is trying to diagnose a production incident with a log that is missing
+every INFO line the application deliberately writes, and an env var that says it can turn them on.
+
+**How it was found.** The 2026-09-17 VPS rebuild. `sfda.dataprocessor`'s INFO lines never reached
+the operator's log, which was diagnosed and fixed for the CLI path in `a2285a3`; scanning for the
+same pattern elsewhere found this. Verified by importing `config_loader` alone and reading the
+root logger: one handler, level 30, `isEnabledFor(INFO)` false for `web.api.app`,
+`web.services.search_index`, `web.services.openai_app` and `sfda.dataprocessor` alike.
+
+**What fixing it would disturb — and what has to be measured first.** The honest scope is not
+known yet, because **production does not obviously behave like a bare import**: the same VPS
+rebuild showed `Loading active build …` and `SearchIndex loaded successfully` arriving in
+`journalctl`, which are INFO from `web.services.search_index`. Gunicorn installs its own logging
+configuration, so under the real server something is raising levels that a plain import does not.
+Measure there before changing anything — `python -c "import logging; ..."` under the service
+account proves nothing about the running worker.
+
+The fix itself is then small and in two parts: delete the bare `basicConfig` in `openai_app.py`
+(a library module has no business configuring root logging on import — the same correction
+`a2285a3` made in the pipeline), and replace `app.py`'s handler-presence guard with an explicit
+`force=True`, since "has a handler" is not the same question as "has been configured by us".
+Removing the `openai_app` special-case on line 154 then becomes possible, and should happen in
+the same commit or it will read as deliberate forever. The risk is entirely in the blast radius:
+this is the app factory, the 1105-test suite captures logs in places, and getting it wrong makes
+production quieter rather than louder, which is the failure nobody notices.
 
 ### `history_api` and `sessions_api` are still rate-limited by IP, not by account
 
