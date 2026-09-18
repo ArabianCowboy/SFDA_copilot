@@ -55,7 +55,7 @@ bottom of this file: [How this file works](#how-this-file-works).
 - [Admin analytics + viewer follow-ups](#admin-analytics--viewer-follow-ups--click-through-feedback-search-daily-counts-audit-display) — not started; seven small adds.
 - [Enable the token-verification cache once production numbers justify it](#enable-the-token-verification-cache-once-production-numbers-justify-it) — single-flight (the worker-starvation fix) shipped 2026-08-27 at no revocation cost; the optional positive cache stays off, gated on measurement.
 - [Admin broadcast & Reader Notification Center](#admin-broadcast--reader-notification-center-popups-banners-and-inbox-history) — implemented 2026-08-24; live login/session smoke-tested against production 2026-08-29 (by hand), which also surfaced and closed a real `mark-read` 500 the same day ([fix write-up](docs/archive/2026-08-29_notification-mark-read-500.md)); still owes a live Realtime-push check; the sign-out teardown shipped 2026-09-11 and the reauthenticate path needs none; the `mypy web` caveat closed 2026-09-08.
-- [Deletion step-up blinds GoTrue's own per-IP rate limiter](#deletion-step-up-blinds-gotrues-own-per-ip-rate-limiter) — not live (the feature switch is off); fix before flipping it.
+- [Deletion step-up blinds GoTrue's own per-IP rate limiter](#deletion-step-up-blinds-gotrues-own-per-ip-rate-limiter) — throttle built 2026-09-19 (`pending/15`), unapplied; still not live (the switch is off).
 - [Marketing consent has no re-prompt path](#marketing-consent-has-no-re-prompt-path-and-the-trigger-cannot-record-a-re-affirmation) — deferred by decision 2026-09-18; due when the policy next changes materially.
 - [The privacy policy (/privacy) is a draft, not reviewed legal text](#the-privacy-policy-privacy-is-a-draft-not-reviewed-legal-text) — consent shipped against this draft; deletion copy corrected it to `-draft-2` on 2026-09-18, and the legal review of the text is still owed.
 - [Account deletion (Spec 4)](#account-deletion-spec-4--blocked-on-a-product-decision-not-on-engineering) — decision closed 2026-09-18 (yes, 30-day grace); fully built and gate-green, **applied to nothing** — see `supabase/pending/README.md`.
@@ -1677,6 +1677,31 @@ an argument for settling the numbers sooner rather than later.
 ---
 
 ### Deletion step-up blinds GoTrue's own per-IP rate limiter
+
+**Update 2026-09-19 — the throttle is built; it is unapplied like the rest of the batch.**
+`supabase/pending/15_step_up_attempts.sql` puts the bound back on our side of the blinded
+limiter: a `step_up_attempts` table holding UUIDs, counts and timestamps only, and three
+`service_role` RPCs. Five failures in fifteen minutes locks the account for fifteen; the
+increment-and-decide is a single upsert so eight threads cannot all read "not locked" and
+proceed together.
+
+The route checks the lockout **before** calling GoTrue at all, which is the point — a
+locked-out caller produces no provider round trip. A correct password clears the counter, and
+a provider outage costs the reader nothing: it answers 503, never 401, and spends no attempt.
+The throttle fails **open** on a database error, deliberately — it is a rate limit, not the
+authorization check, and turning a blip into "you cannot delete your account" would break the
+feature to protect a control.
+
+The test that matters is `test_a_lockout_survives_a_worker_recycle`: it builds a second Flask
+app against the same store, which is what a recycled worker is. Four of the five new tests
+fail against the previous code; the fifth (outage handling) passed already and is a regression
+guard rather than new behaviour.
+
+**Still open, which is why this entry is not closed:** `15` has not been applied, so a reader
+cannot see the difference. The deeper collision is also still unrecorded — "the server must
+verify step-up" against "never proxy credentials to GoTrue" — and it wants a row in
+_Rules that collide_ plus a line beside the `/auth/login` retirement in
+`docs/ARCHITECTURE.md`, so that paragraph stops reading as an unconditional rule.
 
 **Where:** `_verify_current_password` in `web/api/account.py`, and the rule it collides with at
 `docs/ARCHITECTURE.md:345-352`.

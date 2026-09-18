@@ -529,6 +529,7 @@ export function bindDeletionSection({ isAdmin = false } = {}) {
 function mapDeletionError(error, kind) {
   const code = error?.code;
   if (code === 'step_up_failed') return 'deletionStepUpFailed';
+  if (code === 'step_up_locked_out') return 'deletionStepUpLockedOut';
   if (code === 'deletion_unavailable_for_admin') return 'deletionAdminRefused';
   if (code === 'already_deleted') return 'deletionAlreadyDeleted';
   if (code === 'cancel_unavailable') return 'deletionCancelUnavailable';

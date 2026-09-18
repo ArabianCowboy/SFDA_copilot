@@ -3,11 +3,12 @@ Delete this file when `pending/` is empty. Written 2026-09-18.
 
 # Account & Trust — the apply runbook
 
-Fourteen migrations, written 2026-09-18, implementing the plan archived at
+Fifteen migrations implementing the plan archived at
 [`docs/archive/2026-09-18_account-and-trust.md`](../../docs/archive/2026-09-18_account-and-trust.md).
-Read that for _why_, and this file for _in what order_.
+Read that for _why_, and this file for _in what order_. (Fourteen were written 2026-09-18;
+`15` was added 2026-09-19 to close a defect the step-up design created — see below.)
 
-**`01` and `02` were applied on 2026-09-19 and have moved to `../migrations/`. Twelve remain
+**`01` and `02` were applied on 2026-09-19 and have moved to `../migrations/`. Thirteen remain
 here, applied to nothing.** The ordinals left behind are deliberately NOT renumbered: the file
 headers and the table below cross-reference them ("must land after 08"), and renaming to close
 the gap would break every one of those references.
@@ -51,6 +52,7 @@ version — is in [`supabase/README.md`](../README.md#supabasepending--migration
 | 14     | `grant_marketing_consent_refuses_a_live_saga`                         | 08 applied. **Must not be skipped** — see below                                                                                                                                                                                                                                                                                                                                                       |
 | —      | **install the reconcile timer**                                       | `deploy/sfda-copilot-deletion-reconcile.{service,timer}` — without it, "deletion in progress" is a promise nothing drives                                                                                                                                                                                                                                                                             |
 | —      | **flip `account_deletion_self_serve_enabled` to `true`, then verify** | **the timer above is installed and has ticked once.** Request a deletion on a throwaway account, watch the ledger row reach `pending`, cancel it, and confirm the cancel lands. Only then is the promise on `/privacy` true                                                                                                                                                                           |
+| 15     | `step_up_attempts`                                                    | **none — independent of the rest of the batch.** May be applied at any point, and SHOULD be applied before the feature switch is flipped                                                                                                                                                                                                                                                              |
 | 13     | `chat_sessions_owner_fk`                                              | **PARKED.** See below                                                                                                                                                                                                                                                                                                                                                                                 |
 
 **Why the code deploy sits between 02 and 03.** `03` revokes the direct column grants the
@@ -80,6 +82,14 @@ fresh marketing permission from someone who has asked to be erased is the one th
 grace window must still refuse. `14` cannot be folded
 into `02` because the predicate it needs, `account_deletion_is_live()`, does not exist until
 `08`. Skipping it leaves the hole open the moment `07` makes a saga row possible.
+
+**Why 15 is in this batch at all.** It is not part of the deletion design; it closes a defect
+the deletion design created. Step-up re-authentication verifies the reader's password by
+calling GoTrue from this host's single address, which blinds GoTrue's own per-IP limiter — the
+exact reason `POST /auth/login` was retired. The Flask limit that was supposed to bound it is
+`memory://` and resets on every worker recycle, and `--max-requests 1000` makes those routine.
+`15` puts the throttle in the database instead. It has no dependency on `03`-`14`, but the
+feature switch must not be flipped without it.
 
 **Why 13 is parked.** It adds `chat_sessions.owner_id → auth.users ON DELETE RESTRICT`. Until
 one real deletion has completed end to end, applying it converts a saga bug into a `23503`

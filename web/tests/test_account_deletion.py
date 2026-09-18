@@ -145,6 +145,20 @@ def test_request_rejects_a_wrong_confirmation_word(client, admin_client):
     assert admin_client.rpc_calls == []
 
 
+_THROTTLE_RPCS = ("step_up_is_locked_out", "record_step_up_failure", "clear_step_up_failures")
+
+
+def _saga_calls(admin_client):
+    """The RPC calls that are SAGA calls, with the step-up throttle filtered out.
+
+    The throttle (`supabase/pending/15`) added three service-role RPCs around
+    the password check, so an exact-list assertion on `rpc_calls` now mixes two
+    concerns. These tests are about what the SAGA does, so they filter; the
+    throttle has its own file, `test_step_up_throttle.py`.
+    """
+    return [call for call in admin_client.rpc_calls if call[0] not in _THROTTLE_RPCS]
+
+
 def test_request_with_a_wrong_password_is_401_and_calls_no_rpc(client, admin_client):
     """Step-up failed: the saga RPC must not run on an unverified request.
     Against today's code the route (and the check) did not exist at all."""
@@ -154,7 +168,10 @@ def test_request_with_a_wrong_password_is_401_and_calls_no_rpc(client, admin_cli
         )
     assert response.status_code == 401
     assert response.get_json() == {"error": "step_up_failed"}
-    assert admin_client.rpc_calls == []
+    # No SAGA call. The throttle DID run — it records the failed attempt, which
+    # is the point of it — so this filters rather than asserting an empty list.
+    assert _saga_calls(admin_client) == []
+    assert ("record_step_up_failure", {"p_owner_id": "test-user-id"}) in admin_client.rpc_calls
 
 
 def test_request_success_signs_out_everywhere_and_clears_the_flask_session(
@@ -175,7 +192,12 @@ def test_request_success_signs_out_everywhere_and_clears_the_flask_session(
     body = response.get_json()
     assert body["ok"] is True
     assert body["grace_until"] == GRACE
-    assert admin_client.rpc_calls == [("account_deletion_request", {"p_owner_id": "test-user-id"})]
+    assert _saga_calls(admin_client) == [
+        ("account_deletion_request", {"p_owner_id": "test-user-id"})
+    ]
+    # A correct password clears the throttle counter rather than leaving the
+    # reader carrying failures from earlier mistypes.
+    assert ("clear_step_up_failures", {"p_owner_id": "test-user-id"}) in admin_client.rpc_calls
     # Global scope on the requesting session's token — the thief's sessions
     # die with the owner's, and the password is untouched.
     assert "fake_token" in app.config["_testing_auth_admin_dispatcher"].signed_out

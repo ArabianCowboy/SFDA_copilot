@@ -460,6 +460,55 @@ def _verify_current_password(email: str | None, password: str) -> bool | None:
     return user is not None
 
 
+def _step_up_rpc(name: str, owner_id: str, default: Any) -> Any:
+    """One step-up throttle RPC, service-role, failing OPEN to ``default``.
+
+    Deliberately fails open rather than closed. This is a rate limit, not an
+    authorization check: the password verification below is what actually
+    guards the account, and a throttle that turns a database blip into "you
+    cannot delete your account" would break the feature to protect a control.
+    A refusal is logged so the failure is visible rather than silent.
+    """
+    client = get_supabase_admin()
+    if client is None:
+        logger.warning("Step-up throttle unavailable for %s: no admin client.", owner_id)
+        return default
+    try:
+        response = client.rpc(name, {"p_owner_id": owner_id}).execute()
+    except Exception:
+        logger.warning("Step-up throttle call %s failed for %s.", name, owner_id, exc_info=True)
+        return default
+    data = getattr(response, "data", None)
+    return default if data is None else data
+
+
+def _step_up_is_locked_out(owner_id: str) -> bool:
+    """True while this account is inside a step-up lockout window.
+
+    Compared with ``is True`` rather than coerced with ``bool()``: both RPCs
+    return a plain boolean, and anything else is a contract the caller does not
+    understand. Coercing would make a non-empty payload — ``{"ok": True}``, an
+    error envelope — read as "locked", which fails CLOSED and contradicts the
+    fail-open posture documented on ``_step_up_rpc``. The throttle refusing a
+    legitimate deletion is the one outcome worse than the throttle missing.
+    """
+    return _step_up_rpc("step_up_is_locked_out", owner_id, False) is True
+
+
+def _record_step_up_failure(owner_id: str) -> bool:
+    """Record one wrong password. True if that attempt tripped the lockout.
+
+    Strict for the same reason as above: an unrecognised payload must not
+    escalate an ordinary wrong-password refusal into a lockout.
+    """
+    return _step_up_rpc("record_step_up_failure", owner_id, False) is True
+
+
+def _clear_step_up_failures(owner_id: str) -> None:
+    """Forget this account's failures after a correct password."""
+    _step_up_rpc("clear_step_up_failures", owner_id, None)
+
+
 def _saga_rpc(name: str, params: dict) -> Any:
     """Call one saga RPC through the service-role client, returning its data."""
     client = get_supabase_admin()
@@ -516,11 +565,32 @@ def deletion_request() -> Response | tuple[Response, int]:
     ):
         return jsonify({"error": "invalid_payload"}), 400
 
+    # The durable lockout is checked BEFORE the provider call, not after, and
+    # that ordering is the point of it. The server-side sign-in below reaches
+    # GoTrue from this host's single address, which blinds GoTrue's own per-IP
+    # limiter to the guesser's real one — the reason `POST /auth/login` was
+    # retired (`docs/ARCHITECTURE.md:345-352`). The Flask limit in front of
+    # this route is `memory://` and resets on every worker recycle, so it is
+    # not the floor it looks like. A locked-out caller must produce no round
+    # trip at all.
+    if _step_up_is_locked_out(owner_id):
+        return jsonify({"error": "step_up_locked_out"}), 429
+
     verified = _verify_current_password(email, password)
     if verified is None:
+        # The provider could not be reached. An outage is not a wrong password,
+        # so it costs the reader nothing: no failure is recorded, and the answer
+        # is 503 rather than 401.
         return jsonify({"error": "deletion_unavailable"}), 503
     if not verified:
+        now_locked = _record_step_up_failure(owner_id)
+        if now_locked:
+            return jsonify({"error": "step_up_locked_out"}), 429
         return jsonify({"error": "step_up_failed"}), 401
+
+    # Correct password: the counter goes, so a reader who mistyped twice before
+    # getting it right is not carrying a penalty into their next attempt.
+    _clear_step_up_failures(owner_id)
 
     try:
         result = _saga_rpc("account_deletion_request", {"p_owner_id": owner_id})
