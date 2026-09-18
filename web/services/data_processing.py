@@ -112,11 +112,6 @@ TABLE_REGEXES = [
     r"<table.*?>",  # HTML tables
 ]
 
-# ──────────────────────────── logging cfg  ───────────────────────────
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(levelname)s | %(name)s | %(message)s",
-)
 LOGGER = logging.getLogger("sfda.dataprocessor")
 
 
@@ -596,5 +591,23 @@ class DataProcessor:
 
 # ──────────────────────────── entry‑point ────────────────────────────
 if __name__ == "__main__":
+    # `force=True`, and only when run as a CLI. Both halves are load-bearing.
+    #
+    # This used to be a bare module-level `basicConfig(level=INFO)`, which was a
+    # silent no-op: importing `config_loader` (above) installs a root handler,
+    # and `basicConfig` returns without touching the level once the root logger
+    # has any handler. The root stayed at WARNING, so every INFO this pipeline
+    # emits — the alignment result, the validation summary, the activation —
+    # was discarded, and a rebuild's success was unobservable. `force=True`
+    # replaces the inherited handler instead of deferring to it.
+    #
+    # Under `__main__` because a library module has no business reconfiguring
+    # root logging on import; the test suite and any future importer keep
+    # whatever logging their own caller set up.
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(levelname)s | %(name)s | %(message)s",
+        force=True,
+    )
     success = DataProcessor().process_all_documents()
     sys.exit(0 if success else 1)
