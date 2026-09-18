@@ -9,54 +9,54 @@
 
 runtime:
   chat:
-    send: "إرسال"
-    cancel: "إلغاء"
-    sendAria: "إرسال الرسالة"
-    cancelAria: "إلغاء الرسالة"
-    sendFailed: "تعذّر إرسال الرسالة."
-    notSaved: "تعذّر حفظ هذه الإجابة في سجلّك."
-    cancelled: "تم إلغاء الطلب."
-    busy: "انتظر انتهاء الإجابة الحالية قبل طرح سؤال آخر."
-    loginRequired: "يرجى تسجيل الدخول للمحادثة مع المساعد."
-    sessionUnverified: "تعذّر التحقق من الجلسة. يرجى المحاولة مرة أخرى."
-    genericError: "عذراً، حدث خطأ أثناء معالجة طلبك. يرجى المحاولة مرة أخرى."
-    invalidResponse: "تنسيق استجابة غير صالح من الخدمة."
-    stopped: "أُوقف"
-    incomplete: "الإجابة غير مكتملة — حدث خطأ ما"
+    send: 'إرسال'
+    cancel: 'إلغاء'
+    sendAria: 'إرسال الرسالة'
+    cancelAria: 'إلغاء الرسالة'
+    sendFailed: 'تعذّر إرسال الرسالة.'
+    notSaved: 'تعذّر حفظ هذه الإجابة في سجلّك.'
+    cancelled: 'تم إلغاء الطلب.'
+    busy: 'انتظر انتهاء الإجابة الحالية قبل طرح سؤال آخر.'
+    loginRequired: 'يرجى تسجيل الدخول للمحادثة مع المساعد.'
+    sessionUnverified: 'تعذّر التحقق من الجلسة. يرجى المحاولة مرة أخرى.'
+    genericError: 'عذراً، حدث خطأ أثناء معالجة طلبك. يرجى المحاولة مرة أخرى.'
+    invalidResponse: 'تنسيق استجابة غير صالح من الخدمة.'
+    stopped: 'أُوقف'
+    incomplete: 'الإجابة غير مكتملة — حدث خطأ ما'
     # Shares its opening clause with `incomplete` on purpose: both states ARE
     # an incomplete answer, the reader only ever sees one, and the clause
     # after the dash is what carries the difference.
-    truncated: "الإجابة غير مكتملة — تم بلوغ الحد الأقصى للطول"
-    askPrefix: "اسأل: {question}"
-    jumpToLatest: "الانتقال إلى الأحدث"
-    jumpToLatestAria: "التمرير إلى أحدث رسالة"
-    cleared: "تم مسح المحادثة"
+    truncated: 'الإجابة غير مكتملة — تم بلوغ الحد الأقصى للطول'
+    askPrefix: 'اسأل: {question}'
+    jumpToLatest: 'الانتقال إلى الأحدث'
+    jumpToLatestAria: 'التمرير إلى أحدث رسالة'
+    cleared: 'تم مسح المحادثة'
     quota:
-      title: "استُنفد رصيد اليوم."
-      body: "لقد استخدمت كل رصيدك اليوم ({limit}). يُعاد فتح رصيدك في {resets_at}."
-      dismiss: "إغلاق"
-      counter: "بقي {remaining} من {limit} سؤالًا اليوم · يُعاد الفتح {resets_at}"
-      counterOne: "بقي سؤال واحد اليوم · يُعاد الفتح {resets_at}"
-    historyUnavailable: "تعذّر تحميل سجلّ محادثاتك."
-    historyNotice: "تُحفظ محادثاتك في حسابك، وتُستعاد على أي جهاز. تسجيل الخروج لا يحذفها، وكذلك بدء محادثة جديدة — احذف المحادثة من الشريط الجانبي لإزالتها."
-    historyNoticeWarning: "لا تُدخِل بيانات تعرفية عن المرضى، أو بيانات المشاركين في التجارب السريرية، أو المعلومات الشخصية، أو أي مواد سرّية أو مملوكة."
-    historyNoticeDismiss: "إغلاق"
+      title: 'استُنفد رصيد اليوم.'
+      body: 'لقد استخدمت كل رصيدك اليوم ({limit}). يُعاد فتح رصيدك في {resets_at}.'
+      dismiss: 'إغلاق'
+      counter: 'بقي {remaining} من {limit} سؤالًا اليوم · يُعاد الفتح {resets_at}'
+      counterOne: 'بقي سؤال واحد اليوم · يُعاد الفتح {resets_at}'
+    historyUnavailable: 'تعذّر تحميل سجلّ محادثاتك.'
+    historyNotice: 'تُحفظ محادثاتك في حسابك، وتُستعاد على أي جهاز. تسجيل الخروج لا يحذفها، وكذلك بدء محادثة جديدة — احذف المحادثة من الشريط الجانبي لإزالتها.'
+    historyNoticeWarning: 'لا تُدخِل بيانات تعرفية عن المرضى، أو بيانات المشاركين في التجارب السريرية، أو المعلومات الشخصية، أو أي مواد سرّية أو مملوكة.'
+    historyNoticeDismiss: 'إغلاق'
 
     # ── مركز الإشعارات (للقارئ) ──────────────────────────────────────────
     notifications:
-      bellAria: "الإشعارات"
-      unreadBadge: "{count} غير مقروء"
-      inboxTitle: "الإشعارات"
-      inboxEmpty: "لا توجد إشعارات بعد."
-      inboxUnavailable: "تعذّر تحميل الإشعارات."
-      loadMore: "تحميل المزيد"
-      markAllRead: "تعليم الكل كمقروء"
-      markAllReadFailed: "تعذّر تعليم كل الإشعارات كمقروءة."
-      markReadFailed: "تعذّر تحديث هذا الإشعار."
-      dismiss: "إغلاق"
-      acknowledge: "حسناً"
-      loadFailed: "تعذّر تحميل الإشعارات."
-      bannerDismiss: "إغلاق"
+      bellAria: 'الإشعارات'
+      unreadBadge: '{count} غير مقروء'
+      inboxTitle: 'الإشعارات'
+      inboxEmpty: 'لا توجد إشعارات بعد.'
+      inboxUnavailable: 'تعذّر تحميل الإشعارات.'
+      loadMore: 'تحميل المزيد'
+      markAllRead: 'تعليم الكل كمقروء'
+      markAllReadFailed: 'تعذّر تعليم كل الإشعارات كمقروءة.'
+      markReadFailed: 'تعذّر تحديث هذا الإشعار.'
+      dismiss: 'إغلاق'
+      acknowledge: 'حسناً'
+      loadFailed: 'تعذّر تحميل الإشعارات.'
+      bannerDismiss: 'إغلاق'
 
   # ── الشريط الجانبي للمحادثات ────────────────────────────────────────────
   # عناوين المجموعات مكتوبة هنا بدل توليدها من Intl.RelativeTimeFormat: العربية
@@ -64,161 +64,173 @@ runtime:
   # من اليمين إلى اليسار، وتبديل اللغة يعيد تحميل الصفحة أصلاً. خمس مجموعات
   # ثابتة تقول الشيء نفسه وتبقى سليمة نحوياً.
   sessions:
-    tabChats: "المحادثات"
-    tabFAQ: "الأسئلة الشائعة"
-    tabsAria: "محتويات الشريط الجانبي"
-    listAria: "محادثاتك"
-    untitled: "محادثة بلا عنوان"
-    today: "اليوم"
-    yesterday: "أمس"
-    previous7: "آخر ٧ أيام"
-    previous30: "آخر ٣٠ يوماً"
-    older: "أقدم"
-    loadMore: "عرض المزيد"
-    loading: "جارٍ تحميل محادثاتك…"
-    empty: "لا توجد محادثات محفوظة بعد."
-    emptyHint: "اطرح سؤالاً وستظهر محادثتك هنا."
-    unavailable: "تعذّر تحميل محادثاتك."
-    retry: "إعادة المحاولة"
-    openAria: "فتح المحادثة: {title}"
+    tabChats: 'المحادثات'
+    tabFAQ: 'الأسئلة الشائعة'
+    tabsAria: 'محتويات الشريط الجانبي'
+    listAria: 'محادثاتك'
+    untitled: 'محادثة بلا عنوان'
+    today: 'اليوم'
+    yesterday: 'أمس'
+    previous7: 'آخر ٧ أيام'
+    previous30: 'آخر ٣٠ يوماً'
+    older: 'أقدم'
+    loadMore: 'عرض المزيد'
+    loading: 'جارٍ تحميل محادثاتك…'
+    empty: 'لا توجد محادثات محفوظة بعد.'
+    emptyHint: 'اطرح سؤالاً وستظهر محادثتك هنا.'
+    unavailable: 'تعذّر تحميل محادثاتك.'
+    retry: 'إعادة المحاولة'
+    openAria: 'فتح المحادثة: {title}'
     # صيغتان فقط لأن I18n.plural لا يعرف غيرهما. المفرد يتجنّب الرقم تماماً،
     # فـ«رسالة واحدة» أسلم من «١ رسالة»، والجمع يستخدم صيغة التمييز المنصوب
     # التي تصحّ مع الأعداد من ١١ فأكثر وهي الحالة الغالبة هنا.
-    turns: "{count} رسالة"
-    turnsOne: "رسالة واحدة"
-    renameAria: "إعادة تسمية: {title}"
-    renameLabel: "اسم المحادثة"
-    renameSave: "حفظ الاسم"
-    renameCancel: "إلغاء إعادة التسمية"
-    renamed: "تمت إعادة تسمية المحادثة"
-    renameFailed: "تعذّرت إعادة تسمية هذه المحادثة."
-    deleteAria: "حذف: {title}"
-    deleteConfirm: "هل تريد حذف هذه المحادثة؟"
-    deleteConfirmYes: "حذف"
-    deleteConfirmNo: "إبقاء"
-    deleted: "تم حذف المحادثة"
-    deleteFailed: "تعذّر حذف هذه المحادثة."
-    switchFailed: "تعذّر فتح هذه المحادثة."
-    busy: "انتظر انتهاء الإجابة أو ألغِها قبل تغيير المحادثة."
+    turns: '{count} رسالة'
+    turnsOne: 'رسالة واحدة'
+    renameAria: 'إعادة تسمية: {title}'
+    renameLabel: 'اسم المحادثة'
+    renameSave: 'حفظ الاسم'
+    renameCancel: 'إلغاء إعادة التسمية'
+    renamed: 'تمت إعادة تسمية المحادثة'
+    renameFailed: 'تعذّرت إعادة تسمية هذه المحادثة.'
+    deleteAria: 'حذف: {title}'
+    deleteConfirm: 'هل تريد حذف هذه المحادثة؟'
+    deleteConfirmYes: 'حذف'
+    deleteConfirmNo: 'إبقاء'
+    deleted: 'تم حذف المحادثة'
+    deleteFailed: 'تعذّر حذف هذه المحادثة.'
+    switchFailed: 'تعذّر فتح هذه المحادثة.'
+    busy: 'انتظر انتهاء الإجابة أو ألغِها قبل تغيير المحادثة.'
 
   stage:
-    searching: "جارٍ البحث في الأدلة"
-    retrieved: "تم العثور على {count} مقطعاً"
-    retrievedOne: "تم العثور على مقطع واحد"
-    drafting: "جارٍ صياغة الإجابة"
-    finalizing: "جارٍ الإنهاء"
+    searching: 'جارٍ البحث في الأدلة'
+    retrieved: 'تم العثور على {count} مقطعاً'
+    retrievedOne: 'تم العثور على مقطع واحد'
+    drafting: 'جارٍ صياغة الإجابة'
+    finalizing: 'جارٍ الإنهاء'
 
   robot:
-    idle: "جاهز للمساعدة"
-    thinking: "جارٍ معالجة سؤالك..."
-    talking: "إليك ما وجدته"
-    happy: "سؤال ممتاز!"
-    error: "حدث خطأ ما"
-    searching: "جارٍ البحث في الأدلة..."
-    retrieved: "جارٍ قراءة المقاطع..."
-    draftingStatus: "جارٍ صياغة الإجابة..."
-    finalizingStatus: "جارٍ الإنهاء..."
-    foundPassages: "تم العثور على {count} مقطعاً"
-    foundPassage: "تم العثور على مقطع واحد"
-    farewell: "أراك في المحادثة"
+    idle: 'جاهز للمساعدة'
+    thinking: 'جارٍ معالجة سؤالك...'
+    talking: 'إليك ما وجدته'
+    happy: 'سؤال ممتاز!'
+    error: 'حدث خطأ ما'
+    searching: 'جارٍ البحث في الأدلة...'
+    retrieved: 'جارٍ قراءة المقاطع...'
+    draftingStatus: 'جارٍ صياغة الإجابة...'
+    finalizingStatus: 'جارٍ الإنهاء...'
+    foundPassages: 'تم العثور على {count} مقطعاً'
+    foundPassage: 'تم العثور على مقطع واحد'
+    farewell: 'أراك في المحادثة'
 
   auth:
-    loggedInAs: "تم تسجيل الدخول باسم: {email}"
-    notLoggedIn: "لم يتم تسجيل الدخول"
-    invalidCredentials: "البريد الإلكتروني أو كلمة المرور غير صحيحة."
-    accountDisabled: "تم إيقاف الوصول للمحادثة لهذا الحساب. تواصل مع المسؤول إن كنت ترى أن هذا خطأ."
-    emailNotConfirmed: "يرجى تأكيد بريدك الإلكتروني قبل تسجيل الدخول."
-    alreadyRegistered: "هذا البريد الإلكتروني مسجّل بالفعل. يرجى تسجيل الدخول."
-    invalidEmail: "يرجى إدخال بريد إلكتروني صالح."
-    checkingStatus: "جارٍ التحقق من الحالة..."
-    servicesUnavailable: "خدمات المصادقة غير مهيأة."
-    initFailed: "تعذّر تهيئة خدمات التطبيق الأساسية."
-    missingFields: "يرجى تعبئة البريد الإلكتروني وكلمة المرور."
-    signupDisabled: "التسجيل متوقف مؤقتاً. إذا كان لديك حساب، سجّل الدخول من الأعلى."
-    signupUnavailable: "تعذّر التحقق من حالة التسجيل. يرجى المحاولة بعد قليل."
-    weakPassword: "لم يتم قبول كلمة المرور هذه. جرّب كلمة مرور أطول."
-    signupFailed: "تعذّر إنشاء حسابك. يرجى المحاولة مرة أخرى."
+    loggedInAs: 'تم تسجيل الدخول باسم: {email}'
+    notLoggedIn: 'لم يتم تسجيل الدخول'
+    invalidCredentials: 'البريد الإلكتروني أو كلمة المرور غير صحيحة.'
+    accountDisabled: 'تم إيقاف الوصول للمحادثة لهذا الحساب. تواصل مع المسؤول إن كنت ترى أن هذا خطأ.'
+    emailNotConfirmed: 'يرجى تأكيد بريدك الإلكتروني قبل تسجيل الدخول.'
+    alreadyRegistered: 'هذا البريد الإلكتروني مرتبط بحساب موجود. يُرجى تسجيل الدخول بدلًا من إنشاء حساب جديد.'
+    invalidEmail: 'يرجى إدخال بريد إلكتروني صالح.'
+    checkingStatus: 'جارٍ التحقق من الحالة...'
+    servicesUnavailable: 'خدمات المصادقة غير مهيأة.'
+    initFailed: 'تعذّر تهيئة خدمات التطبيق الأساسية.'
+    missingFields: 'يرجى تعبئة البريد الإلكتروني وكلمة المرور.'
+    signupDisabled: 'التسجيل متوقف مؤقتاً. إذا كان لديك حساب، سجّل الدخول من الأعلى.'
+    signupUnavailable: 'تعذّر التحقق من حالة التسجيل. يرجى المحاولة بعد قليل.'
+    weakPassword: 'لم يتم قبول كلمة المرور هذه. جرّب كلمة مرور أطول.'
+    signupFailed: 'تعذّر إنشاء حسابك. يرجى المحاولة مرة أخرى.'
     signupSent:
-      heading: "تحقّق من بريدك الإلكتروني"
-      lead: "أرسلنا رابط تأكيد إلى {email}. افتحه لإكمال إنشاء حسابك."
-      spam: "لم يصلك شيء بعد بضع دقائق؟ تحقّق من مجلد الرسائل غير المرغوب فيها."
-    tooSoon: "لقد طلبت رابطًا للتو. انتظر دقيقة قبل الطلب مرة أخرى، وتحقّق من بريدك ومن مجلد الرسائل غير المرغوب فيها في هذه الأثناء."
-    emailUnavailable: "تعذّر إرسال البريد الإلكتروني الآن. لم يتغيّر شيء في حسابك — يرجى المحاولة بعد قليل."
+      heading: 'تحقّق من بريدك الإلكتروني'
+      lead: 'أرسلنا رابط تأكيد إلى {email}. افتحه لإكمال إنشاء حسابك.'
+      spam: 'لم يصلك شيء بعد بضع دقائق؟ تحقّق من مجلد الرسائل غير المرغوب فيها.'
+    tooSoon: 'لقد طلبت رابطًا للتو. انتظر دقيقة قبل الطلب مرة أخرى، وتحقّق من بريدك ومن مجلد الرسائل غير المرغوب فيها في هذه الأثناء.'
+    emailUnavailable: 'تعذّر إرسال البريد الإلكتروني الآن. لم يتغيّر شيء في حسابك — يرجى المحاولة بعد قليل.'
     recovery:
-      sent: "إذا كان لهذا العنوان حساب، فإن رابط إعادة التعيين في طريقه إليك."
-      contactAdmin: "لم يصلك بعد؟ تواصل مع المسؤول."
-      mismatch: "كلمتا المرور غير متطابقتين."
-      saving: "جارٍ حفظ كلمة المرور الجديدة..."
-      done: "تم تغيير كلمة المرور. يرجى تسجيل الدخول بها."
-      expired: "انتهت صلاحية هذا الرابط أو تم استخدامه من قبل. اطلب رابطًا جديدًا للمحاولة مرة أخرى."
-      failed: "تعذّر تغيير كلمة المرور. يرجى طلب رابط جديد."
-      resendIn: "يمكنك الطلب مرة أخرى بعد {count} ثانية"
+      sent: 'إذا كان لهذا العنوان حساب، فإن رابط إعادة التعيين في طريقه إليك.'
+      contactAdmin: 'لم يصلك بعد؟ تواصل مع المسؤول.'
+      mismatch: 'كلمتا المرور غير متطابقتين.'
+      saving: 'جارٍ حفظ كلمة المرور الجديدة...'
+      done: 'تم تغيير كلمة المرور. يرجى تسجيل الدخول بها.'
+      expired: 'انتهت صلاحية هذا الرابط أو تم استخدامه من قبل. اطلب رابطًا جديدًا للمحاولة مرة أخرى.'
+      failed: 'تعذّر تغيير كلمة المرور. يرجى طلب رابط جديد.'
+      resendIn: 'يمكنك الطلب مرة أخرى بعد {count} ثانية'
 
   profile:
-    loadFailed: "تعذّر تحميل ملفك الشخصي."
-    saveFailed: "تعذّر حفظ ملفك الشخصي."
-    saved: "تم حفظ الملف الشخصي."
-    sessionExpired: "يبدو أن جلستك قد انتهت. الرجاء تسجيل الخروج ثم تسجيل الدخول مرة أخرى."
-    loginRequired: "الرجاء تسجيل الدخول لإدارة ملفك الشخصي."
+    loadFailed: 'تعذّر تحميل ملفك الشخصي.'
+    saveFailed: 'تعذّر حفظ ملفك الشخصي.'
+    saved: 'تم حفظ الملف الشخصي.'
+    sessionExpired: 'يبدو أن جلستك قد انتهت. الرجاء تسجيل الخروج ثم تسجيل الدخول مرة أخرى.'
+    loginRequired: 'الرجاء تسجيل الدخول لإدارة ملفك الشخصي.'
     account:
-      roleAdmin: "مسؤول"
-      roleUser: "قارئ"
-      tierFree: "مجاني"
-      tierStaff: "الإداريين"
-      quotaToday: "{used} من {limit} سؤالًا اليوم"
-      quotaResets: "يُعاد الفتح {resets_at}"
-      quotaUntil: "{limit} سؤالًا يوميًا حتى {date}"
-      standingEnabled: "نشط"
-      standingDisabled: "معطّل"
-      conversationOne: "محادثة واحدة"
-      conversations: "{count} محادثة"
-      identitySaving: "جارٍ الحفظ…"
-      identitySaved: "تم الحفظ."
-      identitySaveFailed: "تعذّر الحفظ. حاول مرة أخرى."
-      preferencesSaved: "تم الحفظ."
-      preferencesSaveFailed: "تعذّر الحفظ. حاول مرة أخرى."
-      loadFailed: "تعذّر تحميل حسابك. يرجى إعادة تحميل الصفحة."
-      passwordSaving: "جارٍ تغيير كلمة المرور…"
-      passwordSaved: "تم تغيير كلمة المرور."
-      passwordReauthSent: "أرسلنا رمز تحقق إلى بريدك الإلكتروني. أدخله أدناه وحاول مرة أخرى."
-      passwordErrorWeak: "كلمة المرور هذه لا تستوفي المتطلبات أعلاه."
-      passwordErrorSame: "هذه كلمة مرورك الحالية. اختر كلمة مرور مختلفة."
-      passwordErrorReauth: "الرمز غير صحيح. تحقّق من بريدك الإلكتروني للحصول على أحدث رمز."
-      passwordErrorSession: "انتهت صلاحية جلستك. يرجى تسجيل الدخول مرة أخرى."
-      passwordErrorGeneric: "تعذّر تغيير كلمة المرور. حاول مرة أخرى."
-      signOutOthersSaving: "جارٍ تسجيل الخروج من الجلسات الأخرى…"
-      signOutOthersSaved: "تم. ستُسجَّل الأجهزة الأخرى خروجًا تلقائيًا عند انتهاء جلساتها."
-      signOutOthersFailed: "تعذّر تسجيل الخروج من الجلسات الأخرى. حاول مرة أخرى."
-      consentGranted: "مُنحت."
-      consentNotGranted: "لم تُمنح."
-      consentSaved: "تم الحفظ."
-      consentFailed: "تعذّر الحفظ. حاول مرة أخرى."
-      exportPreparing: "جارٍ تجهيز ملف التصدير…"
-      exportStarted: "بدأ تنزيل ملفك."
-      exportFailed: "تعذّر تصدير محادثاتك. حاول مرة أخرى."
-      deleteAllConfirm: "حذف كل المحادثات؟ لا يمكن التراجع عن هذا الإجراء."
-      deleteAllSaving: "جارٍ الحذف…"
-      deleteAllSaved: "تم حذف كل محادثاتك."
-      deleteAllInFlight: "ما زال هناك رد قيد الإنشاء. حاول مرة أخرى بعد انتهائه."
-      deleteAllFailed: "تعذّر حذف محادثاتك. حاول مرة أخرى."
-    finishPrompt: "أضف اسمك لإكمال بيانات حسابك."
-    finishOpen: "فتح الحساب"
-    finishDismiss: "إغلاق"
-    finishDismissAria: "إغلاق"
+      roleAdmin: 'مسؤول'
+      roleUser: 'قارئ'
+      tierFree: 'مجاني'
+      tierStaff: 'الإداريين'
+      quotaToday: '{used} من {limit} سؤالًا اليوم'
+      quotaResets: 'يُعاد الفتح {resets_at}'
+      quotaUntil: '{limit} سؤالًا يوميًا حتى {date}'
+      standingEnabled: 'نشط'
+      standingDisabled: 'معطّل'
+      conversationOne: 'محادثة واحدة'
+      conversations: '{count} محادثة'
+      identitySaving: 'جارٍ الحفظ…'
+      identitySaved: 'تم الحفظ.'
+      identitySaveFailed: 'تعذّر الحفظ. حاول مرة أخرى.'
+      preferencesSaved: 'تم الحفظ.'
+      preferencesSaveFailed: 'تعذّر الحفظ. حاول مرة أخرى.'
+      loadFailed: 'تعذّر تحميل حسابك. يرجى إعادة تحميل الصفحة.'
+      passwordSaving: 'جارٍ تغيير كلمة المرور…'
+      passwordSaved: 'تم تغيير كلمة المرور.'
+      passwordReauthSent: 'أرسلنا رمز تحقق إلى بريدك الإلكتروني. أدخله أدناه وحاول مرة أخرى.'
+      passwordErrorWeak: 'كلمة المرور هذه لا تستوفي المتطلبات أعلاه.'
+      passwordErrorSame: 'هذه كلمة مرورك الحالية. اختر كلمة مرور مختلفة.'
+      passwordErrorReauth: 'الرمز غير صحيح. تحقّق من بريدك الإلكتروني للحصول على أحدث رمز.'
+      passwordErrorSession: 'انتهت صلاحية جلستك. يرجى تسجيل الدخول مرة أخرى.'
+      passwordErrorGeneric: 'تعذّر تغيير كلمة المرور. حاول مرة أخرى.'
+      signOutOthersSaving: 'جارٍ تسجيل الخروج من الجلسات الأخرى…'
+      signOutOthersSaved: 'تم. ستُسجَّل الأجهزة الأخرى خروجًا تلقائيًا عند انتهاء جلساتها.'
+      signOutOthersFailed: 'تعذّر تسجيل الخروج من الجلسات الأخرى. حاول مرة أخرى.'
+      consentGranted: 'مُنحت.'
+      consentNotGranted: 'لم تُمنح.'
+      consentSaved: 'تم الحفظ.'
+      consentFailed: 'تعذّر الحفظ. حاول مرة أخرى.'
+      exportPreparing: 'جارٍ تجهيز ملف التصدير…'
+      exportStarted: 'بدأ تنزيل ملفك.'
+      exportFailed: 'تعذّر تصدير محادثاتك. حاول مرة أخرى.'
+      deleteAllConfirm: 'حذف كل المحادثات؟ لا يمكن التراجع عن هذا الإجراء.'
+      deleteAllSaving: 'جارٍ الحذف…'
+      deleteAllSaved: 'تم حذف كل محادثاتك.'
+      deleteAllInFlight: 'ما زال هناك رد قيد الإنشاء. حاول مرة أخرى بعد انتهائه.'
+      deleteAllFailed: 'تعذّر حذف محادثاتك. حاول مرة أخرى.'
+      deletionRequestFailed: 'تعذّر إرسال طلب الحذف. يُرجى المحاولة مرة أخرى.'
+      deletionStepUpFailed: 'كلمة المرور غير صحيحة. تحقّق منها وحاول مرة أخرى.'
+      deletionAdminRefused: 'الحذف الذاتي للحساب غير متاح لحسابات المسؤولين. يُرجى التواصل مع مسؤول آخر.'
+      deletionAlreadyDeleted: 'تم حذف هذا الحساب بالفعل.'
+      deletionRequested: 'تم إرسال طلب حذف حسابك. سيظل الحساب متاحًا للاستخدام لمدة 30 يومًا، ويمكنك إلغاء الطلب في أي وقت من هذه الصفحة.'
+      deletionCancelFailed: 'تعذّر إلغاء طلب الحذف. يُرجى المحاولة مرة أخرى.'
+      deletionCancelled: 'تم إلغاء طلب الحذف، وعاد حسابك إلى حالته الطبيعية بالكامل.'
+      deletionCancelUnavailable: 'لم يعد من الممكن إلغاء طلب الحذف، فقد حُذفت المحادثات نهائيًا بالفعل.'
+      deletionStatusFailed: 'تعذّر التحقق من حالة طلب الحذف. يُرجى إعادة تحميل الصفحة.'
+      deletionInProgressBody: 'تجاوزت عملية الحذف المرحلة التي يمكن فيها إلغاؤها؛ فقد حُذفت المحادثات نهائيًا أو تجري حاليًا إزالة بيانات تسجيل الدخول. لم يعد هناك ما يمكن إلغاؤه، ولا حاجة إلى تقديم طلب حذف جديد.'
+      consentGrantPendingDeletion: 'لا يمكنك منح موافقة تسويقية جديدة أثناء انتظار حذف حسابك. ويمكنك سحب موافقتك الحالية في أي وقت.'
+      deletionPendingBody: 'سيُحذف حسابك نهائيًا في {date} ما لم تُلغِ طلب الحذف قبل ذلك. وحتى ذلك الوقت يظل حسابك متاحًا للاستخدام، فيمكنك تسجيل الدخول واستخدام محادثاتك وقراءتها وتصديرها وتعديل ملفك الشخصي وإلغاء طلب الحذف في أي وقت. لن يكون بإمكانك منح موافقة تسويقية جديدة أثناء انتظار الحذف.'
+    finishPrompt: 'أضف اسمك لإكمال بيانات حسابك.'
+    finishOpen: 'فتح الحساب'
+    finishDismiss: 'إغلاق'
+    finishDismissAria: 'إغلاق'
 
   faq:
-    loadFailed: "تعذّر تحميل الأسئلة الشائعة."
-    loadFailedTesting: "تعذّر تحميل الأسئلة الشائعة في وضع الاختبار."
-    empty: "لا توجد أسئلة شائعة."
-    showMoreOne: "عرض سؤال واحد إضافي"
+    loadFailed: 'تعذّر تحميل الأسئلة الشائعة.'
+    loadFailedTesting: 'تعذّر تحميل الأسئلة الشائعة في وضع الاختبار.'
+    empty: 'لا توجد أسئلة شائعة.'
+    showMoreOne: 'عرض سؤال واحد إضافي'
     # نفس المقايضة المقبولة أعلاه في cite.sourcesMany: تُعامَل حالة الاثنين
     # معاملة الجمع لغياب صيغة مثنى في I18n.plural.
-    showMoreMany: "عرض {count} أسئلة إضافية"
+    showMoreMany: 'عرض {count} أسئلة إضافية'
 
   theme:
-    announced: "تم تغيير المظهر إلى الوضع {mode}"
-    light: "الفاتح"
-    dark: "الداكن"
+    announced: 'تم تغيير المظهر إلى الوضع {mode}'
+    light: 'الفاتح'
+    dark: 'الداكن'
 
   # NOTE for review: Arabic has a dual form for exactly two, which the binary
   # I18n.plural helper (one / many) cannot express — "مصدران" is correct for 2
@@ -227,636 +239,681 @@ runtime:
   # two documents is a common shape for a cited answer, so the trigger hits the
   # dual case often. All strings below want a native pass.
   cite:
-    marker: "المصدر {n}"
-    sourcesOne: "مصدر واحد"
-    sourcesMany: "{n} مصادر"
-    answerComplete: "اكتملت الإجابة."
-    answerCompleteWithSources: "اكتملت الإجابة. تم الاستشهاد بـ {n} مصادر."
-    sourcesLabel: "المصادر"
-    docsOne: "مستند واحد"
-    docsMany: "{n} مستندات"
-    passagesOne: "مقطع واحد"
-    passagesMany: "{n} مقاطع"
-    panelTitle: "مصادر هذه الإجابة"
-    page: "صفحة {n}"
-    pageShort: "ص.{n}"
-    pageUnknown: "لم تُذكر الصفحة"
-    tabAria: "المصدر {n}، صفحة {page}"
-    datedBadge: "إصدار سابق"
-    datedNote: "أُعيد بناء مجموعة المستندات بعد كتابة هذه الإجابة. هذه هي المقاطع التي استُندت إليها — راجع المستندات الحالية قبل الاعتماد عليها."
-    tabAriaNoPage: "المصدر {n}، دون ذكر الصفحة"
-    closePassage: "إغلاق المقطع"
-    unknownDocument: "مستند غير معروف"
-    close: "إغلاق المصادر"
-    diagnostics: "تشخيصات الاسترجاع"
-    diagnosticsNote: "أرقام الترتيب المستخدمة لترتيب هذه المقاطع. وهي ليست مقياسًا للدقة ولا لمدى دعم المقطع للإجابة."
-    combinedMatch: "المجموع"
-    semanticMatch: "دلالي"
-    keywordMatch: "لفظي"
+    marker: 'المصدر {n}'
+    sourcesOne: 'مصدر واحد'
+    sourcesMany: '{n} مصادر'
+    answerComplete: 'اكتملت الإجابة.'
+    answerCompleteWithSources: 'اكتملت الإجابة. تم الاستشهاد بـ {n} مصادر.'
+    sourcesLabel: 'المصادر'
+    docsOne: 'مستند واحد'
+    docsMany: '{n} مستندات'
+    passagesOne: 'مقطع واحد'
+    passagesMany: '{n} مقاطع'
+    panelTitle: 'مصادر هذه الإجابة'
+    page: 'صفحة {n}'
+    pageShort: 'ص.{n}'
+    pageUnknown: 'لم تُذكر الصفحة'
+    tabAria: 'المصدر {n}، صفحة {page}'
+    datedBadge: 'إصدار سابق'
+    datedNote: 'أُعيد بناء مجموعة المستندات بعد كتابة هذه الإجابة. هذه هي المقاطع التي استُندت إليها — راجع المستندات الحالية قبل الاعتماد عليها.'
+    tabAriaNoPage: 'المصدر {n}، دون ذكر الصفحة'
+    closePassage: 'إغلاق المقطع'
+    unknownDocument: 'مستند غير معروف'
+    close: 'إغلاق المصادر'
+    diagnostics: 'تشخيصات الاسترجاع'
+    diagnosticsNote: 'أرقام الترتيب المستخدمة لترتيب هذه المقاطع. وهي ليست مقياسًا للدقة ولا لمدى دعم المقطع للإجابة.'
+    combinedMatch: 'المجموع'
+    semanticMatch: 'دلالي'
+    keywordMatch: 'لفظي'
 
   lang:
-    switchAria: "تغيير اللغة"
-    toArabic: "التبديل إلى العربية"
-    toEnglish: "Switch to English"
+    switchAria: 'تغيير اللغة'
+    toArabic: 'التبديل إلى العربية'
+    toEnglish: 'Switch to English'
 
   # نصوص وحدة التحكم التي يرسمها المتصفح. منفصلة عن page.admin لأن شريحة
   # runtime وحدها تُضمَّن في window.__I18N — وهذه الكتلة تُشحن إلى /admin فقط.
   admin:
-    accessDenied: "وحدة التحكم هذه مخصّصة للمسؤولين."
-    accessCheckFailed: "تعذّر التأكد من صلاحيتك. أعد التحميل للمحاولة مرة أخرى."
-    identityUnavailable: "تعذّر الوصول إلى خدمة تسجيل الدخول، لذلك لم يمكن التحقق من صلاحيتك. جلستك ما زالت صالحة — أعد المحاولة بعد لحظات."
-    signedOut: "لم تسجّل الدخول. سجّل الدخول من صفحة المحادثة أولاً."
-    signedInAs: "مسجّل الدخول باسم {email}"
-    roleLabel: "الدور"
-    empty: "لا يوجد شيء هنا بعد."
+    accessDenied: 'وحدة التحكم هذه مخصّصة للمسؤولين.'
+    accessCheckFailed: 'تعذّر التأكد من صلاحيتك. أعد التحميل للمحاولة مرة أخرى.'
+    identityUnavailable: 'تعذّر الوصول إلى خدمة تسجيل الدخول، لذلك لم يمكن التحقق من صلاحيتك. جلستك ما زالت صالحة — أعد المحاولة بعد لحظات.'
+    signedOut: 'لم تسجّل الدخول. سجّل الدخول من صفحة المحادثة أولاً.'
+    signedInAs: 'مسجّل الدخول باسم {email}'
+    roleLabel: 'الدور'
+    empty: 'لا يوجد شيء هنا بعد.'
     overview:
-      accounts: "الحسابات"
-      signups: "التسجيل"
-      tierCount: "الفئات"
-      membershipHeading: "توزيع الفئات"
-      recentHeading: "أحدث النشاط"
-      manageTiers: "إدارة الفئات"
-      seeAllActivity: "عرض كل النشاط"
-      unavailable: "تعذّر تحميل هذا الآن."
+      accounts: 'الحسابات'
+      signups: 'التسجيل'
+      tierCount: 'الفئات'
+      membershipHeading: 'توزيع الفئات'
+      recentHeading: 'أحدث النشاط'
+      manageTiers: 'إدارة الفئات'
+      seeAllActivity: 'عرض كل النشاط'
+      unavailable: 'تعذّر تحميل هذا الآن.'
     registrations:
-      heading: "التسجيل"
-      hint: "يسري على نموذج التسجيل فوراً. لا يؤثر على القرّاء الذين سجّلوا دخولهم بالفعل."
-      open: "مفتوح"
-      paused: "متوقف"
-      pause: "إيقاف التسجيل مؤقتاً"
-      resume: "استئناف التسجيل"
-      confirmPause: "إيقاف التسجيل الجديد؟ يمكن للقرّاء الحاليين تسجيل الدخول كالمعتاد — هذا لا يمنع الاتصال المباشر بمزوّد المصادقة."
-      saving: "جارٍ الحفظ…"
-      savedPaused: "تم إيقاف التسجيل."
-      savedOpen: "تم استئناف التسجيل."
-      loadFailed: "تعذّر تحميل إعداد التسجيل."
-      saveFailed: "تعذّر حفظ إعداد التسجيل."
-      bypassHeading: "ما لا يشمله هذا الإيقاف"
-      bypassNote: "هذا يوقف نموذج التسجيل فقط، ولا يمنع الاتصال المباشر بمزوّد المصادقة — راجع docs/OPERATIONS.md."
+      heading: 'التسجيل'
+      hint: 'يسري على نموذج التسجيل فوراً. لا يؤثر على القرّاء الذين سجّلوا دخولهم بالفعل.'
+      open: 'مفتوح'
+      paused: 'متوقف'
+      pause: 'إيقاف التسجيل مؤقتاً'
+      resume: 'استئناف التسجيل'
+      confirmPause: 'إيقاف التسجيل الجديد؟ يمكن للقرّاء الحاليين تسجيل الدخول كالمعتاد — هذا لا يمنع الاتصال المباشر بمزوّد المصادقة.'
+      saving: 'جارٍ الحفظ…'
+      savedPaused: 'تم إيقاف التسجيل.'
+      savedOpen: 'تم استئناف التسجيل.'
+      loadFailed: 'تعذّر تحميل إعداد التسجيل.'
+      saveFailed: 'تعذّر حفظ إعداد التسجيل.'
+      bypassHeading: 'ما لا يشمله هذا الإيقاف'
+      bypassNote: 'هذا يوقف نموذج التسجيل فقط، ولا يمنع الاتصال المباشر بمزوّد المصادقة — راجع docs/OPERATIONS.md.'
     settings:
-      heading: "التوليد"
-      hint: "يسري على الإجابات من الآن فصاعداً. المحادثات الجارية تُكمل بالإعدادات السابقة."
-      model: "النموذج"
-      temperature: "درجة التنويع"
-      maxTokens: "أقصى طول للإجابة"
-      maxContextResults: "عدد المقاطع لكل إجابة"
-      reasoningEffort: "مستوى الاستدلال"
-      reasoningNotSupported: "هذا النموذج لا يستخدم الاستدلال."
-      reasoningDefault: "افتراضي النموذج"
-      save: "حفظ التغييرات"
-      saving: "جارٍ الحفظ…"
-      saved: "تم حفظ الإعدادات."
-      savedNotApplied: "حُفظ، لكنه لم يُطبَّق على الإجابات بعد. الإعدادات السابقة ما زالت سارية."
+      heading: 'التوليد'
+      hint: 'يسري على الإجابات من الآن فصاعداً. المحادثات الجارية تُكمل بالإعدادات السابقة.'
+      model: 'النموذج'
+      temperature: 'درجة التنويع'
+      maxTokens: 'أقصى طول للإجابة'
+      maxContextResults: 'عدد المقاطع لكل إجابة'
+      reasoningEffort: 'مستوى الاستدلال'
+      reasoningNotSupported: 'هذا النموذج لا يستخدم الاستدلال.'
+      reasoningDefault: 'افتراضي النموذج'
+      save: 'حفظ التغييرات'
+      saving: 'جارٍ الحفظ…'
+      saved: 'تم حفظ الإعدادات.'
+      savedNotApplied: 'حُفظ، لكنه لم يُطبَّق على الإجابات بعد. الإعدادات السابقة ما زالت سارية.'
       # اسم النموذج حقيقة تقنية ولا يُترجم؛ انظر config.yaml.
-      notLive: "الإجابات تأتي حالياً من ⁦{model}⁩، لا من النموذج المحدَّد هنا. احفظ لتطبيقه، أو أعد تشغيل الخادم."
-      usingDefault: "الافتراضي المنشور"
-      overridden: "غُيّر هنا"
-      revert: "العودة إلى الافتراضي"
-      loadFailed: "تعذّر تحميل الإعدادات."
-      saveFailed: "تعذّر حفظ الإعدادات."
+      notLive: 'الإجابات تأتي حالياً من ⁦{model}⁩، لا من النموذج المحدَّد هنا. احفظ لتطبيقه، أو أعد تشغيل الخادم.'
+      usingDefault: 'الافتراضي المنشور'
+      overridden: 'غُيّر هنا'
+      revert: 'العودة إلى الافتراضي'
+      loadFailed: 'تعذّر تحميل الإعدادات.'
+      saveFailed: 'تعذّر حفظ الإعدادات.'
     errors:
-      not_allowed: "ليس من الخيارات المتاحة."
-      above_ceiling: "كبير جداً. الحد الأقصى المسموح هو {limit}."
-      out_of_range: "يجب أن تكون بين {limit}."
-      not_a_number: "يجب أن يكون رقماً."
-      not_a_positive_integer: "يجب أن يكون عدداً صحيحاً أكبر من صفر."
-      unknown_setting: "ليس إعداداً تعرفه وحدة التحكم."
-      reasoning_not_supported: "النموذج المختار لا يقبل مستوى استدلال."
-      storage_unavailable: "تخزين الإعدادات غير متاح، لم يُحفظ شيء."
+      not_allowed: 'ليس من الخيارات المتاحة.'
+      above_ceiling: 'كبير جداً. الحد الأقصى المسموح هو {limit}.'
+      out_of_range: 'يجب أن تكون بين {limit}.'
+      not_a_number: 'يجب أن يكون رقماً.'
+      not_a_positive_integer: 'يجب أن يكون عدداً صحيحاً أكبر من صفر.'
+      unknown_setting: 'ليس إعداداً تعرفه وحدة التحكم.'
+      reasoning_not_supported: 'النموذج المختار لا يقبل مستوى استدلال.'
+      storage_unavailable: 'تخزين الإعدادات غير متاح، لم يُحفظ شيء.'
     audit:
-      heading: "النشاط"
-      hint: "كل تغيير أُجري هنا، الأحدث أولاً. لا يمكن تعديل السجلات أو حذفها."
-      empty: "لم يُسجَّل أي تغيير بعد."
-      loadFailed: "تعذّر تحميل سجل النشاط."
-      columnWhen: "الوقت"
-      columnWho: "المستخدم"
-      columnWhat: "الإجراء"
-      columnChange: "التغيير"
-      columnReason: "السبب"
-      more: "تحميل المزيد"
-      actionSettingsUpdate: "غيّر الإعدادات"
-      actionUserDisable: "عطّل الوصول للمحادثة"
-      actionUserEnable: "استعاد الوصول للمحادثة"
-      actionUserRoleChange: "غيّر دوراً"
-      actionUserProfileChange: "عدّل ملفاً شخصياً"
-      actionResetRequested: "بدأ إعادة تعيين كلمة المرور"
-      actionResetAccepted: "قُبل إرسال إعادة تعيين كلمة المرور"
-      actionResetFailed: "تعذّر إرسال إعادة تعيين كلمة المرور"
-      actionSessionsRevokeRequested: "بدأ إنهاء الجلسات"
-      actionSessionsRevokeAccepted: "أُنهيت الجلسات"
-      actionSessionsRevokeFailed: "تعذّر إنهاء الجلسات"
-      actionSessionsRevokeUnknown: "إنهاء الجلسات — النتيجة غير معروفة"
-      actionEmailChangeRequested: "بدأ تغيير البريد الإلكتروني"
-      actionEmailChangeAccepted: "تم تغيير البريد الإلكتروني"
-      actionEmailChangeFailed: "تعذّر تغيير البريد الإلكتروني"
-      actionEmailChangeUnknown: "تغيير البريد الإلكتروني — النتيجة غير معروفة"
-      actionNotificationCreate: "أرسل إشعارًا"
-      actionNotificationDeactivate: "عطّل إشعارًا"
-      actionNotificationDelete: "حذف إشعارًا"
-      actionNotificationPurge: "طهّر إشعارًا"
-      actionTierCreate: "أنشأ فئة"
-      actionTierUpdate: "عدّل فئة"
-      actionTierDelete: "حذف فئة"
-      actionUserTierChange: "نقل حساباً إلى فئة أخرى"
-      actionQuotaOverrideChange: "غيّر الرصيد اليومي لحساب"
+      heading: 'النشاط'
+      hint: 'كل تغيير أُجري هنا، الأحدث أولاً. لا يمكن تعديل السجلات أو حذفها.'
+      empty: 'لم يُسجَّل أي تغيير بعد.'
+      loadFailed: 'تعذّر تحميل سجل النشاط.'
+      columnWhen: 'الوقت'
+      columnWho: 'المستخدم'
+      columnWhat: 'الإجراء'
+      columnChange: 'التغيير'
+      columnReason: 'السبب'
+      more: 'تحميل المزيد'
+      actionSettingsUpdate: 'غيّر الإعدادات'
+      actionUserDisable: 'عطّل الوصول للمحادثة'
+      actionUserEnable: 'استعاد الوصول للمحادثة'
+      actionUserRoleChange: 'غيّر دوراً'
+      actionUserProfileChange: 'عدّل ملفاً شخصياً'
+      actionResetRequested: 'بدأ إعادة تعيين كلمة المرور'
+      actionResetAccepted: 'قُبل إرسال إعادة تعيين كلمة المرور'
+      actionResetFailed: 'تعذّر إرسال إعادة تعيين كلمة المرور'
+      actionSessionsRevokeRequested: 'بدأ إنهاء الجلسات'
+      actionSessionsRevokeAccepted: 'أُنهيت الجلسات'
+      actionSessionsRevokeFailed: 'تعذّر إنهاء الجلسات'
+      actionSessionsRevokeUnknown: 'إنهاء الجلسات — النتيجة غير معروفة'
+      actionEmailChangeRequested: 'بدأ تغيير البريد الإلكتروني'
+      actionEmailChangeAccepted: 'تم تغيير البريد الإلكتروني'
+      actionEmailChangeFailed: 'تعذّر تغيير البريد الإلكتروني'
+      actionEmailChangeUnknown: 'تغيير البريد الإلكتروني — النتيجة غير معروفة'
+      actionNotificationCreate: 'أرسل إشعارًا'
+      actionNotificationDeactivate: 'عطّل إشعارًا'
+      actionNotificationDelete: 'حذف إشعارًا'
+      actionNotificationPurge: 'طهّر إشعارًا'
+      actionTierCreate: 'أنشأ فئة'
+      actionTierUpdate: 'عدّل فئة'
+      actionTierDelete: 'حذف فئة'
+      actionUserTierChange: 'نقل حساباً إلى فئة أخرى'
+      actionQuotaOverrideChange: 'غيّر الرصيد اليومي لحساب'
+      actionDeletionReconcile: 'تمت متابعة عملية حذف الحساب إلى المرحلة التالية'
     account:
-      quotaHeading: "الرصيد اليومي"
-      tierLabel: "الفئة"
-      overrideLabel: "تجاوز خاص بهذا الحساب"
-      overrideHint: "اتركه فارغًا لاستخدام رصيد الفئة."
-      overrideStartsLabel: "ساري من (اختياري)"
-      overrideExpiresLabel: "ساري حتى (اختياري)"
-      overrideWindowHint: "اترك الحقلين فارغين لرصيد يستمر حتى تلغيه."
-      overrideStandingLabel: "الرصيد الخاص"
-      overrideInForce: "ساري الآن"
-      overrideScheduled: "مجدول — يبدأ {date}"
-      overrideExpired: "انتهى {date} — يُستخدم رصيد الفئة الآن"
-      reasonLabel: "السبب"
-      usageLabel: "أسئلة اليوم"
-      resetsLabel: "يُعاد الرصيد"
-      quotaReasonHint: "مطلوب عند تعيين رصيد خاص، ويُسجَّل معه."
-      quotaHint: "الفئة هي رصيد المجموعة، والرصيد الخاص لهذا الحساب وحده. كل تعديل يُسجَّل مع ما كان مكتوباً قبله."
-      saveQuota: "حفظ الرصيد"
-      quotaSaved: "تم حفظ الرصيد."
-      quotaSaveFailed: "تعذّر حفظ هذا الرصيد."
-      quota_reason_required: "السبب مطلوب لتعيين رصيد لحساب واحد."
-      back: "العودة إلى كل المستخدمين"
-      identityHeading: "الهوية"
-      profileHeading: "الملف الشخصي"
-      activityHeading: "النشاط على هذا الحساب"
-      created: "أُنشئ"
-      lastSignIn: "آخر تسجيل دخول"
-      lastSeen: "آخر ظهور"
-      disabledAt: "تاريخ التعطيل"
-      confirmed: "البريد الإلكتروني مؤكَّد"
-      notConfirmed: "غير مؤكَّد"
-      currentEmailVerified: "العنوان الحالي مُتحقَّق منه"
-      emailVerifiedYes: "نعم"
-      emailNotVerified: "لا — غير مُتحقَّق منه بشكل مستقل"
-      emailVerifiedUnknown: "غير معروف"
-      standing: "الحالة"
-      disabledBy: "عُطِّل بواسطة"
-      disabledReason: "السبب"
-      firstName: "الاسم الأول"
-      familyName: "اسم العائلة"
-      age: "العمر"
-      organization: "الجهة"
-      specialization: "التخصص"
-      notSet: "غير محدَّد"
-      marketingConsent: "الموافقة على التسويق"
-      consentGranted: "مُنحت"
-      consentNotGranted: "لم تُمنح"
-      consentGrantedAt: "تاريخ الموافقة"
-      consentWithdrawnAt: "تاريخ سحب الموافقة"
-      noActivity: "لم يُتخذ أي إجراء على هذا الحساب بعد."
-      loadFailed: "تعذّر تحميل هذا الحساب."
-      activityFailed: "تعذّر تحميل نشاط هذا الحساب."
-      actionsHeading: "إجراءات الحساب"
-      sendReset: "إرسال إعادة تعيين كلمة المرور"
-      confirmReset: "إرسال رابط إعادة تعيين كلمة المرور إلى {email}؟"
-      resetAccepted: "قُبل إرسال رابط إعادة التعيين."
-      resetFailed: "تعذّر إرسال رابط إعادة التعيين."
-      reset_rate_limited: "طُلب رابط لهذا الحساب قبل أقل من دقيقة."
-      reset_quota_exhausted: "نفدت حصة البريد الإلكتروني لهذا المشروع حالياً. لم يُرسل شيء."
-      reset_no_email: "لا يوجد بريد إلكتروني لهذا الحساب لإرساله إليه."
-      noPasswordHint: "يمكن للمشغّل إرسال رابط إعادة تعيين. لا أحد هنا يستطيع تعيين كلمة المرور أو رؤيتها."
-      absentHeading: "غير متاح هنا بعد"
-      revokeSessions: "إنهاء جميع الجلسات"
-      confirmRevoke: "إنهاء كل جلسة لـ {email}؟ يعيد هذا تعيين كلمة المرور إلى قيمة لن يراها أحد، مما يفرض تسجيل الدخول من جديد في كل مكان. لا يُنهي طلباً قيد التنفيذ حالياً — رمز الوصول الصادر سابقاً يبقى صالحاً حتى انتهاء صلاحيته من تلقاء نفسه."
-      revokeAccepted: "أُنهيت الجلسات. سيحتاج تسجيل الدخول الجديد إلى إعادة تعيين كلمة مرور."
-      revokeFailed: "تعذّر إنهاء جلسات هذا الحساب."
-      changeEmail: "تغيير البريد الإلكتروني"
-      emailPrompt: "البريد الإلكتروني الجديد لـ {email}:"
-      confirmEmailChange: "تغيير {email} إلى {newEmail}؟ يسري هذا فوراً — لا توجد خطوة تأكيد، والعنوان الجديد غير مُتحقَّق من إمكانية الوصول إليه."
-      emailChangeAccepted: "تم تغيير البريد الإلكتروني."
-      emailChangeFailed: "تعذّر تغيير البريد الإلكتروني لهذا الحساب."
-      email_already_registered: "حساب آخر يستخدم بالفعل هذا البريد الإلكتروني."
-      same_email: "هذا هو بريد الحساب الإلكتروني الحالي بالفعل."
-      invalid_email: "هذا لا يبدو بريداً إلكترونياً صحيحاً."
-      too_long: "هذا البريد الإلكتروني طويل جداً."
-      cannot_change_own_email: "لا يمكن للمسؤول تغيير بريده الإلكتروني الخاص من هنا."
-      actor_no_longer_administrator: "تغيّرت صلاحية المسؤول لديك أثناء هذا الطلب. سجّل الدخول من جديد."
-      auth_admin_unavailable: "تغييرات الجلسات والبريد الإلكتروني غير مُهيَّأة على هذه النسخة."
-      auth_admin_unreachable: "تعذّر الوصول إلى مزوّد المصادقة. لم يتغيّر شيء."
-      auth_admin_failed: "رفض مزوّد المصادقة هذا التغيير."
-      no_such_account: "هذا الحساب لم يعد موجوداً."
-      saveProfile: "حفظ الملف الشخصي"
-      profileHint: "هذا ما يراه صاحب الحساب في ملفه الشخصي. كل تعديل يُسجَّل مع ما كان مكتوباً قبله."
-      profileSaved: "تم حفظ الملف الشخصي."
-      profileSaveFailed: "تعذّر حفظ هذا الملف الشخصي."
-      profile_changed_since_loaded: "غيّر شخص آخر هذا الملف أثناء تحريرك له. أعد التحميل قبل الحفظ."
-      profile_too_long: "أحد هذه الحقول طويل جداً. كل حقل يتّسع لـ 200 حرف."
-      brokenHeading: "هذا الحساب بلا ملف شخصي"
-      noProfileMark: "بلا ملف شخصي"
-      brokenBody: "الحساب موجود في نظام المصادقة لكن لا يوجد له سجل ملف شخصي، لذا لا يمكن قراءة دوره أو صلاحيته أو تغييرهما. غالباً أُنشئ قبل إصلاح مُشغِّل التسجيل."
+      quotaHeading: 'الرصيد اليومي'
+      tierLabel: 'الفئة'
+      overrideLabel: 'تجاوز خاص بهذا الحساب'
+      overrideHint: 'اتركه فارغًا لاستخدام رصيد الفئة.'
+      overrideStartsLabel: 'ساري من (اختياري)'
+      overrideExpiresLabel: 'ساري حتى (اختياري)'
+      overrideWindowHint: 'اترك الحقلين فارغين لرصيد يستمر حتى تلغيه.'
+      overrideStandingLabel: 'الرصيد الخاص'
+      overrideInForce: 'ساري الآن'
+      overrideScheduled: 'مجدول — يبدأ {date}'
+      overrideExpired: 'انتهى {date} — يُستخدم رصيد الفئة الآن'
+      reasonLabel: 'السبب'
+      usageLabel: 'أسئلة اليوم'
+      resetsLabel: 'يُعاد الرصيد'
+      quotaReasonHint: 'مطلوب عند تعيين رصيد خاص، ويُسجَّل معه.'
+      quotaHint: 'الفئة هي رصيد المجموعة، والرصيد الخاص لهذا الحساب وحده. كل تعديل يُسجَّل مع ما كان مكتوباً قبله.'
+      saveQuota: 'حفظ الرصيد'
+      quotaSaved: 'تم حفظ الرصيد.'
+      quotaSaveFailed: 'تعذّر حفظ هذا الرصيد.'
+      quota_reason_required: 'السبب مطلوب لتعيين رصيد لحساب واحد.'
+      back: 'العودة إلى كل المستخدمين'
+      identityHeading: 'الهوية'
+      profileHeading: 'الملف الشخصي'
+      activityHeading: 'النشاط على هذا الحساب'
+      created: 'أُنشئ'
+      lastSignIn: 'آخر تسجيل دخول'
+      lastSeen: 'آخر ظهور'
+      disabledAt: 'تاريخ التعطيل'
+      confirmed: 'البريد الإلكتروني مؤكَّد'
+      notConfirmed: 'غير مؤكَّد'
+      currentEmailVerified: 'العنوان الحالي مُتحقَّق منه'
+      emailVerifiedYes: 'نعم'
+      emailNotVerified: 'لا — غير مُتحقَّق منه بشكل مستقل'
+      emailVerifiedUnknown: 'غير معروف'
+      standing: 'الحالة'
+      disabledBy: 'عُطِّل بواسطة'
+      disabledReason: 'السبب'
+      firstName: 'الاسم الأول'
+      familyName: 'اسم العائلة'
+      age: 'العمر'
+      organization: 'الجهة'
+      specialization: 'التخصص'
+      notSet: 'غير محدَّد'
+      marketingConsent: 'الموافقة على التسويق'
+      consentGranted: 'مُنحت'
+      consentNotGranted: 'لم تُمنح'
+      consentGrantedAt: 'تاريخ الموافقة'
+      consentWithdrawnAt: 'تاريخ سحب الموافقة'
+      noActivity: 'لم يُتخذ أي إجراء على هذا الحساب بعد.'
+      loadFailed: 'تعذّر تحميل هذا الحساب.'
+      activityFailed: 'تعذّر تحميل نشاط هذا الحساب.'
+      actionsHeading: 'إجراءات الحساب'
+      sendReset: 'إرسال إعادة تعيين كلمة المرور'
+      confirmReset: 'إرسال رابط إعادة تعيين كلمة المرور إلى {email}؟'
+      resetAccepted: 'قُبل إرسال رابط إعادة التعيين.'
+      resetFailed: 'تعذّر إرسال رابط إعادة التعيين.'
+      reset_rate_limited: 'طُلب رابط لهذا الحساب قبل أقل من دقيقة.'
+      reset_quota_exhausted: 'نفدت حصة البريد الإلكتروني لهذا المشروع حالياً. لم يُرسل شيء.'
+      reset_no_email: 'لا يوجد بريد إلكتروني لهذا الحساب لإرساله إليه.'
+      noPasswordHint: 'يمكن للمشغّل إرسال رابط إعادة تعيين. لا أحد هنا يستطيع تعيين كلمة المرور أو رؤيتها.'
+      absentHeading: 'غير متاح هنا بعد'
+      revokeSessions: 'إنهاء جميع الجلسات'
+      confirmRevoke: 'إنهاء كل جلسة لـ {email}؟ يعيد هذا تعيين كلمة المرور إلى قيمة لن يراها أحد، مما يفرض تسجيل الدخول من جديد في كل مكان. لا يُنهي طلباً قيد التنفيذ حالياً — رمز الوصول الصادر سابقاً يبقى صالحاً حتى انتهاء صلاحيته من تلقاء نفسه.'
+      revokeAccepted: 'أُنهيت الجلسات. سيحتاج تسجيل الدخول الجديد إلى إعادة تعيين كلمة مرور.'
+      revokeFailed: 'تعذّر إنهاء جلسات هذا الحساب.'
+      changeEmail: 'تغيير البريد الإلكتروني'
+      emailPrompt: 'البريد الإلكتروني الجديد لـ {email}:'
+      confirmEmailChange: 'تغيير {email} إلى {newEmail}؟ يسري هذا فوراً — لا توجد خطوة تأكيد، والعنوان الجديد غير مُتحقَّق من إمكانية الوصول إليه.'
+      emailChangeAccepted: 'تم تغيير البريد الإلكتروني.'
+      emailChangeFailed: 'تعذّر تغيير البريد الإلكتروني لهذا الحساب.'
+      email_already_registered: 'حساب آخر يستخدم بالفعل هذا البريد الإلكتروني.'
+      same_email: 'هذا هو بريد الحساب الإلكتروني الحالي بالفعل.'
+      invalid_email: 'هذا لا يبدو بريداً إلكترونياً صحيحاً.'
+      too_long: 'هذا البريد الإلكتروني طويل جداً.'
+      cannot_change_own_email: 'لا يمكن للمسؤول تغيير بريده الإلكتروني الخاص من هنا.'
+      actor_no_longer_administrator: 'تغيّرت صلاحية المسؤول لديك أثناء هذا الطلب. سجّل الدخول من جديد.'
+      auth_admin_unavailable: 'تغييرات الجلسات والبريد الإلكتروني غير مُهيَّأة على هذه النسخة.'
+      auth_admin_unreachable: 'تعذّر الوصول إلى مزوّد المصادقة. لم يتغيّر شيء.'
+      auth_admin_failed: 'رفض مزوّد المصادقة هذا التغيير.'
+      no_such_account: 'هذا الحساب لم يعد موجوداً.'
+      saveProfile: 'حفظ الملف الشخصي'
+      profileHint: 'هذا ما يراه صاحب الحساب في ملفه الشخصي. كل تعديل يُسجَّل مع ما كان مكتوباً قبله.'
+      profileSaved: 'تم حفظ الملف الشخصي.'
+      profileSaveFailed: 'تعذّر حفظ هذا الملف الشخصي.'
+      profile_changed_since_loaded: 'غيّر شخص آخر هذا الملف أثناء تحريرك له. أعد التحميل قبل الحفظ.'
+      profile_too_long: 'أحد هذه الحقول طويل جداً. كل حقل يتّسع لـ 200 حرف.'
+      brokenHeading: 'هذا الحساب بلا ملف شخصي'
+      noProfileMark: 'بلا ملف شخصي'
+      brokenBody: 'الحساب موجود في نظام المصادقة لكن لا يوجد له سجل ملف شخصي، لذا لا يمكن قراءة دوره أو صلاحيته أو تغييرهما. غالباً أُنشئ قبل إصلاح مُشغِّل التسجيل.'
     people:
-      hint: "الحسابات على هذه النسخة. تعطيل الوصول يوقف الأسئلة الجديدة؛ المحادثة الجارية تُكمل، ويظل بإمكان الشخص تسجيل الدخول."
-      empty: "لا توجد حسابات."
-      loadFailed: "تعذّر تحميل الحسابات."
-      search: "بحث بالبريد الإلكتروني"
-      columnEmail: "البريد الإلكتروني"
-      columnRole: "الدور"
-      columnTier: "الفئة"
-      columnAccess: "الوصول للمحادثة"
-      columnLastSignIn: "آخر دخول"
-      columnActions: ""
-      roleAdmin: "مسؤول"
-      roleUser: "مستخدم"
-      accessAllowed: "مسموح"
-      accessDisabled: "معطّل"
-      you: "أنت"
-      never: "لم يسجّل"
-      promote: "تعيين كمسؤول"
-      demote: "إزالة صلاحية المسؤول"
-      disable: "تعطيل الوصول للمحادثة"
-      enable: "استعادة الوصول للمحادثة"
-      reasonPrompt: "ما سبب تعطيل الوصول؟ سيُسجَّل هذا."
-      confirmDisable: "تعطيل الوصول للمحادثة لـ {email}؟"
-      confirmDemote: "إزالة صلاحية المسؤول من {email}؟"
-      changed: "تم تحديث الحساب."
-      changeFailed: "تعذّر تحديث الحساب."
-      cannot_change_own_access: "لا يمكنك تغيير دورك أو وصولك."
-      would_leave_no_administrator: "لن يتبقى أي مسؤول. عيّن شخصاً آخر أولاً."
-      no_such_account: "لم يعد هذا الحساب موجوداً."
-      actor_no_longer_administrator: "تغيّرت صلاحيتك أثناء العمل. أعد التحميل ثم حاول مجدداً."
-      reason_required: "يلزم ذكر سبب لتعطيل الوصول للمحادثة."
-      pagerLabel: "صفحات المستخدمين"
-      previousPage: "الصفحة السابقة"
-      nextPage: "الصفحة التالية"
-      showing: "عرض"
-      of: "من"
-      pageSize: "عدد الصفوف في الصفحة"
+      hint: 'الحسابات على هذه النسخة. تعطيل الوصول يوقف الأسئلة الجديدة؛ المحادثة الجارية تُكمل، ويظل بإمكان الشخص تسجيل الدخول.'
+      empty: 'لا توجد حسابات.'
+      loadFailed: 'تعذّر تحميل الحسابات.'
+      search: 'بحث بالبريد الإلكتروني'
+      columnEmail: 'البريد الإلكتروني'
+      columnRole: 'الدور'
+      columnTier: 'الفئة'
+      columnAccess: 'الوصول للمحادثة'
+      columnLastSignIn: 'آخر دخول'
+      columnActions: ''
+      roleAdmin: 'مسؤول'
+      roleUser: 'مستخدم'
+      accessAllowed: 'مسموح'
+      accessDisabled: 'معطّل'
+      you: 'أنت'
+      never: 'لم يسجّل'
+      promote: 'تعيين كمسؤول'
+      demote: 'إزالة صلاحية المسؤول'
+      disable: 'تعطيل الوصول للمحادثة'
+      enable: 'استعادة الوصول للمحادثة'
+      reasonPrompt: 'ما سبب تعطيل الوصول؟ سيُسجَّل هذا.'
+      confirmDisable: 'تعطيل الوصول للمحادثة لـ {email}؟'
+      confirmDemote: 'إزالة صلاحية المسؤول من {email}؟'
+      changed: 'تم تحديث الحساب.'
+      changeFailed: 'تعذّر تحديث الحساب.'
+      cannot_change_own_access: 'لا يمكنك تغيير دورك أو وصولك.'
+      would_leave_no_administrator: 'لن يتبقى أي مسؤول. عيّن شخصاً آخر أولاً.'
+      no_such_account: 'لم يعد هذا الحساب موجوداً.'
+      actor_no_longer_administrator: 'تغيّرت صلاحيتك أثناء العمل. أعد التحميل ثم حاول مجدداً.'
+      reason_required: 'يلزم ذكر سبب لتعطيل الوصول للمحادثة.'
+      pagerLabel: 'صفحات المستخدمين'
+      previousPage: 'الصفحة السابقة'
+      nextPage: 'الصفحة التالية'
+      showing: 'عرض'
+      of: 'من'
+      pageSize: 'عدد الصفوف في الصفحة'
     # مركز الإشعارات (للمسؤول): محرّر الإرسال وسجلّ الإرسال.
     tiers:
-      key: "المعرّف"
-      keyHint: "المعرّف دائم. حروف إنجليزية صغيرة وأرقام وشرطات سفلية؛ وهو ما تستخدمه قاعدة البيانات ومُنشئ الإشعارات."
-      label: "التسمية"
-      labelEn: "التسمية (بالإنجليزية)"
-      labelAr: "التسمية (بالعربية)"
-      labelsHint: "تُحفظ التسميتان معاً. يرى كل قارئ تسمية لغته، والجدول أعلاه يعرض تسمية لغتك."
-      dailyLimit: "الأسئلة يوميًا"
-      members: "القرّاء"
-      ordering: "الترتيب"
-      actions: "إجراءات"
-      addHeading: "إضافة فئة"
-      editHeading: "تعديل الفئة"
-      edit: "تعديل"
-      delete: "حذف"
-      save: "حفظ"
-      cancel: "إلغاء"
-      saved: "تم حفظ الفئة."
-      deleted: "تم حذف الفئة."
-      loadFailed: "تعذّر تحميل الفئات."
-      saveFailed: "تعذّر حفظ هذه الفئة."
-      deleteFailed: "تعذّر حذف هذه الفئة."
-      confirmDelete: "هل تريد حذف الفئة \"{key}\"؟"
-      confirmDeleteMembers: "الفئة \"{key}\" تضم {count} قارئًا. انقلهم إلى فئة أخرى قبل حذفها."
-      duplicate_key: "توجد فئة بهذا المعرّف بالفعل."
-      no_such_tier: "لم تعد هذه الفئة موجودة."
-      tier_in_use: "لا تزال هذه الفئة تضم قرّاءً."
-      default_tier_protected: "لا يمكن حذف الفئة المجانية — تُنشأ الحسابات الجديدة فيها."
-      invalid_limit: "يجب أن يكون الرصيد اليومي صفرًا أو أكثر."
-      invalid_labels: "التسميتان مطلوبتان، بحد أقصى 40 حرفًا."
-      invalid_key: "يجب أن يبدأ المعرّف بحرف وأن يحتوي على حروف إنجليزية صغيرة وأرقام وشرطات سفلية فقط."
-      invalid_window: "يجب أن تكون نهاية المدة في المستقبل وبعد بدايتها."
+      key: 'المعرّف'
+      keyHint: 'المعرّف دائم. حروف إنجليزية صغيرة وأرقام وشرطات سفلية؛ وهو ما تستخدمه قاعدة البيانات ومُنشئ الإشعارات.'
+      label: 'التسمية'
+      labelEn: 'التسمية (بالإنجليزية)'
+      labelAr: 'التسمية (بالعربية)'
+      labelsHint: 'تُحفظ التسميتان معاً. يرى كل قارئ تسمية لغته، والجدول أعلاه يعرض تسمية لغتك.'
+      dailyLimit: 'الأسئلة يوميًا'
+      members: 'القرّاء'
+      ordering: 'الترتيب'
+      actions: 'إجراءات'
+      addHeading: 'إضافة فئة'
+      editHeading: 'تعديل الفئة'
+      edit: 'تعديل'
+      delete: 'حذف'
+      save: 'حفظ'
+      cancel: 'إلغاء'
+      saved: 'تم حفظ الفئة.'
+      deleted: 'تم حذف الفئة.'
+      loadFailed: 'تعذّر تحميل الفئات.'
+      saveFailed: 'تعذّر حفظ هذه الفئة.'
+      deleteFailed: 'تعذّر حذف هذه الفئة.'
+      confirmDelete: 'هل تريد حذف الفئة "{key}"؟'
+      confirmDeleteMembers: 'الفئة "{key}" تضم {count} قارئًا. انقلهم إلى فئة أخرى قبل حذفها.'
+      duplicate_key: 'توجد فئة بهذا المعرّف بالفعل.'
+      no_such_tier: 'لم تعد هذه الفئة موجودة.'
+      tier_in_use: 'لا تزال هذه الفئة تضم قرّاءً.'
+      default_tier_protected: 'لا يمكن حذف الفئة المجانية — تُنشأ الحسابات الجديدة فيها.'
+      invalid_limit: 'يجب أن يكون الرصيد اليومي صفرًا أو أكثر.'
+      invalid_labels: 'التسميتان مطلوبتان، بحد أقصى 40 حرفًا.'
+      invalid_key: 'يجب أن يبدأ المعرّف بحرف وأن يحتوي على حروف إنجليزية صغيرة وأرقام وشرطات سفلية فقط.'
+      invalid_window: 'يجب أن تكون نهاية المدة في المستقبل وبعد بدايتها.'
+    deletions:
+      hint: 'الحسابات التي توجد لها عمليات حذف جارية، مرتبة حسب الأحدث طلبًا. تتيح «متابعة العملية» استكمال أي عملية حذف متوقفة عبر نفس الخطوات التي ينفذها النظام تلقائيًا: حذف المحادثات نهائيًا أولًا، ثم إزالة بيانات تسجيل الدخول. لا يلزم اتخاذ أي إجراء للعمليات المكتملة أو الملغاة.'
+      empty: 'لا توجد عمليات حذف جارية.'
+      loadFailed: 'تعذّر تحميل سجل عمليات الحذف.'
+      columnAccount: 'الحساب'
+      columnState: 'الحالة'
+      columnRequested: 'تاريخ الطلب'
+      columnGrace: 'انتهاء فترة السماح'
+      columnAttempts: 'عدد المحاولات'
+      columnLastError: 'آخر خطأ'
+      columnActions: ''
+      reconcile: 'متابعة العملية'
+      confirmReconcile: 'هل تريد متابعة عملية حذف هذا الحساب من مرحلتها الحالية (الحالة: {state})؟ قد يؤدي ذلك إلى حذف المحادثات نهائيًا وإزالة بيانات تسجيل الدخول.'
+      outcomeCompleted: 'اكتملت عملية الحذف.'
+      outcomeFailed: 'تعذّرت متابعة عملية الحذف. يُرجى مراجعة آخر خطأ في السجل.'
+      outcomeAmbiguous: 'تعذّر تحديد نتيجة العملية. سيعيد النظام التحقق منها تلقائيًا.'
+      outcomeUnclaimed: 'تتم معالجة هذه العملية حاليًا بواسطة معالج آخر، لذلك لم يتم اتخاذ أي إجراء.'
+      reconcileFailed: 'تعذّرت متابعة عملية الحذف.'
+      no_such_deletion: 'عملية الحذف هذه لم تعد موجودة.'
+      deletion_terminal: 'انتهت عملية الحذف بالفعل، ولا يلزم اتخاذ أي إجراء.'
     notifications:
-      heading: "الإشعارات"
-      hint: "أرسل رسالة إلى القرّاء المستهدفين كإشعار منبثق، أو شريط، أو نافذة تتطلّب تأكيدًا."
+      heading: 'الإشعارات'
+      hint: 'أرسل رسالة إلى القرّاء المستهدفين كإشعار منبثق، أو شريط، أو نافذة تتطلّب تأكيدًا.'
       composer:
-        heading: "إشعار جديد"
-        typeLabel: "النوع"
-        typeToast: "إشعار منبثق"
-        typeBanner: "شريط"
-        typeModal: "نافذة (تتطلّب تأكيدًا)"
-        severityLabel: "الدرجة"
-        severityInfo: "معلومة"
-        severitySuccess: "نجاح"
-        severityWarning: "تحذير"
-        severityDanger: "خطر"
-        titleEnLabel: "العنوان (إنجليزي)"
-        titleArLabel: "العنوان (عربي)"
-        bodyEnLabel: "الرسالة (إنجليزي)"
-        bodyArLabel: "الرسالة (عربي)"
-        targetLabel: "الجمهور"
-        targetAll: "الجميع"
-        targetRole: "حسب الدور"
-        targetTier: "حسب الفئة"
-        targetUser: "حساب واحد"
-        targetRoleUser: "مستخدم"
-        targetRoleAdmin: "مسؤول"
-        tierSelectEmpty: "اختر فئة"
-        userIdPlaceholder: "معرّف الحساب"
-        expiresLabel: "تاريخ الانتهاء"
-        audiencePreviewLabel: "يصل إلى {count} حساب"
-        audiencePreviewNone: "لا يصل إلى أي حساب بعد"
-        audiencePreviewFailed: "تعذّر معاينة الجمهور."
-        reviewHeading: "المراجعة قبل الإرسال"
-        resendFrom: "أُعيد إرساله من #{id}"
-        send: "إرسال الإشعار"
-        sending: "جارٍ الإرسال…"
-        sent: "تم إرسال الإشعار."
-        sendFailed: "تعذّر إرسال هذا الإشعار."
-        invalid_type: "اختر نوع الإشعار."
-        invalid_severity: "اختر الدرجة."
-        invalid_field: "جميع حقول العنوان والرسالة مطلوبة."
-        invalid_target_kind: "اختر الجمهور."
-        invalid_target_role: "اختر الدور."
-        invalid_target_tier: "أدخل الفئة."
-        invalid_target_user: "أدخل معرّف حساب صحيحًا."
-        idempotency_conflict: "أُرسل هذا الطلب من قبل بمحتوى مختلف. أعد التحميل وحاول مجددًا."
-        no_matching_recipients: "لا توجد حسابات مطابقة لهذا الجمهور."
-        no_such_target_user: "هذا الحساب غير موجود."
-        target_user_disabled: "وصول هذا الحساب إلى المحادثة معطّل."
-        actor_no_longer_administrator: "تغيّرت صلاحيتك كمسؤول أثناء العمل. أعد التحميل وحاول مجددًا."
+        heading: 'إشعار جديد'
+        typeLabel: 'النوع'
+        typeToast: 'إشعار منبثق'
+        typeBanner: 'شريط'
+        typeModal: 'نافذة (تتطلّب تأكيدًا)'
+        severityLabel: 'الدرجة'
+        severityInfo: 'معلومة'
+        severitySuccess: 'نجاح'
+        severityWarning: 'تحذير'
+        severityDanger: 'خطر'
+        titleEnLabel: 'العنوان (إنجليزي)'
+        titleArLabel: 'العنوان (عربي)'
+        bodyEnLabel: 'الرسالة (إنجليزي)'
+        bodyArLabel: 'الرسالة (عربي)'
+        targetLabel: 'الجمهور'
+        targetAll: 'الجميع'
+        targetRole: 'حسب الدور'
+        targetTier: 'حسب الفئة'
+        targetUser: 'حساب واحد'
+        targetRoleUser: 'مستخدم'
+        targetRoleAdmin: 'مسؤول'
+        tierSelectEmpty: 'اختر فئة'
+        userIdPlaceholder: 'معرّف الحساب'
+        expiresLabel: 'تاريخ الانتهاء'
+        audiencePreviewLabel: 'يصل إلى {count} حساب'
+        audiencePreviewNone: 'لا يصل إلى أي حساب بعد'
+        audiencePreviewFailed: 'تعذّر معاينة الجمهور.'
+        reviewHeading: 'المراجعة قبل الإرسال'
+        resendFrom: 'أُعيد إرساله من #{id}'
+        send: 'إرسال الإشعار'
+        sending: 'جارٍ الإرسال…'
+        sent: 'تم إرسال الإشعار.'
+        sendFailed: 'تعذّر إرسال هذا الإشعار.'
+        invalid_type: 'اختر نوع الإشعار.'
+        invalid_severity: 'اختر الدرجة.'
+        invalid_field: 'جميع حقول العنوان والرسالة مطلوبة.'
+        invalid_target_kind: 'اختر الجمهور.'
+        invalid_target_role: 'اختر الدور.'
+        invalid_target_tier: 'أدخل الفئة.'
+        invalid_target_user: 'أدخل معرّف حساب صحيحًا.'
+        idempotency_conflict: 'أُرسل هذا الطلب من قبل بمحتوى مختلف. أعد التحميل وحاول مجددًا.'
+        no_matching_recipients: 'لا توجد حسابات مطابقة لهذا الجمهور.'
+        no_such_target_user: 'هذا الحساب غير موجود.'
+        target_user_disabled: 'وصول هذا الحساب إلى المحادثة معطّل.'
+        actor_no_longer_administrator: 'تغيّرت صلاحيتك كمسؤول أثناء العمل. أعد التحميل وحاول مجددًا.'
       history:
-        heading: "الإشعارات المرسلة"
-        empty: "لم يُرسل شيء بعد."
-        emptyActive: "لا توجد إشعارات نشطة."
-        emptyDeactivated: "لا توجد إشعارات معطّلة."
-        emptyDeleted: "لا توجد إشعارات محذوفة."
-        loadFailed: "تعذّر تحميل سجلّ الإشعارات."
-        columnStatus: "الحالة"
-        columnType: "النوع"
-        columnAudience: "الجمهور"
-        columnTargets: "المستهدَفون"
-        columnServed: "عُرض"
-        columnRead: "قُرئ"
-        columnDismissed: "أُغلق"
-        columnAcknowledged: "أُكِّد"
-        statusFilterLabel: "الحالة"
-        statusFilterAll: "الكل"
-        statusActive: "نشط"
-        statusDeactivated: "معطّل"
-        statusDeleted: "محذوف"
-        deactivate: "تعطيل"
-        deactivateConfirm: "تعطيل هذا الإشعار؟ ستتوقف الألسنة المفتوحة عن عرضه."
-        delete: "حذف"
-        deleteConfirm: "حذف هذا الإشعار؟ لا يمكن التراجع عن هذا."
-        resend: "إعادة إرسال"
-        deactivated: "تم تعطيل الإشعار."
-        deactivateFailed: "تعذّر تعطيل هذا الإشعار."
-        deleted: "تم حذف الإشعار."
-        deleteFailed: "تعذّر حذف هذا الإشعار."
-        selectAllAria: "تحديد كل الإشعارات المعروضة"
-        selectRowAria: "تحديد هذا الإشعار"
-        selectedCount: "{count} محدّد"
-        clearSelected: "حذف المحدد"
-        clearSelectedConfirm: "حذف {count} إشعارات محددة؟ لا يمكن التراجع عن هذا."
-        clearAllInFilter: "حذف الكل"
-        clearAllInFilterConfirm: "حذف جميع الإشعارات المطابقة لهذا الفلتر وعددها {count}؟ لا يمكن التراجع عن هذا."
-        clearAllTooLarge: "عدد الإشعارات المطابقة لهذا الفلتر كبير جدًا ليتم حذفها دفعة واحدة. ضيّق نطاق الفلتر وحاول مجددًا."
-        nothingToClear: "لا يوجد ما يمكن حذفه."
-        bulkCleared: "تم حذف {count} إشعار."
-        bulkClearedPartial: "تم حذف {count}، وفشل حذف {failed}."
-        bulkClearFailed: "تعذّر حذف الإشعارات المحددة."
-        purge: "تطهير"
-        purgeConfirm: "حذف هذا الإشعار نهائيًا؟ لا يمكن التراجع عن هذا، وسيمحو سجلّ الاستلام والقراءة الخاص به."
-        purged: "تم تطهير الإشعار."
-        purgeFailed: "تعذّر تطهير هذا الإشعار."
-        purgeSelected: "تطهير المحدد"
-        purgeSelectedConfirm: "حذف {count} إشعارات محددة نهائيًا؟ لا يمكن التراجع عن هذا."
-        bulkPurged: "تم تطهير {count} إشعار."
-        bulkPurgedPartial: "تم تطهير {count}، وفشل تطهير {failed}."
-        bulkPurgeFailed: "تعذّر تطهير الإشعارات المحددة."
-        purgeRetentionLabel: "التطهير بعد (أيام)"
-        purgeRetentionSave: "حفظ"
-        purgeRetentionSaved: "تم حفظ مدة الاحتفاظ."
-        purgeRetentionSaveFailed: "تعذّر حفظ مدة الاحتفاظ."
-        purgeRetentionInvalid: "أدخل عدد أيام صحيحًا بين 1 و3650."
-        purgeEligible: "تطهير المؤهَّل"
-        purgeEligibleConfirm: "حذف جميع الإشعارات المؤهَّلة نهائيًا وعددها {count}، وهي التي مضى على حذفها أكثر من {days} يومًا؟ لا يمكن التراجع عن هذا."
-        no_such_notification: "هذا الإشعار لم يعد موجودًا."
-        already_deactivated: "هذا الإشعار معطّل بالفعل."
-        already_deleted: "حُذف هذا الإشعار بالفعل."
-        not_yet_deleted: "يجب حذف هذا الإشعار قبل أن يمكن تطهيره."
-        actor_no_longer_administrator: "تغيّرت صلاحيتك كمسؤول أثناء العمل. أعد التحميل وحاول مجددًا."
+        heading: 'الإشعارات المرسلة'
+        empty: 'لم يُرسل شيء بعد.'
+        emptyActive: 'لا توجد إشعارات نشطة.'
+        emptyDeactivated: 'لا توجد إشعارات معطّلة.'
+        emptyDeleted: 'لا توجد إشعارات محذوفة.'
+        loadFailed: 'تعذّر تحميل سجلّ الإشعارات.'
+        columnStatus: 'الحالة'
+        columnType: 'النوع'
+        columnAudience: 'الجمهور'
+        columnTargets: 'المستهدَفون'
+        columnServed: 'عُرض'
+        columnRead: 'قُرئ'
+        columnDismissed: 'أُغلق'
+        columnAcknowledged: 'أُكِّد'
+        statusFilterLabel: 'الحالة'
+        statusFilterAll: 'الكل'
+        statusActive: 'نشط'
+        statusDeactivated: 'معطّل'
+        statusDeleted: 'محذوف'
+        deactivate: 'تعطيل'
+        deactivateConfirm: 'تعطيل هذا الإشعار؟ ستتوقف الألسنة المفتوحة عن عرضه.'
+        delete: 'حذف'
+        deleteConfirm: 'حذف هذا الإشعار؟ لا يمكن التراجع عن هذا.'
+        resend: 'إعادة إرسال'
+        deactivated: 'تم تعطيل الإشعار.'
+        deactivateFailed: 'تعذّر تعطيل هذا الإشعار.'
+        deleted: 'تم حذف الإشعار.'
+        deleteFailed: 'تعذّر حذف هذا الإشعار.'
+        selectAllAria: 'تحديد كل الإشعارات المعروضة'
+        selectRowAria: 'تحديد هذا الإشعار'
+        selectedCount: '{count} محدّد'
+        clearSelected: 'حذف المحدد'
+        clearSelectedConfirm: 'حذف {count} إشعارات محددة؟ لا يمكن التراجع عن هذا.'
+        clearAllInFilter: 'حذف الكل'
+        clearAllInFilterConfirm: 'حذف جميع الإشعارات المطابقة لهذا الفلتر وعددها {count}؟ لا يمكن التراجع عن هذا.'
+        clearAllTooLarge: 'عدد الإشعارات المطابقة لهذا الفلتر كبير جدًا ليتم حذفها دفعة واحدة. ضيّق نطاق الفلتر وحاول مجددًا.'
+        nothingToClear: 'لا يوجد ما يمكن حذفه.'
+        bulkCleared: 'تم حذف {count} إشعار.'
+        bulkClearedPartial: 'تم حذف {count}، وفشل حذف {failed}.'
+        bulkClearFailed: 'تعذّر حذف الإشعارات المحددة.'
+        purge: 'تطهير'
+        purgeConfirm: 'حذف هذا الإشعار نهائيًا؟ لا يمكن التراجع عن هذا، وسيمحو سجلّ الاستلام والقراءة الخاص به.'
+        purged: 'تم تطهير الإشعار.'
+        purgeFailed: 'تعذّر تطهير هذا الإشعار.'
+        purgeSelected: 'تطهير المحدد'
+        purgeSelectedConfirm: 'حذف {count} إشعارات محددة نهائيًا؟ لا يمكن التراجع عن هذا.'
+        bulkPurged: 'تم تطهير {count} إشعار.'
+        bulkPurgedPartial: 'تم تطهير {count}، وفشل تطهير {failed}.'
+        bulkPurgeFailed: 'تعذّر تطهير الإشعارات المحددة.'
+        purgeRetentionLabel: 'التطهير بعد (أيام)'
+        purgeRetentionSave: 'حفظ'
+        purgeRetentionSaved: 'تم حفظ مدة الاحتفاظ.'
+        purgeRetentionSaveFailed: 'تعذّر حفظ مدة الاحتفاظ.'
+        purgeRetentionInvalid: 'أدخل عدد أيام صحيحًا بين 1 و3650.'
+        purgeEligible: 'تطهير المؤهَّل'
+        purgeEligibleConfirm: 'حذف جميع الإشعارات المؤهَّلة نهائيًا وعددها {count}، وهي التي مضى على حذفها أكثر من {days} يومًا؟ لا يمكن التراجع عن هذا.'
+        no_such_notification: 'هذا الإشعار لم يعد موجودًا.'
+        already_deactivated: 'هذا الإشعار معطّل بالفعل.'
+        already_deleted: 'حُذف هذا الإشعار بالفعل.'
+        not_yet_deleted: 'يجب حذف هذا الإشعار قبل أن يمكن تطهيره.'
+        actor_no_longer_administrator: 'تغيّرت صلاحيتك كمسؤول أثناء العمل. أعد التحميل وحاول مجددًا.'
 page:
   meta:
-    title: "مساعد الهيئة العامة للغذاء والدواء"
-    description: "مساعد ذكي للإرشادات التنظيمية الدوائية الصادرة عن الهيئة العامة للغذاء والدواء في المملكة العربية السعودية"
+    title: 'مساعد الهيئة العامة للغذاء والدواء'
+    description: 'مساعد ذكي للإرشادات التنظيمية الدوائية الصادرة عن الهيئة العامة للغذاء والدواء في المملكة العربية السعودية'
 
   brand:
-    name: "مساعد الغذاء والدواء الذكي"
+    name: 'مساعد الغذاء والدواء الذكي'
     # الاسم بالنص المقابل. يعرض القسم الرئيسي الاسمين معاً لأن التكافؤ الكامل
     # بين العربية والإنجليزية التزام ثابت للعلامة، فالأولى أن تُظهره العلامة
     # لا أن يدّعيه النص.
-    nameOther: "SFDA Copilot"
-    tagline: "مساعدك التنظيمي"
+    nameOther: 'SFDA Copilot'
+    tagline: 'مساعدك التنظيمي'
 
   landing:
-    greeting: "جاهز متى شئت"
-    lead: "اطرح سؤالاً بدلاً من البحث في الأدلة — وشاهد بدقة الدليل الرسمي الذي جاءت منه كل إجابة."
-    cta: "ابدأ الآن"
-    hubLink: "موقع AI Fouda Hub"
-    linkedinLink: "حساب محمد فودة على LinkedIn"
+    greeting: 'جاهز متى شئت'
+    lead: 'اطرح سؤالاً بدلاً من البحث في الأدلة — وشاهد بدقة الدليل الرسمي الذي جاءت منه كل إجابة.'
+    cta: 'ابدأ الآن'
+    hubLink: 'موقع AI Fouda Hub'
+    linkedinLink: 'حساب محمد فودة على LinkedIn'
     # PRODUCT.md، المبدأ الثاني: الاسم يحتوي على "الغذاء والدواء"، لذا يقع على
     # كل سطح عبء التصريح بأن هذا ليس الهيئة. هذا نص إلزامي لا اختياري.
-    notice: "<strong>مساعد الغذاء والدواء أداة مستقلة.</strong> ليست تابعة للهيئة العامة للغذاء والدواء ولا معتمدة منها ولا مُشغَّلة من قِبلها. تقرأ الأدلة الإرشادية المنشورة للهيئة وتوضّح مصدر كل إجابة، لتتمكن من التحقق منها في المصدر الرسمي."
-    version: "الإصدار {v}"
-    builtBy: "من تطوير محمد فودة"
+    notice: '<strong>مساعد الغذاء والدواء أداة مستقلة.</strong> ليست تابعة للهيئة العامة للغذاء والدواء ولا معتمدة منها ولا مُشغَّلة من قِبلها. تقرأ الأدلة الإرشادية المنشورة للهيئة وتوضّح مصدر كل إجابة، لتتمكن من التحقق منها في المصدر الرسمي.'
+    version: 'الإصدار {v}'
+    builtBy: 'من تطوير محمد فودة'
 
   features:
-    heading: "ماذا يفعل"
+    heading: 'ماذا يفعل'
     coverage:
-      title: "مدونة الأدلة الإرشادية"
+      title: 'مدونة الأدلة الإرشادية'
       # لا يُذكر عدد الأدلة عمداً: المحتوى يتغيّر مع كل تحديث وأي رقم ثابت يصبح قديماً.
       # راجع PRODUCT.md، قسم Evidence on Hand.
-      body: "المجالات التنظيمية والتيقظ الدوائي والأدوية البيطرية والمنتجات الحيوية — الأدلة الرسمية للهيئة، مفهرسة وقابلة للبحث في مكان واحد."
-      badge: "الأدلة محدّثة حتى أغسطس 2026"
+      body: 'المجالات التنظيمية والتيقظ الدوائي والأدوية البيطرية والمنتجات الحيوية — الأدلة الرسمية للهيئة، مفهرسة وقابلة للبحث في مكان واحد.'
+      badge: 'الأدلة محدّثة حتى أغسطس 2026'
     authoritative:
-      title: "موثّق حتى الصفحة"
-      body: "تحمل كل إجابة استشهادات مرقّمة تصل إلى الدليل الإرشادي وصفحته، لتتمكن من مراجعة المصدر قبل الاعتماد عليه."
+      title: 'موثّق حتى الصفحة'
+      body: 'تحمل كل إجابة استشهادات مرقّمة تصل إلى الدليل الإرشادي وصفحته، لتتمكن من مراجعة المصدر قبل الاعتماد عليه.'
     streamlined:
-      title: "مباشرة إلى المتطلب"
-      body: "اعثر على إجراءات ومتطلبات التسجيل التي تحتاجها دون قراءة الأدلة من أولها إلى آخرها."
+      title: 'مباشرة إلى المتطلب'
+      body: 'اعثر على إجراءات ومتطلبات التسجيل التي تحتاجها دون قراءة الأدلة من أولها إلى آخرها.'
     accuracy:
-      title: "بالعربية والإنجليزية"
-      body: "اسأل بأي من اللغتين وتأتيك الإجابة بها، من المدونة نفسها. العربية ليست طبقة ترجمة."
+      title: 'بالعربية والإنجليزية'
+      body: 'اسأل بأي من اللغتين وتأتيك الإجابة بها، من المدونة نفسها. العربية ليست طبقة ترجمة.'
     search:
-      title: "اسأل بلغتك الطبيعية"
-      body: "اطرح السؤال كما تطرحه على زميل، وحدّد نطاقه في المجال التنظيمي أو التيقظ الدوائي أو الأدوية البيطرية أو المنتجات الحيوية."
+      title: 'اسأل بلغتك الطبيعية'
+      body: 'اطرح السؤال كما تطرحه على زميل، وحدّد نطاقه في المجال التنظيمي أو التيقظ الدوائي أو الأدوية البيطرية أو المنتجات الحيوية.'
 
   nav:
-    menu: "القائمة"
-    toggleNav: "تبديل التنقل"
-    toggleTheme: "تبديل المظهر"
-    toggleThemeLong: "التبديل بين المظهر الفاتح والداكن"
-    close: "إغلاق"
-    assistantStatus: "حالة المساعد"
-    utilityAria: "اللغة والمظهر"
-    mobileNavAria: "تنقل الجوال"
-    sidebarAria: "الشريط الجانبي"
+    menu: 'القائمة'
+    toggleNav: 'تبديل التنقل'
+    toggleTheme: 'تبديل المظهر'
+    toggleThemeLong: 'التبديل بين المظهر الفاتح والداكن'
+    close: 'إغلاق'
+    assistantStatus: 'حالة المساعد'
+    utilityAria: 'اللغة والمظهر'
+    mobileNavAria: 'تنقل الجوال'
+    sidebarAria: 'الشريط الجانبي'
 
   sidebar:
-    tabChats: "المحادثات"
-    tabFAQ: "الأسئلة الشائعة"
-    tabsAria: "محتويات الشريط الجانبي"
+    tabChats: 'المحادثات'
+    tabFAQ: 'الأسئلة الشائعة'
+    tabsAria: 'محتويات الشريط الجانبي'
 
   auth:
-    modalTitle: "مرحباً بك في مساعد الغذاء والدواء"
-    login: "تسجيل الدخول"
-    signup: "إنشاء حساب"
-    firstName: "الاسم الأول"
-    familyName: "اسم العائلة"
-    firstNameRequired: "الاسم الأول مطلوب."
-    email: "البريد الإلكتروني"
-    password: "كلمة المرور"
-    passwordHint: "٨ أحرف على الأقل، وحرف كبير، وحرف صغير، ورقم واحد."
-    emailInvalid: "يرجى إدخال بريد إلكتروني صالح."
-    passwordRequired: "كلمة المرور مطلوبة."
-    passwordInvalid: "يجب أن تستوفي كلمة المرور المتطلبات."
-    loginSignup: "دخول / تسجيل"
-    logout: "تسجيل الخروج"
+    modalTitle: 'مرحباً بك في مساعد الغذاء والدواء'
+    login: 'تسجيل الدخول'
+    signup: 'إنشاء حساب'
+    firstName: 'الاسم الأول'
+    familyName: 'اسم العائلة'
+    firstNameRequired: 'الاسم الأول مطلوب.'
+    email: 'البريد الإلكتروني'
+    password: 'كلمة المرور'
+    passwordHint: '٨ أحرف على الأقل، وحرف كبير، وحرف صغير، ورقم واحد.'
+    emailInvalid: 'يرجى إدخال بريد إلكتروني صالح.'
+    passwordRequired: 'كلمة المرور مطلوبة.'
+    passwordInvalid: 'يجب أن تستوفي كلمة المرور المتطلبات.'
+    loginSignup: 'دخول / تسجيل'
+    logout: 'تسجيل الخروج'
     consent:
-      marketing: "استخدام معلومات ملفي الشخصي لتحسين مساعد الغذاء والدواء الذكي وإخباري به."
-      ageHint: "يُستخدم لتصنيف الجمهور — اختياري، ولا يُطلب إلا لأنك وافقت أعلاه."
+      marketing: 'استخدام معلومات ملفي الشخصي لتحسين مساعد الغذاء والدواء الذكي وإخباري به.'
+      ageHint: 'يُستخدم لتصنيف الجمهور — اختياري، ولا يُطلب إلا لأنك وافقت أعلاه.'
       terms: 'أوافق على <a href="/privacy" target="_blank" rel="noopener">سياسة الاستخدام والخصوصية</a>.'
-      termsRequired: "يجب أن توافق على سياسة الاستخدام والخصوصية لإنشاء حساب."
+      termsRequired: 'يجب أن توافق على سياسة الاستخدام والخصوصية لإنشاء حساب.'
     reset:
-      link: "نسيت كلمة المرور؟"
-      heading: "إعادة تعيين كلمة المرور"
-      lead: "أدخل العنوان الذي سجّلت به وسنرسل إليك رابطًا لاختيار كلمة مرور جديدة."
-      submit: "إرسال رابط إعادة التعيين"
-      back: "العودة إلى تسجيل الدخول"
+      link: 'نسيت كلمة المرور؟'
+      heading: 'إعادة تعيين كلمة المرور'
+      lead: 'أدخل العنوان الذي سجّلت به وسنرسل إليك رابطًا لاختيار كلمة مرور جديدة.'
+      submit: 'إرسال رابط إعادة التعيين'
+      back: 'العودة إلى تسجيل الدخول'
     recovery:
-      heading: "اختر كلمة مرور جديدة"
-      lead: "لقد فتحت رابط الاسترجاع. عيّن كلمة مرور جديدة أدناه، ثم سجّل الدخول بها."
-      newPassword: "كلمة المرور الجديدة"
-      confirmPassword: "تأكيد كلمة المرور الجديدة"
-      submit: "حفظ كلمة المرور الجديدة"
-      cancel: "إلغاء"
+      heading: 'اختر كلمة مرور جديدة'
+      lead: 'لقد فتحت رابط الاسترجاع. عيّن كلمة مرور جديدة أدناه، ثم سجّل الدخول بها.'
+      newPassword: 'كلمة المرور الجديدة'
+      confirmPassword: 'تأكيد كلمة المرور الجديدة'
+      submit: 'حفظ كلمة المرور الجديدة'
+      cancel: 'إلغاء'
     signupPaused:
-      heading: "التسجيل متوقف مؤقتاً"
-      lead: "لا يتم إنشاء حسابات جديدة في الوقت الحالي. أما أصحاب الحسابات الحالية فيسجّلون الدخول كالمعتاد."
-    signupPausedBadge: "(متوقف مؤقتاً)"
+      heading: 'التسجيل متوقف مؤقتاً'
+      lead: 'لا يتم إنشاء حسابات جديدة في الوقت الحالي. أما أصحاب الحسابات الحالية فيسجّلون الدخول كالمعتاد.'
+    signupPausedBadge: '(متوقف مؤقتاً)'
 
   profile:
-    button: "الملف الشخصي"
+    button: 'الملف الشخصي'
 
   account:
-    title: "حسابي · مساعد الغذاء والدواء الذكي"
-    skipToContent: "الانتقال إلى الحساب"
-    pageTitle: "حسابي"
-    backToChat: "العودة إلى المحادثة"
-    checking: "جارٍ تحميل حسابك…"
-    retry: "إعادة المحاولة"
-    signedOut: "سجّل الدخول لعرض حسابك."
-    standingAria: "حالة الحساب"
-    role: "الدور"
-    tier: "الفئة"
-    quota: "أسئلة اليوم"
-    since: "عضو منذ"
-    conversations: "المحادثات"
-    standing: "الحالة"
-    identityHeading: "الهوية"
-    firstName: "الاسم الأول"
-    familyName: "اسم العائلة"
-    age: "العمر"
-    ageHint: "يُستخدم لتصنيف الجمهور — اختياري."
-    organization: "الجهة"
-    specialization: "التخصص"
-    save: "حفظ التغييرات"
-    preferencesHeading: "التفضيلات"
-    theme: "المظهر"
-    themeLight: "فاتح"
-    themeDark: "داكن"
-    themeSystem: "النظام"
-    language: "اللغة"
-    languageEnglish: "الإنجليزية"
-    languageArabic: "العربية"
-    securityHeading: "الأمان"
-    newPassword: "كلمة المرور الجديدة"
-    changePassword: "تغيير كلمة المرور"
-    reauthCode: "رمز التحقق"
-    reauthCodeHint: "لأمانك، أرسلنا رمزًا إلى بريدك الإلكتروني. أدخله لإكمال تغيير كلمة المرور."
-    signOutOthers: "تسجيل الخروج من كل مكان آخر"
-    signOutOthersHint: "ينهي كل جلسة عدا هذه. تبقى الأجهزة الأخرى مسجّلة الدخول حتى تنتهي صلاحية جلستها الحالية."
-    logoutScope: "تسجيل الخروج ينهي جلستك على جميع الأجهزة."
-    dataHeading: "بياناتك"
-    consentClearAge: "امسح أيضًا العمر الذي زوّدتنا به"
-    exportConversations: "تصدير محادثاتي"
-    exportHint: "نزّل كل محادثة أجريتها كملف (NDJSON — سطر واحد لكل محادثة، قابل للقراءة بأي محرر نصوص)."
-    deleteAllConversations: "حذف كل المحادثات"
-    deleteAllHint: "يحذف كل محادثة نهائيًا. حسابك وملفك الشخصي وتسجيل دخولك تبقى دون مساس."
+    title: 'حسابي · مساعد الغذاء والدواء الذكي'
+    skipToContent: 'الانتقال إلى الحساب'
+    pageTitle: 'حسابي'
+    backToChat: 'العودة إلى المحادثة'
+    checking: 'جارٍ تحميل حسابك…'
+    retry: 'إعادة المحاولة'
+    signedOut: 'سجّل الدخول لعرض حسابك.'
+    standingAria: 'حالة الحساب'
+    role: 'الدور'
+    tier: 'الفئة'
+    quota: 'أسئلة اليوم'
+    since: 'عضو منذ'
+    conversations: 'المحادثات'
+    standing: 'الحالة'
+    identityHeading: 'الهوية'
+    firstName: 'الاسم الأول'
+    familyName: 'اسم العائلة'
+    age: 'العمر'
+    ageHint: 'يُستخدم لتصنيف الجمهور — اختياري.'
+    organization: 'الجهة'
+    specialization: 'التخصص'
+    save: 'حفظ التغييرات'
+    preferencesHeading: 'التفضيلات'
+    theme: 'المظهر'
+    themeLight: 'فاتح'
+    themeDark: 'داكن'
+    themeSystem: 'النظام'
+    language: 'اللغة'
+    languageEnglish: 'الإنجليزية'
+    languageArabic: 'العربية'
+    securityHeading: 'الأمان'
+    newPassword: 'كلمة المرور الجديدة'
+    changePassword: 'تغيير كلمة المرور'
+    reauthCode: 'رمز التحقق'
+    reauthCodeHint: 'لأمانك، أرسلنا رمزًا إلى بريدك الإلكتروني. أدخله لإكمال تغيير كلمة المرور.'
+    signOutOthers: 'تسجيل الخروج من كل مكان آخر'
+    signOutOthersHint: 'ينهي كل جلسة عدا هذه. تبقى الأجهزة الأخرى مسجّلة الدخول حتى تنتهي صلاحية جلستها الحالية.'
+    logoutScope: 'تسجيل الخروج ينهي جلستك على جميع الأجهزة.'
+    dataHeading: 'بياناتك'
+    consentClearAge: 'امسح أيضًا العمر الذي زوّدتنا به'
+    exportConversations: 'تصدير محادثاتي'
+    exportHint: 'نزّل كل محادثة أجريتها كملف (NDJSON — سطر واحد لكل محادثة، قابل للقراءة بأي محرر نصوص).'
+    deleteAllConversations: 'حذف كل المحادثات'
+    deleteAllHint: 'يحذف كل محادثة نهائيًا. حسابك وملفك الشخصي وتسجيل دخولك تبقى دون مساس.'
+    deletionHeading: 'حذف حسابك'
+    deletionLead: 'عند طلب حذف حسابك تبدأ فترة سماح مدتها 30 يومًا. خلال هذه الفترة يظل حسابك متاحًا للاستخدام بشكل كامل، فيمكنك تسجيل الدخول واستخدام المحادثات وقراءتها وتصديرها وتعديل ملفك الشخصي وإلغاء طلب الحذف في أي وقت. الاستثناء الوحيد هو أنه لن يكون بإمكانك منح موافقة تسويقية جديدة أثناء انتظار الحذف. بعد انتهاء فترة السماح تُحذف محادثاتك نهائيًا، ثم تُحذف بيانات تسجيل الدخول وملفك الشخصي.'
+    deletionGoesLabel: 'ما الذي سيتم حذفه؟'
+    deletionGoesBody: 'بيانات تسجيل الدخول، وملفك الشخصي بما في ذلك الاسم والعمر والجهة والتخصص وسجل الموافقات، وجميع محادثاتك، إضافةً إلى البيانات التشغيلية المرتبطة بها مثل سجل آخر ظهور وتجاوزات الحصة.'
+    deletionStaysLabel: 'ما الذي يبقى؟'
+    deletionStaysBody: 'تبقى السجلات الإدارية المنشأة قبل الحذف، وقد تتضمّن عنوان بريد إلكتروني — كما في حالة تغيير المشغّل لعنوان بريد حساب. ويبقى سجل طلب الحذف الذي لا يتضمّن سوى معرّف وطوابع زمنية، وسجلات التنبيهات المرتبطة برسالة المشغّل، والنسخ الاحتياطية التي لا يصل إليها هذا الحذف والتي لا توجد لها مدة احتفاظ معلنة، وما يحتفظ به مزوّد النموذج من موجّهات أُرسلت إليه، وسجلات الخادم. القائمة الكاملة في سياسة الخصوصية.'
+    deletionConfirmWord: 'حذف'
+    deletionConfirmLabel: 'اكتب «حذف» لتأكيد طلبك'
+    deletionPasswordLabel: 'كلمة المرور الحالية'
+    deletionPasswordHint: 'نطلب كلمة مرورك للتأكد من أنك صاحب الحساب، ولمنع أي شخص لديه وصول مؤقت إلى جلستك — على جهاز مشترك مثلًا — من حذف حسابك دون إذنك.'
+    deletionRequest: 'طلب حذف الحساب'
+    deletionRequestSaving: 'جارٍ إرسال طلب الحذف…'
+    deletionCancel: 'إلغاء طلب الحذف'
+    deletionCancelling: 'جارٍ إلغاء طلب الحذف…'
+    deletionPendingTitle: 'طلب حذف الحساب قيد الانتظار'
+    deletionPendingBody: 'سيُحذف حسابك نهائيًا في {date} ما لم تُلغِ طلب الحذف قبل ذلك. وحتى ذلك الوقت يظل حسابك متاحًا للاستخدام، فيمكنك تسجيل الدخول واستخدام محادثاتك وقراءتها وتصديرها وتعديل ملفك الشخصي وإلغاء طلب الحذف في أي وقت. لن يكون بإمكانك منح موافقة تسويقية جديدة أثناء انتظار الحذف.'
+    deletionInProgressTitle: 'الحذف جارٍ'
+    deletionInProgressBody: 'تجاوزت عملية الحذف المرحلة التي يمكن فيها إلغاؤها؛ فقد حُذفت المحادثات نهائيًا أو تجري حاليًا إزالة بيانات تسجيل الدخول. لم يعد هناك ما يمكن إلغاؤه، ولا حاجة إلى تقديم طلب حذف جديد.'
+    deletionAdminNote: 'الحذف الذاتي للحساب غير متاح لحسابات المسؤولين. يُرجى التواصل مع مسؤول آخر.'
 
   # سياسة الاستخدام والخصوصية / Usage and Privacy Policy (/privacy).
   # مسودة — انظر التعليق في en.yaml لسياق نفس القسم.
   policy:
-    title: "سياسة الخصوصية · مساعد الغذاء والدواء الذكي"
-    skipToContent: "الانتقال إلى السياسة"
-    pageTitle: "سياسة الاستخدام والخصوصية"
-    version: "الإصدار"
-    draftHeading: "مسودة — قيد المراجعة"
-    draftNotice: "هذه السياسة مسودة أولى، كُتبت لوصف المنتج بصدق ريثما تُراجَع النسخة النهائية. لم تُعتمد بعد كنص قانوني ملزم للمنتج. إن بدا أي شيء هنا غير متسق مع سلوك المنتج الفعلي، فذلك خلل في هذه المسودة، لا في المنتج."
-    scopeHeading: "ما تغطيه هذه السياسة"
-    scopeBody: "تصف هذه السياسة ما يجمعه مساعد الغذاء والدواء الذكي عنك، ولماذا، وما التحكم المتاح لك فيه. تغطي حسابك وملفك الشخصي والأسئلة التي تطرحها — لا الوثائق التنظيمية نفسها، فهي مصدر عام."
-    collectHeading: "ما الذي نجمعه"
-    collectIntro: "حسب طريقة استخدامك للمنتج، نجمع:"
-    collectAccount: "بريدك الإلكتروني وكلمة مرورك، لتسجيل دخولك. لا تُخزَّن كلمة مرورك أبدًا بصيغة يمكننا قراءتها — يخزّن مزوّد المصادقة GoTrue بصمة مُملَّحة لها فقط."
-    collectProfile: "تفاصيل الملف الشخصي التي تختار إضافتها — الاسم الأول واسم العائلة والجهة والتخصص — وعمرك فقط إن وافقت على ذلك بشكل منفصل."
-    collectQuestions: "الأسئلة التي تطرحها والإجابات التي تتلقاها، تُخزَّن لتتمكن من العودة إلى محادثة لاحقًا. لا تُدخل في مربع المحادثة معرّفات مرضى أو بيانات مشاركين في تجارب سريرية أو أي مواد سرية أخرى — انظر التنويه الظاهر داخل التطبيق نفسه."
-    collectTechnical: "بيانات تقنية اعتيادية تجمعها أي خدمة ويب — سجلات الطلبات وتقارير الأخطاء — تُستخدم فقط لإبقاء المنتج يعمل وآمنًا."
-    useHeading: "كيف نستخدمها"
-    useIntro: "نستخدم ما نجمعه من أجل:"
-    useOperate: "تشغيل المنتج: مصادقتك، والإجابة عن أسئلتك، وعرض سجل محادثاتك الخاص بك."
-    useImprove: "فهم المنتج وتحسينه بشكل إجمالي — لا لعزل نشاط شخص بعينه لغرض لم توافق عليه."
-    useMarketing: "التواصل معك بخصوص المنتج أو إخبارك كيف تساعدنا معلوماتك على فهم مستخدميه — فقط إن وافقت على ذلك بشكل منفصل."
-    useMarketingConsent: "يتطلب الاستخدام التسويقي لمعلومات ملفك الشخصي وعمرك تحديدًا موافقة صريحة ومنفصلة منك — مربع اختيار غير مُعلَّم عند إنشاء الحساب أو في صفحة حسابك. رفضه لا يؤثر في قدرتك على استخدام المنتج."
-    shareHeading: "المشاركة"
-    shareBody: "لا نبيع بياناتك الشخصية. نستخدم مزوّدي بنية تحتية (Supabase للمصادقة والتخزين، ومزوّد نموذج ذكاء اصطناعي لتوليد الإجابات) يعالجون البيانات نيابةً عنا، بموجب التزاماتهم الأمنية الخاصة، ولا لأغراضهم الخاصة أبدًا."
-    retentionHeading: "مدة الاحتفاظ بالبيانات"
-    retentionBody: "يُحتفَظ بحسابك ومحادثاتك طوال بقاء حسابك قائمًا. يمكنك حذف محادثات فردية أو جميعها في أي وقت من صفحة حسابك؛ حذف الحساب بالكامل ليس ذاتي الخدمة بعد — تواصل معنا إن احتجت ذلك."
-    rightsHeading: "حقوقك"
-    rightsIntro: "من صفحة حسابك، يمكنك:"
-    rightsAccess: "الاطلاع على معلومات ملفك الشخصي وتصحيحها في أي وقت."
-    rightsExport: "تنزيل نسخة كاملة من سجل محادثاتك كملف."
-    rightsDelete: "حذف محادثات فردية، أو جميعها دفعة واحدة."
-    rightsWithdraw: "سحب الموافقة على التسويق بسهولة منحها — دون أي حد لعدد المحاولات، ودون أن يُطلب منك تبرير ذلك."
-    securityHeading: "الأمان"
-    securityBody: "نستخدم التشفير أثناء النقل، وكلمات مرور مُجزَّأة، وضوابط وصول قائمة على الأدوار تحدّ من يرى ماذا داخل المؤسسة. لا يوجد نظام آمن تمامًا؛ إن شككت في اختراق حسابك، غيّر كلمة مرورك وسجّل الخروج من كل جلسة أخرى من صفحة حسابك."
-    contactHeading: "التواصل"
-    contactBody: "يمكن إرسال الأسئلة حول هذه السياسة، أو طلب لممارسة حق لم يُتَح بعد ذاتيًا، عبر قناة الدعم المعتادة للمنتج."
+    title: 'سياسة الخصوصية · مساعد الغذاء والدواء الذكي'
+    skipToContent: 'الانتقال إلى السياسة'
+    pageTitle: 'سياسة الاستخدام والخصوصية'
+    version: 'الإصدار'
+    draftHeading: 'مسودة — قيد المراجعة'
+    draftNotice: 'هذه السياسة مسودة أولى، كُتبت لوصف المنتج بصدق ريثما تُراجَع النسخة النهائية. لم تُعتمد بعد كنص قانوني ملزم للمنتج. إن بدا أي شيء هنا غير متسق مع سلوك المنتج الفعلي، فذلك خلل في هذه المسودة، لا في المنتج.'
+    scopeHeading: 'ما تغطيه هذه السياسة'
+    scopeBody: 'تصف هذه السياسة ما يجمعه مساعد الغذاء والدواء الذكي عنك، ولماذا، وما التحكم المتاح لك فيه. تغطي حسابك وملفك الشخصي والأسئلة التي تطرحها — لا الوثائق التنظيمية نفسها، فهي مصدر عام.'
+    collectHeading: 'ما الذي نجمعه'
+    collectIntro: 'حسب طريقة استخدامك للمنتج، نجمع:'
+    collectAccount: 'بريدك الإلكتروني وكلمة مرورك، لتسجيل دخولك. لا تُخزَّن كلمة مرورك أبدًا بصيغة يمكننا قراءتها — يخزّن مزوّد المصادقة GoTrue بصمة مُملَّحة لها فقط.'
+    collectProfile: 'تفاصيل الملف الشخصي التي تختار إضافتها — الاسم الأول واسم العائلة والجهة والتخصص — وعمرك فقط إن وافقت على ذلك بشكل منفصل.'
+    collectQuestions: 'الأسئلة التي تطرحها والإجابات التي تتلقاها، تُخزَّن لتتمكن من العودة إلى محادثة لاحقًا. لا تُدخل في مربع المحادثة معرّفات مرضى أو بيانات مشاركين في تجارب سريرية أو أي مواد سرية أخرى — انظر التنويه الظاهر داخل التطبيق نفسه.'
+    collectTechnical: 'بيانات تقنية اعتيادية تجمعها أي خدمة ويب — سجلات الطلبات وتقارير الأخطاء — تُستخدم فقط لإبقاء المنتج يعمل وآمنًا.'
+    useHeading: 'كيف نستخدمها'
+    useIntro: 'نستخدم ما نجمعه من أجل:'
+    useOperate: 'تشغيل المنتج: مصادقتك، والإجابة عن أسئلتك، وعرض سجل محادثاتك الخاص بك.'
+    useImprove: 'فهم المنتج وتحسينه بشكل إجمالي — لا لعزل نشاط شخص بعينه لغرض لم توافق عليه.'
+    useMarketing: 'التواصل معك بخصوص المنتج أو إخبارك كيف تساعدنا معلوماتك على فهم مستخدميه — فقط إن وافقت على ذلك بشكل منفصل.'
+    useMarketingConsent: 'يتطلب الاستخدام التسويقي لمعلومات ملفك الشخصي وعمرك تحديدًا موافقة صريحة ومنفصلة منك — مربع اختيار غير مُعلَّم عند إنشاء الحساب أو في صفحة حسابك. رفضه لا يؤثر في قدرتك على استخدام المنتج.'
+    shareHeading: 'المشاركة'
+    shareBody: 'لا نبيع بياناتك الشخصية. نستخدم مزوّدي بنية تحتية (Supabase للمصادقة والتخزين، ومزوّد نموذج ذكاء اصطناعي لتوليد الإجابات) يعالجون البيانات نيابةً عنا، بموجب التزاماتهم الأمنية الخاصة، ولا لأغراضهم الخاصة أبدًا.'
+    retentionHeading: 'مدة الاحتفاظ بالبيانات'
+    retentionBody: 'نحتفظ بحسابك ومحادثاتك ما دام حسابك قائمًا. يمكنك حذف محادثة واحدة أو جميع محادثاتك في أي وقت من صفحة حسابك، كما يمكنك طلب حذف حسابك بالكامل بنفسك. عند طلب الحذف تبدأ فترة سماح مدتها 30 يومًا يظل حسابك خلالها متاحًا للاستخدام بشكل كامل، فيمكنك تسجيل الدخول واستخدام المحادثات وقراءتها وتصديرها وتعديل ملفك الشخصي وإلغاء طلب الحذف في أي وقت. الاستثناء الوحيد هو أنه لن يكون بإمكانك منح موافقة تسويقية جديدة أثناء انتظار الحذف. بعد انتهاء فترة السماح تُحذف محادثاتك نهائيًا، ثم تُحذف بيانات تسجيل الدخول وملفك الشخصي.'
+    retentionBodyNoSelfServe: 'يُحتفَظ بحسابك ومحادثاتك ما دام حسابك قائمًا. يمكنك حذف محادثة واحدة أو جميع محادثاتك في أي وقت من صفحة حسابك. أما حذف الحساب بالكامل فليس متاحًا ذاتيًا حاليًا؛ لطلب ذلك، تواصل معنا عبر قناة الدعم المعتادة للمنتج.'
+    retentionStaysHeading: 'ما الذي قد يبقى بعد الحذف؟'
+    retentionStaysBody: 'حتى بعد حذف حسابك تبقى بعض الآثار المحدودة لأغراض إدارية أو تقنية. تبقى السجلات الإدارية المنشأة قبل الحذف، وقد تتضمّن عنوان بريد إلكتروني: فتغيير المشغّل لعنوان بريد حساب يسجّل العنوان القديم والجديد إلى جانب معرّف الحساب في سجل تدقيق لا يُحذف منه شيء. ويبقى سجل طلب الحذف الذي لا يتضمّن سوى معرّف الحساب وطوابع زمنية، وتبقى سجلات التنبيهات بمعرّف الحساب إلى جانب رسالة المشغّل. ولا يصل هذا الحذف إلى النسخ الاحتياطية، ولا توجد لها مدة احتفاظ معلنة. وقد يحتفظ مزوّد نموذج الذكاء الاصطناعي بالموجّهات المرسلة إليه وفق سياسته الخاصة. وتبقى سجلات الخادم، بما فيها مسارات الوصول إلى المحادثات. أما نافذة المحادثة المحفوظة في ذاكرة الخادم فتُمسح عند إعادة تشغيل عملية الخادم، لا لحظة حذف الحساب. ولا يجمع أرشيف الأبحاث أي بيانات ما دامت مفاتيحه غير مفعّلة.'
+    rightsHeading: 'حقوقك'
+    rightsIntro: 'من صفحة حسابك، يمكنك:'
+    rightsAccess: 'الاطلاع على معلومات ملفك الشخصي وتصحيحها في أي وقت.'
+    rightsExport: 'تنزيل نسخة كاملة من سجل محادثاتك كملف.'
+    rightsDelete: 'حذف محادثة واحدة أو جميع المحادثات دفعة واحدة، أو حذف حسابك بالكامل. عند حذف الحساب تبدأ فترة سماح مدتها 30 يومًا يمكنك خلالها إلغاء الطلب.'
+    rightsDeleteNoSelfServe: 'حذف محادثة واحدة أو جميع المحادثات دفعة واحدة.'
+    rightsWithdraw: 'سحب الموافقة على التسويق بسهولة منحها — دون أي حد لعدد المحاولات، ودون أن يُطلب منك تبرير ذلك.'
+    securityHeading: 'الأمان'
+    securityBody: 'نستخدم التشفير أثناء النقل، وكلمات مرور مُجزَّأة، وضوابط وصول قائمة على الأدوار تحدّ من يرى ماذا داخل المؤسسة. لا يوجد نظام آمن تمامًا؛ إن شككت في اختراق حسابك، غيّر كلمة مرورك وسجّل الخروج من كل جلسة أخرى من صفحة حسابك.'
+    contactHeading: 'التواصل'
+    contactBody: 'يمكن إرسال الأسئلة حول هذه السياسة، أو طلب لممارسة حق لم يُتَح بعد ذاتيًا، عبر قناة الدعم المعتادة للمنتج.'
 
   chat:
-    quotaCounterAria: "الأسئلة المتبقية اليوم"
-    welcomeLead: "مرحباً بك في"
-    welcomeRest: "! مساعدك الذكي للأنظمة الدوائية في المملكة العربية السعودية. يمكنك:"
-    bullet1: "طرح أسئلة محددة حول المتطلبات التنظيمية"
-    bullet2: "اختيار فئة لتركيز البحث"
-    bullet3: "الضغط على أزرار الأسئلة الشائعة"
-    cutoff: "يقدّم المساعد إرشادات تنظيمية استناداً إلى الأدلة الرسمية للهيئة السارية حتى أغسطس 2026. للاطلاع على أحدث التحديثات التنظيمية بعد ذلك التاريخ، يرجى مراجعة الموقع الرسمي للهيئة."
-    prompt: "كيف يمكنني مساعدتك اليوم؟"
-    newChat: "محادثة جديدة"
-    newChatTitle: "بدء محادثة جديدة"
-    searchIn: "البحث في:"
-    inputPlaceholder: "اسأل عن أنظمة الهيئة العامة للغذاء والدواء..."
-    inputAria: "حقل إدخال الرسالة"
-    send: "إرسال"
-    sendAria: "إرسال الرسالة"
+    quotaCounterAria: 'الأسئلة المتبقية اليوم'
+    welcomeLead: 'مرحباً بك في'
+    welcomeRest: '! مساعدك الذكي للأنظمة الدوائية في المملكة العربية السعودية. يمكنك:'
+    bullet1: 'طرح أسئلة محددة حول المتطلبات التنظيمية'
+    bullet2: 'اختيار فئة لتركيز البحث'
+    bullet3: 'الضغط على أزرار الأسئلة الشائعة'
+    cutoff: 'يقدّم المساعد إرشادات تنظيمية استناداً إلى الأدلة الرسمية للهيئة السارية حتى أغسطس 2026. للاطلاع على أحدث التحديثات التنظيمية بعد ذلك التاريخ، يرجى مراجعة الموقع الرسمي للهيئة.'
+    prompt: 'كيف يمكنني مساعدتك اليوم؟'
+    newChat: 'محادثة جديدة'
+    newChatTitle: 'بدء محادثة جديدة'
+    searchIn: 'البحث في:'
+    inputPlaceholder: 'اسأل عن أنظمة الهيئة العامة للغذاء والدواء...'
+    inputAria: 'حقل إدخال الرسالة'
+    send: 'إرسال'
+    sendAria: 'إرسال الرسالة'
 
   categories:
-    aria: "فئة البحث"
-    all: "جميع الفئات"
-    regulatory: "التنظيمية"
-    pharmacovigilance: "التيقظ الدوائي"
-    veterinary: "الأدوية البيطرية"
-    biological: "المنتجات الحيوية"
+    aria: 'فئة البحث'
+    all: 'جميع الفئات'
+    regulatory: 'التنظيمية'
+    pharmacovigilance: 'التيقظ الدوائي'
+    veterinary: 'الأدوية البيطرية'
+    biological: 'المنتجات الحيوية'
 
   # وحدة تحكم المشغّل. عناصر مُصيَّرة من الخادم فقط — مفاتيح page.* لا تصل إلى
   # المتصفح، لذا أي نص يرسمه جافاسكربت يوضع تحت runtime.admin بدلاً من هنا.
   admin:
-    tiersHint: "الفئة مجموعة من القرّاء يتشاركون رصيدًا يوميًا واحدًا. تسري التغييرات عند السؤال التالي لكل قارئ."
-    title: "الإدارة · مساعد الهيئة"
-    consoleLabel: "الإدارة"
-    skipToContent: "تخطَّ إلى وحدة التحكم"
-    backToChat: "العودة إلى المحادثة"
-    checking: "جارٍ التحقق من صلاحيتك…"
-    sectionsAria: "أقسام وحدة التحكم"
+    tiersHint: 'الفئة مجموعة من القرّاء يتشاركون رصيدًا يوميًا واحدًا. تسري التغييرات عند السؤال التالي لكل قارئ.'
+    title: 'الإدارة · مساعد الهيئة'
+    consoleLabel: 'الإدارة'
+    skipToContent: 'تخطَّ إلى وحدة التحكم'
+    backToChat: 'العودة إلى المحادثة'
+    checking: 'جارٍ التحقق من صلاحيتك…'
+    sectionsAria: 'أقسام وحدة التحكم'
     tabs:
-      overview: "نظرة عامة"
-      settings: "الإعدادات"
-      people: "المستخدمون"
-      audit: "النشاط"
-      notifications: "الإشعارات"
-      tiers: "الفئات"
-    searchLabel: "البحث بالبريد الإلكتروني"
+      overview: 'نظرة عامة'
+      settings: 'الإعدادات'
+      people: 'المستخدمون'
+      audit: 'النشاط'
+      notifications: 'الإشعارات'
+      tiers: 'الفئات'
+      deletions: 'عمليات الحذف'
+    searchLabel: 'البحث بالبريد الإلكتروني'

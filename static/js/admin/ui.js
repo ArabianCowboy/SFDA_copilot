@@ -26,6 +26,7 @@ const TABS = [
   { tab: 'tab-settings', panel: 'panel-settings' },
   { tab: 'tab-people', panel: 'panel-people' },
   { tab: 'tab-tiers', panel: 'panel-tiers' },
+  { tab: 'tab-deletions', panel: 'panel-deletions' },
   { tab: 'tab-audit', panel: 'panel-audit' },
   { tab: 'tab-notifications', panel: 'panel-notifications' },
 ];
@@ -909,6 +910,7 @@ const ACTION_KEYS = {
   'tier.delete': 'admin.audit.actionTierDelete',
   'user.tier_change': 'admin.audit.actionUserTierChange',
   'user.quota_override_change': 'admin.audit.actionQuotaOverrideChange',
+  'user.deletion_reconcile': 'admin.audit.actionDeletionReconcile',
 };
 
 function describeAction(action) {
@@ -1023,6 +1025,114 @@ export function renderAudit(entries, { append = false } = {}) {
     row.append(when, who, what, change, note);
     tbody.appendChild(row);
   });
+}
+
+/* ── Deletions ─────────────────────────────────────────────────────────── */
+
+/**
+ * The deletion-saga ledger, one row per account being deleted.
+ *
+ * UUIDs, states and timestamps only — the server never sends an email, IP or
+ * user agent for these rows (decision D3), so there is nothing here that
+ * could identify the reader behind the uuid, and nothing is rendered that
+ * the response did not carry. Timestamps and the attempt count are
+ * machine-reported facts: mono and LTR even under `dir="rtl"`, the same
+ * shape `renderAudit` uses for its own `when` cell.
+ */
+const TERMINAL_DELETION_STATES = new Set(['completed', 'cancelled']);
+
+export function renderDeletions(rows) {
+  const body = el('deletions-body');
+  if (!body) return;
+  body.textContent = '';
+
+  const hint = document.createElement('p');
+  hint.className = 'admin-form-hint';
+  hint.textContent = I18n.t('admin.deletions.hint');
+  body.appendChild(hint);
+
+  if (!rows || !rows.length) {
+    const empty = document.createElement('p');
+    empty.className = 'admin-empty';
+    empty.textContent = I18n.t('admin.deletions.empty');
+    body.appendChild(empty);
+    return;
+  }
+
+  const table = document.createElement('table');
+  table.className = 'admin-table';
+  table.id = 'deletions-table';
+  const head = document.createElement('thead');
+  const headRow = document.createElement('tr');
+  [
+    'columnAccount',
+    'columnState',
+    'columnRequested',
+    'columnGrace',
+    'columnAttempts',
+    'columnLastError',
+  ].forEach((key) => {
+    const th = document.createElement('th');
+    th.scope = 'col';
+    th.textContent = I18n.t(`admin.deletions.${key}`);
+    headRow.appendChild(th);
+  });
+  const actionsTh = document.createElement('th');
+  actionsTh.scope = 'col';
+  actionsTh.textContent = I18n.t('admin.deletions.columnActions');
+  headRow.appendChild(actionsTh);
+  head.appendChild(headRow);
+  table.append(head);
+
+  const tbody = document.createElement('tbody');
+  for (const saga of rows) {
+    const row = document.createElement('tr');
+    row.dataset.deletionUserId = saga.user_id;
+
+    const account = document.createElement('td');
+    account.append(machineValue(saga.user_id || '—'));
+    row.append(account);
+
+    const state = document.createElement('td');
+    state.textContent = saga.state || '—';
+    row.append(state);
+
+    for (const value of [saga.requested_at, saga.grace_until]) {
+      const td = document.createElement('td');
+      td.append(machineValue(value || '—'));
+      row.append(td);
+    }
+
+    const attempts = document.createElement('td');
+    attempts.append(machineValue(String(saga.attempt_count ?? 0)));
+    row.append(attempts);
+
+    const error = document.createElement('td');
+    // A DL-code from the ledger's own vocabulary, never a message (a raw
+    // provider message can carry an email or an IP — 07's header).
+    error.append(machineValue(saga.last_error_code || '—'));
+    row.append(error);
+
+    const actions = document.createElement('td');
+    if (!TERMINAL_DELETION_STATES.has(saga.state)) {
+      const reconcile = document.createElement('button');
+      reconcile.type = 'button';
+      reconcile.className = 'btn btn-sm btn-ghost admin-row-action';
+      reconcile.dataset.deletionAction = 'reconcile';
+      reconcile.textContent = I18n.t('admin.deletions.reconcile');
+      const group = document.createElement('div');
+      group.className = 'admin-row-actions';
+      group.append(reconcile);
+      actions.append(group);
+    } else {
+      actions.textContent = '—';
+    }
+    row.append(actions);
+
+    tbody.append(row);
+  }
+  table.append(tbody);
+  body.append(table);
 }
 
 /**

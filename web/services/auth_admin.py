@@ -143,6 +143,28 @@ class AuthAdminDispatcher(Protocol):
 
     def change_email(self, user_id: str, new_email: str) -> None: ...
 
+    def delete_user(self, user_id: str) -> None:
+        """Delete the GoTrue user outright. A provider ``user_not_found``
+        (``no_such_account``) is SUCCESS, not failure — the user is gone,
+        which is the goal — so it returns normally instead of raising."""
+
+    def sign_out_all(self, jwt: str) -> None:
+        """Revoke every session of the user that JWT belongs to, without
+        touching the password and without banning. Takes the SESSION JWT,
+        not a user id: the pinned SDK's ``sign_out(jwt, scope)`` revokes by
+        presented token, and there is no admin call that signs out by id
+        alone. The caller passes the requesting session's token (Flask holds
+        it as ``session["supabase_access_token"]``) — global scope then kills
+        every refresh token of that account, including a thief's, while the
+        real owner signs in again with the password they still know."""
+
+    def user_exists(self, user_id: str) -> bool:
+        """True while GoTrue admin get-by-id still returns the user. A
+        provider ``user_not_found`` is ``False``; any other failure raises
+        :class:`AuthAdminRefused` (ambiguous when the transport may already
+        have committed). Service_role reaches ``auth.users`` nowhere, so
+        this — never a SQL read — is the "is this user really gone?" check."""
+
 
 class SupabaseAuthAdminDispatcher:
     """The real one: ``auth.admin.*`` through the service-role client."""
@@ -175,6 +197,44 @@ class SupabaseAuthAdminDispatcher:
             logger.warning("email change refused (%s%s)", code, " ambiguous" if ambiguous else "")
             raise AuthAdminRefused(code, str(exc), ambiguous=ambiguous) from exc
 
+    def delete_user(self, user_id: str) -> None:
+        try:
+            self._client.auth.admin.delete_user(user_id)
+        except Exception as exc:
+            code, ambiguous = classify_admin_failure(exc)
+            if code == "no_such_account":
+                # The user is gone, which is the goal — not a failure. (The
+                # saga's record_auth_outcome treats it the same way from the
+                # SQL side; both halves must agree or a completed deletion
+                # flips to failed.)
+                logger.info("user %s already gone at delete time", user_id)
+                return
+            logger.warning("user deletion refused (%s%s)", code, " ambiguous" if ambiguous else "")
+            raise AuthAdminRefused(code, str(exc), ambiguous=ambiguous) from exc
+
+    def sign_out_all(self, jwt: str) -> None:
+        try:
+            self._client.auth.admin.sign_out(jwt, scope="global")
+        except Exception as exc:
+            code, ambiguous = classify_admin_failure(exc)
+            logger.warning(
+                "global sign-out refused (%s%s)", code, " ambiguous" if ambiguous else ""
+            )
+            raise AuthAdminRefused(code, str(exc), ambiguous=ambiguous) from exc
+
+    def user_exists(self, user_id: str) -> bool:
+        try:
+            self._client.auth.admin.get_user_by_id(user_id)
+            return True
+        except Exception as exc:
+            code, ambiguous = classify_admin_failure(exc)
+            if code == "no_such_account":
+                return False
+            logger.warning(
+                "existence check refused (%s%s)", code, " ambiguous" if ambiguous else ""
+            )
+            raise AuthAdminRefused(code, str(exc), ambiguous=ambiguous) from exc
+
 
 class InMemoryAuthAdminDispatcher:
     """Records calls instead of making them. Serves TESTING and
@@ -191,6 +251,8 @@ class InMemoryAuthAdminDispatcher:
         self._users = users if users is not None else []
         self.revoked: list[str] = []
         self.changed: list[dict] = []
+        self.deleted: list[str] = []
+        self.signed_out: list[str] = []
         self.refuse_with: str | None = None
         self.refuse_ambiguous: bool = False
 
@@ -199,6 +261,18 @@ class InMemoryAuthAdminDispatcher:
             raise AuthAdminRefused(
                 self.refuse_with, "refused by test double", ambiguous=self.refuse_ambiguous
             )
+
+    def _refuse_if_configured_swallow_not_found(self) -> None:
+        """Like :meth:`_refuse_if_configured`, but a configured
+        ``no_such_account`` is success — mirroring the real
+        :meth:`SupabaseAuthAdminDispatcher.delete_user`, where an already-gone
+        user is the goal rather than a failure."""
+        try:
+            self._refuse_if_configured()
+        except AuthAdminRefused as exc:
+            if exc.code == "no_such_account":
+                return
+            raise
 
     def revoke_sessions(self, user_id: str) -> None:
         self._refuse_if_configured()
@@ -215,6 +289,19 @@ class InMemoryAuthAdminDispatcher:
             # dispatcher does not touch) is left exactly as stale as it
             # really is against the real provider.
             row["email_identity_verified"] = False
+
+    def delete_user(self, user_id: str) -> None:
+        self._refuse_if_configured_swallow_not_found()
+        self.deleted.append(user_id)
+        self._users[:] = [r for r in self._users if r["id"] != user_id]
+
+    def sign_out_all(self, jwt: str) -> None:
+        self._refuse_if_configured()
+        self.signed_out.append(jwt)
+
+    def user_exists(self, user_id: str) -> bool:
+        self._refuse_if_configured()
+        return any(r["id"] == user_id for r in self._users)
 
 
 _client: Client | None = None

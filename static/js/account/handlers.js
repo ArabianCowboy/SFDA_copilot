@@ -35,6 +35,16 @@ import {
   showConsentState,
   showConsentSaved,
   showConsentError,
+  showDeletionPending,
+  showDeletionInProgress,
+  showDeletionForm,
+  showDeletionAdminNote,
+  setDeletionSaving,
+  setDeletionCancelling,
+  showDeletionError,
+  showDeletionRequested,
+  showDeletionCancelSaved,
+  showDeletionCancelError,
 } from './ui.js';
 
 const el = (id) => document.getElementById(id);
@@ -277,43 +287,41 @@ export function bindSignOutOthers() {
 /**
  * Wire the marketing-consent toggle — instant-apply, like theme/language,
  * matching docs/profile-refactor-plan.md §12.3's "withdrawal must be as
- * easy as granting". A direct browser->Postgres write under RLS
- * (Services.updateProfile, the same path the Identity form uses for its
- * own top-level columns), never a Flask route — which is also why this is
- * never rate-limited: there is no route in front of it to limit.
+ * easy as granting".
  *
- * Granting sends the policy version/language/surface the guard trigger
- * requires (profiles_set_marketing_consent_record); withdrawing sends only
- * `marketing_consent: false` and, if the reader also ticked "also clear my
- * age", `age: null` in the same write — never a mandate, per T9.
+ * Granting goes through `POST /account/api/consent/grant`
+ * (Services.grantMarketingConsent), so the policy version is stamped
+ * server-side — the browser no longer sends `marketing_consent_policy_version`
+ * at all. Withdrawing goes browser-direct to `update_own_marketing_consent`
+ * (Services.withdrawMarketingConsent), which is withdrawal-only by
+ * construction and stays reachable for a disabled account past the frozen
+ * profiles UPDATE policy; the "also clear my age" offer rides that RPC's
+ * `p_clear_age` parameter rather than a second write — never a mandate, per
+ * T9. A disabled account may never grant: the grant route's `_gate` refuses
+ * it before the view runs.
  */
-export function bindConsentToggle(getUserId) {
+export function bindConsentToggle() {
   const toggle = el('consent-marketing-toggle');
   if (!toggle) return;
 
   toggle.addEventListener('change', async () => {
-    const userId = getUserId();
-    if (!userId) return;
-
     const granted = toggle.checked;
     showConsentState(granted);
     el('consent-saved-note')?.setAttribute('hidden', '');
     el('consent-error')?.setAttribute('hidden', '');
 
-    const updates = granted
-      ? {
-          marketing_consent: true,
-          marketing_consent_policy_version: window.__POLICY_VERSION,
-          marketing_consent_language: I18n.lang,
-          marketing_consent_surface: 'account',
-        }
-      : {
-          marketing_consent: false,
-          ...(el('consent-clear-age')?.checked ? { age: null } : {}),
-        };
-
     try {
-      await Services.updateProfile(userId, updates);
+      if (granted) {
+        // `sessionRequest` resolves null (rather than throwing) when nobody
+        // is signed in — a null grant is a grant that never happened.
+        const result = await Services.grantMarketingConsent({
+          language: I18n.lang,
+          surface: 'account',
+        });
+        if (!result) throw new Error('Consent grant did not complete.');
+      } else {
+        await Services.withdrawMarketingConsent(el('consent-clear-age')?.checked === true);
+      }
       if (!granted && el('consent-clear-age')) el('consent-clear-age').checked = false;
       showConsentSaved();
     } catch (error) {
@@ -323,7 +331,14 @@ export function bindConsentToggle(getUserId) {
       // that was never recorded.
       toggle.checked = !granted;
       showConsentState(!granted);
-      showConsentError();
+      // DL007 (supabase/pending/14): the grant direction stays closed while
+      // a deletion saga is live. The reader is told why, not shown an
+      // outage — withdrawing stays available throughout.
+      showConsentError(
+        granted && error?.code === 'deletion_pending'
+          ? 'consentGrantPendingDeletion'
+          : 'consentFailed',
+      );
     }
   });
 }
@@ -388,4 +403,134 @@ export function bindDeleteAllConversations() {
       setDeleteAllSaving(false);
     }
   });
+}
+
+/**
+ * The saga states whose writes are frozen (supabase/pending/08's narrow
+ * predicate): the request form must not show again for these, and neither
+ * the cancel button nor the 30-day claim applies. Rendered as the
+ * deletion-in-progress view instead.
+ */
+const FROZEN_DELETION_STATES = new Set(['purging', 'auth_delete_begun', 'failed']);
+
+/**
+ * Wire self-serve account deletion (docs/account-and-trust-plan.md §3-M4/M5).
+ *
+ * The section opens by asking `/account/api/deletion` for the caller's own
+ * status: pending shows the grace banner (deadline + cancel), a frozen state
+ * shows the in-progress view (no form, no cancel, no 30-day claim), anything
+ * else shows the request form, and an administrator sees neither — the saga
+ * refuses them server-side (DL003) and the form would only invite a refusal.
+ *
+ * The request button arms only when the confirmation field holds the exact
+ * localized word the server rendered into `data-confirm-word` AND a password
+ * is present. Both are re-checked server-side — the arming is an affordance,
+ * not a gate — and the password is verified there as step-up, never logged
+ * (see web/api/account.py).
+ *
+ * While the self-serve deploy switch is off the server renders no deletion
+ * section at all; every lookup below then finds nothing and this returns
+ * before the status read, so no 404 noise is produced.
+ */
+export function bindDeletionSection({ isAdmin = false } = {}) {
+  const section = el('deletion-form') || el('deletion-pending') || el('deletion-inprogress');
+  if (!section) return;
+  const form = el('deletion-form');
+  const confirmInput = el('deletion-confirm');
+  const passwordInput = el('deletion-password');
+  const requestButton = el('deletion-request');
+  const cancelButton = el('deletion-cancel');
+
+  const expectedWord = confirmInput?.dataset.confirmWord || '';
+
+  const deriveArmed = () => {
+    if (!requestButton) return;
+    const wordOk = (confirmInput?.value.trim() || '') === expectedWord && expectedWord !== '';
+    const passwordOk = (passwordInput?.value || '') !== '';
+    requestButton.disabled = !(wordOk && passwordOk);
+  };
+
+  confirmInput?.addEventListener('input', deriveArmed);
+  passwordInput?.addEventListener('input', deriveArmed);
+
+  async function refresh() {
+    const status = await Services.getDeletionStatus().catch((error) => {
+      console.error('[SFDA Copilot account] deletion status failed', error);
+      // The form is already visible by default; only the banner needs a
+      // state. A failed status read leaves whatever is showing in place.
+      return null;
+    });
+    if (!status) return; // Signed out mid-click, or the read above failed.
+    if (isAdmin) {
+      showDeletionAdminNote();
+      return;
+    }
+    if (status.pending) {
+      showDeletionPending(status.grace_until);
+    } else if (FROZEN_DELETION_STATES.has(status.state)) {
+      showDeletionInProgress();
+    } else {
+      showDeletionForm();
+      deriveArmed();
+    }
+  }
+
+  form?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const confirmation = confirmInput?.value.trim() || '';
+    const password = passwordInput?.value || '';
+    if (!confirmation || !password) return;
+
+    setDeletionSaving(true);
+    el('deletion-note')?.setAttribute('hidden', '');
+    el('deletion-error')?.setAttribute('hidden', '');
+    try {
+      const result = await Services.requestAccountDeletion({ password, confirmation });
+      if (passwordInput) passwordInput.value = '';
+      // A replay of an already-in-progress (frozen) saga returns the row
+      // without re-running sign-out (web/api/account.py): the 30-day
+      // "requested" toast would be a lie for that state, so refresh into
+      // the in-progress view with no toast instead.
+      if (!result || result.state === 'pending' || !FROZEN_DELETION_STATES.has(result.state)) {
+        showDeletionRequested();
+      }
+      await refresh();
+    } catch (error) {
+      console.error('[SFDA Copilot account] deletion request failed', error);
+      showDeletionError(mapDeletionError(error, 'request'));
+    } finally {
+      setDeletionSaving(false);
+      deriveArmed();
+    }
+  });
+
+  // Cancelling restores nothing and destroys nothing, so it is one click
+  // with no confirm dialog — the safe direction needs no second gate.
+  cancelButton?.addEventListener('click', async () => {
+    setDeletionCancelling(true);
+    el('deletion-cancel-note')?.setAttribute('hidden', '');
+    el('deletion-cancel-error')?.setAttribute('hidden', '');
+    try {
+      await Services.cancelAccountDeletion();
+      showDeletionCancelSaved();
+      await refresh();
+    } catch (error) {
+      console.error('[SFDA Copilot account] deletion cancel failed', error);
+      showDeletionCancelError(mapDeletionError(error, 'cancel'));
+    } finally {
+      setDeletionCancelling(false);
+    }
+  });
+
+  refresh();
+}
+
+/** The server's machine code for a deletion failure, to a runtime string key. */
+function mapDeletionError(error, kind) {
+  const code = error?.code;
+  if (code === 'step_up_failed') return 'deletionStepUpFailed';
+  if (code === 'deletion_unavailable_for_admin') return 'deletionAdminRefused';
+  if (code === 'already_deleted') return 'deletionAlreadyDeleted';
+  if (code === 'cancel_unavailable') return 'deletionCancelUnavailable';
+  return kind === 'cancel' ? 'deletionCancelFailed' : 'deletionRequestFailed';
 }

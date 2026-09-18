@@ -64,6 +64,8 @@ export function createClient() {
     authCallback: null,
     lastProfileUpdate: null,
     lastPreferencesPatch: null,
+    lastConsentWithdraw: null,
+    consentWithdrawError: null,
     lastSignUpMetadata: null,
     sessionError: null,
     sessionErrorOnce: null,   // getSession() returns this error ONCE, then behaves normally
@@ -212,11 +214,25 @@ export function createClient() {
       };
       return query;
     },
-    /* Only the one RPC the account page actually calls. Merges into
-       state.profile.preferences, mirroring update_own_preferences'
-       real semantics (profile_preferences_merge_rpc.sql) rather than the
-       upsert's replace-the-whole-object behaviour. */
+    /* The two RPCs the account page actually calls. `update_own_preferences`
+       merges into state.profile.preferences, mirroring that function's real
+       semantics (profile_preferences_merge_rpc.sql) rather than the upsert's
+       replace-the-whole-object behaviour. `update_own_marketing_consent`
+       records a withdrawal, mirroring the withdrawal-only RPC's real effect
+       (consent false, plus age cleared when p_clear_age rides along). */
     async rpc(name, params) {
+      if (name === 'update_own_marketing_consent') {
+        if (state.consentWithdrawError) {
+          return { data: null, error: new Error(state.consentWithdrawError) };
+        }
+        state.lastConsentWithdraw = params ?? null;
+        state.profile = {
+          ...state.profile,
+          marketing_consent: false,
+          ...(params?.p_clear_age ? { age: null } : {}),
+        };
+        return { data: null, error: null };
+      }
       if (name !== 'update_own_preferences') {
         return { data: null, error: new Error(`unmocked rpc: ${name}`) };
       }

@@ -10,38 +10,38 @@
 
 runtime:
   chat:
-    send: "Send"                                        # frozen
-    cancel: "Cancel"
-    sendAria: "Send message"                            # frozen
-    cancelAria: "Cancel message"                         # frozen
-    sendFailed: "Failed to send message."                # frozen
+    send: 'Send' # frozen
+    cancel: 'Cancel'
+    sendAria: 'Send message' # frozen
+    cancelAria: 'Cancel message' # frozen
+    sendFailed: 'Failed to send message.' # frozen
     # Distinct from sendFailed on purpose: the answer above this toast is
     # complete and correctly cited. What did not happen is the filing.
-    notSaved: "This answer could not be saved to your history."
-    cancelled: "Chat request cancelled."                 # frozen
+    notSaved: 'This answer could not be saved to your history.'
+    cancelled: 'Chat request cancelled.' # frozen
     # Distinct from sessions.busy: this guards a second question (FAQ,
     # suggested chip) fired while one is already streaming, not a conversation
     # switch. Refusing silently there read as a dead button — see harden pass.
-    busy: "Wait for the current answer to finish before asking another question."
-    loginRequired: "Please log in to chat with the AI."  # frozen
-    sessionUnverified: "Unable to verify your session. Please try again."  # frozen
-    genericError: "Sorry, I encountered an error while processing your request. Please try again."  # frozen (prefix)
-    invalidResponse: "Invalid response format from AI service."
-    stopped: "Stopped"
-    incomplete: "Answer incomplete — something went wrong"
+    busy: 'Wait for the current answer to finish before asking another question.'
+    loginRequired: 'Please log in to chat with the AI.' # frozen
+    sessionUnverified: 'Unable to verify your session. Please try again.' # frozen
+    genericError: 'Sorry, I encountered an error while processing your request. Please try again.' # frozen (prefix)
+    invalidResponse: 'Invalid response format from AI service.'
+    stopped: 'Stopped'
+    incomplete: 'Answer incomplete — something went wrong'
     # A `length` finish on the `done` frame. Its OWN words, not `incomplete`:
     # nothing went wrong — the model reached the configured ceiling — and
     # "something went wrong" would send the reader retrying an identical
     # question into an identical ceiling instead of narrowing it.
-    truncated: "Answer cut short — the length limit was reached"
-    askPrefix: "Ask: {question}"
-    jumpToLatest: "Jump to latest"
-    jumpToLatestAria: "Scroll to the latest message"
+    truncated: 'Answer cut short — the length limit was reached'
+    askPrefix: 'Ask: {question}'
+    jumpToLatest: 'Jump to latest'
+    jumpToLatestAria: 'Scroll to the latest message'
     # "New chat" is a client-side navigation to `/` now (Decision 2 of
     # docs/archive/2026-08-22_per-tab-deep-linking.md); Back is the undo, so
     # there is no undo action, no restored/resetFailed/restoreFailed string,
     # and no resumed-conversation disclosure to catalogue here any more.
-    cleared: "Conversation cleared"
+    cleared: 'Conversation cleared'
     # The daily allowance (docs/reader-quota-plan.md §6). {limit} is ALWAYS
     # interpolated, never written into the string: the tier limit is
     # operator-editable from the console, so a hardcoded number would rot
@@ -49,13 +49,13 @@ runtime:
     quota:
       title: "Today's questions are used up."
       body: "You've asked all {limit} of today's questions. Your allowance resets at {resets_at}."
-      dismiss: "Dismiss"
-      counter: "{remaining} of {limit} questions left today · resets {resets_at}"
-      counterOne: "1 question left today · resets {resets_at}"
+      dismiss: 'Dismiss'
+      counter: '{remaining} of {limit} questions left today · resets {resets_at}'
+      counterOne: '1 question left today · resets {resets_at}'
     # Distinct from an empty transcript on purpose. Rendering nothing would
     # claim the reader has no stored history; this says the history could not
     # be read, which is a different fact.
-    historyUnavailable: "Your conversation history could not be loaded."
+    historyUnavailable: 'Your conversation history could not be loaded.'
     # THE DURABLE-HISTORY DISCLOSURE. Shown once per reader per device.
     #
     # Before hydration shipped, the transcript died with the tab, so saying
@@ -78,36 +78,36 @@ runtime:
     # It says "from the sidebar" rather than "in Settings" because that is where
     # the control is, and a disclosure that sends the reader to the wrong place
     # is only marginally better than one that names no place at all.
-    historyNotice: "Your chats are saved to your account. They restore on any device. Signing out does not delete them, and neither does starting a new chat — delete a conversation from the sidebar to remove it."
+    historyNotice: 'Your chats are saved to your account. They restore on any device. Signing out does not delete them, and neither does starting a new chat — delete a conversation from the sidebar to remove it.'
     # Not only PII. The realistic risk on this product is not a patient
     # identifier — it is a regulatory professional pasting an unpublished
     # dossier, submission correspondence, or a product plan into a free-text
     # box. The warning has to name that, or it reads as boilerplate about
     # somebody else's problem.
-    historyNoticeWarning: "Do not enter patient identifiers, clinical-trial subject data, personal information, or confidential or proprietary material."
-    historyNoticeDismiss: "Dismiss"
+    historyNoticeWarning: 'Do not enter patient identifiers, clinical-trial subject data, personal information, or confidential or proprietary material.'
+    historyNoticeDismiss: 'Dismiss'
 
     # ── Notification Center (reader) ──────────────────────────────────────
     # docs/notification-center-plan.md. Nested under chat.* rather than a new
     # top-level runtime namespace — test_admin_page.py pins the top-level
     # runtime.* set to 11 names and notifications is not one of them.
     notifications:
-      bellAria: "Notifications"
-      unreadBadge: "{count} unread"
-      inboxTitle: "Notifications"
-      inboxEmpty: "No notifications yet."
-      inboxUnavailable: "Notifications could not be loaded."
-      loadMore: "Load more"
-      markAllRead: "Mark all as read"
-      markAllReadFailed: "Could not mark all notifications as read."
-      markReadFailed: "Could not update that notification."
-      dismiss: "Dismiss"
+      bellAria: 'Notifications'
+      unreadBadge: '{count} unread'
+      inboxTitle: 'Notifications'
+      inboxEmpty: 'No notifications yet.'
+      inboxUnavailable: 'Notifications could not be loaded.'
+      loadMore: 'Load more'
+      markAllRead: 'Mark all as read'
+      markAllReadFailed: 'Could not mark all notifications as read.'
+      markReadFailed: 'Could not update that notification.'
+      dismiss: 'Dismiss'
       # The modal's explicit action only — never implied by Escape or a
       # backdrop click, which snooze the modal for this browser session
       # without recording an acknowledgement.
-      acknowledge: "Got it"
-      loadFailed: "Notifications could not be loaded."
-      bannerDismiss: "Dismiss"
+      acknowledge: 'Got it'
+      loadFailed: 'Notifications could not be loaded.'
+      bannerDismiss: 'Dismiss'
 
   # ── The conversation sidebar (step 8) ───────────────────────────────────
   # Every string the list draws at runtime. The group headings are catalogue
@@ -118,760 +118,804 @@ runtime:
   # string is stale by construction. Five fixed buckets are grammatical in both
   # scripts, need no plural rules, and say the same thing.
   sessions:
-    tabChats: "Chats"
-    tabFAQ: "FAQ"
+    tabChats: 'Chats'
+    tabFAQ: 'FAQ'
     # The tablist's own name. Screen readers announce it before the tabs, so it
     # has to say what the two tabs choose BETWEEN, not repeat one of them.
-    tabsAria: "Sidebar contents"
-    listAria: "Your conversations"
+    tabsAria: 'Sidebar contents'
+    listAria: 'Your conversations'
     # Shown for a conversation whose title is null — a session written before
     # first-turn titling shipped, or one whose name the reader cleared.
-    untitled: "Untitled conversation"
-    today: "Today"
-    yesterday: "Yesterday"
-    previous7: "Previous 7 days"
-    previous30: "Previous 30 days"
-    older: "Older"
-    loadMore: "Load more"
-    loading: "Loading your conversations…"
+    untitled: 'Untitled conversation'
+    today: 'Today'
+    yesterday: 'Yesterday'
+    previous7: 'Previous 7 days'
+    previous30: 'Previous 30 days'
+    older: 'Older'
+    loadMore: 'Load more'
+    loading: 'Loading your conversations…'
     # Distinct from `unavailable` on purpose, and the distinction is the same
     # one `historyUnavailable` already draws for the transcript: this says the
     # reader has no saved conversations, which is a claim about them. Making it
     # while the store is unreachable would be a quiet untruth.
-    empty: "No saved conversations yet."
-    emptyHint: "Ask a question and it will appear here."
-    unavailable: "Your conversations could not be loaded."
-    retry: "Try again"
+    empty: 'No saved conversations yet.'
+    emptyHint: 'Ask a question and it will appear here.'
+    unavailable: 'Your conversations could not be loaded.'
+    retry: 'Try again'
     # The row's own accessible name. The count travels because a title alone
     # cannot distinguish a conversation the reader abandoned after one question
     # from one they worked in all afternoon.
-    openAria: "Open conversation: {title}"
-    turns: "{count} messages"
-    turnsOne: "{count} message"
-    renameAria: "Rename: {title}"
-    renameLabel: "Conversation name"
-    renameSave: "Save name"
-    renameCancel: "Cancel renaming"
-    renamed: "Conversation renamed"
-    renameFailed: "That conversation could not be renamed."
-    deleteAria: "Delete: {title}"
+    openAria: 'Open conversation: {title}'
+    turns: '{count} messages'
+    turnsOne: '{count} message'
+    renameAria: 'Rename: {title}'
+    renameLabel: 'Conversation name'
+    renameSave: 'Save name'
+    renameCancel: 'Cancel renaming'
+    renamed: 'Conversation renamed'
+    renameFailed: 'That conversation could not be renamed.'
+    deleteAria: 'Delete: {title}'
     # An inline confirmation, not a modal. Deleting one row out of a list does
     # not need protected focus, and a dialog would take the reader out of the
     # column they are working in to answer a question about it.
-    deleteConfirm: "Delete this conversation?"
-    deleteConfirmYes: "Delete"
-    deleteConfirmNo: "Keep"
-    deleted: "Conversation deleted"
-    deleteFailed: "That conversation could not be deleted."
-    switchFailed: "That conversation could not be opened."
+    deleteConfirm: 'Delete this conversation?'
+    deleteConfirmYes: 'Delete'
+    deleteConfirmNo: 'Keep'
+    deleted: 'Conversation deleted'
+    deleteFailed: 'That conversation could not be deleted.'
+    switchFailed: 'That conversation could not be opened.'
     # Shown when the reader reaches for a sidebar control while an answer is
     # still arriving. It names the two ways out, because a disabled control that
     # does not say what would re-enable it is indistinguishable from a broken
     # one.
-    busy: "Wait for the answer to finish, or cancel it, before changing conversation."
+    busy: 'Wait for the answer to finish, or cancel it, before changing conversation.'
 
   stage:
-    searching: "Searching the guidelines"
-    retrieved: "Found {count} passages"
-    retrievedOne: "Found {count} passage"
-    drafting: "Drafting the answer"
-    finalizing: "Finishing up"
+    searching: 'Searching the guidelines'
+    retrieved: 'Found {count} passages'
+    retrievedOne: 'Found {count} passage'
+    drafting: 'Drafting the answer'
+    finalizing: 'Finishing up'
 
   robot:
-    idle: "Ready to help"                                # frozen
-    thinking: "Processing your question..."
+    idle: 'Ready to help' # frozen
+    thinking: 'Processing your question...'
     talking: "Here's what I found"
-    happy: "Great question!"
-    error: "Something went wrong"
-    searching: "Searching the guidelines..."
-    retrieved: "Reading the passages..."
-    draftingStatus: "Drafting the answer..."
-    finalizingStatus: "Finishing up..."
-    foundPassages: "Found {count} passages"
-    foundPassage: "Found {count} passage"
-    farewell: "See you in the chat"
+    happy: 'Great question!'
+    error: 'Something went wrong'
+    searching: 'Searching the guidelines...'
+    retrieved: 'Reading the passages...'
+    draftingStatus: 'Drafting the answer...'
+    finalizingStatus: 'Finishing up...'
+    foundPassages: 'Found {count} passages'
+    foundPassage: 'Found {count} passage'
+    farewell: 'See you in the chat'
 
   auth:
-    loggedInAs: "Logged in as: {email}"                  # frozen
-    notLoggedIn: "Not logged in"
-    invalidCredentials: "Incorrect email or password."   # frozen
-    accountDisabled: "Chat access for this account has been turned off. Contact your administrator if you think this is a mistake."
-    emailNotConfirmed: "Please confirm your email before logging in."
-    alreadyRegistered: "This email is already registered. Please log in."
-    invalidEmail: "Please provide a valid email address."
-    checkingStatus: "Checking status..."
-    servicesUnavailable: "Authentication services are not configured."
-    initFailed: "Failed to initialize core application services."
-    missingFields: "Please fill in both email and password."
+    loggedInAs: 'Logged in as: {email}' # frozen
+    notLoggedIn: 'Not logged in'
+    invalidCredentials: 'Incorrect email or password.' # frozen
+    accountDisabled: 'Chat access for this account has been turned off. Contact your administrator if you think this is a mistake.'
+    emailNotConfirmed: 'Please confirm your email before logging in.'
+    alreadyRegistered: 'This email address is already linked to an account. Please log in instead of creating a new one.'
+    invalidEmail: 'Please provide a valid email address.'
+    checkingStatus: 'Checking status...'
+    servicesUnavailable: 'Authentication services are not configured.'
+    initFailed: 'Failed to initialize core application services.'
+    missingFields: 'Please fill in both email and password.'
     # Registrations pause (docs/registrations-pause-plan.md). signupUnavailable
     # covers both `auth_unavailable` (could not check) and `provider_unavailable`
     # (the auth service itself did not answer) — a reader cannot act on the
     # difference, so both get the same "try again" framing.
-    signupDisabled: "New registrations are paused right now. If you already have an account, sign in above."
-    signupUnavailable: "We could not check whether registration is open. Please try again in a moment."
-    weakPassword: "That password was not accepted. Try a longer one."
-    signupFailed: "We could not create your account. Please try again."
+    signupDisabled: 'New registrations are paused right now. If you already have an account, sign in above.'
+    signupUnavailable: 'We could not check whether registration is open. Please try again in a moment.'
+    weakPassword: 'That password was not accepted. Try a longer one.'
+    signupFailed: 'We could not create your account. Please try again.'
     # Replaces a three-second toast that left a freshly-reset, empty form on
     # screen with no other signal. Names the address back so a typo is
     # visible while it can still be fixed cheaply.
     signupSent:
-      heading: "Check your email"
-      lead: "We sent a confirmation link to {email}. Open it to finish creating your account."
-      spam: "No email after a few minutes? Check your spam folder."
+      heading: 'Check your email'
+      lead: 'We sent a confirmation link to {email}. Open it to finish creating your account.'
+      spam: 'No email after a few minutes? Check your spam folder.'
     # Both of these map a GoTrue message that would otherwise reach the reader as
     # raw English. `emailUnavailable` also covers the signup rate limit, which is
     # the same ceiling surfacing on the adjacent form.
-    tooSoon: "You just asked for a link. Wait a minute before asking again — check your inbox and your spam folder in the meantime."
-    emailUnavailable: "We could not send the email just now. Nothing has changed on your account — please try again shortly."
+    tooSoon: 'You just asked for a link. Wait a minute before asking again — check your inbox and your spam folder in the meantime.'
+    emailUnavailable: 'We could not send the email just now. Nothing has changed on your account — please try again shortly.'
     # Nested under auth rather than a top-level `recovery` block: the inlined
     # catalogue's top-level keys are a closed allow-list, and a new one there
     # fails test_page_strings_never_reach_the_browser.
     recovery:
-      sent: "If that address has an account, a reset link is on its way."
-      contactAdmin: "Still not there? Contact your administrator."
-      mismatch: "The two passwords do not match."
-      saving: "Saving your new password..."
-      done: "Your password has been changed. Please sign in with it."
-      expired: "This link has expired or has already been used. Request a new one to try again."
-      failed: "We could not change your password. Please request a new link."
-      resendIn: "You can ask again in {count}s"
+      sent: 'If that address has an account, a reset link is on its way.'
+      contactAdmin: 'Still not there? Contact your administrator.'
+      mismatch: 'The two passwords do not match.'
+      saving: 'Saving your new password...'
+      done: 'Your password has been changed. Please sign in with it.'
+      expired: 'This link has expired or has already been used. Request a new one to try again.'
+      failed: 'We could not change your password. Please request a new link.'
+      resendIn: 'You can ask again in {count}s'
 
   profile:
-    loadFailed: "Failed to load your profile."
-    saveFailed: "Failed to save your profile."
-    saved: "Profile saved."
-    sessionExpired: "Your session seems to have expired. Please log out and log in again."
-    loginRequired: "Please log in to manage your profile."
+    loadFailed: 'Failed to load your profile.'
+    saveFailed: 'Failed to save your profile.'
+    saved: 'Profile saved.'
+    sessionExpired: 'Your session seems to have expired. Please log out and log in again.'
+    loginRequired: 'Please log in to manage your profile.'
     # /account's own runtime strings. Nested here rather than under a new
     # top-level `account` block: test_admin_page.py pins the inlined
     # runtime.* top-level keys to a closed set, and runtime_subset ships the
     # whole tree (minus `admin`) to every page — a new top-level block would
     # appear, unasked for, on the console too.
     account:
-      roleAdmin: "Administrator"
-      roleUser: "Reader"
-      tierFree: "Free"
-      tierStaff: "Staff"
-      quotaToday: "{used} of {limit} questions today"
-      quotaResets: "Resets {resets_at}"
-      quotaUntil: "{limit} questions a day until {date}"
-      standingEnabled: "Active"
-      standingDisabled: "Disabled"
-      conversationOne: "{count} conversation"
-      conversations: "{count} conversations"
-      identitySaving: "Saving…"
-      identitySaved: "Saved."
-      identitySaveFailed: "Could not save. Please try again."
-      preferencesSaved: "Saved."
-      preferencesSaveFailed: "Could not save. Please try again."
-      loadFailed: "Could not load your account. Please reload the page."
-      passwordSaving: "Changing your password…"
-      passwordSaved: "Your password has been changed."
+      roleAdmin: 'Administrator'
+      roleUser: 'Reader'
+      tierFree: 'Free'
+      tierStaff: 'Staff'
+      quotaToday: '{used} of {limit} questions today'
+      quotaResets: 'Resets {resets_at}'
+      quotaUntil: '{limit} questions a day until {date}'
+      standingEnabled: 'Active'
+      standingDisabled: 'Disabled'
+      conversationOne: '{count} conversation'
+      conversations: '{count} conversations'
+      identitySaving: 'Saving…'
+      identitySaved: 'Saved.'
+      identitySaveFailed: 'Could not save. Please try again.'
+      preferencesSaved: 'Saved.'
+      preferencesSaveFailed: 'Could not save. Please try again.'
+      loadFailed: 'Could not load your account. Please reload the page.'
+      passwordSaving: 'Changing your password…'
+      passwordSaved: 'Your password has been changed.'
       # GoTrue asked for a code before it would proceed — not a failure, the
       # form reveals the code field and waits.
-      passwordReauthSent: "We sent a verification code to your email. Enter it below and try again."
-      passwordErrorWeak: "That password does not meet the requirements above."
-      passwordErrorSame: "That is your current password. Choose a different one."
-      passwordErrorReauth: "That code was not right. Check your email for the latest one."
-      passwordErrorSession: "Your session has expired. Please sign in again."
-      passwordErrorGeneric: "Could not change your password. Please try again."
-      signOutOthersSaving: "Signing out other sessions…"
-      signOutOthersSaved: "Done. Other devices will be signed out as their sessions expire."
-      signOutOthersFailed: "Could not sign out other sessions. Please try again."
-      consentGranted: "Granted."
-      consentNotGranted: "Not granted."
-      consentSaved: "Saved."
-      consentFailed: "Could not save. Please try again."
-      exportPreparing: "Preparing your export…"
-      exportStarted: "Your download has started."
-      exportFailed: "Could not export your conversations. Please try again."
-      deleteAllConfirm: "Delete all conversations? This cannot be undone."
-      deleteAllSaving: "Deleting…"
-      deleteAllSaved: "All your conversations have been deleted."
-      deleteAllInFlight: "An answer is still being generated. Try again once it finishes."
-      deleteAllFailed: "Could not delete your conversations. Please try again."
+      passwordReauthSent: 'We sent a verification code to your email. Enter it below and try again.'
+      passwordErrorWeak: 'That password does not meet the requirements above.'
+      passwordErrorSame: 'That is your current password. Choose a different one.'
+      passwordErrorReauth: 'That code was not right. Check your email for the latest one.'
+      passwordErrorSession: 'Your session has expired. Please sign in again.'
+      passwordErrorGeneric: 'Could not change your password. Please try again.'
+      signOutOthersSaving: 'Signing out other sessions…'
+      signOutOthersSaved: 'Done. Other devices will be signed out as their sessions expire.'
+      signOutOthersFailed: 'Could not sign out other sessions. Please try again.'
+      consentGranted: 'Granted.'
+      consentNotGranted: 'Not granted.'
+      consentSaved: 'Saved.'
+      consentFailed: 'Could not save. Please try again.'
+      exportPreparing: 'Preparing your export…'
+      exportStarted: 'Your download has started.'
+      exportFailed: 'Could not export your conversations. Please try again.'
+      deleteAllConfirm: 'Delete all conversations? This cannot be undone.'
+      deleteAllSaving: 'Deleting…'
+      deleteAllSaved: 'All your conversations have been deleted.'
+      deleteAllInFlight: 'An answer is still being generated. Try again once it finishes.'
+      deleteAllFailed: 'Could not delete your conversations. Please try again.'
+      # Self-serve account deletion (docs/account-and-trust-plan.md §3-M4/M5).
+      # Nested under `account` like every other /account string: the inlined
+      # runtime.* top-level keys are a closed set pinned by test_admin_page.py.
+      deletionRequestFailed: 'Could not request deletion. Please try again.'
+      deletionStepUpFailed: 'That password was not right. Check it and try again.'
+      deletionAdminRefused: 'Self-serve deletion is not available to administrator accounts. Ask another administrator.'
+      deletionAlreadyDeleted: 'This account has already been deleted.'
+      deletionRequested: 'Deletion requested. Your account stays usable for 30 days, and you can cancel at any time from this page.'
+      deletionCancelFailed: 'Could not cancel the deletion. Please try again.'
+      deletionCancelled: 'The deletion has been cancelled. Your account is fully restored.'
+      deletionCancelUnavailable: 'This deletion can no longer be cancelled — its conversations have already been purged.'
+      deletionStatusFailed: 'Could not check the deletion status. Please reload the page.'
+      deletionInProgressBody: 'This deletion is past the point where it can be cancelled — the conversations have been purged or the sign-in is being removed. There is nothing left to cancel here, and no new request is needed.'
+      consentGrantPendingDeletion: 'You cannot grant marketing consent while your account has a deletion in flight. Withdrawing consent stays available at any time.'
+      # Rendered by account/ui.js into the pending banner, with the grace
+      # deadline interpolated — the server-rendered page.account twin cannot
+      # interpolate, so the live string lives here like the other JS-drawn
+      # account strings above.
+      deletionPendingBody: 'Your account will be permanently deleted on {date}, unless you cancel first. Until then your account stays fully usable — sign in, chat, read and export your conversations, change your profile, and cancel at any time. (Granting new marketing consent stays off while deletion is pending.)'
     # The first-run completion strip (docs/profile-refactor-plan.md §12.6).
     # Nested under `finish*` rather than a new `runtime.account` block, for
     # the same top-level-key reason as `account` above.
-    finishPrompt: "Add your name so your account record is complete."
-    finishOpen: "Open account"
-    finishDismiss: "Dismiss"
-    finishDismissAria: "Dismiss"
+    finishPrompt: 'Add your name so your account record is complete.'
+    finishOpen: 'Open account'
+    finishDismiss: 'Dismiss'
+    finishDismissAria: 'Dismiss'
 
   faq:
-    loadFailed: "Failed to load FAQs."
-    loadFailedTesting: "Failed to load FAQs in testing mode."
-    empty: "No FAQs available."
+    loadFailed: 'Failed to load FAQs.'
+    loadFailedTesting: 'Failed to load FAQs in testing mode.'
+    empty: 'No FAQs available.'
     # A category over the rail's four-per-group limit gets this instead of
     # dumping every question into the reader's first look; see UI.Faq.
     # One/many via I18n.plural, matching cite.sourcesOne/sourcesMany's pattern.
-    showMoreOne: "Show 1 more"
-    showMoreMany: "Show {count} more"
+    showMoreOne: 'Show 1 more'
+    showMoreMany: 'Show {count} more'
 
   theme:
-    announced: "Theme changed to {mode} mode"            # frozen
-    light: "light"
-    dark: "dark"
+    announced: 'Theme changed to {mode} mode' # frozen
+    light: 'light'
+    dark: 'dark'
 
   cite:
-    marker: "Source {n}"
-    sourcesOne: "{n} source"
-    sourcesMany: "{n} sources"
-    answerComplete: "Answer complete."
+    marker: 'Source {n}'
+    sourcesOne: '{n} source'
+    sourcesMany: '{n} sources'
+    answerComplete: 'Answer complete.'
     # Counts the CITED passages. It used to be read out with the RETRIEVED
     # count, so it told a screen reader that a refusal had cited eight sources.
-    answerCompleteWithSources: "Answer complete. {n} sources cited."
+    answerCompleteWithSources: 'Answer complete. {n} sources cited.'
     # The trigger. "document" is a file, "passage" is a chunk of one — never
     # use them interchangeably, and never report a passage count as documents.
-    sourcesLabel: "Sources"
-    docsOne: "1 document"
-    docsMany: "{n} documents"
-    passagesOne: "1 passage"
-    passagesMany: "{n} passages"
+    sourcesLabel: 'Sources'
+    docsOne: '1 document'
+    docsMany: '{n} documents'
+    passagesOne: '1 passage'
+    passagesMany: '{n} passages'
     # The panel.
-    panelTitle: "Sources for this answer"
-    page: "Page {n}"
-    pageShort: "p.{n}"
-    pageUnknown: "No page cited"
-    tabAria: "Source {n}, page {page}"
+    panelTitle: 'Sources for this answer'
+    page: 'Page {n}'
+    pageShort: 'p.{n}'
+    pageUnknown: 'No page cited'
+    tabAria: 'Source {n}, page {page}'
     # Dated evidence. The passage behind a stored citation is exactly what the
     # model read, kept with the answer — so it still opens. What the reader is
     # told is that the corpus has moved since, because quoting a superseded
     # regulation to an auditor is the failure this product cannot afford, and
     # so is discarding a faithful record because it is old.
-    datedBadge: "Earlier edition"
-    datedNote: "The document set has been rebuilt since this answer. These are the passages it was written from — check the current documents before relying on them."
-    tabAriaNoPage: "Source {n}, no page cited"
-    closePassage: "Close passage"
-    unknownDocument: "Unknown document"
-    close: "Close sources"
+    datedBadge: 'Earlier edition'
+    datedNote: 'The document set has been rebuilt since this answer. These are the passages it was written from — check the current documents before relying on them.'
+    tabAriaNoPage: 'Source {n}, no page cited'
+    closePassage: 'Close passage'
+    unknownDocument: 'Unknown document'
+    close: 'Close sources'
     # Raw retrieval figures. Named as diagnostics, not confidence, because that
     # is what they are — no percentages, no bars.
-    diagnostics: "Retrieval diagnostics"
-    diagnosticsNote: "Ranking figures used to order these passages. They are not a measure of accuracy or of how well a passage supports the answer."
-    combinedMatch: "Combined"
-    semanticMatch: "Semantic"
-    keywordMatch: "Keyword"
+    diagnostics: 'Retrieval diagnostics'
+    diagnosticsNote: 'Ranking figures used to order these passages. They are not a measure of accuracy or of how well a passage supports the answer.'
+    combinedMatch: 'Combined'
+    semanticMatch: 'Semantic'
+    keywordMatch: 'Keyword'
 
   lang:
-    switchAria: "Switch language"
-    toArabic: "التبديل إلى العربية"
-    toEnglish: "Switch to English"
+    switchAria: 'Switch language'
+    toArabic: 'التبديل إلى العربية'
+    toEnglish: 'Switch to English'
 
   # Console strings the browser draws. Kept apart from page.admin because only
   # the runtime slice is inlined as window.__I18N — and this block ships to
   # /admin alone, never to the anonymous landing page.
   admin:
-    accessDenied: "This console is for administrators."
-    accessCheckFailed: "Could not confirm your access. Reload to try again."
+    accessDenied: 'This console is for administrators.'
+    accessCheckFailed: 'Could not confirm your access. Reload to try again.'
     # Distinct from signedOut. The server could not reach the sign-in service,
     # which says nothing about this administrator's credentials — and sending
     # them to sign in again would be sending them to fix something that works.
-    identityUnavailable: "The sign-in service could not be reached, so your access could not be checked. Your session is still valid — try again in a moment."
-    signedOut: "You are not signed in. Sign in on the chat page first."
-    signedInAs: "Signed in as {email}"
-    roleLabel: "Role"
-    empty: "Nothing here yet."
+    identityUnavailable: 'The sign-in service could not be reached, so your access could not be checked. Your session is still valid — try again in a moment.'
+    signedOut: 'You are not signed in. Sign in on the chat page first.'
+    signedInAs: 'Signed in as {email}'
+    roleLabel: 'Role'
+    empty: 'Nothing here yet.'
     # Its own block, sibling to `settings` below rather than nested inside
     # it: that panel's own heading is literally "Generation", and a
     # registrations switch inside it would be a category error, riding the
     # generation form's single Save button for an unrelated write.
     overview:
-      accounts: "Accounts"
-      signups: "Signups"
-      tierCount: "Tiers"
-      membershipHeading: "Tier membership"
-      recentHeading: "Recent activity"
-      manageTiers: "Manage tiers"
-      seeAllActivity: "See all activity"
-      unavailable: "Could not load this just now."
+      accounts: 'Accounts'
+      signups: 'Signups'
+      tierCount: 'Tiers'
+      membershipHeading: 'Tier membership'
+      recentHeading: 'Recent activity'
+      manageTiers: 'Manage tiers'
+      seeAllActivity: 'See all activity'
+      unavailable: 'Could not load this just now.'
     registrations:
-      heading: "Registrations"
-      hint: "Applies to the signup form immediately. Readers who are already signed in are unaffected."
-      open: "Open"
-      paused: "Paused"
-      pause: "Pause registrations"
-      resume: "Resume registrations"
+      heading: 'Registrations'
+      hint: 'Applies to the signup form immediately. Readers who are already signed in are unaffected.'
+      open: 'Open'
+      paused: 'Paused'
+      pause: 'Pause registrations'
+      resume: 'Resume registrations'
       # Only PAUSING is confirmed — this console's own convention (compare
       # admin.people.confirmDisable/confirmDemote, neither of which has an
       # "enable"/"promote" counterpart) confirms the action that TAKES AWAY a
       # capability, never the one that restores it.
-      confirmPause: "Pause new signups? Existing readers can still sign in — this does not stop a direct call to the authentication provider."
-      saving: "Saving…"
-      savedPaused: "Registrations paused."
-      savedOpen: "Registrations resumed."
-      loadFailed: "Could not load the registrations setting."
-      saveFailed: "Could not save the registrations setting."
-      bypassHeading: "What this does not cover"
-      bypassNote: "This pauses the signup form. It does not stop a direct call to the authentication provider — see docs/OPERATIONS.md."
+      confirmPause: 'Pause new signups? Existing readers can still sign in — this does not stop a direct call to the authentication provider.'
+      saving: 'Saving…'
+      savedPaused: 'Registrations paused.'
+      savedOpen: 'Registrations resumed.'
+      loadFailed: 'Could not load the registrations setting.'
+      saveFailed: 'Could not save the registrations setting.'
+      bypassHeading: 'What this does not cover'
+      bypassNote: 'This pauses the signup form. It does not stop a direct call to the authentication provider — see docs/OPERATIONS.md.'
     settings:
-      heading: "Generation"
-      hint: "Applies to answers from here on. Conversations already streaming finish on the previous settings."
-      model: "Model"
-      temperature: "Temperature"
-      maxTokens: "Maximum answer length"
-      maxContextResults: "Passages per answer"
-      reasoningEffort: "Reasoning effort"
-      reasoningNotSupported: "This model does not use reasoning."
-      reasoningDefault: "Model default"
-      save: "Save changes"
-      saving: "Saving…"
-      saved: "Settings saved."
-      savedNotApplied: "Saved, but not applied to answers yet. The previous settings are still live."
+      heading: 'Generation'
+      hint: 'Applies to answers from here on. Conversations already streaming finish on the previous settings.'
+      model: 'Model'
+      temperature: 'Temperature'
+      maxTokens: 'Maximum answer length'
+      maxContextResults: 'Passages per answer'
+      reasoningEffort: 'Reasoning effort'
+      reasoningNotSupported: 'This model does not use reasoning.'
+      reasoningDefault: 'Model default'
+      save: 'Save changes'
+      saving: 'Saving…'
+      saved: 'Settings saved.'
+      savedNotApplied: 'Saved, but not applied to answers yet. The previous settings are still live.'
       # The model name is a machine fact and is not translated; see config.yaml.
-      notLive: "Answers are currently coming from {model}, not from the model selected here. Save to apply, or restart the server."
-      usingDefault: "Deployed default"
-      overridden: "Changed here"
-      revert: "Revert to default"
-      loadFailed: "Could not load settings."
-      saveFailed: "Could not save settings."
+      notLive: 'Answers are currently coming from {model}, not from the model selected here. Save to apply, or restart the server.'
+      usingDefault: 'Deployed default'
+      overridden: 'Changed here'
+      revert: 'Revert to default'
+      loadFailed: 'Could not load settings.'
+      saveFailed: 'Could not save settings.'
     errors:
-      not_allowed: "Not one of the available choices."
-      above_ceiling: "Too large. The most this allows is {limit}."
-      out_of_range: "Must be between {limit}."
-      not_a_number: "Must be a number."
-      not_a_positive_integer: "Must be a whole number above zero."
-      unknown_setting: "Not a setting this console recognises."
-      reasoning_not_supported: "The selected model does not accept a reasoning effort."
-      storage_unavailable: "Settings storage is unavailable, so nothing was saved."
+      not_allowed: 'Not one of the available choices.'
+      above_ceiling: 'Too large. The most this allows is {limit}.'
+      out_of_range: 'Must be between {limit}.'
+      not_a_number: 'Must be a number.'
+      not_a_positive_integer: 'Must be a whole number above zero.'
+      unknown_setting: 'Not a setting this console recognises.'
+      reasoning_not_supported: 'The selected model does not accept a reasoning effort.'
+      storage_unavailable: 'Settings storage is unavailable, so nothing was saved.'
     audit:
-      heading: "Activity"
-      hint: "Every change made here, newest first. Records cannot be edited or removed."
-      empty: "No changes recorded yet."
-      loadFailed: "Could not load the activity log."
-      columnWhen: "When"
-      columnWho: "Who"
-      columnWhat: "What"
-      columnChange: "Change"
-      columnReason: "Reason"
-      more: "Load more"
-      actionSettingsUpdate: "Changed settings"
-      actionUserDisable: "Disabled chat access"
-      actionUserEnable: "Restored chat access"
-      actionUserRoleChange: "Changed a role"
-      actionUserProfileChange: "Edited a profile"
+      heading: 'Activity'
+      hint: 'Every change made here, newest first. Records cannot be edited or removed.'
+      empty: 'No changes recorded yet.'
+      loadFailed: 'Could not load the activity log.'
+      columnWhen: 'When'
+      columnWho: 'Who'
+      columnWhat: 'What'
+      columnChange: 'Change'
+      columnReason: 'Reason'
+      more: 'Load more'
+      actionSettingsUpdate: 'Changed settings'
+      actionUserDisable: 'Disabled chat access'
+      actionUserEnable: 'Restored chat access'
+      actionUserRoleChange: 'Changed a role'
+      actionUserProfileChange: 'Edited a profile'
       # "requested" then "accepted", never "sent": the code observes that GoTrue
       # took the request, not that anything was delivered.
-      actionResetRequested: "Started a password reset"
-      actionResetAccepted: "Password reset accepted for sending"
-      actionResetFailed: "Password reset could not be sent"
-      actionSessionsRevokeRequested: "Started ending sessions"
-      actionSessionsRevokeAccepted: "Sessions ended"
-      actionSessionsRevokeFailed: "Could not end sessions"
-      actionSessionsRevokeUnknown: "Ending sessions — outcome unknown"
-      actionEmailChangeRequested: "Started an email change"
-      actionEmailChangeAccepted: "Email address changed"
-      actionEmailChangeFailed: "Email change failed"
-      actionEmailChangeUnknown: "Email change — outcome unknown"
-      actionNotificationCreate: "Sent a notification"
-      actionNotificationDeactivate: "Deactivated a notification"
-      actionNotificationDelete: "Deleted a notification"
-      actionNotificationPurge: "Purged a notification"
-      actionTierCreate: "Created a tier"
-      actionTierUpdate: "Changed a tier"
-      actionTierDelete: "Deleted a tier"
-      actionUserTierChange: "Moved an account to another tier"
+      actionResetRequested: 'Started a password reset'
+      actionResetAccepted: 'Password reset accepted for sending'
+      actionResetFailed: 'Password reset could not be sent'
+      actionSessionsRevokeRequested: 'Started ending sessions'
+      actionSessionsRevokeAccepted: 'Sessions ended'
+      actionSessionsRevokeFailed: 'Could not end sessions'
+      actionSessionsRevokeUnknown: 'Ending sessions — outcome unknown'
+      actionEmailChangeRequested: 'Started an email change'
+      actionEmailChangeAccepted: 'Email address changed'
+      actionEmailChangeFailed: 'Email change failed'
+      actionEmailChangeUnknown: 'Email change — outcome unknown'
+      actionNotificationCreate: 'Sent a notification'
+      actionNotificationDeactivate: 'Deactivated a notification'
+      actionNotificationDelete: 'Deleted a notification'
+      actionNotificationPurge: 'Purged a notification'
+      actionTierCreate: 'Created a tier'
+      actionTierUpdate: 'Changed a tier'
+      actionTierDelete: 'Deleted a tier'
+      actionUserTierChange: 'Moved an account to another tier'
       actionQuotaOverrideChange: "Changed an account's daily allowance"
+      actionDeletionReconcile: 'Drove a deletion saga forward'
     account:
-      quotaHeading: "Daily allowance"
-      tierLabel: "Tier"
-      overrideLabel: "Override for this account"
+      quotaHeading: 'Daily allowance'
+      tierLabel: 'Tier'
+      overrideLabel: 'Override for this account'
       overrideHint: "Leave empty to use the tier's allowance."
-      overrideStartsLabel: "In force from (optional)"
-      overrideExpiresLabel: "In force until (optional)"
-      overrideWindowHint: "Leave both empty for an allowance that stays until you clear it."
-      overrideStandingLabel: "Override"
-      overrideInForce: "In force now"
-      overrideScheduled: "Scheduled — starts {date}"
+      overrideStartsLabel: 'In force from (optional)'
+      overrideExpiresLabel: 'In force until (optional)'
+      overrideWindowHint: 'Leave both empty for an allowance that stays until you clear it.'
+      overrideStandingLabel: 'Override'
+      overrideInForce: 'In force now'
+      overrideScheduled: 'Scheduled — starts {date}'
       overrideExpired: "Expired {date} — now using the tier's allowance"
-      reasonLabel: "Reason"
-      usageLabel: "Asked today"
-      resetsLabel: "Allowance resets"
-      quotaReasonHint: "Required when you set an override, and recorded with it."
+      reasonLabel: 'Reason'
+      usageLabel: 'Asked today'
+      resetsLabel: 'Allowance resets'
+      quotaReasonHint: 'Required when you set an override, and recorded with it.'
       quotaHint: "The tier is a group's allowance; the override is this account's alone. Every change is recorded with what it said before."
-      saveQuota: "Save allowance"
-      quotaSaved: "Allowance saved."
-      quotaSaveFailed: "Could not save that allowance."
-      quota_reason_required: "A reason is required to set an allowance for one account."
-      back: "Back to all users"
-      identityHeading: "Identity"
-      profileHeading: "Profile"
-      activityHeading: "Activity on this account"
-      created: "Created"
-      lastSignIn: "Last signed in"
-      lastSeen: "Last seen"
-      disabledAt: "Disabled at"
-      confirmed: "Email confirmed"
-      notConfirmed: "Not confirmed"
+      saveQuota: 'Save allowance'
+      quotaSaved: 'Allowance saved.'
+      quotaSaveFailed: 'Could not save that allowance.'
+      quota_reason_required: 'A reason is required to set an allowance for one account.'
+      back: 'Back to all users'
+      identityHeading: 'Identity'
+      profileHeading: 'Profile'
+      activityHeading: 'Activity on this account'
+      created: 'Created'
+      lastSignIn: 'Last signed in'
+      lastSeen: 'Last seen'
+      disabledAt: 'Disabled at'
+      confirmed: 'Email confirmed'
+      notConfirmed: 'Not confirmed'
       # `email_confirmed_at` above is when the account was FIRST confirmed and
       # is never cleared by an admin email change — this reads the current
       # email identity's own flag, so it cannot show a stale "confirmed" next
       # to an address nobody verified.
-      currentEmailVerified: "Current address verified"
-      emailVerifiedYes: "Yes"
-      emailNotVerified: "No — not independently verified"
-      emailVerifiedUnknown: "Unknown"
-      standing: "Standing"
-      disabledBy: "Disabled by"
-      disabledReason: "Reason"
-      firstName: "First name"
-      familyName: "Family name"
-      age: "Age"
-      organization: "Organization"
-      specialization: "Specialization"
-      notSet: "Not set"
-      marketingConsent: "Marketing consent"
-      consentGranted: "Granted"
-      consentNotGranted: "Not granted"
-      consentGrantedAt: "Consent given"
-      consentWithdrawnAt: "Consent withdrawn"
-      noActivity: "Nothing has been done to this account yet."
-      loadFailed: "Could not load this account."
+      currentEmailVerified: 'Current address verified'
+      emailVerifiedYes: 'Yes'
+      emailNotVerified: 'No — not independently verified'
+      emailVerifiedUnknown: 'Unknown'
+      standing: 'Standing'
+      disabledBy: 'Disabled by'
+      disabledReason: 'Reason'
+      firstName: 'First name'
+      familyName: 'Family name'
+      age: 'Age'
+      organization: 'Organization'
+      specialization: 'Specialization'
+      notSet: 'Not set'
+      marketingConsent: 'Marketing consent'
+      consentGranted: 'Granted'
+      consentNotGranted: 'Not granted'
+      consentGrantedAt: 'Consent given'
+      consentWithdrawnAt: 'Consent withdrawn'
+      noActivity: 'Nothing has been done to this account yet.'
+      loadFailed: 'Could not load this account.'
       activityFailed: "Could not load this account's activity."
-      actionsHeading: "Account actions"
-      sendReset: "Send password reset"
-      confirmReset: "Send a password reset link to {email}?"
-      resetAccepted: "Reset link accepted for sending."
-      resetFailed: "The reset link could not be sent."
-      reset_rate_limited: "A link was requested for this account less than a minute ago."
+      actionsHeading: 'Account actions'
+      sendReset: 'Send password reset'
+      confirmReset: 'Send a password reset link to {email}?'
+      resetAccepted: 'Reset link accepted for sending.'
+      resetFailed: 'The reset link could not be sent.'
+      reset_rate_limited: 'A link was requested for this account less than a minute ago.'
       reset_quota_exhausted: "This project's email allowance is used up for now. Nothing was sent."
-      reset_no_email: "This account has no email address to send to."
+      reset_no_email: 'This account has no email address to send to.'
       # Stated on the surface, not just in a commit message. The support outcome
       # people want from "set their password" is "get them back in", and a link
       # delivers that without anyone learning a secret.
-      noPasswordHint: "An operator can send a reset link. Nobody here can set or see a password."
+      noPasswordHint: 'An operator can send a reset link. Nobody here can set or see a password.'
       # What is deliberately absent, said out loud — an operator mid-incident
       # should not have to work out that the console cannot do something yet.
       # Empty today: this list is conditionally hidden when it has nothing in it.
-      absentHeading: "Not available here yet"
-      revokeSessions: "End all sessions"
+      absentHeading: 'Not available here yet'
+      revokeSessions: 'End all sessions'
       # States the residual-JWT caveat plainly, in the confirm copy itself —
       # this is the mechanism GoTrue's Admin API actually offers (a password
       # rotation the operator never sees), not a made-up "sign out" button.
-      confirmRevoke: "End every session for {email}? This resets their password to a value nobody will see, which forces sign-in everywhere. It does not end a request already in flight — an access token already issued stays valid until it expires on its own."
-      revokeAccepted: "Sessions ended. New sign-ins will need a new password reset."
+      confirmRevoke: 'End every session for {email}? This resets their password to a value nobody will see, which forces sign-in everywhere. It does not end a request already in flight — an access token already issued stays valid until it expires on its own.'
+      revokeAccepted: 'Sessions ended. New sign-ins will need a new password reset.'
       revokeFailed: "Could not end this account's sessions."
-      changeEmail: "Change email address"
-      emailPrompt: "New email address for {email}:"
+      changeEmail: 'Change email address'
+      emailPrompt: 'New email address for {email}:'
       # States the immediate/unverified caveat plainly: there is no reader-side
       # confirmation step on this path, unlike a reader changing their own email.
-      confirmEmailChange: "Change {email} to {newEmail}? This takes effect immediately — there is no confirmation step, and the new address is not verified as reachable."
-      emailChangeAccepted: "Email address changed."
+      confirmEmailChange: 'Change {email} to {newEmail}? This takes effect immediately — there is no confirmation step, and the new address is not verified as reachable.'
+      emailChangeAccepted: 'Email address changed.'
       emailChangeFailed: "Could not change this account's email address."
-      email_already_registered: "Another account already uses that email address."
+      email_already_registered: 'Another account already uses that email address.'
       same_email: "That is already this account's email address."
-      invalid_email: "That does not look like an email address."
-      too_long: "That email address is too long."
-      cannot_change_own_email: "An administrator cannot change their own email address here."
-      actor_no_longer_administrator: "Your administrator access changed during this request. Sign in again."
-      auth_admin_unavailable: "Session and email changes are not configured on this deployment."
-      auth_admin_unreachable: "Could not reach the authentication provider. Nothing changed."
-      auth_admin_failed: "The authentication provider refused this change."
-      no_such_account: "This account no longer exists."
-      saveProfile: "Save profile"
+      invalid_email: 'That does not look like an email address.'
+      too_long: 'That email address is too long.'
+      cannot_change_own_email: 'An administrator cannot change their own email address here.'
+      actor_no_longer_administrator: 'Your administrator access changed during this request. Sign in again.'
+      auth_admin_unavailable: 'Session and email changes are not configured on this deployment.'
+      auth_admin_unreachable: 'Could not reach the authentication provider. Nothing changed.'
+      auth_admin_failed: 'The authentication provider refused this change.'
+      no_such_account: 'This account no longer exists.'
+      saveProfile: 'Save profile'
       # Says who sees it and that the change is kept. An operator rewriting
       # somebody else's description of themselves should know both.
-      profileHint: "This is what the person sees on their own profile. Every change is recorded with what it said before."
-      profileSaved: "Profile saved."
-      profileSaveFailed: "Could not save this profile."
-      profile_changed_since_loaded: "Somebody else changed this profile while you were editing. Reload before saving."
-      profile_too_long: "One of these is too long. Each field holds up to 200 characters."
-      brokenHeading: "This account has no profile"
+      profileHint: 'This is what the person sees on their own profile. Every change is recorded with what it said before.'
+      profileSaved: 'Profile saved.'
+      profileSaveFailed: 'Could not save this profile.'
+      profile_changed_since_loaded: 'Somebody else changed this profile while you were editing. Reload before saving.'
+      profile_too_long: 'One of these is too long. Each field holds up to 200 characters.'
+      brokenHeading: 'This account has no profile'
       # The same fact as brokenHeading, at pill length. The heading explains; a
       # mark beside the address only has room to name the state.
-      noProfileMark: "No profile"
-      brokenBody: "It exists in authentication but has no profile row, so its role and access cannot be read or changed. It was most likely created before the signup trigger was repaired."
+      noProfileMark: 'No profile'
+      brokenBody: 'It exists in authentication but has no profile row, so its role and access cannot be read or changed. It was most likely created before the signup trigger was repaired.'
     people:
-      hint: "Accounts on this instance. Disabling chat access stops new questions; a conversation already streaming finishes, and the person can still sign in."
-      empty: "No accounts found."
-      loadFailed: "Could not load accounts."
-      search: "Search by email"
-      columnEmail: "Email"
-      columnRole: "Role"
-      columnTier: "Tier"
-      columnAccess: "Chat access"
-      columnLastSignIn: "Last signed in"
-      columnActions: ""
-      roleAdmin: "Administrator"
-      roleUser: "User"
-      accessAllowed: "Allowed"
-      accessDisabled: "Disabled"
-      you: "you"
-      never: "Never"
-      promote: "Make administrator"
-      demote: "Remove administrator"
-      disable: "Disable chat access"
-      enable: "Restore chat access"
-      reasonPrompt: "Why is chat access being disabled? This is recorded."
-      confirmDisable: "Disable chat access for {email}?"
-      confirmDemote: "Remove administrator access from {email}?"
-      changed: "Account updated."
-      changeFailed: "Could not update the account."
-      cannot_change_own_access: "You cannot change your own role or access."
-      would_leave_no_administrator: "That would leave no administrator. Promote someone else first."
-      no_such_account: "That account no longer exists."
-      actor_no_longer_administrator: "Your administrator access changed while you were working. Reload and try again."
-      reason_required: "A reason is required to disable chat access."
-      pagerLabel: "People pages"
-      previousPage: "Previous page"
-      nextPage: "Next page"
-      showing: "Showing"
-      of: "of"
-      pageSize: "Rows per page"
+      hint: 'Accounts on this instance. Disabling chat access stops new questions; a conversation already streaming finishes, and the person can still sign in.'
+      empty: 'No accounts found.'
+      loadFailed: 'Could not load accounts.'
+      search: 'Search by email'
+      columnEmail: 'Email'
+      columnRole: 'Role'
+      columnTier: 'Tier'
+      columnAccess: 'Chat access'
+      columnLastSignIn: 'Last signed in'
+      columnActions: ''
+      roleAdmin: 'Administrator'
+      roleUser: 'User'
+      accessAllowed: 'Allowed'
+      accessDisabled: 'Disabled'
+      you: 'you'
+      never: 'Never'
+      promote: 'Make administrator'
+      demote: 'Remove administrator'
+      disable: 'Disable chat access'
+      enable: 'Restore chat access'
+      reasonPrompt: 'Why is chat access being disabled? This is recorded.'
+      confirmDisable: 'Disable chat access for {email}?'
+      confirmDemote: 'Remove administrator access from {email}?'
+      changed: 'Account updated.'
+      changeFailed: 'Could not update the account.'
+      cannot_change_own_access: 'You cannot change your own role or access.'
+      would_leave_no_administrator: 'That would leave no administrator. Promote someone else first.'
+      no_such_account: 'That account no longer exists.'
+      actor_no_longer_administrator: 'Your administrator access changed while you were working. Reload and try again.'
+      reason_required: 'A reason is required to disable chat access.'
+      pagerLabel: 'People pages'
+      previousPage: 'Previous page'
+      nextPage: 'Next page'
+      showing: 'Showing'
+      of: 'of'
+      pageSize: 'Rows per page'
     # docs/notification-center-plan.md. The admin composer and send history.
     tiers:
-      key: "Key"
-      keyHint: "The key is permanent. Lower-case letters, digits and underscores; it is what the database and the notification composer both name."
-      label: "Label"
-      labelEn: "Label (English)"
-      labelAr: "Label (Arabic)"
-      labelsHint: "Both labels are stored. Each reader sees the one for their own language, and the table above shows yours."
-      dailyLimit: "Questions a day"
-      members: "Readers"
-      ordering: "Order"
-      actions: "Actions"
-      addHeading: "Add a tier"
-      editHeading: "Edit tier"
-      edit: "Edit"
-      delete: "Delete"
-      save: "Save"
-      cancel: "Cancel"
-      saved: "Tier saved."
-      deleted: "Tier deleted."
-      loadFailed: "Could not load the tiers."
-      saveFailed: "Could not save that tier."
-      deleteFailed: "Could not delete that tier."
-      confirmDelete: "Delete the tier \"{key}\"?"
-      confirmDeleteMembers: "The tier \"{key}\" has {count} reader(s). Move them to another tier before deleting it."
-      duplicate_key: "A tier with that key already exists."
-      no_such_tier: "That tier no longer exists."
-      tier_in_use: "That tier still has readers in it."
-      default_tier_protected: "The Free tier cannot be deleted — new accounts are created in it."
-      invalid_limit: "The daily allowance must be zero or more."
-      invalid_labels: "Both labels are required, up to 40 characters."
-      invalid_key: "A key must start with a letter and use only lower-case letters, digits and underscores."
-      invalid_window: "The end of the window must be in the future, and after its start."
+      key: 'Key'
+      keyHint: 'The key is permanent. Lower-case letters, digits and underscores; it is what the database and the notification composer both name.'
+      label: 'Label'
+      labelEn: 'Label (English)'
+      labelAr: 'Label (Arabic)'
+      labelsHint: 'Both labels are stored. Each reader sees the one for their own language, and the table above shows yours.'
+      dailyLimit: 'Questions a day'
+      members: 'Readers'
+      ordering: 'Order'
+      actions: 'Actions'
+      addHeading: 'Add a tier'
+      editHeading: 'Edit tier'
+      edit: 'Edit'
+      delete: 'Delete'
+      save: 'Save'
+      cancel: 'Cancel'
+      saved: 'Tier saved.'
+      deleted: 'Tier deleted.'
+      loadFailed: 'Could not load the tiers.'
+      saveFailed: 'Could not save that tier.'
+      deleteFailed: 'Could not delete that tier.'
+      confirmDelete: 'Delete the tier "{key}"?'
+      confirmDeleteMembers: 'The tier "{key}" has {count} reader(s). Move them to another tier before deleting it.'
+      duplicate_key: 'A tier with that key already exists.'
+      no_such_tier: 'That tier no longer exists.'
+      tier_in_use: 'That tier still has readers in it.'
+      default_tier_protected: 'The Free tier cannot be deleted — new accounts are created in it.'
+      invalid_limit: 'The daily allowance must be zero or more.'
+      invalid_labels: 'Both labels are required, up to 40 characters.'
+      invalid_key: 'A key must start with a letter and use only lower-case letters, digits and underscores.'
+      invalid_window: 'The end of the window must be in the future, and after its start.'
+    # The self-serve deletion ledger (supabase/pending/07 + /10) and the
+    # console reconcile action (slice 2c). Nested under `admin` like every
+    # other console surface: the inlined runtime.* top-level keys are a
+    # closed set pinned by test_admin_page.py.
+    deletions:
+      hint: 'Accounts with a deletion in flight, newest request first. Reconciling drives one stuck saga through the same steps the automatic timer runs — purge, then delete the sign-in. Completed and cancelled rows need nothing.'
+      empty: 'No deletions in flight.'
+      loadFailed: 'Could not load the deletion ledger.'
+      columnAccount: 'Account'
+      columnState: 'State'
+      columnRequested: 'Requested'
+      columnGrace: 'Grace until'
+      columnAttempts: 'Attempts'
+      columnLastError: 'Last error'
+      columnActions: ''
+      reconcile: 'Reconcile'
+      confirmReconcile: "Drive this account's deletion saga forward one pass (state: {state})? This can purge conversations and delete the sign-in."
+      outcomeCompleted: 'Deletion completed.'
+      outcomeFailed: "The drive failed — check the ledger's last error."
+      outcomeAmbiguous: 'The outcome is unknown — the timer will look again.'
+      outcomeUnclaimed: 'Another driver holds this saga — nothing was done.'
+      reconcileFailed: 'Could not drive that deletion.'
+      no_such_deletion: 'That deletion no longer exists.'
+      deletion_terminal: 'That deletion is already finished — nothing left to drive.'
     notifications:
-      heading: "Notifications"
-      hint: "Send a message to targeted readers as a toast, banner, or blocking modal."
+      heading: 'Notifications'
+      hint: 'Send a message to targeted readers as a toast, banner, or blocking modal.'
       composer:
-        heading: "New notification"
-        typeLabel: "Type"
-        typeToast: "Toast"
-        typeBanner: "Banner"
-        typeModal: "Modal (requires acknowledgement)"
-        severityLabel: "Severity"
-        severityInfo: "Info"
-        severitySuccess: "Success"
-        severityWarning: "Warning"
-        severityDanger: "Danger"
-        titleEnLabel: "Title (English)"
-        titleArLabel: "Title (Arabic)"
-        bodyEnLabel: "Message (English)"
-        bodyArLabel: "Message (Arabic)"
-        targetLabel: "Audience"
-        targetAll: "Everyone"
-        targetRole: "By role"
-        targetTier: "By tier"
-        targetUser: "One account"
-        targetRoleUser: "User"
-        targetRoleAdmin: "Administrator"
-        tierSelectEmpty: "Choose a tier"
-        userIdPlaceholder: "Account ID"
-        expiresLabel: "Expires"
-        audiencePreviewLabel: "Reaches {count} accounts"
-        audiencePreviewNone: "Reaches no accounts yet"
-        audiencePreviewFailed: "Could not preview the audience."
-        reviewHeading: "Review before sending"
-        resendFrom: "Resent from #{id}"
-        send: "Send notification"
-        sending: "Sending…"
-        sent: "Notification sent."
-        sendFailed: "Could not send that notification."
-        invalid_type: "Choose a notification type."
-        invalid_severity: "Choose a severity."
-        invalid_field: "Every title and message field is required."
-        invalid_target_kind: "Choose an audience."
-        invalid_target_role: "Choose a role."
-        invalid_target_tier: "Enter a tier."
-        invalid_target_user: "Enter a valid account ID."
-        idempotency_conflict: "This request was already sent with different content. Reload and try again."
-        no_matching_recipients: "No accounts match that audience."
-        no_such_target_user: "That account does not exist."
+        heading: 'New notification'
+        typeLabel: 'Type'
+        typeToast: 'Toast'
+        typeBanner: 'Banner'
+        typeModal: 'Modal (requires acknowledgement)'
+        severityLabel: 'Severity'
+        severityInfo: 'Info'
+        severitySuccess: 'Success'
+        severityWarning: 'Warning'
+        severityDanger: 'Danger'
+        titleEnLabel: 'Title (English)'
+        titleArLabel: 'Title (Arabic)'
+        bodyEnLabel: 'Message (English)'
+        bodyArLabel: 'Message (Arabic)'
+        targetLabel: 'Audience'
+        targetAll: 'Everyone'
+        targetRole: 'By role'
+        targetTier: 'By tier'
+        targetUser: 'One account'
+        targetRoleUser: 'User'
+        targetRoleAdmin: 'Administrator'
+        tierSelectEmpty: 'Choose a tier'
+        userIdPlaceholder: 'Account ID'
+        expiresLabel: 'Expires'
+        audiencePreviewLabel: 'Reaches {count} accounts'
+        audiencePreviewNone: 'Reaches no accounts yet'
+        audiencePreviewFailed: 'Could not preview the audience.'
+        reviewHeading: 'Review before sending'
+        resendFrom: 'Resent from #{id}'
+        send: 'Send notification'
+        sending: 'Sending…'
+        sent: 'Notification sent.'
+        sendFailed: 'Could not send that notification.'
+        invalid_type: 'Choose a notification type.'
+        invalid_severity: 'Choose a severity.'
+        invalid_field: 'Every title and message field is required.'
+        invalid_target_kind: 'Choose an audience.'
+        invalid_target_role: 'Choose a role.'
+        invalid_target_tier: 'Enter a tier.'
+        invalid_target_user: 'Enter a valid account ID.'
+        idempotency_conflict: 'This request was already sent with different content. Reload and try again.'
+        no_matching_recipients: 'No accounts match that audience.'
+        no_such_target_user: 'That account does not exist.'
         target_user_disabled: "That account's chat access is disabled."
-        actor_no_longer_administrator: "Your administrator access changed while you were working. Reload and try again."
+        actor_no_longer_administrator: 'Your administrator access changed while you were working. Reload and try again.'
       history:
-        heading: "Sent notifications"
-        empty: "Nothing sent yet."
-        emptyActive: "No active notifications."
-        emptyDeactivated: "No deactivated notifications."
-        emptyDeleted: "No deleted notifications."
-        loadFailed: "Could not load notification history."
-        columnStatus: "Status"
-        columnType: "Type"
-        columnAudience: "Audience"
-        columnTargets: "Targeted"
-        columnServed: "Served"
-        columnRead: "Read"
-        columnDismissed: "Dismissed"
-        columnAcknowledged: "Acknowledged"
-        statusFilterLabel: "Status"
-        statusFilterAll: "All"
-        statusActive: "Active"
-        statusDeactivated: "Deactivated"
-        statusDeleted: "Deleted"
-        deactivate: "Deactivate"
-        deactivateConfirm: "Deactivate this notification? Open tabs will stop showing it."
-        delete: "Delete"
-        deleteConfirm: "Delete this notification? This cannot be undone."
-        resend: "Resend"
-        deactivated: "Notification deactivated."
-        deactivateFailed: "Could not deactivate that notification."
-        deleted: "Notification deleted."
-        deleteFailed: "Could not delete that notification."
-        selectAllAria: "Select all visible notifications"
-        selectRowAria: "Select this notification"
-        selectedCount: "{count} selected"
-        clearSelected: "Clear selected"
-        clearSelectedConfirm: "Delete {count} selected notifications? This cannot be undone."
-        clearAllInFilter: "Clear all"
-        clearAllInFilterConfirm: "Delete all {count} notifications matching this filter? This cannot be undone."
-        clearAllTooLarge: "Too many notifications match this filter to clear at once. Narrow the filter and try again."
-        nothingToClear: "Nothing to clear."
-        bulkCleared: "{count} notifications deleted."
-        bulkClearedPartial: "{count} deleted, {failed} failed."
-        bulkClearFailed: "Could not delete the selected notifications."
-        purge: "Purge"
-        purgeConfirm: "Permanently delete this notification? This cannot be undone and erases its recipient and read history."
-        purged: "Notification purged."
-        purgeFailed: "Could not purge that notification."
-        purgeSelected: "Purge selected"
-        purgeSelectedConfirm: "Permanently delete {count} selected notifications? This cannot be undone."
-        bulkPurged: "{count} notifications purged."
-        bulkPurgedPartial: "{count} purged, {failed} failed."
-        bulkPurgeFailed: "Could not purge the selected notifications."
-        purgeRetentionLabel: "Purge after (days)"
-        purgeRetentionSave: "Save"
-        purgeRetentionSaved: "Retention window saved."
-        purgeRetentionSaveFailed: "Could not save the retention window."
-        purgeRetentionInvalid: "Enter a whole number of days between 1 and 3650."
-        purgeEligible: "Purge eligible"
-        purgeEligibleConfirm: "Permanently delete all {count} notifications that have been Deleted for more than {days} days? This cannot be undone."
-        no_such_notification: "That notification no longer exists."
-        already_deactivated: "That notification is already deactivated."
-        already_deleted: "That notification was already deleted."
-        not_yet_deleted: "This notification must be deleted before it can be purged."
-        actor_no_longer_administrator: "Your administrator access changed while you were working. Reload and try again."
+        heading: 'Sent notifications'
+        empty: 'Nothing sent yet.'
+        emptyActive: 'No active notifications.'
+        emptyDeactivated: 'No deactivated notifications.'
+        emptyDeleted: 'No deleted notifications.'
+        loadFailed: 'Could not load notification history.'
+        columnStatus: 'Status'
+        columnType: 'Type'
+        columnAudience: 'Audience'
+        columnTargets: 'Targeted'
+        columnServed: 'Served'
+        columnRead: 'Read'
+        columnDismissed: 'Dismissed'
+        columnAcknowledged: 'Acknowledged'
+        statusFilterLabel: 'Status'
+        statusFilterAll: 'All'
+        statusActive: 'Active'
+        statusDeactivated: 'Deactivated'
+        statusDeleted: 'Deleted'
+        deactivate: 'Deactivate'
+        deactivateConfirm: 'Deactivate this notification? Open tabs will stop showing it.'
+        delete: 'Delete'
+        deleteConfirm: 'Delete this notification? This cannot be undone.'
+        resend: 'Resend'
+        deactivated: 'Notification deactivated.'
+        deactivateFailed: 'Could not deactivate that notification.'
+        deleted: 'Notification deleted.'
+        deleteFailed: 'Could not delete that notification.'
+        selectAllAria: 'Select all visible notifications'
+        selectRowAria: 'Select this notification'
+        selectedCount: '{count} selected'
+        clearSelected: 'Clear selected'
+        clearSelectedConfirm: 'Delete {count} selected notifications? This cannot be undone.'
+        clearAllInFilter: 'Clear all'
+        clearAllInFilterConfirm: 'Delete all {count} notifications matching this filter? This cannot be undone.'
+        clearAllTooLarge: 'Too many notifications match this filter to clear at once. Narrow the filter and try again.'
+        nothingToClear: 'Nothing to clear.'
+        bulkCleared: '{count} notifications deleted.'
+        bulkClearedPartial: '{count} deleted, {failed} failed.'
+        bulkClearFailed: 'Could not delete the selected notifications.'
+        purge: 'Purge'
+        purgeConfirm: 'Permanently delete this notification? This cannot be undone and erases its recipient and read history.'
+        purged: 'Notification purged.'
+        purgeFailed: 'Could not purge that notification.'
+        purgeSelected: 'Purge selected'
+        purgeSelectedConfirm: 'Permanently delete {count} selected notifications? This cannot be undone.'
+        bulkPurged: '{count} notifications purged.'
+        bulkPurgedPartial: '{count} purged, {failed} failed.'
+        bulkPurgeFailed: 'Could not purge the selected notifications.'
+        purgeRetentionLabel: 'Purge after (days)'
+        purgeRetentionSave: 'Save'
+        purgeRetentionSaved: 'Retention window saved.'
+        purgeRetentionSaveFailed: 'Could not save the retention window.'
+        purgeRetentionInvalid: 'Enter a whole number of days between 1 and 3650.'
+        purgeEligible: 'Purge eligible'
+        purgeEligibleConfirm: 'Permanently delete all {count} notifications that have been Deleted for more than {days} days? This cannot be undone.'
+        no_such_notification: 'That notification no longer exists.'
+        already_deactivated: 'That notification is already deactivated.'
+        already_deleted: 'That notification was already deleted.'
+        not_yet_deleted: 'This notification must be deleted before it can be purged.'
+        actor_no_longer_administrator: 'Your administrator access changed while you were working. Reload and try again.'
 page:
   meta:
-    title: "SFDA Copilot"
-    description: "SFDA Copilot - AI-powered regulatory guidance for pharmaceutical regulations in Saudi Arabia"
+    title: 'SFDA Copilot'
+    description: 'SFDA Copilot - AI-powered regulatory guidance for pharmaceutical regulations in Saudi Arabia'
 
   brand:
-    name: "SFDA Copilot"
+    name: 'SFDA Copilot'
     # The wordmark's counterpart in the other script. The hero sets the two
     # together, because full EN/AR parity is a binding brand commitment and
     # the mark should state it rather than the copy claiming it.
-    nameOther: "مساعد الغذاء والدواء الذكي"
-    tagline: "Your AI Regulatory Assistant"
+    nameOther: 'مساعد الغذاء والدواء الذكي'
+    tagline: 'Your AI Regulatory Assistant'
 
   landing:
-    greeting: "Ready when you are"
-    lead: "Ask a question instead of searching the guidelines — and see exactly which official SFDA document each answer came from."
-    cta: "Get Started"
-    hubLink: "AI Fouda Hub Website"
+    greeting: 'Ready when you are'
+    lead: 'Ask a question instead of searching the guidelines — and see exactly which official SFDA document each answer came from.'
+    cta: 'Get Started'
+    hubLink: 'AI Fouda Hub Website'
     linkedinLink: "Mohamed Fouda's LinkedIn"
     # PRODUCT.md, Principle 2: the name contains "SFDA", so every surface
     # carries the burden of saying this is not the SFDA. Not optional copy.
     notice: "<strong>SFDA Copilot is an independent tool.</strong> It is not affiliated with, endorsed by, or operated by the Saudi Food and Drug Authority. It reads the SFDA's published guidelines and shows you where each answer comes from, so you can verify it against the official source."
-    version: "Version {v}"
-    builtBy: "Built by Mohamed Fouda"
+    version: 'Version {v}'
+    builtBy: 'Built by Mohamed Fouda'
 
   features:
-    heading: "What it does"
+    heading: 'What it does'
     coverage:
-      title: "The Guideline Corpus"
+      title: 'The Guideline Corpus'
       # No guideline count, deliberately: the corpus changes on every ingest and
       # any hard number goes stale in place. See PRODUCT.md, Evidence on Hand.
-      body: "Regulatory, pharmacovigilance, veterinary medicines and biological products — the official SFDA guidelines, indexed and searchable in one place."
-      badge: "Guidelines current through August 2026"
+      body: 'Regulatory, pharmacovigilance, veterinary medicines and biological products — the official SFDA guidelines, indexed and searchable in one place.'
+      badge: 'Guidelines current through August 2026'
     authoritative:
-      title: "Sourced to the Page"
-      body: "Every answer carries numbered citations that resolve to the source guideline and its page, so you can check the original before you rely on it."
+      title: 'Sourced to the Page'
+      body: 'Every answer carries numbered citations that resolve to the source guideline and its page, so you can check the original before you rely on it.'
     streamlined:
-      title: "Straight to the Requirement"
-      body: "Find the registration procedures and requirements you need without reading the guidelines end to end."
+      title: 'Straight to the Requirement'
+      body: 'Find the registration procedures and requirements you need without reading the guidelines end to end.'
     accuracy:
-      title: "Arabic and English"
-      body: "Ask in either language and the answer comes back in that language, from the same corpus. Arabic is not a translation layer."
+      title: 'Arabic and English'
+      body: 'Ask in either language and the answer comes back in that language, from the same corpus. Arabic is not a translation layer.'
     search:
-      title: "Ask in Plain Language"
-      body: "Put the question the way you would ask a colleague, and scope it to regulatory, pharmacovigilance, veterinary or biological products."
+      title: 'Ask in Plain Language'
+      body: 'Put the question the way you would ask a colleague, and scope it to regulatory, pharmacovigilance, veterinary or biological products.'
 
   nav:
-    menu: "Menu"
-    toggleNav: "Toggle navigation"
-    toggleTheme: "Toggle theme"
-    toggleThemeLong: "Toggle theme between light and dark"
-    close: "Close"
-    assistantStatus: "Assistant status"
-    utilityAria: "Language and theme"
-    mobileNavAria: "Mobile navigation"
-    sidebarAria: "Sidebar"
+    menu: 'Menu'
+    toggleNav: 'Toggle navigation'
+    toggleTheme: 'Toggle theme'
+    toggleThemeLong: 'Toggle theme between light and dark'
+    close: 'Close'
+    assistantStatus: 'Assistant status'
+    utilityAria: 'Language and theme'
+    mobileNavAria: 'Mobile navigation'
+    sidebarAria: 'Sidebar'
 
   # Server-rendered halves of the conversation sidebar. The tab LABELS live here
   # rather than under `runtime.sessions` because Jinja prints them once, at
   # render, and a runtime key that no JS ever reads would be dead weight in the
   # inline catalogue every page ships. The strings the list draws are runtime.
   sidebar:
-    tabChats: "Chats"
-    tabFAQ: "FAQ"
-    tabsAria: "Sidebar contents"
+    tabChats: 'Chats'
+    tabFAQ: 'FAQ'
+    tabsAria: 'Sidebar contents'
 
   auth:
-    modalTitle: "Welcome to SFDA Copilot"
-    login: "Login"
-    signup: "Signup"
-    firstName: "First name"
-    familyName: "Family name"
-    firstNameRequired: "First name is required."
-    email: "Email address"
-    password: "Password"
-    passwordHint: "Min. 8 chars, 1 uppercase, 1 lowercase, 1 number."
-    emailInvalid: "Please provide a valid email."
-    passwordRequired: "Password is required."
-    passwordInvalid: "Password must meet the requirements."
-    loginSignup: "Login / Signup"
-    logout: "Logout"
+    modalTitle: 'Welcome to SFDA Copilot'
+    login: 'Login'
+    signup: 'Signup'
+    firstName: 'First name'
+    familyName: 'Family name'
+    firstNameRequired: 'First name is required.'
+    email: 'Email address'
+    password: 'Password'
+    passwordHint: 'Min. 8 chars, 1 uppercase, 1 lowercase, 1 number.'
+    emailInvalid: 'Please provide a valid email.'
+    passwordRequired: 'Password is required.'
+    passwordInvalid: 'Password must meet the requirements.'
+    loginSignup: 'Login / Signup'
+    logout: 'Logout'
     # Signup consent (docs/profile-refactor-plan.md §12.3, §12.4). Two
     # SEPARATE checkboxes, never bundled: marketing is opt-in and gates the
     # age field; terms is a required acceptance of /privacy.
     consent:
-      marketing: "Use my profile information to improve SFDA Copilot and to tell me about it."
-      ageHint: "Used for audience segmentation — optional, and only asked because you agreed above."
+      marketing: 'Use my profile information to improve SFDA Copilot and to tell me about it.'
+      ageHint: 'Used for audience segmentation — optional, and only asked because you agreed above.'
       terms: 'I agree to the <a href="/privacy" target="_blank" rel="noopener">Usage &amp; Privacy Policy</a>.'
-      termsRequired: "You must agree to the Usage & Privacy Policy to create an account."
+      termsRequired: 'You must agree to the Usage & Privacy Policy to create an account.'
     reset:
-      link: "Forgot your password?"
-      heading: "Reset your password"
+      link: 'Forgot your password?'
+      heading: 'Reset your password'
       lead: "Enter the address you signed up with and we'll send you a link to choose a new password."
-      submit: "Send reset link"
-      back: "Back to login"
+      submit: 'Send reset link'
+      back: 'Back to login'
     recovery:
-      heading: "Choose a new password"
-      lead: "You followed a recovery link. Set a new password below, then sign in with it."
-      newPassword: "New password"
-      confirmPassword: "Confirm new password"
-      submit: "Save new password"
-      cancel: "Cancel"
+      heading: 'Choose a new password'
+      lead: 'You followed a recovery link. Set a new password below, then sign in with it.'
+      newPassword: 'New password'
+      confirmPassword: 'Confirm new password'
+      submit: 'Save new password'
+      cancel: 'Cancel'
     # Server-rendered replacement for #signup-form when an operator has
     # paused registrations (docs/registrations-pause-plan.md §6).
     signupPaused:
-      heading: "Registration is paused"
-      lead: "New accounts are not being created at the moment. Existing accounts sign in as usual."
+      heading: 'Registration is paused'
+      lead: 'New accounts are not being created at the moment. Existing accounts sign in as usual.'
     # Screen-reader-only text on #signup-tab's paused dot — read this in place
     # of the parenthetical it looks like, not appended after "Signup" visibly.
-    signupPausedBadge: "(paused)"
+    signupPausedBadge: '(paused)'
 
   profile:
     # Only the sidebar link's label lives here now — the rest of this block
@@ -879,65 +923,87 @@ page:
     # themePreference, light, dark, save) moved to page.account.* when
     # #profileModal was retired in favour of /account
     # (docs/profile-refactor-plan.md §5).
-    button: "Profile"
+    button: 'Profile'
 
   account:
-    title: "My Account · SFDA Copilot"
-    skipToContent: "Skip to account"
-    pageTitle: "My Account"
-    backToChat: "Back to chat"
-    checking: "Loading your account…"
-    retry: "Try again"
-    signedOut: "Sign in to see your account."
-    standingAria: "Account standing"
-    role: "Role"
-    tier: "Tier"
-    quota: "Daily questions"
-    since: "Since"
-    conversations: "Conversations"
-    standing: "Standing"
-    identityHeading: "Identity"
-    firstName: "First name"
-    familyName: "Family name"
-    age: "Age"
-    ageHint: "Used for audience segmentation — optional."
-    organization: "Organization"
-    specialization: "Specialization"
-    save: "Save changes"
-    preferencesHeading: "Preferences"
-    theme: "Theme"
-    themeLight: "Light"
-    themeDark: "Dark"
-    themeSystem: "System"
-    language: "Language"
-    languageEnglish: "English"
-    languageArabic: "Arabic"
-    securityHeading: "Security"
-    newPassword: "New password"
-    changePassword: "Change password"
+    title: 'My Account · SFDA Copilot'
+    skipToContent: 'Skip to account'
+    pageTitle: 'My Account'
+    backToChat: 'Back to chat'
+    checking: 'Loading your account…'
+    retry: 'Try again'
+    signedOut: 'Sign in to see your account.'
+    standingAria: 'Account standing'
+    role: 'Role'
+    tier: 'Tier'
+    quota: 'Daily questions'
+    since: 'Since'
+    conversations: 'Conversations'
+    standing: 'Standing'
+    identityHeading: 'Identity'
+    firstName: 'First name'
+    familyName: 'Family name'
+    age: 'Age'
+    ageHint: 'Used for audience segmentation — optional.'
+    organization: 'Organization'
+    specialization: 'Specialization'
+    save: 'Save changes'
+    preferencesHeading: 'Preferences'
+    theme: 'Theme'
+    themeLight: 'Light'
+    themeDark: 'Dark'
+    themeSystem: 'System'
+    language: 'Language'
+    languageEnglish: 'English'
+    languageArabic: 'Arabic'
+    securityHeading: 'Security'
+    newPassword: 'New password'
+    changePassword: 'Change password'
     # Revealed only when GoTrue actually asks for one — a session older than
     # the project's "recently logged in" window (24h). Not shown up front:
     # asking for a code nobody needs yet is the same failure as a required
     # field with no reason attached.
-    reauthCode: "Verification code"
-    reauthCodeHint: "For your security, we sent a code to your email. Enter it to finish changing your password."
-    signOutOthers: "Sign out everywhere else"
+    reauthCode: 'Verification code'
+    reauthCodeHint: 'For your security, we sent a code to your email. Enter it to finish changing your password.'
+    signOutOthers: 'Sign out everywhere else'
     # Revocation is not instant — Supabase's own docs are explicit that a
     # revoked session's access token stays valid until it expires. Never
     # imply the other devices are signed out the moment this button is
     # clicked (docs/profile-refactor-plan.md §14·B·10).
-    signOutOthersHint: "Ends every session but this one. Other devices stay signed in until their current session expires."
-    logoutScope: "Signing out ends your session on every device."
+    signOutOthersHint: 'Ends every session but this one. Other devices stay signed in until their current session expires.'
+    logoutScope: 'Signing out ends your session on every device.'
     # Data rights (docs/profile-refactor-plan.md Step 7). Export and bulk
     # deletion of CONVERSATIONS only — full account deletion is a separate,
     # not-yet-built feature (see web/api/account.py's own docstring), and
     # this copy is deliberately careful not to promise it.
-    dataHeading: "Your data"
-    consentClearAge: "Also clear the age you gave us"
-    exportConversations: "Export my conversations"
+    dataHeading: 'Your data'
+    consentClearAge: 'Also clear the age you gave us'
+    exportConversations: 'Export my conversations'
     exportHint: "Download every conversation you've had, as a file (NDJSON — one line per conversation, readable by any text editor)."
-    deleteAllConversations: "Delete all conversations"
-    deleteAllHint: "Permanently deletes every conversation. Your account, profile and sign-in stay untouched."
+    deleteAllConversations: 'Delete all conversations'
+    deleteAllHint: 'Permanently deletes every conversation. Your account, profile and sign-in stay untouched.'
+    # Self-serve account deletion (docs/account-and-trust-plan.md §3-M4/M5).
+    # Server-rendered like the rest of this page; the JS only toggles which
+    # block shows (request form vs. pending banner) from /account/api/deletion.
+    deletionHeading: 'Delete your account'
+    deletionLead: 'Requesting deletion starts a 30-day grace period. During grace your account stays fully usable — sign in, chat, read, export, change your profile, and cancel at any time. The one exception is granting new marketing consent, which stays off while deletion is pending. When grace ends, your conversations are permanently purged and your login identity and profile are deleted.'
+    deletionGoesLabel: 'What goes'
+    deletionGoesBody: 'Your login identity, your profile (name, age, organization, specialization, consent record), every conversation, and the records derived from them (last-seen markers, quota overrides).'
+    deletionStaysLabel: 'What stays'
+    deletionStaysBody: "Administrative records written before the deletion — which can include an email address, for example when an operator changed one — a ledger entry holding only an identifier and timestamps, notification records beside an operator's message, backup copies this deletion does not reach and for which no retention period is stated, the model provider's own prompt retention, and server logs. The full list is in the privacy policy."
+    deletionConfirmWord: 'DELETE'
+    deletionConfirmLabel: 'Type DELETE to confirm'
+    deletionPasswordLabel: 'Current password'
+    deletionPasswordHint: 'Anyone holding your signed-in session could otherwise delete your account — for example on a shared computer — so we ask for your password as well.'
+    deletionRequest: 'Request deletion'
+    deletionRequestSaving: 'Requesting…'
+    deletionCancel: 'Cancel the deletion'
+    deletionCancelling: 'Cancelling…'
+    deletionPendingTitle: 'Deletion requested'
+    deletionPendingBody: 'Your account will be permanently deleted on {date}, unless you cancel first. Until then your account stays fully usable — sign in, chat, read and export your conversations, change your profile, and cancel at any time. (Granting new marketing consent stays off while deletion is pending.)'
+    deletionInProgressTitle: 'Deletion in progress'
+    deletionInProgressBody: 'This deletion is past the point where it can be cancelled — the conversations have been purged or the sign-in is being removed. There is nothing left to cancel here, and no new request is needed.'
+    deletionAdminNote: 'Self-serve deletion is not available to administrator accounts.'
 
   # سياسة الاستخدام والخصوصية / Usage and Privacy Policy (/privacy).
   # DRAFT CONTENT — written to unblock Step 6 of docs/profile-refactor-
@@ -945,82 +1011,87 @@ page:
   # not reviewed as a legal document. page.policy.draftNotice says so on the
   # page itself. Bump app.py's PRIVACY_POLICY_VERSION whenever this changes.
   policy:
-    title: "Privacy Policy · SFDA Copilot"
-    skipToContent: "Skip to policy"
-    pageTitle: "Usage & Privacy Policy"
-    version: "Version"
-    draftHeading: "Draft — under review"
+    title: 'Privacy Policy · SFDA Copilot'
+    skipToContent: 'Skip to policy'
+    pageTitle: 'Usage & Privacy Policy'
+    version: 'Version'
+    draftHeading: 'Draft — under review'
     draftNotice: "This policy is a first draft, written to describe the product honestly while the final version is reviewed. It is not yet approved as the product's binding legal text. If anything here seems inconsistent with how the product actually behaves, that is a defect in this draft, not in the product."
-    scopeHeading: "What this policy covers"
-    scopeBody: "This policy describes what SFDA Copilot collects about you, why, and what control you have over it. It covers your account, your profile, and the questions you ask — not the regulatory documents themselves, which are public source material."
-    collectHeading: "What we collect"
-    collectIntro: "Depending on how you use the product, we collect:"
-    collectAccount: "Your email address and password, used to sign you in. Your password is never stored in a form we can read — GoTrue, our authentication provider, stores only a salted hash."
-    collectProfile: "The profile details you choose to add — first name, family name, organization, specialization — and, only if you opt in separately, your age."
-    collectQuestions: "The questions you ask and the answers you receive, stored so you can return to a conversation later. Do not enter patient identifiers, clinical-trial subject data, or other confidential material into the chat box — see the notice shown in the app itself."
-    collectTechnical: "Ordinary technical data every web service collects — request logs, error reports — used only to keep the product running and secure."
-    useHeading: "How we use it"
-    useIntro: "We use what we collect to:"
-    useOperate: "Operate the product: authenticate you, answer your questions, show you your own conversation history."
+    scopeHeading: 'What this policy covers'
+    scopeBody: 'This policy describes what SFDA Copilot collects about you, why, and what control you have over it. It covers your account, your profile, and the questions you ask — not the regulatory documents themselves, which are public source material.'
+    collectHeading: 'What we collect'
+    collectIntro: 'Depending on how you use the product, we collect:'
+    collectAccount: 'Your email address and password, used to sign you in. Your password is never stored in a form we can read — GoTrue, our authentication provider, stores only a salted hash.'
+    collectProfile: 'The profile details you choose to add — first name, family name, organization, specialization — and, only if you opt in separately, your age.'
+    collectQuestions: 'The questions you ask and the answers you receive, stored so you can return to a conversation later. Do not enter patient identifiers, clinical-trial subject data, or other confidential material into the chat box — see the notice shown in the app itself.'
+    collectTechnical: 'Ordinary technical data every web service collects — request logs, error reports — used only to keep the product running and secure.'
+    useHeading: 'How we use it'
+    useIntro: 'We use what we collect to:'
+    useOperate: 'Operate the product: authenticate you, answer your questions, show you your own conversation history.'
     useImprove: "Understand and improve the product, in aggregate — never to single out one person's activity for a purpose you have not agreed to."
-    useMarketing: "Contact you about the product or tell you how your information helps us understand who uses it — only if you have separately opted in."
-    useMarketingConsent: "Marketing use of your profile information and your age, specifically, requires your explicit, separate consent — an unticked checkbox at signup or on your account page. Declining it does not affect your ability to use the product."
-    shareHeading: "Sharing"
-    shareBody: "We do not sell your personal data. We use infrastructure providers (Supabase for authentication and storage, an AI model provider to generate answers) who process data on our behalf, under their own security commitments, and never for their own purposes."
-    retentionHeading: "How long we keep it"
-    retentionBody: "Your account and conversations are kept for as long as your account exists. You can delete individual conversations or all of them at any time from your account page; deleting your account entirely is not yet self-service — contact us if you need it."
-    rightsHeading: "Your rights"
-    rightsIntro: "From your account page, you can:"
-    rightsAccess: "See and correct your own profile information at any time."
-    rightsExport: "Download a complete copy of your conversation history as a file."
-    rightsDelete: "Delete individual conversations, or all of them at once."
-    rightsWithdraw: "Withdraw marketing consent as easily as you gave it — never rate-limited, never asked to justify it."
-    securityHeading: "Security"
-    securityBody: "We use encryption in transit, hashed passwords, and role-based access controls that limit who inside the organization can see what. No system is perfectly secure; if you believe your account has been compromised, change your password and sign out of every other session from your account page."
-    contactHeading: "Contact"
+    useMarketing: 'Contact you about the product or tell you how your information helps us understand who uses it — only if you have separately opted in.'
+    useMarketingConsent: 'Marketing use of your profile information and your age, specifically, requires your explicit, separate consent — an unticked checkbox at signup or on your account page. Declining it does not affect your ability to use the product.'
+    shareHeading: 'Sharing'
+    shareBody: 'We do not sell your personal data. We use infrastructure providers (Supabase for authentication and storage, an AI model provider to generate answers) who process data on our behalf, under their own security commitments, and never for their own purposes.'
+    retentionHeading: 'How long we keep it'
+    retentionBody: 'Your account and conversations are kept for as long as your account exists. You can delete individual conversations or all of them at any time from your account page, and you can delete your entire account yourself: requesting deletion starts a 30-day grace period during which your account stays fully usable — sign in, chat, read and export your conversations, change your profile, and cancel at any time — except granting new marketing consent, which stays off while deletion is pending. When the 30 days end, your conversations are permanently purged and your login identity and profile are deleted.'
+    retentionBodyNoSelfServe: "Your account and conversations are kept for as long as your account exists. You can delete individual conversations or all of them at any time from your account page. Deleting your account itself is not yet self-service: send the request through the product's usual support channel."
+    retentionStaysHeading: 'What remains after deletion'
+    retentionStaysBody: "Even after your account is deleted, some traces remain. Administrative records written before the deletion are kept — an operator email change, for example, records the old and new email address beside the account identifier in the append-only audit log; a deletion ledger entry holding only an account identifier and timestamps is kept; notification records keep a bare account identifier beside an operator's message; backup copies are not reached by this deletion, and no retention period is stated for them; the AI model provider retains prompts sent to it under its own policy; and server logs persist, including conversation access paths. The in-memory conversation window clears when the server worker restarts, not at the moment of deletion. The dormant research archive collects nothing while its salts are unset."
+    rightsHeading: 'Your rights'
+    rightsIntro: 'From your account page, you can:'
+    rightsAccess: 'See and correct your own profile information at any time.'
+    rightsExport: 'Download a complete copy of your conversation history as a file.'
+    rightsDelete: 'Delete individual conversations, all of them at once, or your entire account — account deletion carries a 30-day grace period during which you can still cancel.'
+    rightsDeleteNoSelfServe: 'Delete individual conversations, or all of them at once.'
+    rightsWithdraw: 'Withdraw marketing consent as easily as you gave it — never rate-limited, never asked to justify it.'
+    securityHeading: 'Security'
+    securityBody: 'We use encryption in transit, hashed passwords, and role-based access controls that limit who inside the organization can see what. No system is perfectly secure; if you believe your account has been compromised, change your password and sign out of every other session from your account page.'
+    contactHeading: 'Contact'
     contactBody: "Questions about this policy, or a request to exercise a right not yet self-service, can be sent through the product's usual support channel."
 
   chat:
-    quotaCounterAria: "Questions remaining today"
-    welcomeLead: "Welcome to"
-    welcomeRest: "! Your AI assistant for pharmaceutical regulations in Saudi Arabia. You can:"
-    bullet1: "Ask specific questions about regulatory requirements"
-    bullet2: "Select a category to focus your search"
-    bullet3: "Click on FAQ buttons for common questions"
-    cutoff: "SFDA Copilot provides regulatory guidance based on official SFDA guidelines current through August 2026. For the most recent regulatory updates and post-August 2026 changes, please consult the official SFDA website."
-    prompt: "How can I assist you today?"
-    newChat: "New chat"
-    newChatTitle: "Start a new conversation"
-    searchIn: "Search in:"
-    inputPlaceholder: "Ask about SFDA regulations..."
-    inputAria: "Chat message input"
-    send: "Send"
-    sendAria: "Send message"
+    quotaCounterAria: 'Questions remaining today'
+    welcomeLead: 'Welcome to'
+    welcomeRest: '! Your AI assistant for pharmaceutical regulations in Saudi Arabia. You can:'
+    bullet1: 'Ask specific questions about regulatory requirements'
+    bullet2: 'Select a category to focus your search'
+    bullet3: 'Click on FAQ buttons for common questions'
+    cutoff: 'SFDA Copilot provides regulatory guidance based on official SFDA guidelines current through August 2026. For the most recent regulatory updates and post-August 2026 changes, please consult the official SFDA website.'
+    prompt: 'How can I assist you today?'
+    newChat: 'New chat'
+    newChatTitle: 'Start a new conversation'
+    searchIn: 'Search in:'
+    inputPlaceholder: 'Ask about SFDA regulations...'
+    inputAria: 'Chat message input'
+    send: 'Send'
+    sendAria: 'Send message'
 
   categories:
-    aria: "Search category"
-    all: "All Categories"
-    regulatory: "Regulatory"
-    pharmacovigilance: "Pharmacovigilance"
-    veterinary: "Veterinary Medicines"
-    biological: "Biological Products"
+    aria: 'Search category'
+    all: 'All Categories'
+    regulatory: 'Regulatory'
+    pharmacovigilance: 'Pharmacovigilance'
+    veterinary: 'Veterinary Medicines'
+    biological: 'Biological Products'
 
   # The operator console. Server-rendered chrome only — page.* never reaches
   # the browser (test_rtl.py asserts it), so anything JS must draw belongs
   # under runtime.admin instead.
   admin:
     tiersHint: "A tier is a group of readers who share one daily allowance. Changes take effect on each reader's next question."
-    title: "Administration · SFDA Copilot"
-    consoleLabel: "Administration"
-    skipToContent: "Skip to console"
-    backToChat: "Back to chat"
-    checking: "Checking your access…"
-    sectionsAria: "Console sections"
+    title: 'Administration · SFDA Copilot'
+    consoleLabel: 'Administration'
+    skipToContent: 'Skip to console'
+    backToChat: 'Back to chat'
+    checking: 'Checking your access…'
+    sectionsAria: 'Console sections'
     tabs:
-      overview: "Overview"
-      settings: "Settings"
-      people: "Users"
-      audit: "Activity"
-      notifications: "Notifications"
-      tiers: "Tiers"
-    searchLabel: "Search by email"
+      overview: 'Overview'
+      settings: 'Settings'
+      people: 'Users'
+      audit: 'Activity'
+      notifications: 'Notifications'
+      tiers: 'Tiers'
+      deletions: 'Deletions'
+    searchLabel: 'Search by email'

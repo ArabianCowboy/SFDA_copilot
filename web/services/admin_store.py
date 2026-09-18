@@ -209,6 +209,20 @@ class AdminBackend(Protocol):
         """
         ...
 
+    def list_deletion_sagas(self, *, limit: int, offset: int) -> tuple:
+        """``(rows, total)`` of the deletion ledger, newest request first.
+
+        Read-only and shape-limited: UUIDs, states and timestamps only —
+        never an email, IP or user agent (decision D3; the whole point of
+        the ledger's shape). The operator's only path to a stuck saga
+        besides raw SQL.
+        """
+        ...
+
+    def get_deletion_saga(self, user_id: str) -> dict | None:
+        """One ledger row by account id, or None when there is no such saga."""
+        ...
+
     def set_user_flags(
         self, user_id: str, *, role=None, is_disabled=None, reason=None, actor
     ) -> dict:
@@ -299,6 +313,28 @@ class AdminBackend(Protocol):
         recorded entry is, and no implementation offers a way to.
         """
         ...
+
+
+# The ledger columns the console may show. UUIDs, states and timestamps
+# only — never an email, IP or user agent (decision D3; the whole point of
+# the ledger's shape, supabase/pending/07_account_deletions.sql). Named once
+# and enforced in code on BOTH backends, not just in one SELECT string, so a
+# future column cannot leak through a `select("*")` or a copied row.
+_DELETION_LEDGER_COLUMNS = (
+    "user_id",
+    "state",
+    "requested_at",
+    "grace_until",
+    "purge_after",
+    "next_attempt_at",
+    "attempt_count",
+    "lease_until",
+    "transcripts_purged_at",
+    "auth_delete_begun_at",
+    "auth_deleted_at",
+    "completed_at",
+    "last_error_code",
+)
 
 
 class SupabaseAdminBackend:
@@ -502,6 +538,45 @@ class SupabaseAdminBackend:
         rows = getattr(response, "data", None) or []
         return rows[0] if rows else None
 
+    def list_deletion_sagas(self, *, limit: int, offset: int) -> tuple:
+        """The saga ledger for the console's Deletions tab, newest first.
+
+        A direct table read through the service-role client — there is no
+        listing RPC, and the ledger takes no writes from the console (writes
+        go through the saga RPCs in `scripts/reconcile_account_deletions.py`
+        and the cancel path, never here). RLS carries no browser policy for
+        this table at all (07), so only this client can read it.
+        """
+        response = (
+            self._client.table("account_deletions")
+            .select(",".join(_DELETION_LEDGER_COLUMNS), count="exact")
+            .order("requested_at", desc=True)
+            .range(offset, offset + limit - 1)
+            .execute()
+        )
+        rows = getattr(response, "data", None) or []
+        total = getattr(response, "count", None)
+        shaped = [{k: row.get(k) for k in _DELETION_LEDGER_COLUMNS} for row in rows]
+        return shaped, total if isinstance(total, int) else len(shaped)
+
+    def get_deletion_saga(self, user_id: str) -> dict | None:
+        try:
+            uuid.UUID(str(user_id))
+        except (ValueError, AttributeError, TypeError):
+            return None
+
+        response = (
+            self._client.table("account_deletions")
+            .select(",".join(_DELETION_LEDGER_COLUMNS))
+            .eq("user_id", user_id)
+            .limit(1)
+            .execute()
+        )
+        rows = getattr(response, "data", None) or []
+        if not rows:
+            return None
+        return {k: rows[0].get(k) for k in _DELETION_LEDGER_COLUMNS}
+
     def set_user_flags(
         self, user_id: str, *, role=None, is_disabled=None, reason=None, actor
     ) -> dict:
@@ -602,6 +677,12 @@ class InMemoryAdminBackend:
         self._audit: list = []
         self._next_id = 1
         self._users = self._seed_users()
+        # The deletion ledger (supabase/pending/07). Empty until a test seeds
+        # it — a console that invents stuck sagas unasked would be the boy
+        # who cried purge. Rows are shaped on the way out, exactly like the
+        # Supabase backend above, so a seeded row carrying extra keys still
+        # proves the column boundary.
+        self._deletion_sagas: list = []
         # SHARED with InMemoryQuotaBackend by injection, not copied. A test that
         # assigns a tier or sets an override through the console must see the
         # changed limit on the very next claim -- two separate dicts would let
@@ -953,6 +1034,42 @@ class InMemoryAdminBackend:
         # matching admin_list_users, which cannot distinguish the case at all.
         listed = [{k: v for k, v in r.items() if k != "has_profile"} for r in rows]
         return listed[offset : offset + limit], len(rows)
+
+    # ── The deletion ledger ───────────────────────────────────────────────
+    # Read-only here by construction: this surface lists rows and fetches one.
+    # Driving a stuck saga (the reconcile action) lives in the admin route,
+    # which calls the SAME `reconcile_one` the systemd timer runs — there is
+    # exactly one driver implementation, in
+    # `scripts/reconcile_account_deletions.py`, not a second copy here.
+
+    def seed_deletion_saga(self, row: dict) -> dict:
+        """Test affordance, not part of the Protocol. Store one ledger row.
+
+        Shaped on the way out like every other read here, so seeding with
+        extra keys (an email, say) still exercises the column boundary
+        rather than bypassing it.
+        """
+        stored = dict(row)
+        self._deletion_sagas = [
+            r for r in self._deletion_sagas if r.get("user_id") != stored.get("user_id")
+        ]
+        self._deletion_sagas.append(stored)
+        return stored
+
+    def list_deletion_sagas(self, *, limit: int, offset: int) -> tuple:
+        ordered = sorted(
+            self._deletion_sagas,
+            key=lambda r: (r.get("requested_at") or "", str(r.get("user_id"))),
+            reverse=True,
+        )
+        shaped = [{k: row.get(k) for k in _DELETION_LEDGER_COLUMNS} for row in ordered]
+        return shaped[offset : offset + limit], len(shaped)
+
+    def get_deletion_saga(self, user_id: str) -> dict | None:
+        row = next((r for r in self._deletion_sagas if r.get("user_id") == user_id), None)
+        if row is None:
+            return None
+        return {k: row.get(k) for k in _DELETION_LEDGER_COLUMNS}
 
     def append_audit(
         self,

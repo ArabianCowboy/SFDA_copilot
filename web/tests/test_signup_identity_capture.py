@@ -196,7 +196,8 @@ def test_signup_sends_consent_context_when_marketing_is_ticked(browser_page: Pag
     assert sent["marketing_consent"] is True
     assert sent["age"] == 29
     assert sent["marketing_consent_language"] == "en"
-    # The exact draft string is app.py's own concern (PRIVACY_POLICY_VERSION);
-    # this only proves SOME version travelled with the grant, per the guard
-    # trigger's own requirement that a grant without one is invalid.
-    assert sent["marketing_consent_policy_version"]
+    # No version travels with the grant: /auth/signup stamps
+    # PRIVACY_POLICY_VERSION server-side (a client-stamped version is
+    # attribution theatrics — it proves nothing about what was shown).
+    # web/tests/test_account_consent_grant.py pins the stamping itself.
+    assert "marketing_consent_policy_version" not in sent

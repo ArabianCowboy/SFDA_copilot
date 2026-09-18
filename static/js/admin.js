@@ -26,6 +26,7 @@ import { AdminRequestError, createAdminServices } from './admin/services.js';
 import { revealConsole, selectTab } from './admin/ui.js';
 import {
   bindConsoleEvents,
+  initDeletionsTab,
   initNotificationsTab,
   initOverviewTab,
   initPeopleTab,
@@ -83,6 +84,7 @@ const Admin = {
       loadAudit(services);
       initNotificationsTab(services);
       initTiersTab(services);
+      initDeletionsTab(services);
       initOverviewTab(services);
     } catch (error) {
       showAccessFailure(error);

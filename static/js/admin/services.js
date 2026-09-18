@@ -238,5 +238,21 @@ export function createAdminServices(getToken) {
         method: 'PUT',
         body: { purge_retention_days: days },
       }),
+
+    /* The deletion-saga ledger (supabase/pending/07 + /10). Read-only list;
+       driving one stuck row, through the same saga RPCs the systemd timer
+       uses — the route calls the shared driver, this only carries the uuid. */
+
+    /** Saga rows, newest first. UUIDs, states and timestamps only. */
+    deletions: ({ limit = 50, offset = 0, signal } = {}) =>
+      request(`deletions?limit=${limit}&offset=${offset}`, { signal }),
+
+    /**
+     * Drive one stuck saga one pass. The response carries the outcome word
+     * (`completed`, `failed`, `ambiguous`, `unclaimed`) — `handlers.js`
+     * decides what the operator is told about each.
+     */
+    reconcileDeletion: (id) =>
+      request(`deletions/${encodeURIComponent(id)}/reconcile`, { method: 'POST' }),
   };
 }

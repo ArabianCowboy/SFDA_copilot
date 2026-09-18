@@ -89,6 +89,22 @@ server:
   # happen quietly; see the comment there, and TODO.md.
   archive_disclosed: false
 
+  # Self-serve account deletion (docs/archive/2026-09-18_account-and-trust.md
+  # §3-M4/M5, migrations in supabase/pending/07-14). A deploy switch, not a
+  # test switch.
+  #
+  # DEFAULT OFF UNTIL THE SAGA IS DRIVEN END TO END. The code deploy lands
+  # between pending/02 and pending/03 (the repointed consent toggle must be
+  # verified before the column grants are revoked), but the deletion UI and
+  # the privacy copy that promises it must not go live with that deploy:
+  # with 07-14 unapplied both deletion routes answer 503, and between 10
+  # and the timer install requests are accepted and nothing drives them.
+  # While this is off the deletion routes answer 404, the account page
+  # renders no deletion card, and /privacy renders the pre-self-serve
+  # retention wording. Flip it only after the reconcile timer is installed
+  # (supabase/pending/README.md names the step).
+  account_deletion_self_serve_enabled: false
+
   # The durable daily message allowance (docs/reader-quota-plan.md).
   #
   # This number is the SEED for BOTH shipped tiers ('free' and 'staff') and the
@@ -155,6 +171,28 @@ server:
     # ordinary single-conversation sessions_api limit, but cheap enough (one
     # RPC round trip, no streamed read) not to need export's ceiling.
     account_bulk_delete_api: "10 per hour"
+
+    # Marketing-consent grant (POST /account/api/consent/grant). A cheap
+    # single-row RPC, and non-destructive, so looser than the bulk delete
+    # above — but still an hourly ceiling, not a per-minute one: a
+    # legitimate grant happens a handful of times in an account's life, and
+    # the table it writes is read by every request. Keyed per reader, like
+    # the other two routes on this surface. (Withdrawal needs no limit: it
+    # is a direct browser->Postgres RPC with no Flask route in front of it.)
+    account_consent_grant_api: "30 per hour"
+    # Self-serve account deletion (docs/account-and-trust-plan.md §3-M4/M5).
+    # The request and the cancel share one TIGHT limit: both mutate the saga,
+    # and the request's own step-up check (a server-side password verification)
+    # runs under it too, so a stolen token gets three password guesses an
+    # hour per account — not per IP, keyed via _rate_key like the routes
+    # above. Three an hour is enough for a human who mistyped, and useless
+    # for guessing.
+    account_deletion_api: "3 per hour"
+    # Deletion status: a cheap single-row read the account page makes on load
+    # and after every request/cancel. SEPARATE and looser than the mutations
+    # above — polling the driver is systemd's job, not the browser's, so this
+    # only needs to cover ordinary page visits, never a poll loop.
+    account_deletion_status_api: "30 per hour"
     # Notification Center (docs/notification-center-plan.md). The three
     # reader-facing limits mirror history_api/sessions_api's own reasoning:
     # each REPLACES the per_day/per_hour/per_minute defaults so ordinary
@@ -170,6 +208,13 @@ server:
     # several admins behind one office NAT share one budget. Low on purpose:
     # this fans a message out to every targeted reader at once.
     notification_broadcast_api: "10 per hour"
+    # Saga reconcile (POST /admin/api/deletions/<id>/reconcile). Keyed per
+    # administrator via _rate_key, for the same reason as the broadcast
+    # above: an IP key would let one compromised admin token drive purges
+    # from several addresses. Low on purpose: a reconcile can purge
+    # transcripts and delete an auth identity, and a stuck saga is rare —
+    # the timer (not an operator's clicking finger) is the ordinary driver.
+    deletion_reconcile_api: "10 per hour"
 
   # How long a successful GoTrue token verification may be reused, in seconds.
   #

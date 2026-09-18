@@ -341,6 +341,23 @@
   text-align: center;
 }
 
+/* ── Delete account ────────────────────────────────────────────────────────
+   Self-serve deletion (docs/account-and-trust-plan.md §3-M4/M5). A
+   destructive-pattern card: the danger border is the mark, matching the
+   colour rule that a failure is marked in --danger. The pending banner is a
+   boundary the product is enforcing, not a failure — but it is also not a
+   neutral notice, so it takes --warning rather than --confidence: the reader
+   must not be able to mistake it for routine standing. Logical properties
+   only, like the rest of this file. */
+
+.account-danger {
+  border-color: var(--danger);
+}
+
+.account-pending-banner {
+  border-color: var(--warning);
+}
+
 /* ── Footer ──────────────────────────────────────────────────────────────── */
 
 .account-footer {

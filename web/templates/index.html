@@ -87,10 +87,6 @@
            JS actually builds ships here; the rest render server-side. */
         window.__ICONS = {{ icons_runtime | tojson }};
         window.__CATEGORY_ICONS = {{ category_icons | tojson }};
-        /* Recorded on every consent grant, so a record stays attributable to
-           the actual policy text it was given under. See app.py's own
-           PRIVACY_POLICY_VERSION comment. */
-        window.__POLICY_VERSION = {{ policy_version | tojson }};
     </script>
 
     <!-- Versions the ES modules themselves. The <script> tag below carries

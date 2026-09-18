@@ -1226,6 +1226,146 @@ def audit() -> Response | tuple[Response, int]:
     )
 
 
+# ── Self-serve deletion ledger and reconcile ───────────────────────────────
+# Slice 2c of the account-and-trust work (supabase/pending/07 + /10): the
+# systemd timer drives stuck sagas, and this console action is the second
+# driver the original plan promised. Without it the operator's only path to
+# a stuck saga is raw SQL against a ledger whose states and DL-codes are
+# documented nowhere outside migration headers.
+
+
+@admin_bp.route("/api/deletions", methods=["GET"])
+def list_deletions() -> Response | tuple[Response, int]:
+    """The saga ledger, newest request first. Read-only.
+
+    UUIDs, states and timestamps only — never an email, IP or user agent
+    (decision D3; the boundary is enforced in the backend's column list, not
+    trusted to this route). Paginated like the users and audit reads.
+    """
+    try:
+        limit, offset = _parse_pagination_params(request)
+    except (TypeError, ValueError):
+        return jsonify({"error": "invalid_pagination"}), 400
+
+    backend = current_app.config["admin_backend"]()
+    if backend is None:
+        return jsonify({"error": "storage_unavailable"}), 503
+
+    rows, total = backend.list_deletion_sagas(limit=limit, offset=offset)
+    return jsonify({"deletions": rows, "total": total, "limit": limit, "offset": offset})
+
+
+# A saga already past driving has no honest reconcile left: completed and
+# cancelled are terminal, and driving either through the claim/purge RPCs
+# would raise DL004 and record a failure the saga never suffered. Refused
+# before the driver runs, with the row's own state in the body so the
+# console can say which terminal it is.
+_TERMINAL_DELETION_STATES = frozenset({"completed", "cancelled"})
+
+
+@admin_bp.route("/api/deletions/<user_id>/reconcile", methods=["POST"])
+def reconcile_deletion(user_id: str) -> Response | tuple[Response, int]:
+    """Drive one stuck saga one pass, then record that it happened.
+
+    The drive is the SAME `reconcile_one` the systemd timer runs
+    (`scripts/reconcile_account_deletions.py`) — claim (lease-based, so two
+    drivers cannot run one step twice) → purge transcripts → re-purge and
+    begin the auth delete → delete the GoTrue user → record the outcome →
+    complete — reached through the `deletion_reconciler` config callable
+    (a test fake under TESTING, the service-role client plus the
+    Auth Admin dispatcher in production). There is exactly one driver
+    implementation; this route does not contain a second copy of it.
+
+    Audited like every other mutating console action, with the audit row
+    carrying no PII beyond the actor's existing fields: the target is a
+    uuid, and `after` holds only the state the row was found in and the
+    outcome word the driver returned. Rate-limited per administrator in
+    `app.py`, beside the broadcast limit.
+
+    The audit is the two-row shape the password-reset, session-revoke and
+    email-change pairs already use: a `requested` row BEFORE the drive (so a
+    crash leaves evidence the drive was attempted — the purge may already
+    have run), then the outcome row after. The two rows share one
+    `operation_id`.
+    """
+    import uuid as _uuid
+
+    from web.services.audit import actor_from_request
+
+    # This action takes no input at all: the account is in the path, and the
+    # driver reads the row's own state. A body here must be told no, not
+    # quietly succeed — the same position `send_password_reset` takes, for
+    # the same reason (a caller sending `{"password": …}` must be refused).
+    payload = request.get_json(silent=True)
+    if payload not in (None, {}):
+        return jsonify(
+            {
+                "error": "unknown_field",
+                "fields": sorted(payload) if isinstance(payload, dict) else [],
+            }
+        ), 422
+
+    backend = current_app.config["admin_backend"]()
+    if backend is None:
+        return jsonify({"error": "storage_unavailable"}), 503
+
+    row = backend.get_deletion_saga(user_id)
+    if row is None:
+        return jsonify({"error": "no_such_deletion"}), 404
+
+    from_state = row.get("state")
+    if from_state in _TERMINAL_DELETION_STATES:
+        return jsonify({"error": "deletion_terminal", "state": from_state}), 409
+
+    reconciler = current_app.config.get("deletion_reconciler")
+    if reconciler is None:
+        return jsonify({"error": "storage_unavailable"}), 503
+
+    actor = actor_from_request(g.identity)
+    operation_id = str(_uuid.uuid4())
+    backend.append_audit(
+        action="user.deletion_reconcile_requested",
+        target_type="user",
+        target_id=user_id,
+        actor=actor,
+        after={"from_state": from_state, "status": "requested", "operation_id": operation_id},
+    )
+
+    try:
+        outcome = reconciler(user_id, from_state)
+    except Exception as exc:
+        logger.exception("Deletion reconcile raised unexpectedly for %s.", user_id)
+        backend.append_audit(
+            action="user.deletion_reconcile_failed",
+            target_type="user",
+            target_id=user_id,
+            actor=actor,
+            after={"from_state": from_state, "status": "failed", "operation_id": operation_id},
+            # The exception class, never its message.
+            note=type(exc).__name__,
+        )
+        return jsonify({"error": "reconcile_failed"}), 502
+
+    # The drive and its record cannot share a transaction — the drive ends in
+    # an outbound GoTrue call — so the outcome is recorded after, the same
+    # shape as the password-reset and session-revoke pairs. `after` carries
+    # the outcome word and the state found, nothing that identifies the
+    # reader: no email, no IP, no user agent.
+    backend.append_audit(
+        action="user.deletion_reconcile",
+        target_type="user",
+        target_id=user_id,
+        actor=actor,
+        after={"from_state": from_state, "outcome": outcome, "operation_id": operation_id},
+    )
+    logger.info("%s reconciled the deletion saga for %s: %s", g.identity.email, user_id, outcome)
+
+    refreshed = backend.get_deletion_saga(user_id)
+    return jsonify(
+        {"ok": outcome in ("completed", "settled"), "outcome": outcome, "saga": refreshed}
+    )
+
+
 _NOTIFICATION_TYPES = ("toast", "banner", "modal")
 _NOTIFICATION_SEVERITIES = ("info", "success", "warning", "danger")
 _NOTIFICATION_TARGET_KINDS = ("all", "role", "tier", "user")

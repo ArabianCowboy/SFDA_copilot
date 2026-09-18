@@ -70,11 +70,6 @@
         window.__I18N = {{ i18n_runtime | tojson }};
         window.__LANG = {{ lang | tojson }};
         window.__ICONS = {{ icons_runtime | tojson }};
-        /* Recorded on every consent grant/re-grant from the withdrawal
-           toggle, so a record stays attributable to the actual policy text
-           it was given under. See app.py's own PRIVACY_POLICY_VERSION
-           comment. */
-        window.__POLICY_VERSION = {{ policy_version | tojson }};
     </script>
 
     <script type="importmap">{{ module_import_map | tojson }}</script>
@@ -360,6 +355,82 @@
                     <div class="account-form-error" id="delete-all-error" role="alert" hidden></div>
                 </div>
             </section>
+
+            <!-- ═══ Delete account ═══
+                 Self-serve deletion (docs/account-and-trust-plan.md §3-M4/M5).
+                 A destructive-pattern card stating truthfully what goes and
+                 what stays; the request needs the typed confirmation word AND
+                 the current password (step-up — anyone holding a signed-in
+                 session could otherwise delete the account, e.g. on a shared
+                 computer). While a deletion is pending, the form hides and a
+                 banner shows the grace deadline with a cancel control. Past
+                 the cancellable stage (purging and beyond) a third view
+                 shows neither form nor cancel — only that deletion is in
+                 progress. The whole section renders only while the
+                 self-serve deploy switch is on; before that the feature
+                 does not exist yet and the copy must not promise it. -->
+            {% if deletion_self_serve_enabled %}
+            <section class="account-section" aria-labelledby="deletion-heading">
+                <h2 class="account-section-heading" id="deletion-heading">{{ t('page.account.deletionHeading') }}</h2>
+
+                <div class="account-card account-pending-banner" id="deletion-pending" hidden>
+                    <strong id="deletion-pending-title">{{ t('page.account.deletionPendingTitle') }}</strong>
+                    <p class="account-field-hint" id="deletion-pending-body"></p>
+                    <div class="account-form-actions">
+                        <button type="button" class="btn btn-primary btn-sm" id="deletion-cancel">
+                            <span class="spinner-border spinner-border-sm d-none me-2" role="status" aria-hidden="true"></span>
+                            {{ t('page.account.deletionCancel') }}
+                        </button>
+                        <p class="account-saved-note" id="deletion-cancel-note" role="status" aria-live="polite" hidden></p>
+                    </div>
+                    <div class="account-form-error" id="deletion-cancel-error" role="alert" hidden></div>
+                </div>
+
+                <div class="account-card" id="deletion-inprogress" hidden>
+                    <strong id="deletion-inprogress-title">{{ t('page.account.deletionInProgressTitle') }}</strong>
+                    <p class="account-field-hint" id="deletion-inprogress-body"></p>
+                </div>
+
+                <form id="deletion-form" class="account-card account-danger" novalidate>
+                    <p class="account-field-hint">{{ t('page.account.deletionLead') }}</p>
+
+                    <div class="account-field">
+                        <span class="account-label" id="deletion-goes-label">{{ t('page.account.deletionGoesLabel') }}</span>
+                        <p class="account-field-hint" aria-labelledby="deletion-goes-label">{{ t('page.account.deletionGoesBody') }}</p>
+                    </div>
+
+                    <div class="account-field">
+                        <span class="account-label" id="deletion-stays-label">{{ t('page.account.deletionStaysLabel') }}</span>
+                        <p class="account-field-hint" aria-labelledby="deletion-stays-label">{{ t('page.account.deletionStaysBody') }}</p>
+                    </div>
+
+                    <div class="account-field">
+                        <label class="account-label" for="deletion-confirm">{{ t('page.account.deletionConfirmLabel') }}</label>
+                        <input type="text" class="account-input" id="deletion-confirm" name="confirmation"
+                            autocomplete="off" dir="auto" maxlength="32"
+                            data-confirm-word="{{ t('page.account.deletionConfirmWord') }}">
+                    </div>
+
+                    <div class="account-field">
+                        <label class="account-label" for="deletion-password">{{ t('page.account.deletionPasswordLabel') }}</label>
+                        <input type="password" class="account-input" id="deletion-password" name="password"
+                            autocomplete="current-password" aria-describedby="deletion-password-hint">
+                        <p class="account-field-hint" id="deletion-password-hint">{{ t('page.account.deletionPasswordHint') }}</p>
+                    </div>
+
+                    <div class="account-form-actions">
+                        <button type="submit" class="btn btn-danger btn-sm" id="deletion-request" disabled>
+                            <span class="spinner-border spinner-border-sm d-none me-2" role="status" aria-hidden="true"></span>
+                            {{ t('page.account.deletionRequest') }}
+                        </button>
+                        <p class="account-saved-note" id="deletion-note" role="status" aria-live="polite" hidden></p>
+                    </div>
+                    <div class="account-form-error" id="deletion-error" role="alert" hidden></div>
+                </form>
+
+                <p class="account-field-hint" id="deletion-admin-note" hidden>{{ t('page.account.deletionAdminNote') }}</p>
+            </section>
+            {% endif %}
 
             <p class="account-logout-scope">{{ t('page.account.logoutScope') }}</p>
         </div>

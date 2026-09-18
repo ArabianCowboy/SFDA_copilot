@@ -149,7 +149,17 @@
             <section class="account-section" aria-labelledby="policy-retention-heading">
                 <h2 class="account-section-heading" id="policy-retention-heading">{{ t('page.policy.retentionHeading') }}</h2>
                 <div class="account-card">
+                    {# The self-serve deletion deploy switch: before it is flipped the
+                       page must describe the product as it is — no self-service
+                       promise, and no "what remains" section for a deletion that
+                       cannot yet happen. #}
+                    {% if deletion_self_serve_enabled %}
                     <p>{{ t('page.policy.retentionBody') }}</p>
+                    <h3 class="account-label" id="policy-stays-heading">{{ t('page.policy.retentionStaysHeading') }}</h3>
+                    <p>{{ t('page.policy.retentionStaysBody') }}</p>
+                    {% else %}
+                    <p>{{ t('page.policy.retentionBodyNoSelfServe') }}</p>
+                    {% endif %}
                 </div>
             </section>
 
@@ -160,7 +170,11 @@
                     <ul>
                         <li>{{ t('page.policy.rightsAccess') }}</li>
                         <li>{{ t('page.policy.rightsExport') }}</li>
+                        {% if deletion_self_serve_enabled %}
                         <li>{{ t('page.policy.rightsDelete') }}</li>
+                        {% else %}
+                        <li>{{ t('page.policy.rightsDeleteNoSelfServe') }}</li>
+                        {% endif %}
                         <li>{{ t('page.policy.rightsWithdraw') }}</li>
                     </ul>
                 </div>

@@ -188,6 +188,21 @@ def _salt(name: str) -> bytes | None:
 # calls for. Mirrors SupabaseAdminClient._warned in web/utils/supabase_client.py.
 _salt_missing_warned = False
 
+# Whether a deletion path can reach the archive. False today, as a constant:
+# `admin_purge_chat_archive` was never created, so no deletion — self-serve
+# or operator-driven — can remove an archive row once written. This is the
+# condition slice 2b enforced at BOOT (refusing to start with a salt set)
+# and slice 2c enforces at the WRITE below instead — same privacy guarantee
+# (the archive stays empty, so there is nothing a deletion cannot reach),
+# no availability risk. Flip this to True in the same commit that creates
+# the purge path, never alone: True with no purge is a promise the schema
+# cannot keep.
+_ARCHIVE_PURGE_PATH_EXISTS = False
+
+# The write-refusal below logs once per process, for the same reason the
+# missing-salt warning above does: one loud line, not one per turn forever.
+_archive_no_purge_warned = False
+
 
 def archive_keys(owner_id: str, session_id: str) -> tuple[str | None, str | None]:
     """Pseudonymous digests for the archive, or ``(None, None)``.
@@ -201,6 +216,19 @@ def archive_keys(owner_id: str, session_id: str) -> tuple[str | None, str | None
     row and still record the reader's own history. Writing a null-salted digest
     instead would be worse than not writing at all — it is a stable key derived
     from nothing, indistinguishable later from a real one.
+
+    REFUSE-TO-COLLECT (slice 2c, REVERSING slice 2b's refuse-to-boot). When
+    the salts ARE set but no purge path exists, this still returns
+    ``(None, None)`` — the archive write must not happen — and logs the
+    condition loudly (ERROR, once per process, in the same loud-but-once
+    shape as the missing-salt warning above). The privacy guarantee is
+    identical to the boot refusal's: the archive stays empty, so there is
+    nothing a deletion cannot reach. Availability is no longer at risk, and
+    an env typo (a `.env` copied from another project, one salt set
+    experimentally) degrades from "production down with a traceback nobody
+    reads" to "noisy log, nothing collected". The enforcement point is the
+    write rather than startup because the write is fully under our control
+    and startup is not where the guarantee lives.
     """
     owner_salt = _salt("ARCHIVE_OWNER_SALT")
     session_salt = _salt("ARCHIVE_SESSION_SALT")
@@ -214,6 +242,21 @@ def archive_keys(owner_id: str, session_id: str) -> tuple[str | None, str | None
                 "the environment to enable the archive."
             )
             _salt_missing_warned = True
+        return None, None
+
+    if not _ARCHIVE_PURGE_PATH_EXISTS:
+        global _archive_no_purge_warned
+        if not _archive_no_purge_warned:
+            logger.error(
+                "ARCHIVE_OWNER_SALT/ARCHIVE_SESSION_SALT is set, but no "
+                "chat_archive purge path exists (admin_purge_chat_archive was "
+                "never created). With self-serve deletion promised, the archive "
+                "would keep question and answer text that no deletion path can "
+                "reach — so every turn's archive row is refused for the life of "
+                "this process. The reader's own history is unaffected. Unset "
+                "the salts, or build the purge path first."
+            )
+            _archive_no_purge_warned = True
         return None, None
 
     return (

@@ -33,6 +33,7 @@ import {
   readProfileForm,
   readSettingsDisplay,
   readSettingsForm,
+  renderDeletions,
   renderRegistrations,
   renderSettings,
   selectTab,
@@ -1561,6 +1562,106 @@ export async function initTiersTab(services) {
       ErrorHandler.showToast(tierFailureMessage(error, 'saveFailed'), true);
     }
   });
+}
+
+/**
+ * Load the Deletions tab and wire its one action.
+ *
+ * A reconcile can purge transcripts and delete an auth identity, so it is
+ * CONFIRMED like every destructive console action (see initPeopleTab's own
+ * comment for why confirmation rather than undo) — even though the usual
+ * case is driving a row that is already past the point of cancelling.
+ * Loaded on first activation like the Tiers tab: an operator who never
+ * opens it pays for nothing, and a failure raises a toast over this panel
+ * only.
+ */
+export async function initDeletionsTab(services) {
+  const body = document.getElementById('deletions-body');
+  if (!body) return;
+
+  let sagas = [];
+  let loaded = false;
+
+  async function reload() {
+    const response = await services.deletions();
+    sagas = response.deletions || [];
+    loaded = true;
+    renderDeletions(sagas);
+  }
+
+  async function loadOnce() {
+    if (loaded) return;
+    try {
+      await reload();
+    } catch {
+      showPanelMessage('deletions-body', I18n.t('admin.deletions.loadFailed'));
+    }
+  }
+
+  document.getElementById('tab-deletions')?.addEventListener('click', loadOnce);
+  /* Already showing when the console booted (a reload with this tab selected). */
+  if (document.getElementById('panel-deletions')?.hidden === false) loadOnce();
+
+  /* Delegated, because renderDeletions replaces the whole table on every
+     reload — the same reason the Tiers tab binds on its body. */
+  body.addEventListener('click', async (event) => {
+    const control = event.target.closest('[data-deletion-action]');
+    if (!control) return;
+    if (control.dataset.deletionAction !== 'reconcile') return;
+    const userId = control.closest('[data-deletion-user-id]')?.dataset.deletionUserId;
+    if (!userId) return;
+
+    const saga = sagas.find((row) => row.user_id === userId);
+    if (!window.confirm(I18n.t('admin.deletions.confirmReconcile', { state: saga?.state || '' }))) {
+      return;
+    }
+    control.disabled = true;
+    try {
+      const result = await services.reconcileDeletion(userId);
+      await reload();
+      /* The drive wrote an audit row; a stale log beside a saga that just
+         moved is the one moment the record looks untrustworthy. */
+      loadAudit(services);
+      ErrorHandler.showToast(deletionOutcomeMessage(result?.outcome));
+    } catch (error) {
+      control.disabled = false;
+      ErrorHandler.showToast(deletionFailureMessage(error), true);
+    }
+  });
+}
+
+/**
+ * What the operator is told about one drive's outcome word.
+ *
+ * Every word `reconcile_one` can return gets a sentence — an unknown word
+ * rendering as `undefined` would be the console failing to describe the one
+ * action this tab exists for.
+ */
+export function deletionOutcomeMessage(outcome) {
+  switch (outcome) {
+    case 'completed':
+      return I18n.t('admin.deletions.outcomeCompleted');
+    case 'failed':
+      return I18n.t('admin.deletions.outcomeFailed');
+    case 'ambiguous':
+      return I18n.t('admin.deletions.outcomeAmbiguous');
+    case 'unclaimed':
+      return I18n.t('admin.deletions.outcomeUnclaimed');
+    default:
+      return I18n.t('admin.deletions.reconcileFailed');
+  }
+}
+
+/**
+ * A refusal code into words. The route answers with machine codes
+ * (`no_such_deletion`, `deletion_terminal`, …) precisely so this layer can
+ * translate them; an unknown code falls back rather than rendering raw.
+ */
+function deletionFailureMessage(error) {
+  const code = error?.code;
+  const key = code ? `admin.deletions.${code}` : null;
+  const translated = key ? I18n.t(key) : null;
+  return translated && translated !== key ? translated : I18n.t('admin.deletions.reconcileFailed');
 }
 
 /**
