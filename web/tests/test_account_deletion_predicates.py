@@ -30,11 +30,40 @@ from __future__ import annotations
 
 from pathlib import Path
 
-PENDING = Path(__file__).resolve().parents[2] / "supabase" / "pending"
+SUPABASE = Path(__file__).resolve().parents[2] / "supabase"
+PENDING = SUPABASE / "pending"
+
+
+def _migration(name: str) -> Path:
+    """One migration file, wherever it currently lives.
+
+    A migration moves. It is drafted in `supabase/pending/` under an ordinal,
+    and the moment it is applied the filename rule renames it to the version
+    `list_migrations` reports and `git mv`s it into `supabase/migrations/`
+    (`supabase/README.md`). These assertions are about the SQL, not about which
+    directory it is sitting in today, so the lookup follows it: exact name in
+    `pending/` first, then a suffix match in `migrations/`, where the ordinal
+    prefix has been replaced by a timestamp and the tail may have been renamed
+    with it.
+    """
+    exact = PENDING / name
+    if exact.exists():
+        return exact
+    tail = name.split("_", 1)[1]
+    stem = tail.removesuffix(".sql")
+    for candidate in sorted((SUPABASE / "migrations").glob("*.sql")):
+        if candidate.name.endswith(tail) or stem in candidate.name:
+            return candidate
+    # Renamed on apply beyond a suffix match: fall back to the closest stem.
+    words = [w for w in stem.split("_") if len(w) > 3]
+    for candidate in sorted((SUPABASE / "migrations").glob("*.sql")):
+        if sum(w in candidate.name for w in words) >= max(2, len(words) - 2):
+            return candidate
+    raise FileNotFoundError(f"no migration matching {name} in pending/ or migrations/")
 
 
 def _read(name: str) -> str:
-    return (PENDING / name).read_text(encoding="utf-8")
+    return _migration(name).read_text(encoding="utf-8")
 
 
 def _code(text: str) -> str:
@@ -133,26 +162,38 @@ def test_the_operator_and_consent_gates_keep_the_live_predicate():
     assert "account_deletion_freezes_writes" not in fourteen
 
 
-def test_no_pending_draft_consults_the_wrong_predicate():
-    """The whole split in one scan: across every pending draft, the freeze
+# Every file in this batch that could consult either predicate, by its DRAFT
+# name. The sweep below resolves each through `_migration`, so it keeps
+# scanning the same SQL after the files are applied and move into
+# `migrations/` — a sweep bound to a directory would quietly shrink to nothing
+# the moment the batch landed, and pass by scanning zero files.
+_BATCH = (
+    "06_fk_set_null_on_admin_attribution.sql",
+    "07_account_deletions.sql",
+    "08_pending_folds_into_is_active_account.sql",
+    "09_account_deletion_is_pending.sql",
+    "10_account_deletion_saga_rpcs.sql",
+    "11_chat_append_turn_refuses_a_pending_owner.sql",
+    "12_admin_set_user_flags_refuses_a_pending_target.sql",
+    "13_chat_sessions_owner_fk.sql",
+    "14_grant_marketing_consent_refuses_a_live_saga.sql",
+)
+
+
+def test_no_batch_file_consults_the_wrong_predicate():
+    """The whole split in one scan: across every file in the batch, the freeze
     predicate is consulted only where a write is at stake (08's gate, 11's
-    three checks), and the live predicate everywhere else. A future draft
-    that reaches for the wrong one fails here rather than drifting."""
+    three checks), and the live predicate everywhere else. A future draft that
+    reaches for the wrong one fails here rather than drifting."""
     live_users = set()
     freeze_users = set()
-    for path in sorted(PENDING.glob("*.sql")):
-        code = _code(path.read_text(encoding="utf-8"))
+    for name in _BATCH:
+        code = _code(_read(name))
+        key = name.split("_", 1)[0]
         if "public.account_deletion_is_live(" in code:
-            live_users.add(path.name)
+            live_users.add(key)
         if "public.account_deletion_freezes_writes(" in code:
-            freeze_users.add(path.name)
+            freeze_users.add(key)
 
-    assert live_users == {
-        "08_pending_folds_into_is_active_account.sql",
-        "12_admin_set_user_flags_refuses_a_pending_target.sql",
-        "14_grant_marketing_consent_refuses_a_live_saga.sql",
-    }, f"live-predicate callers changed: {sorted(live_users)}"
-    assert freeze_users == {
-        "08_pending_folds_into_is_active_account.sql",
-        "11_chat_append_turn_refuses_a_pending_owner.sql",
-    }, f"freeze-predicate callers changed: {sorted(freeze_users)}"
+    assert live_users == {"08", "12", "14"}, f"live-predicate callers changed: {sorted(live_users)}"
+    assert freeze_users == {"08", "11"}, f"freeze-predicate callers changed: {sorted(freeze_users)}"

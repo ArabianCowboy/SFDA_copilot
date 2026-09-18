@@ -20,7 +20,38 @@ from web.api.app import create_app
 AUTH = {"Authorization": "Bearer fake_token"}
 ADMIN = {"Authorization": "Bearer fake_admin_token"}
 
-PENDING = Path(__file__).resolve().parents[2] / "supabase" / "pending"
+SUPABASE = Path(__file__).resolve().parents[2] / "supabase"
+PENDING = SUPABASE / "pending"
+
+
+def _migration(name: str) -> Path:
+    """One migration file, wherever it currently lives.
+
+    A migration moves. It is drafted in `supabase/pending/` under an ordinal,
+    and the moment it is applied the filename rule renames it to the version
+    `list_migrations` reports and `git mv`s it into `supabase/migrations/`
+    (`supabase/README.md`). These assertions are about the SQL, not about which
+    directory it is sitting in today, so the lookup follows it: exact name in
+    `pending/` first, then a suffix match in `migrations/`, where the ordinal
+    prefix has been replaced by a timestamp and the tail may have been renamed
+    with it.
+    """
+    exact = PENDING / name
+    if exact.exists():
+        return exact
+    tail = name.split("_", 1)[1]
+    stem = tail.removesuffix(".sql")
+    for candidate in sorted((SUPABASE / "migrations").glob("*.sql")):
+        if candidate.name.endswith(tail) or stem in candidate.name:
+            return candidate
+    # Renamed on apply beyond a suffix match: fall back to the closest stem.
+    words = [w for w in stem.split("_") if len(w) > 3]
+    for candidate in sorted((SUPABASE / "migrations").glob("*.sql")):
+        if sum(w in candidate.name for w in words) >= max(2, len(words) - 2):
+            return candidate
+    raise FileNotFoundError(f"no migration matching {name} in pending/ or migrations/")
+
+
 STATIC_ACCOUNT = Path(__file__).resolve().parents[2] / "static" / "js" / "account"
 
 
@@ -209,7 +240,7 @@ def test_switch_on_the_account_page_renders_the_card(client):
 
 
 def _twelve_code():
-    text = (PENDING / "12_admin_set_user_flags_refuses_a_pending_target.sql").read_text(
+    text = _migration("12_admin_set_user_flags_refuses_a_pending_target.sql").read_text(
         encoding="utf-8"
     )
     return "\n".join(line for line in text.splitlines() if not line.lstrip().startswith("--"))
@@ -236,7 +267,7 @@ def test_12_documents_the_disabled_pending_cancel_consequence():
     """The residual trade must be written down, not discovered: a disabled
     pending reader is refused by _gate and cannot reach cancel. Fails pre-2d:
     the header describes no such consequence."""
-    text = (PENDING / "12_admin_set_user_flags_refuses_a_pending_target.sql").read_text(
+    text = _migration("12_admin_set_user_flags_refuses_a_pending_target.sql").read_text(
         encoding="utf-8"
     )
     assert "cannot reach" in text
