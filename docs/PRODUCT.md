@@ -133,7 +133,7 @@ OpenAI key or a built index.
   meter can be watched before it is tightened. A reader who runs out is told so in their
   own language, with the number and the time their allowance returns; they keep their
   history and can still read it. A quiet counter appears under the composer only near
-  the end of the day's allowance. Nothing here lets an operator read what anybody asked.
+  the end of the day's allowance.
 - Tier names are **operator-set data in both languages**, not strings in the catalogue,
   because a tier somebody creates in the console cannot have a translation key.
 - Model: `gpt-4o-mini`, temperature 0.1, up to 8 retrieved passages as context.

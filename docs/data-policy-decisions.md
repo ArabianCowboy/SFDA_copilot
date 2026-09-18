@@ -193,8 +193,10 @@ numbers should be "no timer" and the third should be a floor rather than a job.
 
 1. Record the policy in `docs/OPERATIONS.md` — transcripts kept for the life of the account,
    audit log kept at least twelve months, archive not collected.
-2. Update `docs/PRODUCT.md` and the privacy policy so the stated purpose of storing a
-   conversation is "so the reader can return to it," which is what makes life-of-account
+2. Update `docs/PRODUCT.md` and the privacy policy so the stated purposes of storing a
+   conversation are "so the reader can return to it" and "so audited admins can review it
+   for support" — reversed 2026-09-18 per owner decision; legal wording parked for the
+   lawyer pass, not gating dev — which is what makes life-of-account
    retention defensible.
 3. Leave the purge mechanisms unbuilt. Revisit when `audit_log` passes a hundred thousand rows
    or a lawyer sets a ceiling.

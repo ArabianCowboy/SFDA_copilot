@@ -544,8 +544,9 @@ Listed so the absence reads as a decision rather than an oversight: resumable st
 cross-tab synchronisation; conversation branching, merging or message editing;
 per-message deletion; background completion; model-generated titles; a virtualised
 conversation list; browser-direct writes to the chat tables; deleting durable history
-on logout; a transcript console page for operators; and any surface that lets an
-operator read what a reader asked.
+on logout. (Reversed 2026-09-18 per owner decision: the per-member conversation
+viewer in `TODO.md` is now wanted work — the transcript-console exclusion this
+line used to carry no longer applies.)
 
 On the reader quota specifically: **token credits** (the OpenAI stream ignores usage
 chunks and a tokenizer estimate is not a billing ledger), **time-windowed access** as
