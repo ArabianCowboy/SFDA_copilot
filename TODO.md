@@ -60,7 +60,7 @@ bottom of this file: [How this file works](#how-this-file-works).
 - [Two search artifacts are unpickled before anything has validated them](#two-search-artifacts-are-unpickled-before-anything-has-validated-them) — not started; needs a format change and a corpus rebuild, not a hash.
 - [Nothing ever deletes an old search build](#nothing-ever-deletes-an-old-search-build) — not started; 16 on disk, 8 of them failed runs; the cleanup step is the risky half.
 - [`IndexFlatL2` shifts every id above a deleted vector](#indexflatl2-shifts-every-id-above-a-deleted-vector) — nothing is wrong today; **mandatory** in any commit that adds incremental delete or update.
-- [`LOG_LEVEL` is silently ignored, and most INFO never reaches the log](#log_level-is-silently-ignored-and-most-info-never-reaches-the-log) — diagnosed and measured locally; needs measuring under gunicorn before the fix.
+- [LOG_LEVEL works only because of import order](#log_level-works-only-because-of-import-order-and-nothing-protects-that) — nothing is broken; corrected from an earlier wrong claim, and the fragility is real.
 - [Every candidate's TF-IDF cosine is computed twice per question](#every-candidates-tf-idf-cosine-is-computed-twice-per-question) — not started; 561 µs a question, recorded because the cost of fixing it is the interesting half.
 - [A retention policy, and the bounds that depend on one](#a-retention-policy-and-the-bounds-that-depend-on-one) — blocked on a retention period nobody owns; covers the assistant-message and audit_log text bounds too.
 - [`chat_sessions.owner_id` still has no foreign key](#chat_sessionsowner_id-still-has-no-foreign-key) — sequenced behind account deletion; the migration is small and the header's reasoning is already corrected.
@@ -1010,50 +1010,48 @@ harness as a hand-built caller. That was wrong — `scripts/eval_citations.py:15
 `engine.search()` or constructs `SearchResult` objects directly, and never reaches
 `ResultCombiner.combine` at all.)_
 
-### `LOG_LEVEL` is silently ignored, and most INFO never reaches the log
+### LOG_LEVEL works only because of import order, and nothing protects that
 
-**Where:** `web/api/app.py:147-151` — the `if not logging.getLogger().handlers:` guard around the
-deliberate `basicConfig(level=LOG_LEVEL, format=...)`. The handler that makes that guard false is
-installed by `web/utils/config_loader.py`, whose module-level `logging.warning(...)` /
-`logging.debug(...)` calls are root-logger module functions, and those call `basicConfig()`
-themselves when no handler exists yet. `web/services/openai_app.py:30` has a bare module-level
-`logging.basicConfig(level=logging.INFO)` that does the same thing from the other direction.
+**Where:** `web/api/app.py:147-174` — the `if not logging.getLogger().handlers:` guard around
+`basicConfig(level=LOG_LEVEL, format=...)`. The imports that would install a root handler and
+make that guard false — `web/services/openai_app.py` (which calls a bare module-level
+`logging.basicConfig`) at `:242`, and `web/utils/config_loader.py` (whose module-level
+`logging.warning(...)` makes Python call `basicConfig()` implicitly) at `:259` — both sit below
+it.
 
-**What is wrong.** By the time `app.py` reaches its own configuration, the root logger already has
-a handler, so the guard is false and **neither `LOG_LEVEL` nor the format string is ever
-applied**. Root stays at `WARNING`. Every logger in the app inherits that, so `logger.info(...)`
-is dropped everywhere except `web.services.openai_app`, which `app.py:154` raises to INFO by name.
-Setting `LOG_LEVEL=DEBUG` in `.env` changes nothing at all — measured, not inferred.
+**What is wrong.** Nothing, today, and this entry is a correction of one that claimed otherwise.
+**It previously read "LOG_LEVEL is silently ignored", which was wrong.** That was measured by
+importing `config_loader` alone, which does install a root handler and does make the guard fail —
+but that is the CLI's import order, not the app's. Under `gunicorn --preload` the guard passes,
+because gunicorn hangs its handlers off `gunicorn.error` rather than root and every in-app import
+that would poison root happens afterwards. Measured on the VPS on 2026-09-18 by booting a spare
+worker with `LOG_LEVEL=WARNING`: it dropped `Loaded .env` (`app.py:163`, a `web.api.app` record
+with no explicit level, so purely root-gated) which appears six times in the live journal at the
+default. One variable changed, the knob moved.
 
-The comment at `app.py:87-97` shows this exact battle was already fought once and half-won: the
-`logging.info(...)` module-function calls were replaced with a named logger for precisely this
-reason. The mechanism that made them harmful is still in `config_loader`.
+What is left is the fragility. The configuration is correct by accident of import order, not by
+construction. Moving any import above line 147, or adding a top-level one that reaches
+`config_loader`, turns `LOG_LEVEL` off across the whole app — silently, with no error, no failing
+test, and no symptom except that the logs a future incident depends on are quieter than the
+operator believes. `openai_app.py:30`'s bare `basicConfig` is the loaded gun: it is a library
+module configuring root logging on import, and it is inert only because of where it is imported.
 
-**Who it reaches.** Whoever is trying to diagnose a production incident with a log that is missing
-every INFO line the application deliberately writes, and an env var that says it can turn them on.
+**Who it reaches.** Nobody now. Whoever is reading production logs during the incident after
+someone tidies the imports.
 
-**How it was found.** The 2026-09-17 VPS rebuild. `sfda.dataprocessor`'s INFO lines never reached
-the operator's log, which was diagnosed and fixed for the CLI path in `a2285a3`; scanning for the
-same pattern elsewhere found this. Verified by importing `config_loader` alone and reading the
-root logger: one handler, level 30, `isEnabledFor(INFO)` false for `web.api.app`,
-`web.services.search_index`, `web.services.openai_app` and `sfda.dataprocessor` alike.
+**How it was found.** A production rebuild on 2026-09-17 lost its entire success log to the CLI
+half of this (fixed in `a2285a3`). The scan for the same pattern produced the over-broad claim
+above; a controlled measurement on the server then disproved it and produced this.
 
-**What fixing it would disturb — and what has to be measured first.** The honest scope is not
-known yet, because **production does not obviously behave like a bare import**: the same VPS
-rebuild showed `Loading active build …` and `SearchIndex loaded successfully` arriving in
-`journalctl`, which are INFO from `web.services.search_index`. Gunicorn installs its own logging
-configuration, so under the real server something is raising levels that a plain import does not.
-Measure there before changing anything — `python -c "import logging; ..."` under the service
-account proves nothing about the running worker.
-
-The fix itself is then small and in two parts: delete the bare `basicConfig` in `openai_app.py`
-(a library module has no business configuring root logging on import — the same correction
-`a2285a3` made in the pipeline), and replace `app.py`'s handler-presence guard with an explicit
-`force=True`, since "has a handler" is not the same question as "has been configured by us".
-Removing the `openai_app` special-case on line 154 then becomes possible, and should happen in
-the same commit or it will read as deliberate forever. The risk is entirely in the blast radius:
-this is the app factory, the 1105-test suite captures logs in places, and getting it wrong makes
-production quieter rather than louder, which is the failure nobody notices.
+**What fixing it would disturb.** Deleting `openai_app.py:30` is the one unambiguous improvement
+and is nearly free — a library module should not configure root logging, and the app sets that
+logger's level explicitly at `app.py:155` anyway. Beyond that, "has a handler" is not the same
+question as "has been configured by us", and the robust form is `force=True` unconditionally. But
+that changes behaviour under gunicorn, which is the one context currently known to work, and the
+suite captures logs in several places. **Do not unify the app and CLI paths without re-measuring
+both** — the same guard is correct in one and a no-op in the other, and that is now written into
+the comment at the site. A test that boots the app and asserts `logging.getLogger().level` matches
+`LOG_LEVEL` would at least make a future import reshuffle fail loudly.
 
 ### `history_api` and `sessions_api` are still rate-limited by IP, not by account
 

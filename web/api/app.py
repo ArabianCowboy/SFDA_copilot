@@ -144,8 +144,29 @@ load_dotenv(dotenv_path=DOTENV_PATH, override=False)
 # ──────────────────────────────────────────────────────────
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 
-# Configure a root logger if not already configured
-# This ensures all logs, including those from openai_app, are handled
+# Configure the root logger. MEASURED on the VPS 2026-09-18, not assumed: this
+# guard PASSES under `gunicorn --preload`, so LOG_LEVEL really does land on
+# root. Gunicorn hangs its own handlers off the `gunicorn.error` logger rather
+# than root, and every in-app import that would install a root handler
+# (`openai_app` at :242, `config_loader` at :259) happens BELOW this line.
+#
+# Proof, by a controlled boot rather than a line count: a spare worker started
+# with LOG_LEVEL=WARNING served normally but dropped `Loaded .env` (:163) — a
+# `web.api.app` record with no explicit level, so purely root-gated — which
+# appears 6x in the live journal at the default INFO. Explicitly-levelled
+# loggers (`openai_app` below, `search_engine` via LOG_LEVEL_*) kept emitting in
+# both, which is why counting INFO lines proves nothing on its own.
+#
+# The same guarded call is a silent NO-OP under `python -m web.services.…`,
+# where a handler arrives through the import chain first and `basicConfig`
+# then returns without setting the level. That cost a production rebuild its
+# entire success log; `data_processing.py` now configures logging under
+# `__main__` with `force=True` instead. Same guard, opposite outcomes, both
+# correct for their process — do not "unify" them without re-measuring both.
+#
+# The fragility to respect: this works because of import ORDER. Moving an
+# import above this line, or adding a top-level one that pulls in
+# `config_loader`, silently switches LOG_LEVEL off with no error anywhere.
 if not logging.getLogger().handlers:
     logging.basicConfig(
         level=LOG_LEVEL, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
