@@ -50,7 +50,9 @@ bottom of this file: [How this file works](#how-this-file-works).
 - [`history_api` and `sessions_api` are still keyed by IP](#history_api-and-sessions_api-are-still-rate-limited-by-ip-not-by-account) — a decision about navigation reads, not a defect.
 - [The console's class-existence gate cannot see a class built from a variable](#the-consoles-class-existence-gate-cannot-see-a-class-built-from-a-variable) — a known hole in a gate that otherwise reads as total.
 - [The browser suite flakes intermittently in test_source_panel.py](#the-browser-suite-flakes-intermittently-in-test_source_panelpy) — undiagnosed; resource-contention evidence only.
-- [Know what people actually ask](#know-what-people-actually-ask--without-reading-anyones-conversation) — an identity-free question log; not started, gated on scale.
+- [Admin analytics from saved chats](#admin-analytics-from-saved-chats--common-questions-unanswered-topics-citation-quality) — not started; V1 aggregates off saved chats.
+- [Admin per-member conversation viewer](#admin-per-member-conversation-viewer--full-qa-with-audit) — not started; full Q&A with audit row per open.
+- [Admin analytics + viewer follow-ups](#admin-analytics--viewer-follow-ups--click-through-feedback-search-daily-counts-audit-display) — not started; seven small adds.
 - [Enable the token-verification cache once production numbers justify it](#enable-the-token-verification-cache-once-production-numbers-justify-it) — single-flight (the worker-starvation fix) shipped 2026-08-27 at no revocation cost; the optional positive cache stays off, gated on measurement.
 - [Admin broadcast & Reader Notification Center](#admin-broadcast--reader-notification-center-popups-banners-and-inbox-history) — implemented 2026-08-24; live login/session smoke-tested against production 2026-08-29 (by hand), which also surfaced and closed a real `mark-read` 500 the same day ([fix write-up](docs/archive/2026-08-29_notification-mark-read-500.md)); still owes a live Realtime-push check; the sign-out teardown shipped 2026-09-11 and the reauthenticate path needs none; the `mypy web` caveat closed 2026-09-08.
 - [The privacy policy (/privacy) is a draft, not reviewed legal text](#the-privacy-policy-privacy-is-a-draft-not-reviewed-legal-text) — consent shipped against this draft; the legal review of the text is what is still owed.
@@ -227,8 +229,6 @@ audit pass also fixed what it could reach via `apply_migration` (revoking
 public `EXECUTE` on the `handle_new_user` signup trigger, pinning
 `handle_profile_update`'s `search_path`, and optimizing the RLS policies on
 `profiles`/`users`).
-
----
 
 ---
 
@@ -1212,33 +1212,17 @@ half of the theory. `page` is function-scoped, so no state crosses tests. Still 
 
 ---
 
-### Know what people actually ask — without reading anyone's conversation
+### Admin analytics from saved chats — common questions, unanswered topics, citation quality
 
-**Where:** nothing records question text today. `ConversationStore`
-(`web/services/conversation_store.py`) holds turns in RAM, TTL 3600s, LRU 500,
-keyed to a cookie — so the record of what was asked dies within the hour. The
-sidebar's suggested questions are hand-curated in `faq.yaml`, categorised and
-translated, and were written by guessing at what readers want.
+**Update 2026-09-18 — rescoped.** This entry was `Know what people actually ask` (identity-free log, gated on scale). Owner decision: V1 aggregates off saved chats instead of a new log table; per-member full Q&A split into the next entry. The no-name log below is kept as V2, not V1. Legal review parked — sorted with lawyer later, not gating dev. V1 scope is the update at the bottom, not the original mechanism.
+
+**Where:** turns persist per reader in `chat_messages` + `chat_message_sources` via `chat_append_turn` (durable Postgres history). The sidebar's suggested questions are hand-curated in `faq.yaml`, categorised and translated, and were written by guessing at what readers want.
 
 **Why it is wanted.** Two things at once: know which questions recur, and turn
 that into a cheaper, faster answer. Put the genuinely common questions in the
 sidebar and a large share of traffic converges on a small set of answers.
 
-**The mechanism matters more than the goal here, so it is worth being exact.**
-The obvious route — let an administrator read conversations and notice the
-patterns — is both more invasive and worse at the job than the alternative.
-Frequency is an aggregate question: it needs the _text_ of what was asked, not
-who asked it. A table of `(asked_at, lang, scope, question_text, cited_count)`
-with **no `user_id` column at all** answers "what are the twenty most common
-questions this month" completely and exactly, in one `group by`, forever — while
-reading transcripts answers it approximately, by hand, and only for as long as
-someone keeps doing it.
-
-Leaving identity out is not only a privacy posture, it is the thing that makes
-the table cheap to keep: with no reader attached there is no retention deadline,
-no disclosure to write, and no question about who else may be granted admin
-later. If "how many _distinct_ people asked this" is ever needed, a per-period
-salted hash gives that without storing who.
+**Mechanism (V1).** Frequency is an aggregate question: it needs the _text_ of what was asked, not who asked it. V1 answers "what are the twenty most common questions this month" with one `group by` over saved chats and never returns `owner_id` in any analytics response. The V2 no-name table of `(asked_at, lang, scope, question_text, cited_count)` below is deferred, not V1. Per-member full Q&A lives in the next entry and is not declined here.
 
 **The cost saving is real but not where it looks.** Two different caches get
 conflated, and only one of them pays:
@@ -1268,7 +1252,7 @@ operator-adjustable from the console, and doubling it moves the ratio.
 
 So the answer cache is still the feature and the sidebar is how traffic is
 steered into it — but at volume, prefix caching on the repeats is not a rounding
-error either. Both want the question log first, and neither wants transcripts.
+error either.
 
 **Scale is what makes this worth building at all.** At three accounts it saves
 nothing worth the code. The arithmetic only turns at volume, and it turns hard:
@@ -1298,22 +1282,47 @@ and a question logged in English has no Arabic twin. That is a human step, which
 argues for the console surfacing candidates for an operator to accept rather than
 the sidebar populating itself.
 
-**Deliberately narrower than what was asked.** The original framing was to review
-reader transcripts for analysis. Transcript browsing is declined here on two
-grounds: it depends on conversation persistence, which does not exist yet (see
-below) and is the largest deferred item in the admin plan; and it buys a worse
-dataset at a much higher privacy cost than a question log that answers the same
-question better. If per-reader context is ever genuinely needed — a specific
-complaint to investigate — the narrow form is a reader-initiated _answer receipt_
-they can share, not a browsing surface for everyone.
+**Open questions.** What counts as the "same question" — string equality after normalisation or embedding similarity — the second catches far more repeats and can also collide two questions that deserve different answers, which on a regulatory surface is the more expensive mistake.
 
-**Open questions.** Whether the log stores the raw question or a normalised form
-— readers paste identifying details into questions, and a regulatory question can
-name a product and a company. Some normalisation or truncation before storage may
-be wanted, which trades exactness for safety. And whether "same question" is
-string equality after normalisation or embedding similarity — the second catches
-far more repeats and can also collide two questions that deserve different
-answers, which on a regulatory surface is the more expensive mistake.
+**V1 scope (2026-09-18, owner-locked).** No new log table. Aggregate off saved chats: `chat_messages` + `chat_message_sources` via reader RPCs (`admin_top_questions`, `admin_citation_stats`). Common = `group by` normalized question (lowercase, trim, collapse whitespace; embedding similarity out). Unanswered = `cited == []` (refusals persist; `empty_answer` / `generation_failed` never save per `web/api/app.py:3730-3747`, so excluded). Quality = `% with 0 citations`, avg cited/retrieved, by category/lang; invalid-marker rate and coverage (`citations.py:294-370`) not stored, out of V1. Responses never include `owner_id`.
+
+**What V1 would disturb.** 2 reader RPCs (`security definer`, `search_path=''`, revoke all, grant `service_role` only); `AdminBackend` + both backends in `web/services/admin_store.py`; routes `GET /admin/api/analytics/*` in `web/api/admin.py`; Overview tab render in `static/js/admin/`; strings under existing `runtime.admin.*` in `en.yaml` + `ar.yaml`; `ASSET_VERSION` bump; tests for aggregation + no identity in response.
+
+---
+
+### Admin per-member conversation viewer — full Q&A with audit
+
+**Where:** no admin chat-read path today. `web/api/admin.py` has no `/api/chat/*`; `SupabaseChatBackend` (`web/services/chat_store.py`) always uses the owner from `g.identity`. RLS gives readers only own rows (`chat_sessions`, `chat_messages`, `chat_message_sources`).
+
+**What is wanted.** Admin opens any reader → session list → full question + answer + sources, for customer support and chatbot performance review.
+
+**Who it reaches.** Admins for support; readers whose chats are opened (legal text follows later, parked per owner 2026-09-18).
+
+**How it was found.** Owner request 2026-09-18, split out of the analytics entry above.
+
+**What fixing it would disturb.** 2 RPCs (`admin_list_user_sessions`, `admin_load_user_session`) with `admin_actor_email()` gate inside; add both to `supabase/tests/function_acls.test.sql` hardcoded list; no RLS policy adds. Routes `GET /admin/api/users/<id>/sessions` + `/sessions/<sid>` in `web/api/admin.py` (`404` for bad/foreign id, orphan-safe). One audit row per session-open (`chat.session_read`) — needs `ACTION_KEYS` entry in `static/js/admin/ui.js` + `en/ar` labels. Frontend inside `people-detail` panel (no new tab). Same i18n + `ASSET_VERSION` rules.
+
+---
+
+### Admin analytics + viewer follow-ups — click-through, feedback, search, daily counts, audit display
+
+**Where:** the two entries above (analytics + viewer). Small adds, all not started.
+
+**What is wanted.**
+
+1. Click-through — an unanswered row in charts opens its example chats.
+2. Thumbs down — one reader signal on an answer, feeds the quality chart (`cited == []` alone only catches refusals, not confident-but-wrong answers).
+3. Viewer search — find member by email + filter by date.
+4. Daily counts — questions/day, % unanswered/day.
+5. Audit shows chat-opens — `who opened whose chat when` visible in the audit tab.
+6. Per-category split — same charts cut by All / Regulatory / Pharma / Vet / Bio.
+7. Deleted state — a reader-deleted chat shows `deleted by reader` in the viewer instead of blank.
+
+**Who it reaches.** Admins for support and review.
+
+**How it was found.** Owner accepted items 1–5, then 6–7, on 2026-09-18.
+
+**What fixing it would disturb.** (1) reuses both RPCs above, one frontend link; (2) one nullable column or side table + one route + bilingual labels + `ASSET_VERSION` bump; (3) extends `admin_list_users` search pattern to sessions; (4) reuses analytics RPCs with a day bucket; (5) `ACTION_KEYS` + `en/ar` labels for `chat.session_read` (same test that pins every audited action); (6) adds a category filter to the analytics RPCs, no new tables; (7) viewer checks session existence first and renders the deleted notice, no schema change.
 
 ---
 
