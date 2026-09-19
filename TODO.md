@@ -59,6 +59,7 @@ bottom of this file: [How this file works](#how-this-file-works).
 - [Marketing consent has no re-prompt path](#marketing-consent-has-no-re-prompt-path-and-the-trigger-cannot-record-a-re-affirmation) — deferred by decision 2026-09-18; due when the policy next changes materially.
 - [The privacy policy (/privacy) is a draft, not reviewed legal text](#the-privacy-policy-privacy-is-a-draft-not-reviewed-legal-text) — consent shipped against this draft; deletion copy corrected it to `-draft-2` on 2026-09-18, and the legal review of the text is still owed.
 - [Account deletion (Spec 4)](#account-deletion-spec-4--blocked-on-a-product-decision-not-on-engineering) — decision closed 2026-09-18 (yes, 30-day grace); built and **fourteen of fifteen migrations applied 2026-09-19**, code deployed, reconcile timer running. Held only on the feature switch, and on one real deletion before `13`. See `supabase/pending/README.md`.
+- [Gunicorn writes no access log](#gunicorn-writes-no-access-log-so-served-fine-and-never-asked-look-identical) — found 2026-09-19 when it made a deploy check ambiguous; decide it WITH the entry below, not before.
 - [A conversation id now reaches the access log](#a-conversation-id-now-reaches-the-access-log) — a verification task, possibly already fine; unverified either way.
 - [Six of the seven admin RPCs validate the actor without holding a lock](#six-of-the-seven-admin-rpcs-validate-the-actor-without-holding-a-lock) — a check-then-act window; pre-existing, not introduced by the actor gate.
 - [Two search artifacts are unpickled before anything has validated them](#two-search-artifacts-are-unpickled-before-anything-has-validated-them) — not started; needs a format change and a corpus rebuild, not a hash.
@@ -1590,6 +1591,47 @@ already written and only need re-verification against the live schema before app
 - Hybrid delivery: Supabase Realtime broadcast for active sessions + REST DB query on page load for offline/new sessions.
 
 ---
+
+### Gunicorn writes no access log, so "served fine" and "never asked" look identical
+
+**Where:** `gunicorn.conf.py` (which sets only `workers` and `raw_env`) and the
+`ExecStart` line in `deploy/sfda-copilot.service`, neither of which passes
+`--access-logfile`. Nginx in front of it does log.
+
+**What is wrong.** The application server records nothing about the requests it serves.
+A successful request produces no line at all, so an empty journal window is ambiguous
+between "the request was served cleanly" and "no request ever arrived". Errors still
+surface, because those go through the logger — it is the ordinary, successful traffic
+that is invisible.
+
+**Who it reaches.** Nobody, in the sense of a reader-visible fault. It reaches whoever
+is trying to establish what the server actually did — which in practice is whoever is
+mid-incident, and therefore the worst moment to discover the evidence was never
+recorded.
+
+**How it was found.** 2026-09-19, verifying that the HTTP/2 transport fix had landed in
+production. The check was "watch the journal while `/admin` loads, and report any
+`httpx.ReadError`". The window came back empty — which proved nothing, because nginx
+showed no `/admin` request had arrived in it at all. Reporting that empty window as a
+pass would have been wrong twice over: once about the fix, and once about whether the
+code had even run. Nginx's log is what separated the two, and only because it happened
+to be there.
+
+**What fixing it would disturb, and why it is not obviously a yes.** Mechanically it is
+one flag. The cost is that it creates a SECOND place every request path is written, and
+this application's paths are not neutral: `GET /c/<uuid>` puts a specific person's
+conversation identifier in the URL. That is already an open question in
+_A conversation id now reaches the access log_ below, unresolved, and turning on a
+second logger without settling it doubles the surface of the thing that entry exists to
+worry about. The privacy policy now discloses that server logs persist "including
+conversation access paths", so this would not make the copy false — but it would make
+it truer than anyone has decided it should be.
+
+**Therefore decide the two together**, and in this order: settle whether `/c/<uuid>` is
+scrubbed or retained, write the answer into `docs/OPERATIONS.md`, and only then choose
+an access-log format that matches that decision. A format that logs the path verbatim
+and one that scrubs it to `/c/:id` are the same one-line change; which one is correct
+is not a question this repository can answer.
 
 ### A conversation id now reaches the access log
 
