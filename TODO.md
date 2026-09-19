@@ -69,7 +69,7 @@ bottom of this file: [How this file works](#how-this-file-works).
 - [LOG_LEVEL works only because of import order](#log_level-works-only-because-of-import-order-and-nothing-protects-that) — nothing is broken; the one removable hazard shipped 2026-09-18, the ordering dependency remains unguarded.
 - [Every candidate's TF-IDF cosine is computed twice per question](#every-candidates-tf-idf-cosine-is-computed-twice-per-question) — not started; 561 µs a question, recorded because the cost of fixing it is the interesting half.
 - [A retention policy, and the bounds that depend on one](#a-retention-policy-and-the-bounds-that-depend-on-one) — blocked on a retention period nobody owns; covers the assistant-message and audit_log text bounds too.
-- [`chat_sessions.owner_id` still has no foreign key](#chat_sessionsowner_id-still-has-no-foreign-key) — still open; the staged migration was **removed** 2026-09-19 rather than kept parked, so nothing is queued to add it.
+- [`chat_sessions.owner_id` still has no foreign key](#chat_sessionsowner_id-still-has-no-foreign-key) — still open; the staged migration was **removed** 2026-09-19 rather than kept parked. Low priority while no deletion has completed, but there is **no orphan detector**, so a failure would be invisible.
 - [Does "disabled" freeze an account's own profile edits?](#does-disabled-freeze-an-accounts-own-profile-edits-or-only-its-use-of-the-product) — decided 2026-09-18 (freeze everything but consent withdrawal); **fully applied and live 2026-09-19**. The consent column grants are revoked, the `profiles` UPDATE policy is gated, and `update_own_preferences` is closed.
 - [Confirm the backup schedule, and rehearse a restore once](#confirm-the-backup-schedule-and-rehearse-a-restore-once) — dashboard task; the recovery position is currently an assumption.
 - [Measure the real statement and lock timeouts on the write path](#measure-the-real-statement-and-lock-timeouts-on-the-write-path) — needs a call through PostgREST, not MCP.
@@ -1809,6 +1809,50 @@ otherwise file a turn after the purge, under an owner id resolving to nothing. B
 predicate was belt-and-braces ahead of a constraint that was coming. **Now it is the only
 belt**, which is worth knowing before anyone "simplifies" it; `test_account_deletion_predicates.py`
 pins it and its docstring says why.
+
+**And the software guard does not close everything the FK would have.** Found 2026-09-19 by
+an adversarial read of the removal decision, then verified against the SQL. Two sequences
+survive a completed deletion with transcripts intact:
+
+1. **A check-to-commit race inside the saga.** `chat_append_turn` evaluates
+   `account_deletion_freezes_writes`, gets "not frozen" while the account is still `pending`,
+   and inserts its `chat_sessions` row — but has not committed. The purge runs in a different
+   transaction and **cannot see an uncommitted row**, so it deletes nothing; the re-purge in
+   `account_deletion_begin_auth_delete` misses it for the same reason. The append then
+   commits, GoTrue deletes the account, and `account_deletion_complete` succeeds — because it
+   checks only that the `profiles` row is gone (`DL006`), **never that transcripts are gone**.
+   Nothing serialises the two: the purge takes `for update` on the ledger row, and the append
+   takes no lock at all. The window is narrow — the append transaction must stay open across
+   both purges, which run milliseconds apart — and this is established by inspection, not by
+   an observed incident.
+2. **A deletion that never goes through the saga at all.** Deleting a user in the Supabase
+   dashboard or through the raw Auth Admin API cascades the profile away and leaves the
+   sessions, with no ledger row for the reconcile timer to find. **This is not reachable from
+   the app:** `delete_user` is called from exactly one place,
+   `scripts/reconcile_account_deletions.py`. It needs a human with dashboard access.
+
+`ON DELETE RESTRICT` would have converted both into a loud `23503` at the moment the profile
+cascade fired, instead of a silent survival.
+
+**The detection gap is the part worth fixing first, and it is cheap.** There is no orphan
+detector anywhere — no query, no job, no panel — and orphaned rows are unreachable through
+RLS (no `auth.uid()` will match a deleted user) and through every RPC (all filter
+`p_owner_id`). So a failure of the software guard is not merely possible, it is **invisible**.
+A scheduled `select count(*) from public.chat_sessions s left join public.profiles p on
+p.id = s.owner_id where p.id is null` with an alert closes that, works whether or not the FK
+ever lands, and is the one thing that turns "we believe there are none" into "we would know".
+**Verified 0 on 2026-09-19**, which is a snapshot and not a guarantee — and is unsurprising,
+since no deletion has completed yet.
+
+**One trap in reading that query:** a hit is NOT automatically a deleted-account leftover.
+This app deliberately tolerates an `auth.users` row with no `profiles` row — see
+`20260828143044_touch_last_seen_tolerates_a_profileless_account` — so any row it returns needs
+investigating before anything is deleted.
+
+**Priority.** Low today and not low forever. No account has completed deletion, so the
+population at risk is currently zero; the race needs a deletion to race against. **The
+detector should land before the first real completion**, because after that point "we have
+never seen an orphan" stops being reassuring and starts being a statement about not looking.
 
 **If it is ever rebuilt** the design is unchanged and is recorded in `docs/database-improvement-plan.md`
 (finding 5) and in git history at `supabase/pending/13_chat_sessions_owner_fk.sql`: an orphan
