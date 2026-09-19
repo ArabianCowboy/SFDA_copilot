@@ -141,6 +141,16 @@
                     id="tab-tiers" aria-controls="panel-tiers" aria-selected="false" tabindex="-1">
                     {{ icon('collection', 15) }}<span>{{ t('page.admin.tabs.tiers') }}</span>
                 </button>
+                {# The SEVENTH tab. Reuses the `shield-check` glyph already used
+                   in the brand mark rather than adding one — same reasoning as
+                   the tiers tab's comment above: these buttons are
+                   server-rendered by Jinja, so ADMIN_RUNTIME_ICON_NAMES is the
+                   wrong list. Deletions are erasure bookkeeping, and the
+                   shield reads as that without a new registration. #}
+                <button class="admin-tab" role="tab" type="button"
+                    id="tab-deletions" aria-controls="panel-deletions" aria-selected="false" tabindex="-1">
+                    {{ icon('shield-check', 15) }}<span>{{ t('page.admin.tabs.deletions') }}</span>
+                </button>
                 <button class="admin-tab" role="tab" type="button"
                     id="tab-audit" aria-controls="panel-audit" aria-selected="false" tabindex="-1">
                     {{ icon('clipboard', 15) }}<span>{{ t('page.admin.tabs.audit') }}</span>
@@ -200,6 +210,12 @@
                 <h1 class="admin-heading">{{ t('page.admin.tabs.tiers') }}</h1>
                 <p class="admin-form-hint">{{ t('page.admin.tiersHint') }}</p>
                 <div id="tiers-body" class="admin-panel-body"></div>
+            </section>
+
+            <section class="admin-panel" role="tabpanel" id="panel-deletions"
+                aria-labelledby="tab-deletions" tabindex="0" hidden>
+                <h1 class="admin-heading">{{ t('page.admin.tabs.deletions') }}</h1>
+                <div id="deletions-body" class="admin-panel-body"></div>
             </section>
 
             <section class="admin-panel" role="tabpanel" id="panel-audit"

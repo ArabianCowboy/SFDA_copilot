@@ -36,6 +36,7 @@ import {
   bindExportConversations,
   bindDeleteAllConversations,
   bindConsentToggle,
+  bindDeletionSection,
 } from './account/handlers.js';
 
 const Account = {
@@ -99,9 +100,10 @@ const Account = {
       bindIdentityForm(() => user.id);
       bindPasswordForm();
       bindSignOutOthers();
-      bindConsentToggle(() => user.id);
+      bindConsentToggle();
       bindExportConversations();
       bindDeleteAllConversations();
+      bindDeletionSection({ isAdmin: identity?.is_admin === true });
 
       showRecord();
     } catch (error) {

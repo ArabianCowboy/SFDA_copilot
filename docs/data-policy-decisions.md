@@ -1,5 +1,6 @@
-STATUS: PROPOSAL for questions 1-2 — recommended, none taken, awaiting the operator's
-sign-off and, for question 1, a lawyer's. **Question 3 is IMPLEMENTED, 2026-09-03** — the
+STATUS: **Questions 1 and 2 were DECIDED by the operator on 2026-09-18** and built; see the
+notices at the top of each. Question 1's retention rule still awaits a lawyer's review of the
+policy text, which is separate from the grace-window decision taken here. **Question 3 is IMPLEMENTED, 2026-09-03** — the
 table was dropped exactly as §3 recommends; see the notice at the top of §3. **Question 4 is IMPLEMENTED, 2026-08-28** — the
 operator decided the opposite of this document's original recommendation, and §4 now
 carries the full buildable design, its review history, and its shipped migrations, code
@@ -47,6 +48,16 @@ four the first answer was the confident one and the second was the correct one.
 ---
 
 ## 1. Retention
+
+> [!NOTE]
+> **DECIDED AND BUILT, 2026-09-18.** The operator confirmed the 30-day grace window on
+> account deletion recommended below, and it is implemented — see `TODO.md`'s
+> _Account deletion (Spec 4)_ entry and the apply runbook at `supabase/pending/README.md`.
+> One mechanism detail this section did not anticipate: sessions are revoked at request time
+> with `auth.admin.sign_out(jwt, scope="global")`, never by password rotation and never by a
+> GoTrue ban, because either would lock the reader out of the cancel path that makes a grace
+> window recovery rather than storage. The retention rules for transcripts and the audit log
+> are unchanged and still unbuilt — no purge job exists.
 
 **This is the one with real law in it, and the one where both passes should be read with
 suspicion.**
@@ -206,6 +217,17 @@ numbers should be "no timer" and the third should be a floor rather than a job.
 ---
 
 ## 2. What "disabled" means
+
+> [!NOTE]
+> **DECIDED AND BUILT, 2026-09-18.** The operator took option A — freeze everything in
+> `public` except marketing-consent withdrawal — and this section's recommendation, including
+> its disproof of the second-permissive-policy mechanism, held up under implementation.
+> Two things it did not anticipate, both now closed: `update_own_preferences` was a **second**
+> unguarded write path (it is `security definer`, so freezing the policy never reached it), and
+> `authenticated` held **INSERT** as well as UPDATE on the consent columns, so the upsert path
+> could stamp a policy version too. Deliberately not done: no GoTrue ban accompanies
+> `disabled`, because a ban kills token refresh and would make this very carve-out unreachable.
+> "Frozen" is therefore true of this schema and not of the provider.
 
 ### The recommendation
 

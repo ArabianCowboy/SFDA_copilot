@@ -1,0 +1,12 @@
+[Unit]
+Description=SFDA Copilot account-deletion reconcile (one shot)
+After=network.target
+
+[Service]
+Type=oneshot
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/sfda-copilot
+Environment=PATH=/var/www/sfda-copilot/venv/bin
+EnvironmentFile=/var/www/sfda-copilot/.env
+ExecStart=/var/www/sfda-copilot/venv/bin/python -m scripts.reconcile_account_deletions

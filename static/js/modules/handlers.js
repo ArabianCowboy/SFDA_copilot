@@ -324,9 +324,13 @@ export const Handlers = {
             first_name: firstName,
             family_name: familyName,
             marketing_consent: consented,
+            // No policy version here: /auth/signup stamps
+            // PRIVACY_POLICY_VERSION server-side, so a client can no longer
+            // attribute a consent to a policy text it never saw. Language
+            // still travels (handle_new_user degrades a grant without one
+            // to a decline, which is the safe direction).
             ...(consented
               ? {
-                  marketing_consent_policy_version: window.__POLICY_VERSION,
                   marketing_consent_language: I18n.lang,
                   age: ageValue === '' || ageValue == null ? undefined : Number(ageValue),
                 }

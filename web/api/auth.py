@@ -111,11 +111,17 @@ logger = logging.getLogger(__name__)
 # object the client used to be trusted to send itself (see
 # `static/js/modules/services.js`'s `signup` docstring), so an allow-list here
 # is what makes "the server is prepared for this" true again.
+#
+# `marketing_consent_policy_version` is deliberately NOT on this list, even
+# though a grant without one is coerced to a decline by `handle_new_user`:
+# the version is stamped server-side in `_signup_metadata` below. A client
+# that could stamp the current version without ever seeing the prompt
+# (static/js/modules/handlers.js used to send it) makes the recorded version
+# theatrics rather than attribution.
 SIGNUP_METADATA_KEYS = (
     "first_name",
     "family_name",
     "marketing_consent",
-    "marketing_consent_policy_version",
     "marketing_consent_language",
     "age",
 )
@@ -193,8 +199,25 @@ def _signup_metadata(data: dict[str, Any]) -> dict[str, Any]:
     `handle_new_user` (`20260823014034_marketing_consent_record.sql:300`)
     tests `jsonb_typeof(... ) = 'boolean'` on `marketing_consent`, and a
     string there silently becomes a declined consent for every new account.
+
+    The policy version is stamped here, server-side, and whatever the client
+    sent is dropped: the key is not in `SIGNUP_METADATA_KEYS`, so it never
+    survives the allow-list above, and a grant (`marketing_consent is True`)
+    gets `PRIVACY_POLICY_VERSION` — the single source in `web/api/app.py` —
+    without which `handle_new_user` would coerce the grant to a decline for
+    want of a version. Consistent with that trigger by construction: it
+    requires a 1-64 trimmed version (this constant is) and an `en`/`ar`
+    language (still the client's to send; a missing or invalid one degrades
+    to a decline there, which is the safe direction).
     """
-    return {key: data[key] for key in SIGNUP_METADATA_KEYS if key in data}
+    metadata = {key: data[key] for key in SIGNUP_METADATA_KEYS if key in data}
+    if metadata.get("marketing_consent") is True:
+        # Deferred: app.py imports this module's blueprints at load time, so
+        # a top-level import back would be a cycle (see `logout` below).
+        from web.api.app import PRIVACY_POLICY_VERSION
+
+        metadata["marketing_consent_policy_version"] = PRIVACY_POLICY_VERSION
+    return metadata
 
 
 @signup_bp.route("/signup", methods=["POST"])

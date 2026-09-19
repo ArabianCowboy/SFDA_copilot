@@ -334,7 +334,7 @@ SUPPORTED_FAQ_LANGS = ("en", "ar")
 # that mixes a fresh template with a stale module is worse than a stale page —
 # post-icon-migration it would render an <i class="bi"> with no icon font behind
 # it, or print a glyph NAME as text. MODULE_IMPORT_MAP below closes that.
-ASSET_VERSION = "warm84"
+ASSET_VERSION = "warm88"
 
 # Product release, rendered in the landing footer. The single source — do not
 # hand-type this value into a JS docstring or any other comment; that duplication
@@ -351,7 +351,7 @@ APP_VERSION = "0.7.2 (Beta)"
 # DRAFT: written to unblock Step 6's engineering per the product owner's own
 # instruction (2026-08-23) -- bump this string whenever /privacy's substance
 # changes, including when the draft is replaced with reviewed content.
-PRIVACY_POLICY_VERSION = "2026-08-23-draft-1"
+PRIVACY_POLICY_VERSION = "2026-09-18-draft-2"
 
 # Every ES module under static/js/modules, mapped to its versioned URL. A
 # browser-native import map is the only way to version static imports without a
@@ -1660,7 +1660,24 @@ def _persist_turn(
             # and docs/archive/2026-08-22_per-tab-deep-linking.md §3.4.
             allow_create=allow_create,
         )
-    except PersistenceUnavailable:
+    except PersistenceUnavailable as exc:
+        # An owner whose writes are frozen is refused by `chat_append_turn`
+        # itself (SQLSTATE UDL01 carrying DL001 — slice 2c's 11 refuses a
+        # purging/failed owner, never a pending one: grace is fully usable,
+        # so a pending turn is filed normally and never reaches this
+        # branch): a stream admitted before the deletion request lands its
+        # durable write after the purge already ran. The answer was
+        # already streamed at `final`; only the filing is refused, so this is
+        # a clean, logged no-op — the same False the outage path returns, but
+        # logged as the expected saga outcome it is rather than as a storage
+        # failure. The frame order is unchanged (`final` → durable write →
+        # `suggestions` → `done`).
+        if "UDL01" in str(exc) or "DL001" in str(exc):
+            logger.warning(
+                "Not persisting a turn for conv=%s: the owner has a live deletion saga.",
+                conversation_id,
+            )
+            return False
         logger.error("Could not persist a turn (conv=%s).", conversation_id, exc_info=True)
         return False
     except Exception:
@@ -1868,6 +1885,16 @@ def _configure_app(app: Flask, testing: bool, enforce_rate_limits: bool = False)
         # `_warn_if_archive_is_undisclosed`, which is what stops that pairing
         # from silently becoming untrue.
         ARCHIVE_DISCLOSED=config.get("server", "archive_disclosed", False),
+        # Self-serve account deletion (supabase/pending/07-14). A deploy
+        # switch, default OFF in config.yaml: the code ships before the
+        # schema and the driver, so the deletion routes, card and promise
+        # must stay dark until the reconcile timer is installed. Forced ON
+        # under testing so the suite exercises the built behaviour — the
+        # OFF posture has its own tests, which set this flag False.
+        DELETION_SELF_SERVE_ENABLED=config.get(
+            "server", "account_deletion_self_serve_enabled", False
+        )
+        or testing,
     )
     if testing:
         app.config.update(SERVER_NAME="localhost")
@@ -2281,6 +2308,18 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
     app.config["CORPUS_REVISION"] = getattr(engine_for_revision, "active_build_id", None)
 
     _warn_if_archive_is_undisclosed(app)
+    # Slice 2b refused to START with a salt set and no purge path
+    # (`_refuse_if_archive_has_no_purge_path`, now deleted). Slice 2c
+    # REVERSED that to refuse-to-COLLECT at the write instead
+    # (`chat_store.archive_keys` returns `(None, None)` and logs once at
+    # ERROR when the salts are set but no purge path exists): same privacy
+    # guarantee — the archive stays empty, so there is nothing a deletion
+    # cannot reach — with no availability risk, and the enforcement point is
+    # the write, which is fully under our control, rather than startup. An
+    # env typo now degrades to "noisy log, nothing collected" instead of
+    # "production down with a traceback nobody reads". The function was
+    # removed rather than kept as a wrapper so no future reader reattaches
+    # the boot check thinking the write refusal is merely advisory.
 
     def chat_backend():
         """Durable chat history, or None when this deployment has no database.
@@ -2376,6 +2415,38 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
         return get_auth_admin_dispatcher()
 
     app.config["auth_admin_dispatcher"] = auth_admin_dispatcher
+
+    # The deletion-saga reconcile driver the console shares with the systemd
+    # timer. Same per-call resolution shape as the dispatchers above and for
+    # the same reason: the service-role client is built when a reconcile is
+    # actually asked for, not at startup. Under TESTING this is a test-owned
+    # fake (a test sets the outcome it wants to prove); in production it is
+    # the SAME `reconcile_one` the timer runs, against the SAME dispatcher
+    # — there is exactly one driver implementation, in
+    # `scripts/reconcile_account_deletions.py`, and the console route holds
+    # no second copy of it.
+    app.config["_testing_deletion_reconciler"] = lambda user_id, from_state: "unclaimed"
+
+    def deletion_reconciler(user_id: str, from_state: str) -> str:
+        if app.config["TESTING"]:
+            fake = app.config.get("_testing_deletion_reconciler")
+            return fake(user_id, from_state) if callable(fake) else "unclaimed"
+        # Imported here, not at module scope: scripts/ anchors the repo root
+        # on sys.path at import time, and app.py must not pay that at load.
+        from scripts.reconcile_account_deletions import reconcile_one
+        from web.services.auth_admin import SupabaseAuthAdminDispatcher
+        from web.utils.supabase_client import get_supabase_admin
+
+        db = get_supabase_admin()
+        if db is None:
+            # No service-role client: the drive cannot run. Raised, not
+            # returned as an outcome word — `reconcile_one`'s vocabulary
+            # describes saga states, and "unconfigured" is not one of them.
+            # The route answers 502.
+            raise RuntimeError("deletion reconcile unavailable: no service-role client")
+        return reconcile_one(db, SupabaseAuthAdminDispatcher(db), user_id, from_state)
+
+    app.config["deletion_reconciler"] = deletion_reconciler
 
     # Said once at startup rather than discovered at the first reset attempt.
     #
@@ -2565,6 +2636,22 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
             key_func=_rate_key,
         )(app.view_functions["admin.create_notification"]),
     )
+    # The saga reconcile action. Keyed per-ADMINISTRATOR via `_rate_key`, for
+    # the reason the broadcast comment above gives: an IP key would let one
+    # compromised admin token drive purges from several IPs. Low on purpose:
+    # a reconcile can purge transcripts and delete an auth identity, and a
+    # stuck saga is a rare event, not a workflow. THE ASSIGNMENT IS
+    # LOAD-BEARING — see the comment above the five it documents, and
+    # web/tests/test_rate_limit_keys.py for the regression guard.
+    app.view_functions["admin.reconcile_deletion"] = cast(
+        RouteCallable,
+        limiter.limit(
+            lambda: config.get("server", "rate_limit", {}).get(
+                "deletion_reconcile_api", "10 per hour"
+            ),
+            key_func=_rate_key,
+        )(app.view_functions["admin.reconcile_deletion"]),
+    )
 
     # Imported here for the same reason admin_bp is: account.py imports back
     # into this module for _authenticate_request, and a top-level import
@@ -2604,6 +2691,56 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
             ),
             key_func=_rate_key,
         )(app.view_functions["account.delete_all_conversations"]),
+    )
+    # The consent-grant route carries exactly its own limit, like the two
+    # above (override_defaults=True replaces the blueprint's 60/minute).
+    # Keyed per reader via _rate_key — see that function's docstring for why
+    # g.identity is available at dispatch time.
+    app.view_functions["account.consent_grant"] = cast(
+        RouteCallable,
+        limiter.limit(
+            lambda: config.get("server", "rate_limit", {}).get(
+                "account_consent_grant_api", "30 per hour"
+            ),
+            key_func=_rate_key,
+        )(app.view_functions["account.consent_grant"]),
+    )
+    # Self-serve deletion (docs/account-and-trust-plan.md §3-M4/M5). The two
+    # mutations share the tight limit; status carries its own looser one (see
+    # config.yaml for both values and their reasoning). Like the three above,
+    # each REPLACES the blueprint's 60/minute (override_defaults=True) and is
+    # keyed per reader via _rate_key.
+    #
+    # These bound accidents, not a determined attacker: the limiter's
+    # `memory://` counters reset on every worker recycle (`--max-requests
+    # 1000`), so the durable guards are the saga's lease and idempotency, not
+    # these numbers.
+    app.view_functions["account.deletion_request"] = cast(
+        RouteCallable,
+        limiter.limit(
+            lambda: config.get("server", "rate_limit", {}).get(
+                "account_deletion_api", "3 per hour"
+            ),
+            key_func=_rate_key,
+        )(app.view_functions["account.deletion_request"]),
+    )
+    app.view_functions["account.deletion_cancel"] = cast(
+        RouteCallable,
+        limiter.limit(
+            lambda: config.get("server", "rate_limit", {}).get(
+                "account_deletion_api", "3 per hour"
+            ),
+            key_func=_rate_key,
+        )(app.view_functions["account.deletion_cancel"]),
+    )
+    app.view_functions["account.deletion_status"] = cast(
+        RouteCallable,
+        limiter.limit(
+            lambda: config.get("server", "rate_limit", {}).get(
+                "account_deletion_status_api", "30 per hour"
+            ),
+            key_func=_rate_key,
+        )(app.view_functions["account.deletion_status"]),
     )
 
     workers, source = _configured_worker_count()
@@ -2687,6 +2824,11 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
             "category_icons": CATEGORY_ICONS,
             "policy_version": PRIVACY_POLICY_VERSION,
             "signup_paused": signup_enabled is False,
+            # Self-serve deletion deploy switch (config.yaml): the account
+            # page renders no deletion card while this is off, and /privacy
+            # renders the pre-self-serve retention wording instead of the
+            # promise. Read at render time so tests can flip it per case.
+            "deletion_self_serve_enabled": app.config.get("DELETION_SELF_SERVE_ENABLED", False),
         }
 
     app.config["base_render_context"] = base_render_context

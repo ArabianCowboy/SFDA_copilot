@@ -28,17 +28,26 @@ declare
   summary text;
   bad text;
 
-  -- The two documented exemptions, and the whole of them. Both are argued in
-  -- supabase/README.md's standing-findings table:
+  -- The four documented exemptions, and the whole of them. All four are
+  -- argued in supabase/README.md's standing-findings table:
   --
   --   is_active_account       — a chat RLS USING clause evaluates it AS THE
   --                             QUERYING ROLE, so revoking EXECUTE from
   --                             authenticated breaks every chat policy.
   --   update_own_preferences  — browser-callable is the entire point of it.
+  --   update_own_marketing_consent
+  --                           — the consent-withdrawal carve-out: it must stay
+  --                             reachable for a disabled account past the
+  --                             frozen profiles UPDATE policy.
+  --   account_deletion_is_pending
+  --                           — the grace-window answer: a pending reader must
+  --                             reach their own cancel path past the same
+  --                             freeze. Lands with supabase/pending/09.
   --
-  -- Adding a third name here is a decision, not a fix. If a function needs to
+  -- Adding a fourth name here is a decision, not a fix. If a function needs to
   -- be on this list, it needs a row in that table first.
-  browser_callable text[] := array['is_active_account','update_own_preferences'];
+  browser_callable text[] := array['is_active_account','update_own_preferences',
+    'update_own_marketing_consent','account_deletion_is_pending'];
 
   -- Called only from inside other SECURITY DEFINER functions, which execute as
   -- its owner. Granted to nobody, service_role included — granting it would
@@ -48,7 +57,7 @@ declare
   granted_to_nobody text[] := array['admin_actor_email'];
 begin
   -- 1. Nothing in public is executable by anon. No exceptions, including the
-  --    two above — neither is reachable without a session.
+  --    four above — none is reachable without a session.
   n := n + 1;
   select string_agg(p.proname, ', ' order by p.proname) into bad
     from pg_proc p
@@ -66,7 +75,7 @@ begin
      and has_function_privilege('authenticated', p.oid, 'EXECUTE')
      and not (p.proname = any(browser_callable));
   if bad is not null then
-    raise exception 'FAIL function_acls — authenticated can execute beyond the two '
+    raise exception 'FAIL function_acls — authenticated can execute beyond the four '
       'documented exemptions: %', bad;
   end if;
 

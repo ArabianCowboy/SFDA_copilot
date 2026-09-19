@@ -153,12 +153,21 @@ declare
     ['authenticated','chat_sessions','DELETE']
   ];
 
-  -- The eleven columns 20260814005509 re-granted per column after revoking the
+  -- The seven columns 20260814005509 re-granted per column after revoking the
   -- table verbs. This is the boundary the profiles table revoke had to not
   -- break, and the interaction is the whole risk in that migration.
   writable_columns text[] := array[
     'id','first_name','family_name','age','organization','specialization',
-    'preferences','marketing_consent','marketing_consent_language',
+    'preferences'
+  ];
+  -- The four consent columns the 03 pending migration revoked (UPDATE and
+  -- INSERT alike): granting moved to the service-role-only
+  -- `grant_marketing_consent` RPC and withdrawing to the withdrawal-only
+  -- `update_own_marketing_consent` RPC, so no direct PostgREST write may
+  -- reach them any more. `age` is deliberately not on this list — it is
+  -- reader-owned data, still written through the Identity form's upsert.
+  consent_revoked_columns text[] := array[
+    'marketing_consent','marketing_consent_language',
     'marketing_consent_policy_version','marketing_consent_surface'
   ];
   -- Server-owned. A trigger raises 42501 on these too, but the grant should
@@ -196,6 +205,18 @@ begin
     if not has_column_privilege('authenticated', 'public.profiles', c, 'INSERT') then
       raise exception 'FAIL privileges — authenticated cannot INSERT profiles.% — signup '
         'writes this column', c;
+    end if;
+  end loop;
+
+  foreach c in array consent_revoked_columns loop
+    n := n + 2;
+    if has_column_privilege('authenticated', 'public.profiles', c, 'UPDATE') then
+      raise exception 'FAIL privileges — authenticated can still UPDATE profiles.% '
+        'directly; granting must go through grant_marketing_consent only', c;
+    end if;
+    if has_column_privilege('authenticated', 'public.profiles', c, 'INSERT') then
+      raise exception 'FAIL privileges — authenticated can still INSERT profiles.% '
+        'directly; the upsert fallback would stamp a client-supplied version', c;
     end if;
   end loop;
 

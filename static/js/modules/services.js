@@ -851,6 +851,31 @@ export const Services = {
     return this.sessionRequest('/account/api/conversations', { method: 'DELETE' });
   },
 
+  /**
+   * Self-serve account deletion (docs/account-and-trust-plan.md §3-M4/M5).
+   *
+   * The request carries the reader's CURRENT password (verified server-side
+   * as step-up — a bearer token alone must not delete an account) and the
+   * typed confirmation word the UI shows. Both are checked server-side, so
+   * this passes them through untouched. Failures carry the server's machine
+   * `.code` (`step_up_failed`, `deletion_unavailable_for_admin`,
+   * `already_deleted`, `cancel_unavailable`, …) for the caller to render.
+   */
+  async getDeletionStatus() {
+    return this.sessionRequest('/account/api/deletion');
+  },
+
+  async requestAccountDeletion({ password, confirmation } = {}) {
+    return this.sessionRequest('/account/api/deletion', {
+      method: 'POST',
+      body: { password, confirmation },
+    });
+  },
+
+  async cancelAccountDeletion() {
+    return this.sessionRequest('/account/api/deletion/cancel', { method: 'POST' });
+  },
+
   async getProfile(userId) {
     if (!this.supabase) throw new Error('Supabase client not initialized.');
     const { data, error } = await this.supabase
@@ -889,6 +914,40 @@ export const Services = {
     const { data, error } = await this.supabase.rpc('update_own_preferences', { p_patch: patch });
     if (error) throw error;
     return data;
+  },
+
+  /**
+   * Withdraw marketing consent for the caller's own account.
+   *
+   * Browser-direct to `update_own_marketing_consent`
+   * (supabase/pending/01_update_own_marketing_consent.sql) — withdrawal-only
+   * by construction, and deliberately NOT a Flask route, so it keeps working
+   * for a disabled account past the frozen profiles UPDATE policy. The
+   * "also clear my age" offer rides `p_clear_age`, never a second write.
+   */
+  async withdrawMarketingConsent(clearAge) {
+    if (!this.supabase) throw new Error('Supabase client not initialized.');
+    const { error } = await this.supabase.rpc('update_own_marketing_consent', {
+      p_clear_age: clearAge === true,
+    });
+    if (error) throw error;
+    return true;
+  },
+
+  /**
+   * Grant marketing consent for the caller's own account.
+   *
+   * Through `POST /account/api/consent/grant` (web/api/account.py), never a
+   * direct PostgREST write: the server stamps `PRIVACY_POLICY_VERSION`
+   * itself, so a client can no longer attribute a consent to a policy text
+   * it never saw. The caller supplies only language and surface — never a
+   * version and never a user id, both of which the route derives or stamps.
+   */
+  async grantMarketingConsent({ language, surface = 'account' } = {}) {
+    return this.sessionRequest('/account/api/consent/grant', {
+      method: 'POST',
+      body: { language, surface },
+    });
   },
 
   /**

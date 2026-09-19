@@ -323,9 +323,19 @@ def test_a_replay_does_not_advance_the_sequence(client, backend):
 
 def test_a_replay_does_not_write_a_second_archive_row(client, backend, monkeypatch):
     """Without `unique (owner_key, turn_key)` the replay skips the message rows —
-    they conflict — and silently double-weights one exchange in the archive."""
+    they conflict — and silently double-weights one exchange in the archive.
+
+    NOTE since slice 2c: with no purge path the archive never collects, so
+    this exercises the collection SHAPE under a simulated existing purge
+    path (`_ARCHIVE_PURGE_PATH_EXISTS` flipped for the test only) — the
+    dedup logic is still in the code for the day the purge lands, and this
+    is what proves it. Today's behaviour (refuse-to-collect) is pinned by
+    `test_a_salt_with_no_purge_path_collects_nothing_but_boots` below."""
+    from web.services import chat_store
+
     monkeypatch.setenv("ARCHIVE_OWNER_SALT", "owner-salt")
     monkeypatch.setenv("ARCHIVE_SESSION_SALT", "session-salt")
+    monkeypatch.setattr(chat_store, "_ARCHIVE_PURGE_PATH_EXISTS", True)
 
     conversation_id = "aaaaaaaa-2222-3333-4444-555555555555"
     request_id = "11111111-2222-3333-4444-555555555555"
@@ -1172,8 +1182,14 @@ def test_a_window_never_starts_on_an_answer(client):
 
 
 def test_the_archive_records_a_turn_under_pseudonymous_keys(client, backend, monkeypatch):
+    """NOTE since slice 2c: same simulated-purge-path arrangement as the
+    replay test above — with no purge path nothing is collected (pinned
+    below), and this proves the row SHAPE for the day the purge lands."""
+    from web.services import chat_store
+
     monkeypatch.setenv("ARCHIVE_OWNER_SALT", "owner-salt")
     monkeypatch.setenv("ARCHIVE_SESSION_SALT", "session-salt")
+    monkeypatch.setattr(chat_store, "_ARCHIVE_PURGE_PATH_EXISTS", True)
 
     response = ask(client, "how long is the review?")
 
@@ -1264,13 +1280,17 @@ def test_enabling_the_archive_requires_its_disclosure(
 
     monkeypatch.delenv("ARCHIVE_OWNER_SALT", raising=False)
     monkeypatch.delenv("ARCHIVE_SESSION_SALT", raising=False)
+    # Built BEFORE the salts are set: the disclosure guard is a direct call
+    # below, and the app must be bootable with or without salts — since
+    # slice 2c, salts-on degrades to refuse-to-collect at the write
+    # (`chat_store.archive_keys`) rather than refusing to start at all.
+    app = create_app(testing=True)
+    app.config["ARCHIVE_DISCLOSED"] = False
+
     if owner_salt:
         monkeypatch.setenv("ARCHIVE_OWNER_SALT", owner_salt)
     if session_salt:
         monkeypatch.setenv("ARCHIVE_SESSION_SALT", session_salt)
-
-    app = create_app(testing=True)
-    app.config["ARCHIVE_DISCLOSED"] = False
 
     with caplog.at_level("ERROR"):
         tripped = app_module._warn_if_archive_is_undisclosed(app)
@@ -1305,14 +1325,22 @@ def test_a_dormant_archive_does_not_warn(monkeypatch, caplog):
 def test_a_disclosed_archive_does_not_warn(monkeypatch, caplog):
     """Once the notice covers the archive and its controls are back, the salts
     are free to be set — the guard exists to force that work, not to forbid the
-    feature."""
+    feature.
+
+    NOTE since slice 2c: the DISCLOSURE warning still goes quiet here, and
+    `create_app` itself no longer refuses to start with a salt set — a salt
+    with no purge path is refused at the WRITE (`chat_store.archive_keys`
+    returns `(None, None)` and logs once), not at boot. So like the test
+    above, this builds the app before setting the salts."""
     from web.api import app as app_module
+
+    monkeypatch.delenv("ARCHIVE_OWNER_SALT", raising=False)
+    monkeypatch.delenv("ARCHIVE_SESSION_SALT", raising=False)
+    app = create_app(testing=True)
+    app.config["ARCHIVE_DISCLOSED"] = True
 
     monkeypatch.setenv("ARCHIVE_OWNER_SALT", "owner-salt")
     monkeypatch.setenv("ARCHIVE_SESSION_SALT", "session-salt")
-
-    app = create_app(testing=True)
-    app.config["ARCHIVE_DISCLOSED"] = True
 
     with caplog.at_level("ERROR"):
         assert app_module._warn_if_archive_is_undisclosed(app) is False
@@ -1338,6 +1366,12 @@ def test_the_disclosure_guard_actually_runs_at_startup(monkeypatch, caplog):
     it protects gets written down as though it is enforced. So this one goes
     through `create_app` and asserts on the log, touching the function's name
     nowhere.
+
+    NOTE since slice 2c, REVERSING slice 2b: startup no longer refuses a salt
+    with no purge path — the app boots, warns about the undisclosed archive
+    (asserted here), and the archive WRITE is what refuses to collect
+    (`chat_store.archive_keys` returns `(None, None)` and logs its own ERROR).
+    Same guarantee (nothing is collected), no availability risk.
     """
     monkeypatch.setenv("ARCHIVE_OWNER_SALT", "owner-salt")
     monkeypatch.setenv("ARCHIVE_SESSION_SALT", "session-salt")
@@ -1347,4 +1381,36 @@ def test_the_disclosure_guard_actually_runs_at_startup(monkeypatch, caplog):
 
     assert any("archive_disclosed" in r.message for r in caplog.records), (
         "create_app did not reach the archive disclosure guard"
+    )
+
+
+def test_a_salt_with_no_purge_path_collects_nothing_but_boots(monkeypatch, caplog, client, backend):
+    """The refuse-to-collect half of the reversal above, end to end: the app
+    boots with both salts set, a turn is still filed to the reader's own
+    history, and the archive stays empty — with one ERROR naming the missing
+    purge path.
+
+    Fails against slice 2b's code twice over: `create_app` raised
+    RuntimeError, so nothing booted at all.
+    """
+    from web.services import chat_store
+
+    monkeypatch.setenv("ARCHIVE_OWNER_SALT", "owner-salt")
+    monkeypatch.setenv("ARCHIVE_SESSION_SALT", "session-salt")
+    monkeypatch.setattr(chat_store, "_archive_no_purge_warned", False)
+
+    # Boots; must not raise. (`archive_keys` reads the environment live at
+    # call time, so the turn below exercises the salts through this
+    # test's own client.)
+    create_app(testing=True)
+
+    with caplog.at_level("ERROR"):
+        response = ask(client, "first")
+
+    assert backend.archive == [], "the archive must stay empty with no purge path"
+    assert backend.load_session(OWNER, conversation_of(response)), (
+        "the reader's own history must still be filed"
+    )
+    assert any("purge path" in r.message for r in caplog.records), (
+        "the refusal must be logged loudly, not silently skipped"
     )
