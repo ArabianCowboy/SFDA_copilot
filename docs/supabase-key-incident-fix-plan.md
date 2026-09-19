@@ -37,11 +37,11 @@ The `or` short-circuits onto the bad value, so the working JWT is never reached.
 
 Live `curl` against `https://yjjuudnsnjzhyqllsqrd.supabase.co`:
 
-| Credential | Shape | Result |
-| ---------- | ----- | ------ |
-| `SUPABASE_ANON_KEY` | legacy JWT, `ref` matches, `exp` 2035-04-26 | `/auth/v1/health` → **200** |
-| `SUPABASE_SERVICE_ROLE_KEY` | legacy JWT, `ref` matches, `exp` 2035-04-26 | `GET /rest/v1/` → **200** |
-| `SUPABASE_SECRET_KEY` | `sb_secret_` + 22 + `_` + 8-char checksum (41 total) | `GET /rest/v1/` → **401 `Unregistered API key`** |
+| Credential                  | Shape                                                | Result                                           |
+| --------------------------- | ---------------------------------------------------- | ------------------------------------------------ |
+| `SUPABASE_ANON_KEY`         | legacy JWT, `ref` matches, `exp` 2035-04-26          | `/auth/v1/health` → **200**                      |
+| `SUPABASE_SERVICE_ROLE_KEY` | legacy JWT, `ref` matches, `exp` 2035-04-26          | `GET /rest/v1/` → **200**                        |
+| `SUPABASE_SECRET_KEY`       | `sb_secret_` + 22 + `_` + 8-char checksum (41 total) | `GET /rest/v1/` → **401 `Unregistered API key`** |
 
 Both JWTs carry `ref: yjjuudnsnjzhyqllsqrd`, matching `SUPABASE_URL`; neither is
 expired. The `sb_secret_` value matches Supabase's documented layout exactly, so
@@ -64,7 +64,7 @@ class-level `_instance`): `admin_store.py:298` `fetch_identity`,
 Authentication was **never broken**. Token verification and login use a separate
 anon client (`app.py:679`, `auth.py:305`, reading `SUPABASE_ANON_KEY`), verified
 healthy. Every `Identity lookup failed for <uuid>` line is downstream of a
-*successful* token verification.
+_successful_ token verification.
 
 ### Explained symptoms
 
@@ -75,7 +75,7 @@ healthy. Every `Identity lookup failed for <uuid>` line is downstream of a
   sets `role="user"`, `is_resolved=False` (`identity_cache.py:96-101`) →
   `is_admin` is `role == "admin" and is_resolved` (`identity_cache.py:66`) →
   `renderAdminAffordance(false)` applies `d-none` (`auth-view.js:153-157`).
-  Fails closed on privilege, by design. This is a *symptom*, not an auth bug.
+  Fails closed on privilege, by design. This is a _symptom_, not an auth bug.
 - **Chat still works**, streaming answers neither saved nor counted (see P1).
 
 ---
@@ -87,7 +87,7 @@ restarted. Every previously-failing surface returned to HTTP 200 in the same boo
 — `/api/chat/sessions`, `/api/notifications/active`, `/api/identity` — with no
 `Unregistered API key` line anywhere in the startup log, and the administration
 console became reachable again. That last point independently confirms the
-diagnosis in §1: the admin affordance was hidden because the *role lookup*
+diagnosis in §1: the admin affordance was hidden because the _role lookup_
 failed, not because authentication did.
 
 The procedure below is retained as the **runbook** for the next occurrence, and
@@ -167,15 +167,15 @@ anything.
 Checking HTTP 200 is not sufficient anywhere in this table, because several
 routes swallow their own failures.
 
-| Surface | Required evidence |
-| ------- | ----------------- |
-| Reader identity | `/api/identity`: expected role/tier **and** a populated, plausible `quota` (`app.py:2562-2603`) |
-| Console | `/admin/api/identity`, settings, registrations, users, tiers, audit, notification history. Check API responses — the `/admin` shell is not proof (`admin.py:78-116`) |
-| Durable history | `/api/chat/sessions` and `/api/chat/history?c=<owned-existing-id>`. Without `c`, history returns empty success without consulting persistence (`app.py:2696-2727`) |
-| Paid generation | One controlled request through **each** chat route: response consumed, allowance increment verified, turn reloadable, no persistence error (`app.py:3333-3340`, `app.py:3755-3770`) |
-| Notifications | Active/history retrieval, a targeted notification, mark-read, and **actual Realtime delivery** — REST success does not prove broadcast (`notification_service.py:101-128`) |
-| Auth administration | Privileged GoTrue access separately; session revocation and email change also use the service client (`auth_admin.py:45-46`) |
-| Security & language | Reader denied console; disabled test account refused; EN and AR surfaces checked (`admin.py:101-109`, `app.py:758-759`) |
+| Surface             | Required evidence                                                                                                                                                                   |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Reader identity     | `/api/identity`: expected role/tier **and** a populated, plausible `quota` (`app.py:2562-2603`)                                                                                     |
+| Console             | `/admin/api/identity`, settings, registrations, users, tiers, audit, notification history. Check API responses — the `/admin` shell is not proof (`admin.py:78-116`)                |
+| Durable history     | `/api/chat/sessions` and `/api/chat/history?c=<owned-existing-id>`. Without `c`, history returns empty success without consulting persistence (`app.py:2696-2727`)                  |
+| Paid generation     | One controlled request through **each** chat route: response consumed, allowance increment verified, turn reloadable, no persistence error (`app.py:3333-3340`, `app.py:3755-3770`) |
+| Notifications       | Active/history retrieval, a targeted notification, mark-read, and **actual Realtime delivery** — REST success does not prove broadcast (`notification_service.py:101-128`)          |
+| Auth administration | Privileged GoTrue access separately; session revocation and email change also use the service client (`auth_admin.py:45-46`)                                                        |
+| Security & language | Reader denied console; disabled test account refused; EN and AR surfaces checked (`admin.py:101-109`, `app.py:758-759`)                                                             |
 
 ### P0.6 — Rollback on failure
 
@@ -250,8 +250,8 @@ concurrency, recovery, and zero model invocation on rejection. Existing coverage
 verifies that a generic failure streams uncounted (`test_quota_routes.py:332-341`)
 and uses the in-memory backend — it does not exercise this path.
 
-**Precedent:** `6347212` and `80593b4` hardened the *refund* path. This is the
-same reasoning applied to the *claim* path.
+**Precedent:** `6347212` and `80593b4` hardened the _refund_ path. This is the
+same reasoning applied to the _claim_ path.
 
 ### P2 — A GoTrue 401 would sign everyone out (HIGH, dated trigger)
 
@@ -340,14 +340,14 @@ credential would:
 - **Re-enable unmetered chat** via `_claim_daily_message`'s `backend is None`
   branch (`app.py:847-849`) — directly undoing P1.
 - Turn notification failure into HTTP 200 with an empty list (`app.py:3101-3106`).
-- **Silently reopen registrations.** `signup_enabled` returns the *deployed
-  default* when the backend is `None` (`settings_service.py:497-502`), but the
-  last-known cached value or `None` (undetermined) when a read *fails*
+- **Silently reopen registrations.** `signup_enabled` returns the _deployed
+  default_ when the backend is `None` (`settings_service.py:497-502`), but the
+  last-known cached value or `None` (undetermined) when a read _fails_
   (`settings_service.py:509-520`). Collapsing the two can defeat an operational
   pause.
 
-**Correct remedy:** three distinct states — *intentionally unconfigured*,
-*configured and healthy*, *configured but unavailable*. Do not erase the
+**Correct remedy:** three distinct states — _intentionally unconfigured_,
+_configured and healthy_, _configured but unavailable_. Do not erase the
 distinction by returning `None`. Startup validation is useful as a bounded
 readiness check but needs a specified timeout, retries, recovery and failure
 posture; an unconditional network requirement at startup changes an explicitly
@@ -371,7 +371,7 @@ tolerate extra fields but do not read it (`services.js:650`, `app.js:458-474`,
 `account.js:76-90`). Ship the payload change, the consumer change and the
 contract test together.
 
-Note `is_resolved` describes *identity resolution*, not backend health: a cached
+Note `is_resolved` describes _identity resolution_, not backend health: a cached
 resolved identity can coexist with a failed quota lookup. **It does not close the
 disabled-account admission gap** (see §4).
 
@@ -414,7 +414,7 @@ inventory conflicting values first. Cover script entrypoints too
 **(a) Password lifecycle.** `.env:14` `supabasePassword` is read by no
 application code, but that does not establish that database tools, backups or
 another deployment do not use it. Inventory consumers, establish recovery access,
-*then* rotate and remove. Actual exposure is **UNVERIFIED**; escalate immediately
+_then_ rotate and remove. Actual exposure is **UNVERIFIED**; escalate immediately
 if exposure is established.
 
 **(b) CSP metadata.** `SUPABASE_PROJECT_REF` is absent from `.env` though
@@ -436,16 +436,16 @@ key-failure runbook; `README.md:342-344` is the only existing guidance.
 
 ## 4. Missing items (added in revision 2)
 
-| Severity | Item | Rationale |
-| -------- | ---- | --------- |
-| **Critical** | Production inventory, tested rollback, effective-environment verification | Local success cannot establish production recovery (P0.1-P0.6) |
-| **High** | Explicit *configured-but-unavailable* state | Revision 1's P5 remedy would bypass quota and reopen registrations |
-| **High** | Disabled-account outage policy | Unknown identity defaults to enabled (`identity_cache.py:86-101`); a stale resolved identity also cannot reflect a *later* disable. A payload field does not enforce access — this needs a decision, not a field |
-| **High** | Independent detection and alerting | **No health or readiness route exists** (verified). Identity and notifications return degraded 200s, so ordinary uptime checks would not have caught this. Alert on unresolved identity, uncounted operation, persistence failure and credential rejection — independently of a console that is inaccessible during the fault |
-| **High** | SDK-boundary regression tests | Quota tests use the in-memory backend and replace `claim`; neither exercises the real malformed-401 path (`test_quota.py`, `test_quota_routes.py:332-341`) |
-| **High** | Incident impact assessment | Restoring credentials does not reconstruct failed durable writes or uncounted usage. Quantify the affected period and recovery limits (`app.py:860-862,1360-1371`) |
-| **Medium** | Secret ownership, storage, retirement policy | Disk plaintext is not proof of compromise, but access control, distribution, backup and rotation ownership are unowned. Privileged keys bypass RLS |
-| **Medium** | Independent Realtime and Auth-Admin acceptance | Separate provider paths; not proved by a PostgREST 200 |
+| Severity     | Item                                                                      | Rationale                                                                                                                                                                                                                                                                                                                     |
+| ------------ | ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Critical** | Production inventory, tested rollback, effective-environment verification | Local success cannot establish production recovery (P0.1-P0.6)                                                                                                                                                                                                                                                                |
+| **High**     | Explicit _configured-but-unavailable_ state                               | Revision 1's P5 remedy would bypass quota and reopen registrations                                                                                                                                                                                                                                                            |
+| **High**     | Disabled-account outage policy                                            | Unknown identity defaults to enabled (`identity_cache.py:86-101`); a stale resolved identity also cannot reflect a _later_ disable. A payload field does not enforce access — this needs a decision, not a field                                                                                                              |
+| **High**     | Independent detection and alerting                                        | **No health or readiness route exists** (verified). Identity and notifications return degraded 200s, so ordinary uptime checks would not have caught this. Alert on unresolved identity, uncounted operation, persistence failure and credential rejection — independently of a console that is inaccessible during the fault |
+| **High**     | SDK-boundary regression tests                                             | Quota tests use the in-memory backend and replace `claim`; neither exercises the real malformed-401 path (`test_quota.py`, `test_quota_routes.py:332-341`)                                                                                                                                                                    |
+| **High**     | Incident impact assessment                                                | Restoring credentials does not reconstruct failed durable writes or uncounted usage. Quantify the affected period and recovery limits (`app.py:860-862,1360-1371`)                                                                                                                                                            |
+| **Medium**   | Secret ownership, storage, retirement policy                              | Disk plaintext is not proof of compromise, but access control, distribution, backup and rotation ownership are unowned. Privileged keys bypass RLS                                                                                                                                                                            |
+| **Medium**   | Independent Realtime and Auth-Admin acceptance                            | Separate provider paths; not proved by a PostgREST 200                                                                                                                                                                                                                                                                        |
 
 ---
 
