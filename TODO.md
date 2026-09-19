@@ -69,11 +69,11 @@ bottom of this file: [How this file works](#how-this-file-works).
 - [LOG_LEVEL works only because of import order](#log_level-works-only-because-of-import-order-and-nothing-protects-that) — nothing is broken; the one removable hazard shipped 2026-09-18, the ordering dependency remains unguarded.
 - [Every candidate's TF-IDF cosine is computed twice per question](#every-candidates-tf-idf-cosine-is-computed-twice-per-question) — not started; 561 µs a question, recorded because the cost of fixing it is the interesting half.
 - [A retention policy, and the bounds that depend on one](#a-retention-policy-and-the-bounds-that-depend-on-one) — blocked on a retention period nobody owns; covers the assistant-message and audit_log text bounds too.
-- [`chat_sessions.owner_id` still has no foreign key](#chat_sessionsowner_id-still-has-no-foreign-key) — written 2026-09-18 as `supabase/pending/13`, deliberately **parked** until one real deletion completes end to end.
+- [`chat_sessions.owner_id` still has no foreign key](#chat_sessionsowner_id-still-has-no-foreign-key) — still open; the staged migration was **removed** 2026-09-19 rather than kept parked, so nothing is queued to add it.
 - [Does "disabled" freeze an account's own profile edits?](#does-disabled-freeze-an-accounts-own-profile-edits-or-only-its-use-of-the-product) — decided 2026-09-18 (freeze everything but consent withdrawal); **fully applied and live 2026-09-19**. The consent column grants are revoked, the `profiles` UPDATE policy is gated, and `update_own_preferences` is closed.
 - [Confirm the backup schedule, and rehearse a restore once](#confirm-the-backup-schedule-and-rehearse-a-restore-once) — dashboard task; the recovery position is currently an assumption.
 - [Measure the real statement and lock timeouts on the write path](#measure-the-real-statement-and-lock-timeouts-on-the-write-path) — needs a call through PostgREST, not MCP.
-- [Run the database assertions somewhere other than by hand](#run-the-database-assertions-somewhere-other-than-by-hand) — `supabase/tests/` exists and runs by hand only.
+- [Run the database assertions somewhere other than by hand](#run-the-database-assertions-somewhere-other-than-by-hand) — `supabase/tests/` exists and runs by hand only; the two newest files have never been run at all.
 - [One Realtime socket per reader, not one per visible tab](#one-realtime-socket-per-reader-not-one-per-visible-tab) — not started; costs nothing measurable yet, written down because the cost is the interesting half.
 - [Confirm on the live site that chat streaming arrives token by token](#confirm-on-the-live-site-that-chat-streaming-arrives-token-by-token) — post-restart verification; circumstantial log evidence says yes, owed by a human.
 
@@ -1793,10 +1793,28 @@ most likely when counsel's review lands and the draft label comes off.
 
 ### `chat_sessions.owner_id` still has no foreign key
 
-**Update 2026-09-18.** Written as `supabase/pending/13` and deliberately **parked**: it adds
-`ON DELETE RESTRICT`, so applying it before one real deletion has completed end to end would
-convert a saga bug into a `23503` that blocks deletion entirely. Run its orphan check first;
-any hit is an incident, not a row to force.
+**Update 2026-09-19 — the migration was REMOVED, and this entry stays open.** It was written
+on 2026-09-18 as `supabase/pending/13` and parked behind "one real deletion has completed end
+to end", because `ON DELETE RESTRICT` would convert a saga bug into a `23503` that blocks
+deletion entirely. The owner's decision on 2026-09-19 was to delete the file rather than carry
+a parked migration whose gate might not be met for thirty days. **That is a reversal of the
+2026-09-18 decision to stage it, not a resolution of the finding below** — the FK still does
+not exist, and now nothing is queued to create it.
+
+**What now carries the guarantee, in the FK's place.** Only the saga, and only in software.
+`account_deletion_purge_transcripts` deletes the rows explicitly, and
+`account_deletion_freezes_writes` includes the `completed` state precisely because
+`chat_sessions.owner_id` has no foreign key — a 300-second stream admitted during grace could
+otherwise file a turn after the purge, under an owner id resolving to nothing. Before, that
+predicate was belt-and-braces ahead of a constraint that was coming. **Now it is the only
+belt**, which is worth knowing before anyone "simplifies" it; `test_account_deletion_predicates.py`
+pins it and its docstring says why.
+
+**If it is ever rebuilt** the design is unchanged and is recorded in `docs/database-improvement-plan.md`
+(finding 5) and in git history at `supabase/pending/13_chat_sessions_owner_fk.sql`: an orphan
+check that aborts, then `NOT VALID` + a separate `VALIDATE` under `SET LOCAL lock_timeout`,
+referencing `public.profiles(id)` — not `auth.users`, which service_role cannot reach. Run the
+orphan check first; any hit is an incident, not a row to force.
 
 **Where:** `supabase/migrations/20260820131914_chat_session_persistence.sql:37-42`, and
 rule 8 of `supabase/README.md`, which records the correction.
@@ -1839,8 +1857,9 @@ needs no new index: `chat_sessions_owner_updated_idx` leads with `owner_id`.
 
 ### Does "disabled" freeze an account's own profile edits, or only its use of the product?
 
-**Update 2026-09-18 — decided and built; applied to nothing.** The answer is **freeze
-everything in `public` except marketing-consent withdrawal**. Built as `supabase/pending/01-05`:
+**Update 2026-09-18 — decided and built; applied 2026-09-19.** The answer is **freeze
+everything in `public` except marketing-consent withdrawal**. Built as `01`-`05` of the
+account-and-trust batch, all now in `supabase/migrations/`:
 a withdrawal-only `security definer` RPC that a disabled account can still reach, a
 `service_role` grant RPC behind a Flask route (so a disabled account can never _grant_, and so
 the policy version is stamped server-side), `is_active_account()` added to the `profiles`
@@ -1971,7 +1990,19 @@ is idle, and a PL/pgSQL function still executing is not idle.
 
 ### Run the database assertions somewhere other than by hand
 
-**Where:** `supabase/tests/` (four files), and the absence of a database in CI.
+**Update 2026-09-19 — the cost of this landed, concretely.** The account-and-trust batch
+applied fourteen migrations to the live project, and its runbook's own closing step was
+"re-run `supabase/tests/`, including the two new files (`disabled_consent.test.sql` and
+`account_deletion.test.sql`), which pass only once these are applied". **That step was not
+done.** Nothing failed and nothing complained, because nothing runs them. The two new files
+have therefore never executed against the schema they were written for — they are 2026-09-18
+assertions about migrations that landed on 2026-09-19, and their current status is unknown
+rather than green. The advisors were re-run and are clean, but the advisors do not check
+grants, which is exactly the gap this entry is about. **Run all six files by hand before the
+next migration touches consent, deletion or the profiles policy.**
+
+**Where:** `supabase/tests/` (four files at the time of writing, six now), and the absence of
+a database in CI.
 
 **What is wrong.** Those four files hold 175 assertions about grants, column privileges,
 the default ACL, function ACLs, `search_path` and reader-to-reader RLS isolation. They are

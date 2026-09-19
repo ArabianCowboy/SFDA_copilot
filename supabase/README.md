@@ -130,10 +130,10 @@ Postgres evaluates a `USING` clause as the querying role) and
 `update_own_preferences(jsonb)` (being reachable from the browser is the whole point).
 A third exemption of the same shape, `update_own_marketing_consent(boolean)`
 (the consent-withdrawal carve-out for disabled accounts, which must stay reachable
-past the frozen UPDATE policy), joins them once `supabase/pending/` 01 is applied.
+past the frozen UPDATE policy), joined them with `20260918232554`.
 A fourth, `account_deletion_is_pending()` (the grace-window answer, which must stay
-reachable for a pending account past the same freeze), joins them once
-`supabase/pending/` 09 is applied.
+reachable for a pending account past the same freeze), joined them with
+`20260918234427`.
 
 A third is exempt from **4 alone, in the opposite direction**:
 `admin_actor_email(uuid, text)` (`20260828001543`) is granted to **no role, service_role
@@ -270,9 +270,10 @@ applied.
 | `auth_leaked_password_protection`                                                                      | A Pro-plan feature; the project is on a lower tier. Tracked in `TODO.md`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | `authenticated_security_definer_function_executable` on `public.is_active_account()`                   | Intentional, added `20260822225054`. It is `stable`/read-only, takes no arguments, and answers only for the caller's own row via `auth.uid()` — there is nothing for a caller to leverage against another account. `EXECUTE` cannot be revoked from `authenticated`: the RLS policies on `chat_sessions`, `chat_messages` and `chat_message_sources` call it from their `USING` clause, and Postgres evaluates that clause as the querying role — revoking would break every reader's own chat access, not just PostgREST's direct RPC exposure.                                     |
 | `authenticated_security_definer_function_executable` on `public.update_own_preferences(jsonb)`         | Intentional, added `20260822225239`. Being callable via `/rest/v1/rpc/update_own_preferences` is the point — it is the merge-write path for `profiles.preferences` (Decision 6). It writes only the caller's own row (`where id = (select auth.uid())`, never a passed-in id) and only through an in-function key allow-list, so `SECURITY DEFINER` grants it write access to a column the caller could already write via the ordinary column grant — it does not cross an ownership boundary.                                                                                       |
-| `authenticated_security_definer_function_executable` on `public.update_own_marketing_consent(boolean)` | Intentional, lands with `supabase/pending/01`. Withdrawing marketing consent while disabled is the carve-out the frozen UPDATE policy would otherwise close: the function is `auth.uid()`-bound, withdrawal-only (no spelling of "consent = true" exists in its body), and a no-op when consent is already false, so it cannot serve as a write-amplification primitive.                                                                                                                                                                                                             |
-| `authenticated_security_definer_function_executable` on `public.account_deletion_is_pending()`         | Intentional, lands with `supabase/pending/09`. The reader's grace-window answer — true only for their own row in state `pending` — so the cancel path stays reachable past the same freeze. Takes no arguments and exposes nothing about any other account.                                                                                                                                                                                                                                                                                                                          |
-| `rls_enabled_no_policy` on `public.account_deletions`                                                  | Intentional, lands with `supabase/pending/07`. The deletion saga ledger: UUIDs, states, timestamps and counters only (D3 — no email, no IP, no user agent). Service-role `SELECT` for the console reconcile read; every write through the service-role-only saga RPCs. A policy is how you would let the browser in, and nothing in a browser has any business here — the reader's only window is `account_deletion_is_pending()`.                                                                                                                                                   |
+| `authenticated_security_definer_function_executable` on `public.update_own_marketing_consent(boolean)` | Intentional, added `20260918232554`. Withdrawing marketing consent while disabled is the carve-out the frozen UPDATE policy would otherwise close: the function is `auth.uid()`-bound, withdrawal-only (no spelling of "consent = true" exists in its body), and a no-op when consent is already false, so it cannot serve as a write-amplification primitive.                                                                                                                                                                                                                       |
+| `authenticated_security_definer_function_executable` on `public.account_deletion_is_pending()`         | Intentional, added `20260918234427`. The reader's grace-window answer — true only for their own row in state `pending` — so the cancel path stays reachable past the same freeze. Takes no arguments and exposes nothing about any other account.                                                                                                                                                                                                                                                                                                                                    |
+| `rls_enabled_no_policy` on `public.account_deletions`                                                  | Intentional, added `20260918234351`. The deletion saga ledger: UUIDs, states, timestamps and counters only (D3 — no email, no IP, no user agent). Service-role `SELECT` for the console reconcile read; every write through the service-role-only saga RPCs. A policy is how you would let the browser in, and nothing in a browser has any business here — the reader's only window is `account_deletion_is_pending()`.                                                                                                                                                             |
+| `rls_enabled_no_policy` on `public.step_up_attempts`                                                   | Intentional, added `20260918234736`. The deletion step-up throttle: user id, a failure count and two timestamps, nothing else — no email, no IP, no user agent, and above all no password or hash of one. Every access path is a `service_role` RPC called from the Flask route (`step_up_is_locked_out`, `record_step_up_failure`, `clear_step_up_failures`); a policy is how you would let the browser in, and a browser that could read this table could read how close another account is to lockout.                                                                            |
 
 ## Current shape of `public`
 
@@ -341,3 +342,19 @@ it, read the real version back from `list_migrations`, then `git mv` it into
 `migrations/` under that name. `pending/` is not an ignore and not a second
 source of truth — `ls` shows it, review reads it, and an empty `pending/`
 means nothing is waiting.
+
+**`supabase/pending/` does not exist right now, and a reference to it is a
+reference to history.** The directory was created for the account-and-trust
+batch and deleted on 2026-09-19 when the last file left it. Roughly thirty
+source comments, test docstrings and catalogue notes still cite an ordinal in
+it — `supabase/pending/07`, `pending/01-05`, and so on. **Those are not dangling
+pointers to a missing file; they name where a migration was drafted, and every
+one of them now lives in `migrations/` under a real version.** The map from
+ordinal to version is the table in
+[`docs/archive/2026-09-19_account-and-trust-apply-runbook.md`](../docs/archive/2026-09-19_account-and-trust-apply-runbook.md)
+— read it rather than grepping for a file that moved. The one exception is
+`13`, which was never applied and was removed; `TODO.md` carries what it was
+for.
+
+The convention above stands for the next batch: recreate `pending/` when one
+is staged, and delete it again when it empties.

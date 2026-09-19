@@ -1,7 +1,35 @@
-STATUS: CURRENT AUTHORITY — the apply runbook for the batch sitting in this directory.
-Delete this file when `pending/` is empty. Written 2026-09-18.
+---
+authority: historical
+status: superseded
+do_not_implement: true
+archived: 2026-09-19
+supersedes_note: >
+  The apply runbook for the account-and-trust migration batch. Every step in it is
+  done: fourteen migrations applied 2026-09-19, the reconcile timer installed, the
+  feature switch flipped and its round trip verified against production. The
+  fifteenth, `13`, was NOT applied and NOT left parked — it was deleted on
+  2026-09-19 by owner decision. Kept for the order it records and the two gates it
+  documents being skipped.
+live_authority:
+  - supabase/README.md
+  - TODO.md
+  - docs/ARCHITECTURE.md
+---
 
-# Account & Trust — the apply runbook
+> [!CAUTION]
+> **You are reading history, not a specification.** This runbook is finished and
+> `supabase/pending/` no longer exists. Do not follow any step here; confirm against
+> `supabase/README.md` or `supabase/migrations/` instead. Every heading is prefixed
+> `[HISTORICAL]`.
+
+# [HISTORICAL] Account & Trust — the apply runbook
+
+**Closed 2026-09-19.** All fourteen applicable migrations are in `supabase/migrations/`
+under the versions named below, the timer runs, the switch is on and its round trip is
+verified. `13` was removed rather than applied — see the bottom of this file. The
+`supabase/pending/` directory was deleted with it; the convention it followed is still
+documented in [`supabase/README.md`](../../supabase/README.md#supabasepending--migrations-written-but-not-yet-applied)
+for the next batch.
 
 Fifteen migrations implementing the plan archived at
 [`docs/archive/2026-09-18_account-and-trust.md`](../../docs/archive/2026-09-18_account-and-trust.md).
@@ -27,7 +55,7 @@ them ("must land after 08"), and renaming to close the gap would break those ref
 The convention these files follow — ordinal names, and why an ordinal is deliberately not a
 version — is in [`supabase/README.md`](../README.md#supabasepending--migrations-written-but-not-yet-applied).
 
-## Before anything
+## [HISTORICAL] Before anything
 
 1. **Confirm the backup schedule and run one restore rehearsal.** `docs/OPERATIONS.md`
    records no retention period, and `06` and `13` are destructive DDL. This is a hard gate on
@@ -42,7 +70,7 @@ version — is in [`supabase/README.md`](../README.md#supabasepending--migration
 4. Have `supabase/tests/` ready to run by hand — it is not in CI
    (`docs/ARCHITECTURE.md:507`), so it is a release-checklist item.
 
-## The order, and what each step is gated on
+## [HISTORICAL] The order, and what each step is gated on
 
 | #      | File                                                                      | Gate before applying                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | ------ | ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -64,7 +92,7 @@ version — is in [`supabase/README.md`](../README.md#supabasepending--migration
 | ~~—~~  | ~~**install the reconcile timer**~~                                       | **DONE 2026-09-19** — units installed, ran once by hand (exit 0, nothing due), timer enabled                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | ~~—~~  | ~~**flip `account_deletion_self_serve_enabled` to `true`, then verify**~~ | **DONE 2026-09-19.** Flipped (`3558e04`) once the gate was met — timer installed, enabled and ticking, `15` applied. **Round trip verified the same day against production:** request → ledger row `pending`, `grace_until` exactly +30 days, chat still usable during grace, cancel → `cancelled`, banner gone and still gone after a reload. Confirmed in the database, not only in the UI: one row for `d216e1d3`, `state = cancelled`, no `transcripts_purged_at`, no `auth_delete_begun_at`, `attempt_count = 0`, `last_error_code` null. `auth.sessions` also confirmed the request's global sign-out landed — every session predating it was gone |
 | ~~15~~ | ~~`step_up_attempts`~~                                                    | **APPLIED 2026-09-19** → `20260918234736`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| 13     | `chat_sessions_owner_fk`                                                  | **PARKED.** See below                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| ~~13~~ | ~~`chat_sessions_owner_fk`~~                                              | **REMOVED 2026-09-19, never applied.** See below                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 
 **Why the code deploy sits between 02 and 03.** `03` revokes the direct column grants the
 browser used to write consent through. Applied before the repointed toggle is live, consent
@@ -102,19 +130,39 @@ exact reason `POST /auth/login` was retired. The Flask limit that was supposed t
 `15` puts the throttle in the database instead. It has no dependency on `03`-`14`, but the
 feature switch must not be flipped without it.
 
-**Why 13 is parked.** It adds `chat_sessions.owner_id → auth.users ON DELETE RESTRICT`. Until
-one real deletion has completed end to end, applying it converts a saga bug into a `23503`
-that blocks deletion entirely. Run its orphan check first; any hit is an incident, not a row
-to force.
+**Why 13 was parked, and then removed.** It adds `chat_sessions.owner_id → profiles(id) ON
+DELETE RESTRICT`. It was parked because until one real deletion has completed end to end,
+applying it converts a saga bug into a `23503` that blocks deletion entirely — and the
+2026-09-19 round trip cancelled rather than completed, so that gate was not met and would not
+have been for thirty days.
 
-## After each apply
+**Removed on 2026-09-19 by owner decision** rather than carried as a parked file for a month.
+That is a reversal of this runbook's own staging decision. The finding it addressed is NOT
+resolved and remains open in `TODO.md` (_`chat_sessions.owner_id` still has no foreign key_);
+the file's full text, including the orphan check that must precede any future attempt, is in
+git history at `supabase/pending/13_chat_sessions_owner_fk.sql`.
+
+**What this leaves load-bearing.** With no FK and none queued, the only thing preventing an
+orphaned transcript is the saga's own purge plus `account_deletion_freezes_writes` including
+the `completed` state — which exists precisely because `chat_sessions.owner_id` is
+unconstrained. `web/tests/test_account_deletion_predicates.py` pins it and its docstring says
+so. Do not "simplify" that predicate.
+
+## [HISTORICAL] After each apply
 
 The filename rule's fourth step is mandatory, not a tidy-up: read the real version back from
 `list_migrations`, then `git mv` the file into `../migrations/` under exactly that name.
 
-## After the batch
+## [HISTORICAL] After the batch
 
-- Re-run the Supabase advisors and `supabase/tests/` (including the two new files,
-  `disabled_consent.test.sql` and `account_deletion.test.sql`, which pass only once these are
-  applied).
-- Delete this file.
+- ~~Re-run the Supabase advisors~~ **DONE 2026-09-19.** Nothing new: twelve
+  `rls_enabled_no_policy` INFOs and four `authenticated_security_definer_function_executable`
+  WARNs, every one of them carrying a row in `supabase/README.md`'s exception table — the
+  `step_up_attempts` row was written the same day, having been missed when `15` landed — plus
+  the known `auth_leaked_password_protection`, which is a plan-tier limit tracked in `TODO.md`.
+- **STILL OUTSTANDING:** `supabase/tests/` has not been re-run by hand, including the two new
+  files `disabled_consent.test.sql` and `account_deletion.test.sql`, which pass only once this
+  batch is applied. They are not in CI (`docs/ARCHITECTURE.md`), so nothing will run them
+  unprompted. Lifted into `TODO.md` on archiving.
+- ~~Delete this file.~~ Archived here instead, on 2026-09-19: the applied-version map, the
+  skipped-backup record and the reason `13` was dropped are all worth keeping.

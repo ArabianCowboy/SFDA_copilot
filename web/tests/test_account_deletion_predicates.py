@@ -90,7 +90,10 @@ def test_the_freeze_predicate_covers_completed_so_a_late_turn_cannot_land():
 
     `chat_append_turn` takes `p_owner_id` as an argument and lazily creates
     the session row. It never reads `profiles` or `auth.users`, and
-    `chat_sessions.owner_id` has no foreign key (13 is parked). A stream
+    `chat_sessions.owner_id` has no foreign key, and will not get one: the
+    migration that would have added it was dropped on 2026-09-19 rather than
+    left parked, so this predicate is now the ONLY thing standing between a
+    late stream and an orphaned transcript. A stream
     admitted during grace can run for up to 300 seconds
     (`docs/ARCHITECTURE.md:173`), while the timer's whole run — purge,
     re-purge, provider delete, complete — takes seconds. So that stream can
@@ -175,7 +178,6 @@ _BATCH = (
     "10_account_deletion_saga_rpcs.sql",
     "11_chat_append_turn_refuses_a_pending_owner.sql",
     "12_admin_set_user_flags_refuses_a_pending_target.sql",
-    "13_chat_sessions_owner_fk.sql",
     "14_grant_marketing_consent_refuses_a_live_saga.sql",
 )
 

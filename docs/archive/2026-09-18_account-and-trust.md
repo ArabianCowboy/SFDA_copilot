@@ -8,7 +8,7 @@ supersedes_note: >
   2026-09-18 and SEVERAL OF ITS OWN RECOMMENDATIONS WERE REVERSED before the work
   was built. Read the reversal list below before trusting any recommendation here.
 live_authority:
-  - supabase/pending/README.md
+  - supabase/README.md
   - TODO.md
   - docs/ARCHITECTURE.md
   - supabase/README.md
