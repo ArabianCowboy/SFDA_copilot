@@ -1,0 +1,11 @@
+[Unit]
+Description=Run the SFDA Copilot transcript-orphan check daily
+
+[Timer]
+OnBootSec=30min
+OnCalendar=daily
+Persistent=true
+RandomizedDelaySec=30min
+
+[Install]
+WantedBy=timers.target
