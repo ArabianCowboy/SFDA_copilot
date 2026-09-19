@@ -1739,9 +1739,10 @@ app against the same store, which is what a recycled worker is. Four of the five
 fail against the previous code; the fifth (outage handling) passed already and is a regression
 guard rather than new behaviour.
 
-**Still open, which is why this entry is not closed:** `15` has not been applied, so a reader
-cannot see the difference. The deeper collision is also still unrecorded — "the server must
-verify step-up" against "never proxy credentials to GoTrue" — and it wants a row in
+**Still open, which is why this entry is not closed:** `15` was applied on 2026-09-19, so the
+durable throttle is live and a reader can now see the difference. What remains is the deeper
+collision, still unrecorded — "the server must verify step-up" against "never proxy
+credentials to GoTrue" — and it wants a row in
 _Rules that collide_ plus a line beside the `/auth/login` retirement in
 `docs/ARCHITECTURE.md`, so that paragraph stops reading as an unconditional rule.
 
@@ -1762,9 +1763,9 @@ limiter is `memory://` and its counters reset on every worker recycle — and
 `deploy/sfda-copilot.service` sets `--max-requests 1000`, so recycles are routine. The durable
 throttle is GoTrue's, and this design is the thing that blinds it.
 
-**Who it reaches.** Nobody yet: the feature is behind `account_deletion_self_serve_enabled`,
-which is `false`, and none of `supabase/pending/` has been applied. It becomes live the moment
-that switch is flipped.
+**Who it reaches.** Every reader, as of 2026-09-19: `account_deletion_self_serve_enabled` is
+now `true` and the batch is applied, so the step-up path is live. The durable throttle from
+`15` is what bounds it, and is what made the flip safe to make.
 
 **How it was found.** An adversarial debate on the finished implementation, 2026-09-18, which
 matched the new route against the recorded reason the old one was retired.

@@ -90,20 +90,26 @@ server:
   archive_disclosed: false
 
   # Self-serve account deletion (docs/archive/2026-09-18_account-and-trust.md
-  # §3-M4/M5, migrations in supabase/pending/07-14). A deploy switch, not a
-  # test switch.
+  # §3-M4/M5). A deploy switch, not a test switch.
   #
-  # DEFAULT OFF UNTIL THE SAGA IS DRIVEN END TO END. The code deploy lands
-  # between pending/02 and pending/03 (the repointed consent toggle must be
-  # verified before the column grants are revoked), but the deletion UI and
-  # the privacy copy that promises it must not go live with that deploy:
-  # with 07-14 unapplied both deletion routes answer 503, and between 10
-  # and the timer install requests are accepted and nothing drives them.
+  # ON since 2026-09-19. It shipped `false` and stayed dark through the code
+  # deploy deliberately: that one deploy necessarily carried the deletion UI
+  # and the privacy copy promising it, and with 07-14 unapplied both routes
+  # would have answered 503 -- then between 10 and the timer install would
+  # have accepted requests with nothing to drive them.
+  #
+  # Flipped only once the runbook's gate was met: 01-12, 14 and 15 applied,
+  # and the reconcile timer installed, enabled and ticking. 15
+  # (`step_up_attempts`) matters most -- it is the durable throttle the
+  # runbook requires before this switch moves, because step-up calls GoTrue
+  # from this host's one address and blinds its per-IP limiter. 13 stays
+  # parked by design: it is gated on a deletion that has completed end to
+  # end, so it follows this flip rather than preceding it.
+  #
   # While this is off the deletion routes answer 404, the account page
   # renders no deletion card, and /privacy renders the pre-self-serve
-  # retention wording. Flip it only after the reconcile timer is installed
-  # (supabase/pending/README.md names the step).
-  account_deletion_self_serve_enabled: false
+  # retention wording.
+  account_deletion_self_serve_enabled: true
 
   # The durable daily message allowance (docs/reader-quota-plan.md).
   #

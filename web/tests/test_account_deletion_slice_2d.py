@@ -161,14 +161,21 @@ def _request_body(password="CorrectPass1", confirmation="DELETE"):
 # /privacy promises a feature that answers 503.
 
 
-def test_the_switch_defaults_off_in_config_yaml():
-    """The shipped default must be OFF — a deploy that flips it by accident
-    publishes the promise before the timer exists. Fails pre-2d: no such
-    key, so the lookup falls back to the True default below."""
+def test_the_switch_is_on_in_config_yaml():
+    """Pins the shipped value so neither direction moves by accident.
+
+    It asserted False until 2026-09-19, guarding against a flip that would
+    publish the promise before the timer existed. The flip has since been
+    made deliberately, against the gate in supabase/pending/README.md:
+    migrations 01-12, 14 and 15 applied, and the reconcile timer installed,
+    enabled and ticking. The tripwire is kept and inverted rather than
+    deleted — turning the promise back off is as much a deploy event as
+    turning it on, and neither should happen silently.
+    """
     raw = yaml.safe_load(
         (Path(__file__).resolve().parents[2] / "web" / "config.yaml").read_text(encoding="utf-8")
     )
-    assert raw["server"]["account_deletion_self_serve_enabled"] is False
+    assert raw["server"]["account_deletion_self_serve_enabled"] is True
 
 
 def test_switch_off_the_request_route_is_404(switched_off_client, admin_client):
