@@ -43,6 +43,71 @@ recording.
 
 ## [HISTORICAL] Resolved bugs
 
+### [HISTORICAL] ~~The Arabic deletion confirmation word is the everyday word for "delete"~~ — FIXED 2026-09-19
+
+**Closed 2026-09-19, the same day it was opened.** `page.account.deletionConfirmWord` is now
+«حذف الحساب» and `deletionConfirmLabel` names the same phrase — the label had to move with it
+or the form would have told the reader to type a word the server no longer accepts. Ten
+characters, two words, and it states the scope the bare verb did not. No code changed:
+`_expected_deletion_confirmations()` reads the word from the catalogue, which is why this was
+a decision rather than a diff.
+
+One thing worth recording about how it was applied. The phrase arrived from the owner as
+`باسحلا فذح` — the right words with their code points in reverse, which is what a terminal
+that cannot lay out RTL hands you when you copy from it. Written into the catalogue verbatim
+it would have rendered as mojibake and no reader could ever have matched it, because the
+comparison is an exact string match after trimming. The value shipped is the logical order,
+verified by code point: `062d 0630 0641 0020 0627 0644 062d 0633 0627 0628`. **Check the code
+points, not the rendering, whenever an Arabic value arrives through a terminal.**
+
+The entry is kept below for the reasoning, which stays true: the friction a typed confirmation
+provides is not a property of the words, it is a property of how hard they are to type, and
+that does not survive translation on its own.
+
+**Where:** `page.account.deletionConfirmWord` in `web/i18n/ar.yaml` (`حذف`), its English
+counterpart in `en.yaml` (`DELETE`), and `_expected_deletion_confirmations()` in
+`web/api/account.py:368-386`.
+
+**What is wrong.** The typed confirmation exists to create deliberate friction before an
+irreversible request — the reader must stop and type something rather than click through. The
+English does that with case: `DELETE` is six characters that need Shift or Caps Lock, and it is
+not a word the UI uses anywhere else.
+
+The Arabic does not. Arabic script has no letter case, and `حذف` is a three-letter root that is
+the standard label on every delete button in every Arabic application. It is the single most
+typed delete-related word an Arabic reader knows, it can be produced almost reflexively, and a
+mobile keyboard will happily autocomplete it. The friction the English control depends on does
+not survive the translation, so the two languages ship different amounts of protection for the
+same irreversible action.
+
+**Forcing Latin `DELETE` on an Arabic reader is not the fix** and should not be the reflex: it
+would require a keyboard-layout switch, which is jarring on mobile and contradicts
+`docs/PRODUCT.md`'s principle that Arabic is not a translation layer. The proposal on the table
+is `حذف الحساب` — two words, ten characters including the space, still natural formal Arabic,
+and it names the scope (the account, not a message) the way the bare verb does not. `تأكيد
+الحذف` is the alternative.
+
+**Who it reaches.** Every Arabic reader who reaches the deletion form, which is the majority of
+this product's audience. Nobody has been harmed: the step-up password and the durable throttle
+sit behind this control, so a reflexive confirmation still cannot delete an account on its own.
+This is the outer of several gates, and it is the one that is weaker in Arabic than in English.
+
+**How it was found.** An AI QA pass over the deletion catalogue on 2026-09-19, reviewing copy a
+human had already signed off across two rounds. The human review was looking for translation
+errors; this is not one. The Arabic is correct — it is the control that is weaker, which is a
+question only a reader of both languages would think to ask.
+
+**What fixing it would disturb.** Less than it looks. `_expected_deletion_confirmations()` reads
+the word from the catalogue rather than hardcoding it, deliberately, so changing `ar.yaml`
+updates the browser's enable-gate and the server's acceptance together with no code change —
+`web/tests/test_account_deletion.py` and `test_account_deletion_slice_2d.py` exercise both. The
+real cost is a decision, not a diff: this is a product call about how much friction an Arabic
+destructive confirmation should carry, and it belongs to whoever owns `docs/PRODUCT.md`. Note
+also that any reader mid-flow when it changes sees the label change under them, which is
+harmless but worth doing in a quiet moment rather than during a deploy that touches deletion.
+
+---
+
 ### [HISTORICAL] ~~Deletion step-up blinds GoTrue's own per-IP rate limiter~~ — FIXED 2026-09-19
 
 **Closed 2026-09-19.** Both halves shipped. The durable throttle is
