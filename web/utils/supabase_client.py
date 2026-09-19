@@ -47,6 +47,69 @@ def _auth_http_client() -> httpx.Client:
     return httpx.Client(timeout=_auth_timeout(), follow_redirects=True, http2=True)
 
 
+def _without_http2(client: Client) -> Client:
+    """Move the service-role PostgREST session off HTTP/2.
+
+    `postgrest` hardcodes `http2=True` when it builds its own session, so every
+    admin call in the process multiplexes onto ONE connection. Under
+    `--threads 8` that is a shared, concurrently-read socket, and httpcore's
+    sync HTTP/2 backend caches the first read error on the connection and
+    re-raises it for every stream on it:
+
+        httpcore/_sync/http2.py, in _read_incoming_data
+            raise self._read_exception  # pragma: nocover
+
+    So one transient read failure does not fail one request — it fails every
+    request multiplexed on that connection until the pool discards it. Observed
+    2026-09-19 opening the admin console, which fans out six calls at once: a
+    `WinError 10035` on one stream took down users, audit, notifications,
+    registrations and tiers together, and the retries a few hundred
+    milliseconds later all succeeded on a fresh connection.
+
+    The knock-on was worse than the failed panels. `fetch_identity` was one of
+    the casualties, so `resolve_identity_flags` fell back to the last known
+    answer with `is_resolved=False` — and `IdentityFlags.is_admin` requires a
+    resolved answer, correctly, because "we could not check" must never confer
+    privilege. The administrator's own console link vanished from the sidebar.
+    That fail-closed behaviour is right and is not what this changes; this
+    removes the transport fault that kept triggering it.
+
+    HTTP/1.1 takes one pooled connection per concurrent request instead of
+    multiplexing, so a read error costs exactly the request that suffered it.
+    At this request volume the extra sockets are not a cost worth weighing
+    against a failure that fans out.
+
+    REPLACING THE SESSION, not injecting one through `SyncClientOptions`.
+    That looks like the tidier lever and is the wrong one: an injected client
+    is used verbatim, and `postgrest`'s request builder sends a RELATIVE path
+    (`base_request_builder.send` passes `str(self.path)`), so it depends on a
+    `base_url` that supabase-py only sets on the session it builds itself. The
+    same injected client would also serve GoTrue, whose base URL differs — one
+    client cannot carry both. Rebuilding from the live session copies whatever
+    supabase-py actually configured (`base_url`, headers, timeout) and changes
+    the one thing at issue, so a dependency bump that alters those defaults is
+    carried along rather than silently re-derived here.
+
+    The anon client is deliberately untouched: it injects its own HTTP/2 client
+    and `SupabaseClient`'s own comment records that as a decision. It is also
+    auth-only, so it never takes the PostgREST path this fixes.
+    """
+    session = getattr(getattr(client, "postgrest", None), "session", None)
+    if session is None:  # pragma: no cover - shape changed under us
+        logger.warning("Admin PostgREST session not found; leaving the transport alone.")
+        return client
+
+    client.postgrest.session = httpx.Client(
+        base_url=session.base_url,
+        headers=session.headers,
+        timeout=session.timeout,
+        follow_redirects=True,
+        http2=False,
+    )
+    session.close()
+    return client
+
+
 class SupabaseClient:
     _instance: Client | None = None
 
@@ -182,7 +245,7 @@ class SupabaseAdminClient:
             # fact the incident needed and did not have.
             logger.info("Supabase admin client built from %s.", source)
 
-            cls._instance = create_client(url, key)
+            cls._instance = _without_http2(create_client(url, key))
 
         return cls._instance
 
