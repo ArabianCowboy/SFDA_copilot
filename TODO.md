@@ -69,11 +69,11 @@ bottom of this file: [How this file works](#how-this-file-works).
 - [LOG_LEVEL works only because of import order](#log_level-works-only-because-of-import-order-and-nothing-protects-that) — nothing is broken; the one removable hazard shipped 2026-09-18, the ordering dependency remains unguarded.
 - [Every candidate's TF-IDF cosine is computed twice per question](#every-candidates-tf-idf-cosine-is-computed-twice-per-question) — not started; 561 µs a question, recorded because the cost of fixing it is the interesting half.
 - [A retention policy, and the bounds that depend on one](#a-retention-policy-and-the-bounds-that-depend-on-one) — blocked on a retention period nobody owns; covers the assistant-message and audit_log text bounds too.
-- [`chat_sessions.owner_id` still has no foreign key](#chat_sessionsowner_id-still-has-no-foreign-key) — still open; the staged migration was **removed** 2026-09-19 rather than kept parked. Low priority while no deletion has completed, but there is **no orphan detector**, so a failure would be invisible.
+- [`chat_sessions.owner_id` still has no foreign key](#chat_sessionsowner_id-still-has-no-foreign-key) — still open; the staged migration was **removed** 2026-09-19 rather than kept parked. Low priority while no deletion has completed; the orphan detector shipped 2026-09-19 and runs nightly, so a failure is now at least visible.
 - [Does "disabled" freeze an account's own profile edits?](#does-disabled-freeze-an-accounts-own-profile-edits-or-only-its-use-of-the-product) — decided 2026-09-18 (freeze everything but consent withdrawal); **fully applied and live 2026-09-19**. The consent column grants are revoked, the `profiles` UPDATE policy is gated, and `update_own_preferences` is closed.
 - [Confirm the backup schedule, and rehearse a restore once](#confirm-the-backup-schedule-and-rehearse-a-restore-once) — dashboard task; the recovery position is currently an assumption.
 - [Measure the real statement and lock timeouts on the write path](#measure-the-real-statement-and-lock-timeouts-on-the-write-path) — needs a call through PostgREST, not MCP.
-- [Run the database assertions somewhere other than by hand](#run-the-database-assertions-somewhere-other-than-by-hand) — `supabase/tests/` exists and runs by hand only; the two newest files have never been run at all.
+- [Run the database assertions somewhere other than by hand](#run-the-database-assertions-somewhere-other-than-by-hand) — 3 of 6 files run green by hand 2026-09-19 (208 assertions); the other 3 are blocked on a disposable account or a disposable database.
 - [One Realtime socket per reader, not one per visible tab](#one-realtime-socket-per-reader-not-one-per-visible-tab) — not started; costs nothing measurable yet, written down because the cost is the interesting half.
 - [Confirm on the live site that chat streaming arrives token by token](#confirm-on-the-live-site-that-chat-streaming-arrives-token-by-token) — post-restart verification; circumstantial log evidence says yes, owed by a human.
 
@@ -1558,8 +1558,12 @@ cross-border transfer basis (the project runs in `eu-central-1`, outside the Kin
 text does not say so); naming the sub-processors, including whether prompts are excluded from
 model training; and removing the draft label. Two standing cautions: never cite article
 numbers a language model produced — `docs/data-policy-decisions.md` already warns these are
-"exactly what a language model invents" — and the Arabic of every new string above is
-unreviewed.
+"exactly what a language model invents". The Arabic is no longer unreviewed: a human read all
+59 deletion and retention strings across two rounds, and an AI second pass on 2026-09-19 found
+one defect they had signed off (`page.policy.rightsDelete` said the grace period begins when
+the account is deleted), fixed in `e9f3e2a`. Both review sheets are in `docs/archive/`. That
+closes the translation question and not the legal one — everything else in this paragraph
+still stands.
 
 **Where:** `web/i18n/en.yaml`/`ar.yaml` (`page.policy.*`), `web/templates/privacy.html`,
 `web/api/app.py`'s `PRIVACY_POLICY_VERSION` constant.
@@ -1834,7 +1838,14 @@ survive a completed deletion with transcripts intact:
 `ON DELETE RESTRICT` would have converted both into a loud `23503` at the moment the profile
 cascade fired, instead of a silent survival.
 
-**The detection gap is the part worth fixing first, and it is cheap.** There is no orphan
+**The detection gap is CLOSED as of 2026-09-19** — `scripts/check_transcript_orphans.py`,
+installed on the VPS as `sfda-copilot-orphan-check.timer` and running nightly. It exits
+non-zero on a hit, logs UUIDs only, and never deletes. This entry stays open because detection
+is not integrity: the detector tells you an orphan happened, it does not stop one happening.
+What follows is why that gap mattered and is kept because it is the argument for the
+constraint, not a description of today.
+
+**The detection gap was the part worth fixing first, and it was cheap.** There is no orphan
 detector anywhere — no query, no job, no panel — and orphaned rows are unreachable through
 RLS (no `auth.uid()` will match a deleted user) and through every RPC (all filter
 `p_owner_id`). So a failure of the software guard is not merely possible, it is **invisible**.
@@ -2042,8 +2053,36 @@ done.** Nothing failed and nothing complained, because nothing runs them. The tw
 have therefore never executed against the schema they were written for — they are 2026-09-18
 assertions about migrations that landed on 2026-09-19, and their current status is unknown
 rather than green. The advisors were re-run and are clean, but the advisors do not check
-grants, which is exactly the gap this entry is about. **Run all six files by hand before the
-next migration touches consent, deletion or the profiles policy.**
+grants, which is exactly the gap this entry is about.
+
+**Later the same day, three of the six were run by hand and all three passed** against the
+live project: `privileges.test.sql` (186 assertions), `rls_chat.test.sql` (13) and
+`function_acls.test.sql` (9) — 208 in total, covering the grant layer, reader-to-reader RLS
+isolation and the RPC ACL contract. `rls_chat` writes, so its rollback was verified afterwards
+rather than assumed: zero fixture rows survived and the real counts were unchanged.
+
+**The other three are BLOCKED, each for its own reason, and this is the useful part of the
+update:**
+
+- `disabled_consent.test.sql` — **cannot run at all.** It selects the lowest-id disabled
+  account, and production has **zero** disabled accounts, so it aborts at its own guard. Its
+  guard's advice is "disable a throwaway account and re-run", which on production means
+  committing a real disable. It needs a throwaway account somebody is willing to disable.
+- `account_deletion.test.sql` — **runnable but not casually.** It calls
+  `account_deletion_purge_transcripts` on a dynamically chosen REAL reader, and that function
+  is an unconditional `delete from public.chat_sessions where owner_id = …` with a cascade to
+  messages and sources. It is safe only because the closing `raise` rolls the block back; a
+  single failure of that mechanism is irreversible, against rows no detector would flag. Run
+  it on a Supabase branch, or take a PITR restore point first — not on a whim.
+- `rpc_behaviour.test.sql` — writes broadly, including four `notifications` rows with
+  `target_kind = 'all'` that would broadcast to every reader if they ever committed. Take the
+  `content_md5` baseline from `supabase/README.md` before and after.
+
+**So the entry does not close.** Half the suite now has a known-green status it did not have
+this morning, and the other half is blocked on things a scheduled runner would have to solve
+anyway — a disposable account and a disposable database. That is an argument FOR this entry,
+not against it: the reason three files are hard to run by hand is the same reason they should
+not be run by hand.
 
 **Where:** `supabase/tests/` (four files at the time of writing, six now), and the absence of
 a database in CI.
