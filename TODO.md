@@ -20,7 +20,7 @@ place.**
 
 When two documents disagree about how this system works, the order that settles it
 is in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). Rules that are individually
-correct but collide at one specific point — and there are eleven known ones — are listed
+correct but collide at one specific point — and there are sixteen known ones — are listed
 there too, under
 [_Rules that collide_](docs/ARCHITECTURE.md#rules-that-collide). Read that section
 before your next migration or your first RTL component.
@@ -55,7 +55,6 @@ bottom of this file: [How this file works](#how-this-file-works).
 - [Admin analytics + viewer follow-ups](#admin-analytics--viewer-follow-ups--click-through-feedback-search-daily-counts-audit-display) — not started; seven small adds.
 - [Enable the token-verification cache once production numbers justify it](#enable-the-token-verification-cache-once-production-numbers-justify-it) — single-flight (the worker-starvation fix) shipped 2026-08-27 at no revocation cost; the optional positive cache stays off, gated on measurement.
 - [Admin broadcast & Reader Notification Center](#admin-broadcast--reader-notification-center-popups-banners-and-inbox-history) — implemented 2026-08-24; live login/session smoke-tested against production 2026-08-29 (by hand), which also surfaced and closed a real `mark-read` 500 the same day ([fix write-up](docs/archive/2026-08-29_notification-mark-read-500.md)); still owes a live Realtime-push check; the sign-out teardown shipped 2026-09-11 and the reauthenticate path needs none; the `mypy web` caveat closed 2026-09-08.
-- [Deletion step-up blinds GoTrue's own per-IP rate limiter](#deletion-step-up-blinds-gotrues-own-per-ip-rate-limiter) — throttle applied 2026-09-19 (`20260918234736_step_up_attempts`); not reachable yet because the feature switch is off. The _Rules that collide_ row is still owed.
 - [Marketing consent has no re-prompt path](#marketing-consent-has-no-re-prompt-path-and-the-trigger-cannot-record-a-re-affirmation) — deferred by decision 2026-09-18; due when the policy next changes materially.
 - [The privacy policy (/privacy) is a draft, not reviewed legal text](#the-privacy-policy-privacy-is-a-draft-not-reviewed-legal-text) — consent shipped against this draft; deletion copy corrected it to `-draft-2` on 2026-09-18, and the legal review of the text is still owed.
 - [Account deletion (Spec 4)](#account-deletion-spec-4--blocked-on-a-product-decision-not-on-engineering) — decision closed 2026-09-18 (yes, 30-day grace); built and **fourteen of fifteen migrations applied 2026-09-19**, code deployed, reconcile timer running. Held only on the feature switch, and on one real deletion before `13`. See `supabase/pending/README.md`.
@@ -1717,68 +1716,6 @@ delete is uncontroversial and `audit_log` is the one where it is not. Adding the
 an argument for settling the numbers sooner rather than later.
 
 ---
-
-### Deletion step-up blinds GoTrue's own per-IP rate limiter
-
-**Update 2026-09-19 — the throttle is built; it is unapplied like the rest of the batch.**
-`supabase/pending/15_step_up_attempts.sql` puts the bound back on our side of the blinded
-limiter: a `step_up_attempts` table holding UUIDs, counts and timestamps only, and three
-`service_role` RPCs. Five failures in fifteen minutes locks the account for fifteen; the
-increment-and-decide is a single upsert so eight threads cannot all read "not locked" and
-proceed together.
-
-The route checks the lockout **before** calling GoTrue at all, which is the point — a
-locked-out caller produces no provider round trip. A correct password clears the counter, and
-a provider outage costs the reader nothing: it answers 503, never 401, and spends no attempt.
-The throttle fails **open** on a database error, deliberately — it is a rate limit, not the
-authorization check, and turning a blip into "you cannot delete your account" would break the
-feature to protect a control.
-
-The test that matters is `test_a_lockout_survives_a_worker_recycle`: it builds a second Flask
-app against the same store, which is what a recycled worker is. Four of the five new tests
-fail against the previous code; the fifth (outage handling) passed already and is a regression
-guard rather than new behaviour.
-
-**Still open, which is why this entry is not closed:** `15` was applied on 2026-09-19, so the
-durable throttle is live and a reader can now see the difference. What remains is the deeper
-collision, still unrecorded — "the server must verify step-up" against "never proxy
-credentials to GoTrue" — and it wants a row in
-_Rules that collide_ plus a line beside the `/auth/login` retirement in
-`docs/ARCHITECTURE.md`, so that paragraph stops reading as an unconditional rule.
-
-**Where:** `_verify_current_password` in `web/api/account.py`, and the rule it collides with at
-`docs/ARCHITECTURE.md:345-352`.
-
-**What is wrong.** Requesting account deletion needs a step-up: the reader re-enters their
-current password, and the server verifies it with a `sign_in_with_password` call to GoTrue.
-That is the only server-verifiable step-up this stack offers — the password-change nonce is
-consumed by GoTrue's `updateUser` in the browser and cannot be checked server-side.
-
-But it is the exact shape this repository already removed once. `POST /auth/login` answers
-`410 Gone` because the server-side route "forwarded the caller's traffic to GoTrue from this
-host's single address, blinding GoTrue's own per-IP `/token` limiter to the attacker's real
-address". Every step-up guess now arrives at GoTrue from the VPS. The Flask limit in front of
-it (`account_deletion_api`, 3/hour, keyed per account) bounds per-account guessing, but the
-limiter is `memory://` and its counters reset on every worker recycle — and
-`deploy/sfda-copilot.service` sets `--max-requests 1000`, so recycles are routine. The durable
-throttle is GoTrue's, and this design is the thing that blinds it.
-
-**Who it reaches.** Every reader, as of 2026-09-19: `account_deletion_self_serve_enabled` is
-now `true` and the batch is applied, so the step-up path is live. The durable throttle from
-`15` is what bounds it, and is what made the flip safe to make.
-
-**How it was found.** An adversarial debate on the finished implementation, 2026-09-18, which
-matched the new route against the recorded reason the old one was retired.
-
-**What fixing it would disturb.** Three options, none free. A durable per-account attempt
-counter (a table or a column plus a check in the route) survives worker recycles and is the
-smallest real fix. Moving verification browser-side preserves GoTrue's per-IP limiting but
-gives up server verification, which was the whole point of step-up. Dropping the password and
-relying on a typed confirmation alone removes the oracle and weakens the control. Whichever is
-chosen, add a row to _Rules that collide_ — "the server must verify step-up" against "never
-proxy credentials to GoTrue" is a genuine collision, and the next person will otherwise
-re-derive it. Also worth recording next to the `/auth/login` retirement itself, so that
-paragraph stops reading as an unconditional rule.
 
 ### Marketing consent has no re-prompt path, and the trigger cannot record a re-affirmation
 

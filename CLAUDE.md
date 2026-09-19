@@ -202,7 +202,7 @@ replaced, and the cleanup that followed had to archive 8,000 lines to undo it.
 - **Do not state a corpus count** — not in copy, not in the README. It goes stale on the next
   ingest.
 - **Found two rules that collide?** Add a row to
-  [_Rules that collide_](docs/ARCHITECTURE.md#rules-that-collide). There are eleven; each cost
+  [_Rules that collide_](docs/ARCHITECTURE.md#rules-that-collide). There are sixteen; each cost
   somebody a working session before it was written down.
 
 ---

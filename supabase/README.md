@@ -318,11 +318,11 @@ than by any grant in this schema, and untouched by these revokes.
 
 ## Before your next migration
 
-Four of the eleven known rule collisions in this repository live in this file — the
+Four of the sixteen known rule collisions in this repository live in this file — the
 one-concern rule versus the atomic cutover; the filename rule versus the fact that the
 name only exists after applying; the default ACL that fails closed for tables and cannot
 for functions; and the actor gate that made the last-administrator guard unreachable. All
-four are written above. The other seven, and the register they are kept in, are in
+four are written above. The other twelve, and the register they are kept in, are in
 [`docs/ARCHITECTURE.md` → _Rules that collide_](../docs/ARCHITECTURE.md#rules-that-collide).
 Read it before you write the migration, not after it surprises you.
 

@@ -306,7 +306,7 @@ there, and `TODO.md` is the most actively edited file in the project.
 | [docs/archive/README.md](docs/archive/README.md)                             | Index of finished plans and resolved TODO entries — what each decided and what it reversed. **History, not instructions**                                                                      |
 
 **Before your first migration or your first RTL component**, read
-[_Rules that collide_](docs/ARCHITECTURE.md#rules-that-collide) — eight places where two
+[_Rules that collide_](docs/ARCHITECTURE.md#rules-that-collide) — sixteen places where two
 individually correct rules meet badly, each of which has cost someone a session.
 
 ---

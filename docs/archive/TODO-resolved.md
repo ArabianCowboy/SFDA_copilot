@@ -43,6 +43,96 @@ recording.
 
 ## [HISTORICAL] Resolved bugs
 
+### [HISTORICAL] ~~Deletion step-up blinds GoTrue's own per-IP rate limiter~~ — FIXED 2026-09-19
+
+**Closed 2026-09-19.** Both halves shipped. The durable throttle is
+`supabase/migrations/20260918234736_step_up_attempts.sql`, applied to the live project on
+2026-09-19: five failures in fifteen minutes locks the account for fifteen, the lockout is
+checked before GoTrue is called at all, and the increment-and-decide is one upsert so eight
+threads cannot race past it. `test_a_lockout_survives_a_worker_recycle` is the test that
+matters, because `memory://` counters resetting on a recycle is the whole reason this entry
+existed.
+
+The collision is now recorded, which is what kept the entry open after the code landed: row
+16 of _Rules that collide_ in `docs/ARCHITECTURE.md`, plus a paragraph beside the
+`/auth/login` retirement naming this as its one deliberate, bounded exception. Before that,
+the retirement read as an unconditional rule and the step-up read as a violation of it.
+
+**The diagnosis was right and the chosen fix was the first of the three options below** — a
+durable per-account counter. The other two were not taken: moving verification browser-side
+would have given up server verification, which was the point of step-up, and dropping the
+password for a typed confirmation alone would have weakened the control rather than bounded
+it.
+
+**Not closed by this entry:** the throttle is keyed per account, so it does not restore
+GoTrue's per-IP view. A guesser spreading attempts across many accounts from one address is
+bounded only by the Flask limiter, which is still `memory://`. That is a smaller problem than
+the one fixed here — it costs an attacker one account's five attempts per fifteen minutes each
+— but it is not nothing, and it is the reason to reach for a shared durable limiter store if
+one is ever added.
+
+**Update 2026-09-19 — the throttle is built; it is unapplied like the rest of the batch.**
+`supabase/pending/15_step_up_attempts.sql` puts the bound back on our side of the blinded
+limiter: a `step_up_attempts` table holding UUIDs, counts and timestamps only, and three
+`service_role` RPCs. Five failures in fifteen minutes locks the account for fifteen; the
+increment-and-decide is a single upsert so eight threads cannot all read "not locked" and
+proceed together.
+
+The route checks the lockout **before** calling GoTrue at all, which is the point — a
+locked-out caller produces no provider round trip. A correct password clears the counter, and
+a provider outage costs the reader nothing: it answers 503, never 401, and spends no attempt.
+The throttle fails **open** on a database error, deliberately — it is a rate limit, not the
+authorization check, and turning a blip into "you cannot delete your account" would break the
+feature to protect a control.
+
+The test that matters is `test_a_lockout_survives_a_worker_recycle`: it builds a second Flask
+app against the same store, which is what a recycled worker is. Four of the five new tests
+fail against the previous code; the fifth (outage handling) passed already and is a regression
+guard rather than new behaviour.
+
+**Still open, which is why this entry is not closed:** `15` was applied on 2026-09-19, so the
+durable throttle is live and a reader can now see the difference. What remains is the deeper
+collision, still unrecorded — "the server must verify step-up" against "never proxy
+credentials to GoTrue" — and it wants a row in
+_Rules that collide_ plus a line beside the `/auth/login` retirement in
+`docs/ARCHITECTURE.md`, so that paragraph stops reading as an unconditional rule.
+
+**Where:** `_verify_current_password` in `web/api/account.py`, and the rule it collides with at
+`docs/ARCHITECTURE.md:345-352`.
+
+**What is wrong.** Requesting account deletion needs a step-up: the reader re-enters their
+current password, and the server verifies it with a `sign_in_with_password` call to GoTrue.
+That is the only server-verifiable step-up this stack offers — the password-change nonce is
+consumed by GoTrue's `updateUser` in the browser and cannot be checked server-side.
+
+But it is the exact shape this repository already removed once. `POST /auth/login` answers
+`410 Gone` because the server-side route "forwarded the caller's traffic to GoTrue from this
+host's single address, blinding GoTrue's own per-IP `/token` limiter to the attacker's real
+address". Every step-up guess now arrives at GoTrue from the VPS. The Flask limit in front of
+it (`account_deletion_api`, 3/hour, keyed per account) bounds per-account guessing, but the
+limiter is `memory://` and its counters reset on every worker recycle — and
+`deploy/sfda-copilot.service` sets `--max-requests 1000`, so recycles are routine. The durable
+throttle is GoTrue's, and this design is the thing that blinds it.
+
+**Who it reaches.** Every reader, as of 2026-09-19: `account_deletion_self_serve_enabled` is
+now `true` and the batch is applied, so the step-up path is live. The durable throttle from
+`15` is what bounds it, and is what made the flip safe to make.
+
+**How it was found.** An adversarial debate on the finished implementation, 2026-09-18, which
+matched the new route against the recorded reason the old one was retired.
+
+**What fixing it would disturb.** Three options, none free. A durable per-account attempt
+counter (a table or a column plus a check in the route) survives worker recycles and is the
+smallest real fix. Moving verification browser-side preserves GoTrue's per-IP limiting but
+gives up server verification, which was the whole point of step-up. Dropping the password and
+relying on a typed confirmation alone removes the oracle and weakens the control. Whichever is
+chosen, add a row to _Rules that collide_ — "the server must verify step-up" against "never
+proxy credentials to GoTrue" is a genuine collision, and the next person will otherwise
+re-derive it. Also worth recording next to the `/auth/login` retirement itself, so that
+paragraph stops reading as an unconditional rule.
+
+---
+
 ### [HISTORICAL] ~~The FAISS index and the chunk table are aligned only by row count~~ — FIXED 2026-09-16
 
 **Opened and closed on the same day**, so it never appears in a shipped `TODO.md`. It is
