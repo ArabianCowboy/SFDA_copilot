@@ -32,6 +32,7 @@ bottom of this file: [How this file works](#how-this-file-works).
 
 ## Open now
 
+- [A deletion request may leave the requesting access token usable until it expires](#a-deletion-request-may-leave-the-requesting-access-token-usable-until-it-expires) — diagnosed, unconfirmed; one bearer-token call decides it.
 - [Live code cites plan sections instead of the live contract](#live-code-cites-plan-sections-instead-of-the-live-contract) — blocks archiving two finished plans; count citations, do not trust a written figure.
 - [Leaked-password protection is disabled in Supabase Auth](#leaked-password-protection-is-disabled-in-supabase-auth) — blocked on a Pro-plan upgrade, not code.
 - [`POST /auth/login` is a 410 tombstone pending deletion](#post-authlogin-is-a-410-tombstone-pending-deletion) — tombstone shipped; the bare deletion is still owed next release.
@@ -79,6 +80,46 @@ bottom of this file: [How this file works](#how-this-file-works).
 ---
 
 ## Known bugs
+
+### A deletion request may leave the requesting access token usable until it expires
+
+**Where:** `deletion_request` in `web/api/account.py` (the `sign_out_all` block) and
+`web/services/auth_admin.py`.
+
+**What is wrong — and what is only suspected.** Requesting deletion calls GoTrue's global
+sign-out with the requesting session's JWT, and that half is **verified**: after the
+2026-09-19 production round trip, `auth.sessions` held exactly one row for the account,
+created at `10:46:56`, four minutes AFTER the `10:42:25` request. Every session predating
+the request was gone. The server-side revocation works.
+
+What is **not** confirmed is what an already-issued access token can still do in the window
+between the request and its own expiry. The browser assistant running that round trip
+reported it "was not signed out immediately" and "remained signed in on the next
+navigation", with the old session already deleted — which would mean GoTrue's `get_user`
+still accepts an unexpired JWT whose session has been revoked, as a stateless JWT check
+would. But that observation is not airtight: a `supabase-js` session restored from
+`localStorage` renders as signed-in without any authenticated call necessarily succeeding,
+and the operator also signed out and back in by hand during the test, which confounds it.
+
+**Who it reaches.** Bounded either way, and this is not the control that stops a thief — the
+route's own comment is careful to say it kills refresh tokens, not that it locks the account
+instantly. But the reader-facing promise is "requesting deletion ends your sessions", and if
+a stolen access token keeps working for up to the Supabase default hour, that sentence is
+approximately rather than exactly true. The repo records no configured `jwt_exp`, so the
+window is whatever the project default is — itself worth writing down.
+
+**How it was found.** The production round trip on 2026-09-19, when an observation that first
+looked like "the sign-out did not run" turned out to be the opposite: it ran, and the
+question is what survives it.
+
+**What settling it would disturb.** Nothing, to settle: issue a deletion request, then make
+one authenticated API call with the pre-request bearer and see whether it answers 200 or 401.
+That is a five-minute test and it decides whether there is a defect here at all. Note the
+access log cannot answer it retroactively — see _A conversation id now reaches the access
+log_ — because gunicorn logs no request. **If** it turns out a revoked session's token still
+authenticates, the fix is not more sign-out calls: it is `token_verification`'s cache and TTL
+posture, which is deliberately `0` as shipped, plus a decision about whether the reader-facing
+copy should promise session termination at all.
 
 ### Live code cites plan sections instead of the live contract
 
