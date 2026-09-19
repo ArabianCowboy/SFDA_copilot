@@ -32,6 +32,7 @@ bottom of this file: [How this file works](#how-this-file-works).
 
 ## Open now
 
+- [The Arabic deletion confirmation word is the everyday word for "delete"](#the-arabic-deletion-confirmation-word-is-the-everyday-word-for-delete) — a product decision, not a translation bug; `حذف` carries less friction than `DELETE`.
 - [A deletion request may leave the requesting access token usable until it expires](#a-deletion-request-may-leave-the-requesting-access-token-usable-until-it-expires) — diagnosed, unconfirmed; one bearer-token call decides it.
 - [Live code cites plan sections instead of the live contract](#live-code-cites-plan-sections-instead-of-the-live-contract) — blocks archiving two finished plans; count citations, do not trust a written figure.
 - [Leaked-password protection is disabled in Supabase Auth](#leaked-password-protection-is-disabled-in-supabase-auth) — blocked on a Pro-plan upgrade, not code.
@@ -80,6 +81,50 @@ bottom of this file: [How this file works](#how-this-file-works).
 ---
 
 ## Known bugs
+
+### The Arabic deletion confirmation word is the everyday word for "delete"
+
+**Where:** `page.account.deletionConfirmWord` in `web/i18n/ar.yaml` (`حذف`), its English
+counterpart in `en.yaml` (`DELETE`), and `_expected_deletion_confirmations()` in
+`web/api/account.py:368-386`.
+
+**What is wrong.** The typed confirmation exists to create deliberate friction before an
+irreversible request — the reader must stop and type something rather than click through. The
+English does that with case: `DELETE` is six characters that need Shift or Caps Lock, and it is
+not a word the UI uses anywhere else.
+
+The Arabic does not. Arabic script has no letter case, and `حذف` is a three-letter root that is
+the standard label on every delete button in every Arabic application. It is the single most
+typed delete-related word an Arabic reader knows, it can be produced almost reflexively, and a
+mobile keyboard will happily autocomplete it. The friction the English control depends on does
+not survive the translation, so the two languages ship different amounts of protection for the
+same irreversible action.
+
+**Forcing Latin `DELETE` on an Arabic reader is not the fix** and should not be the reflex: it
+would require a keyboard-layout switch, which is jarring on mobile and contradicts
+`docs/PRODUCT.md`'s principle that Arabic is not a translation layer. The proposal on the table
+is `حذف الحساب` — two words, ten characters including the space, still natural formal Arabic,
+and it names the scope (the account, not a message) the way the bare verb does not. `تأكيد
+الحذف` is the alternative.
+
+**Who it reaches.** Every Arabic reader who reaches the deletion form, which is the majority of
+this product's audience. Nobody has been harmed: the step-up password and the durable throttle
+sit behind this control, so a reflexive confirmation still cannot delete an account on its own.
+This is the outer of several gates, and it is the one that is weaker in Arabic than in English.
+
+**How it was found.** An AI QA pass over the deletion catalogue on 2026-09-19, reviewing copy a
+human had already signed off across two rounds. The human review was looking for translation
+errors; this is not one. The Arabic is correct — it is the control that is weaker, which is a
+question only a reader of both languages would think to ask.
+
+**What fixing it would disturb.** Less than it looks. `_expected_deletion_confirmations()` reads
+the word from the catalogue rather than hardcoding it, deliberately, so changing `ar.yaml`
+updates the browser's enable-gate and the server's acceptance together with no code change —
+`web/tests/test_account_deletion.py` and `test_account_deletion_slice_2d.py` exercise both. The
+real cost is a decision, not a diff: this is a product call about how much friction an Arabic
+destructive confirmation should carry, and it belongs to whoever owns `docs/PRODUCT.md`. Note
+also that any reader mid-flow when it changes sees the label change under them, which is
+harmless but worth doing in a quiet moment rather than during a deploy that touches deletion.
 
 ### A deletion request may leave the requesting access token usable until it expires
 

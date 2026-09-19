@@ -1,8 +1,25 @@
-STATUS: TEMPORARY WORKSHEET — the human review is COMPLETE and applied. Kept only so the
-result can be re-checked; delete it once you are satisfied. `web/i18n/ar.yaml` is authority.
-Regenerated 2026-09-19 after the second review round.
+---
+authority: historical
+status: superseded
+do_not_implement: true
+archived: 2026-09-19
+supersedes_note: >
+  The working sheet for the human Arabic review of the account-deletion and
+  retention copy. The review is COMPLETE and applied; `web/i18n/ar.yaml` is the
+  authority and this is only the trail. One string it signed off was corrected
+  afterwards — see the QA report archived beside it.
+live_authority:
+  - web/i18n/ar.yaml
+  - docs/PRODUCT.md
+---
 
-# Arabic review — account deletion & privacy copy
+> [!CAUTION]
+> **You are reading history, not a specification.** The strings below were correct
+> when this sheet was written. `web/i18n/ar.yaml` is the authority and has moved on:
+> `page.policy.rightsDelete` was corrected on 2026-09-19 after this review signed it
+> off. Every heading is prefixed `[HISTORICAL]`.
+
+# [HISTORICAL] Arabic review — account deletion & privacy copy
 
 56 new and 3 changed strings, all reviewed by a human across two rounds.
 
@@ -14,7 +31,7 @@ called off. It keeps "انتهت" (_finished_), which covers both.
 
 Keys must stay identical across the two files or the parity test fails.
 
-## New strings
+## [HISTORICAL] New strings
 
 ### `page.account.deletionAdminNote`
 
@@ -352,7 +369,7 @@ Keys must stay identical across the two files or the parity test fails.
 
 **AR:** كلمة المرور غير صحيحة. تحقّق منها وحاول مرة أخرى.
 
-## Changed strings
+## [HISTORICAL] Changed strings
 
 ### `page.policy.retentionBody`
 
