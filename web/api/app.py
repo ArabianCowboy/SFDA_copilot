@@ -127,7 +127,41 @@ DOTENV_PATH = PROJECT_ROOT / ".env"
 # shows only what the deployment itself set. It is reported further down, after
 # logging is configured — see there for why.
 _dotenv_values = dotenv_values(DOTENV_PATH) if DOTENV_PATH.exists() else {}
-_shadowed = sorted(name for name in _dotenv_values if os.getenv(name) is not None)
+
+
+def classify_dotenv_shadowing(dotenv_values, environment) -> tuple[list[str], int]:
+    """Split names present in both sources into (overridden, merely duplicated).
+
+    Compared by VALUE, not by presence, and that distinction is the whole point.
+    Presence alone is not a conflict under systemd: `EnvironmentFile=` injects
+    this same `.env` into the process environment before Python starts, so every
+    name in the file is already in `os.environ`. A presence test therefore flags
+    the entire file on every boot and announces a conflict between a file and
+    itself — which is what this did until a deploy review asked why production
+    warned about `FLASK_SECRET_KEY` on a perfectly healthy box.
+
+    A warning that always fires is a warning nobody reads, and this one has to
+    survive being ignored until the day the values genuinely differ, which is
+    the case that costs somebody an afternoon.
+
+    Returns the names whose value the environment overrides, and a COUNT of the
+    names that merely appear twice with the same value — a count, not names,
+    because the second group is uninteresting and several of these are secrets.
+    """
+    overridden = sorted(
+        name
+        for name, value in dotenv_values.items()
+        if environment.get(name) is not None and environment.get(name) != value
+    )
+    duplicated = sum(
+        1
+        for name, value in dotenv_values.items()
+        if environment.get(name) is not None and environment.get(name) == value
+    )
+    return overridden, duplicated
+
+
+_shadowed, _shadowed_but_identical = classify_dotenv_shadowing(_dotenv_values, os.environ)
 _LAUNCH_ENV = {
     k: os.getenv(k)
     for k in (
@@ -185,9 +219,17 @@ logger.info("Loaded .env from %s", DOTENV_PATH)
 if _shadowed:
     # Names only — several of these are secrets.
     logger.warning(
-        "These variables are set in BOTH the environment and .env; the "
-        "environment wins and the .env value is ignored: %s",
+        "These variables hold a DIFFERENT value in the environment than in .env; "
+        "the environment wins and the .env value is ignored: %s",
         ", ".join(_shadowed),
+    )
+if _shadowed_but_identical:
+    # Not a warning: this is what a systemd `EnvironmentFile=` deployment looks
+    # like from inside the process, and it is the normal case in production.
+    logger.info(
+        "%d variable(s) appear in both the environment and .env with the SAME "
+        "value — expected under systemd EnvironmentFile, nothing overridden.",
+        _shadowed_but_identical,
     )
 
 # Optional: Add a file handler for persistent logs
