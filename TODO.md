@@ -20,7 +20,7 @@ place.**
 
 When two documents disagree about how this system works, the order that settles it
 is in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). Rules that are individually
-correct but collide at one specific point — and there are sixteen known ones — are listed
+correct but collide at one specific point — and there are seventeen known ones — are listed
 there too, under
 [_Rules that collide_](docs/ARCHITECTURE.md#rules-that-collide). Read that section
 before your next migration or your first RTL component.
@@ -51,7 +51,7 @@ bottom of this file: [How this file works](#how-this-file-works).
 - [`history_api` and `sessions_api` are still keyed by IP](#history_api-and-sessions_api-are-still-rate-limited-by-ip-not-by-account) — a decision about navigation reads, not a defect.
 - [The console's class-existence gate cannot see a class built from a variable](#the-consoles-class-existence-gate-cannot-see-a-class-built-from-a-variable) — a known hole in a gate that otherwise reads as total.
 - [The browser suite flakes intermittently in test_source_panel.py](#the-browser-suite-flakes-intermittently-in-test_source_panelpy) — undiagnosed; resource-contention evidence only.
-- [Admin analytics from saved chats](#admin-analytics-from-saved-chats--common-questions-unanswered-topics-citation-quality) — not started; V1 aggregates off saved chats.
+- [Admin analytics from saved chats](#admin-analytics-from-saved-chats--common-questions-unanswered-topics-citation-quality) — V1 built 2026-09-20, controls included; the commit and an owner look at the rendered Arabic are still owed.
 - [Admin per-member conversation viewer](#admin-per-member-conversation-viewer--full-qa-with-audit) — not started; full Q&A with audit row per open.
 - [Admin analytics + viewer follow-ups](#admin-analytics--viewer-follow-ups--click-through-feedback-search-daily-counts-audit-display) — not started; seven small adds.
 - [Enable the token-verification cache once production numbers justify it](#enable-the-token-verification-cache-once-production-numbers-justify-it) — single-flight (the worker-starvation fix) shipped 2026-08-27 at no revocation cost; the optional positive cache stays off, gated on measurement.
@@ -1344,9 +1344,30 @@ the sidebar populating itself.
 
 **Open questions.** What counts as the "same question" — string equality after normalisation or embedding similarity — the second catches far more repeats and can also collide two questions that deserve different answers, which on a regulatory surface is the more expensive mistake.
 
-**V1 scope (2026-09-18, owner-locked).** No new log table. Aggregate off saved chats: `chat_messages` + `chat_message_sources` via reader RPCs (`admin_top_questions`, `admin_citation_stats`). Common = `group by` normalized question (lowercase, trim, collapse whitespace; embedding similarity out). Unanswered = `cited == []` (refusals persist; `empty_answer` / `generation_failed` never save per `web/api/app.py:3730-3747`, so excluded). Quality = `% with 0 citations`, avg cited/retrieved, by category/lang; invalid-marker rate and coverage (`citations.py:294-370`) not stored, out of V1. Responses never include `owner_id`.
+**V1 scope (2026-09-18, owner-locked).** No new log table. Aggregate off saved chats: `chat_messages` + `chat_message_sources` via reader RPCs (`admin_top_questions`, `admin_citation_stats`). Common = `group by` normalized question (lowercase, trim, collapse whitespace; embedding similarity out). Unanswered = `cited == []` (refusals persist; `empty_answer` / `generation_failed` never save per `web/api/app.py:3927` (streaming route's `empty_answer` return, before the durable write) and `:4277-4301` (blocking route's `empty_answer` guard), so excluded). Quality = `% with 0 citations`, avg cited/retrieved, by category/lang; invalid-marker rate and coverage (`citations.py:294-370`) not stored, out of V1. Responses never include `owner_id`.
 
 **What V1 would disturb.** 2 reader RPCs (`security definer`, `search_path=''`, revoke all, grant `service_role` only); `AdminBackend` + both backends in `web/services/admin_store.py`; routes `GET /admin/api/analytics/*` in `web/api/admin.py`; Overview tab render in `static/js/admin/`; strings under existing `runtime.admin.*` in `en.yaml` + `ar.yaml`; `ASSET_VERSION` bump; tests for aggregation + no identity in response.
+
+**Update 2026-09-20 — V1 built, controls included; uncommitted.** Both reader RPCs
+(`admin_top_questions`, `admin_citation_stats`), both `AdminBackend` methods, the two
+`GET /admin/api/analytics/*` routes, the bilingual copy, and the `#overview-analytics` region are
+built and tested — see `docs/admin-analytics-v1-plan.md` →
+[_Build record (2026-09-20)_](docs/admin-analytics-v1-plan.md#build-record-2026-09-20) for what
+shipped and what it corrected in the plan above. Not done, so this entry stays open: landing the
+commit, and an owner eyeball of the Arabic actually rendered in the console (reviewed as text on
+2026-09-20, not yet seen on screen). Deliberately out of V1, per the plan's commit-sequence table:
+unanswered text that fell below the two-account floor, the category-is-search-scope caveat
+(decision 3), Arabic orthographic folding, and the trailing `?` / `؟` collision risk (decision 2).
+Decision 3 also records one deferred candidate not yet added to the follow-ups entry below: a
+modal retrieved-source category, restricted to scope-`all` turns. And a finding that changes the
+follow-ups entry's cost line for item 1: click-through is not "one frontend link" — any
+`sample_session_ids`-style column is access to a reader's own content, so it inherits the per-open
+audit rule the viewer entry above already carries. Two more for the follow-ups, from the 2026-09-21 reviews: exclude `role = 'admin'` owners
+from the distinct-asker count **when administrator test traffic starts to pollute the counts**
+(decided against for privacy — it closes the self-ask probe for a one-account operator only);
+and follow-up 6's category selector needs its own no-filter option, because `category=all` is
+an equality filter on the real stored scope `all`, which the catalogue rightly labels "All
+categories". Still owed on the copy: the new `privacy` sentence's Arabic is an unreviewed draft.
 
 ---
 
