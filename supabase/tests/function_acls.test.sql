@@ -55,6 +55,14 @@ declare
   -- /rest/v1/rpc/, on a database where service_role holds no access to
   -- auth.users at all. See 20260828001543.
   granted_to_nobody text[] := array['admin_actor_email'];
+
+  -- The two read-only analytics aggregates (docs/admin-analytics-v1-plan.md
+  -- §4). They are listed here for two checks the whole-schema sweeps above
+  -- cannot make — that they exist at all, and that neither one's RESULT names
+  -- an identity column. They deliberately do NOT belong in the mutating list
+  -- at assertion 8: they mutate nothing, take no actor, and are gated by
+  -- Flask's _gate() before_request, exactly like admin_list_tiers.
+  analytics_readers text[] := array['admin_top_questions','admin_citation_stats'];
 begin
   -- 1. Nothing in public is executable by anon. No exceptions, including the
   --    four above — none is reachable without a session.
@@ -186,6 +194,11 @@ begin
                       -- HARDCODED list, so a new mutating admin RPC that forgets the actor
                       -- gate still passes this suite unless its name is added here. Any
                       -- future one goes in the same commit that creates it.
+                      -- A READ-ONLY admin RPC does not go here and never has:
+                      -- admin_list_tiers, admin_list_users, admin_get_user and the two
+                      -- analytics aggregates are all absent on purpose. Adding one would
+                      -- assert that a function which mutates nothing calls the mutation
+                      -- gate, which it has no reason to.
                       'admin_create_tier','admin_update_tier','admin_delete_tier',
                       'admin_set_reader_quota']) as x
    where not exists (
@@ -195,6 +208,47 @@ begin
   if bad is not null then
     raise exception 'FAIL function_acls — these mutating admin RPCs no longer call '
       'admin_actor_email, so a null or demoted actor is unchecked again: %', bad;
+  end if;
+
+  -- 9. The two analytics readers EXIST. Not padding, and the same argument as
+  --    5a: assertion 10 below is a `where proname = any(...)` scan, which
+  --    returns no rows — and so reports PASS — against a database where
+  --    neither function was ever applied. Assertions 1, 2, 4, 6 and 7 already
+  --    sweep every function in `public`, so once these two exist their ACL and
+  --    search_path state is covered by those sweeps and a named re-check here
+  --    would be a second, weaker copy. Existence is the one thing a sweep
+  --    cannot assert.
+  n := n + 1;
+  select string_agg(x, ', ') into bad
+    from unnest(analytics_readers) as x
+   where not exists (
+     select 1 from pg_proc p
+      where p.pronamespace = 'public'::regnamespace and p.proname = x);
+  if bad is not null then
+    raise exception 'FAIL function_acls — % does not exist; the admin analytics routes '
+      'call it and fail without it', bad;
+  end if;
+
+  -- 10. The first of the three privacy layers in
+  --     docs/admin-analytics-v1-plan.md §5: the SQL PROJECTION itself names no
+  --     identity. Read off the live catalogue rather than the migration text,
+  --     so a later `drop function` + `create` that adds an owner, session or
+  --     message column to either result fails HERE — before the Python
+  --     allow-list and the raw-body route test, each of which is meant to fail
+  --     on its own.
+  --
+  --     Scoped to these two by name deliberately. admin_get_user returns an
+  --     email because reporting one account's detail is its whole job; an
+  --     aggregate over every account has no such excuse.
+  n := n + 1;
+  select string_agg(p.proname, ', ' order by p.proname) into bad
+    from pg_proc p
+   where p.pronamespace = 'public'::regnamespace
+     and p.proname = any(analytics_readers)
+     and pg_get_function_result(p.oid) ~* 'owner|user_id|actor|email|session_id|message_id';
+  if bad is not null then
+    raise exception 'FAIL function_acls — an analytics aggregate now returns an identity '
+      'column, so the console can print who asked: %', bad;
   end if;
 
   summary := format('PASS function_acls.test.sql — %s assertions', n);

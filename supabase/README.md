@@ -122,7 +122,14 @@ one rule, not five, because any one of them missing re-opens the hole the others
 2. `set search_path = ''`, with every name fully qualified (rule 3)
 3. `revoke execute` from `anon`, `authenticated` and `public`
 4. `grant execute` to `service_role` only
-5. `p_owner_id` as the first argument, **filtered on inside the function**
+5. `p_owner_id` as the first argument, **filtered on inside the function** — **on a
+   reader-facing function**, whose job is to scope rows to the one signed-in account.
+   (The browser-callable exemptions below resolve that account from `auth.uid()`
+   instead.) The operator-facing `admin_*` readers are scoped by the console's `_gate()`
+   `before_request` and take no owner at all: `admin_list_users`, `admin_get_user`,
+   `admin_list_tiers` and the two analytics aggregates. Points 1–4 still apply to them
+   in full. Stated unconditionally, point 5 read as though five shipped functions were
+   violating it.
 
 Two functions are deliberately exempt from 3 and 4, and both are listed in the advisor
 table above with the reasoning: `is_active_account()` (the RLS policies call it, and

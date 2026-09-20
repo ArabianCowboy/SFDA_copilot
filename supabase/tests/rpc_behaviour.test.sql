@@ -48,6 +48,45 @@ declare
   -- pg_stat_xact_user_tables, to prove a *second* touch performed no write at
   -- all rather than merely writing the same-looking value again.
   tx_now timestamptz;
+
+  -- ── The analytics aggregates (docs/admin-analytics-v1-plan.md §4) ────────
+  -- FIVE SYNTHETIC OWNERS, not the three real profiles above, because the
+  -- asker bucket opens at five distinct accounts and this project has three.
+  -- That is legitimate here and nowhere else: chat_sessions.owner_id carries
+  -- NO foreign key at all (20260820131914:37-43, and supabase/README.md rule 8
+  -- records why), and chat_append_turn's only owner-side lookup is
+  -- account_deletion_freezes_writes(), which is false for an id no saga row
+  -- names. Nothing survives the closing raise either way.
+  owners uuid[] := array[gen_random_uuid(), gen_random_uuid(), gen_random_uuid(),
+                         gen_random_uuid(), gen_random_uuid()];
+  sess_en1    uuid := gen_random_uuid();  -- owners[1] — the one turn that cited a source
+  sess_en2    uuid := gen_random_uuid();  -- owners[2] — three turns
+  sess_en_old uuid := gen_random_uuid();  -- owners[1] — backdated three days
+  sess_ar1    uuid := gen_random_uuid();
+  sess_ar2    uuid := gen_random_uuid();
+  sess_solo   uuid := gen_random_uuid();
+
+  -- Built with chr() rather than pasted in. An invisible character inside a
+  -- string literal is a character no reviewer can see in a diff, and this is a
+  -- fixture whose entire point is which invisible characters it contains.
+  nbsp text := chr(160);   -- U+00A0 NO-BREAK SPACE
+  zwsp text := chr(8203);  -- U+200B ZERO WIDTH SPACE
+  rlm  text := chr(8207);  -- U+200F RIGHT-TO-LEFT MARK
+  aqm  text := chr(1567);  -- U+061F ARABIC QUESTION MARK
+  ell  text := chr(8230);  -- U+2026 HORIZONTAL ELLIPSIS
+  q_ar text := 'ما هي متطلبات التسجيل';
+  -- Every run of spaces spelled with repeat(), so the count is readable rather
+  -- than something a reviewer has to select the line to measure.
+  q_en_old text := repeat(' ', 2) || 'RENEW' || repeat(' ', 3) || 'THE'
+                   || repeat(' ', 2) || 'LICENCE' || repeat(' ', 2);
+  -- A substring every Arabic phrasing below still contains after the marks are
+  -- added, so the group can be found whichever raw phrasing array_agg picked.
+  ar_needle text := 'متطلبات';
+
+  n_asks bigint; n_uncited bigint; n_askers bigint; n_rows bigint;
+  q_text text;
+  scopes text;
+  cs record;
 begin
   tx_now := now();
   select id into admin_a from public.profiles where role = 'admin' and not is_disabled order by id limit 1;
@@ -383,6 +422,362 @@ begin
     raise exception 'FAIL rpc_behaviour — touch_last_seen raised % for an id with no '
       'matching profiles row; it must silently insert nothing (23503 means the '
       'orphan-tolerance fix in 20260828143044 regressed)', r;
+  end if;
+
+  -- ── The analytics aggregates: normalisation, the asker floor, the two
+  --    citation failures, and retroactivity
+  --    (docs/admin-analytics-v1-plan.md §4, and §2's second property) ─────────
+  --
+  -- THIS IS THE ONLY PLACE EITHER IS PROVEN OFF A PYTHON DOUBLE. The Flask
+  -- suite aggregates over an in-memory backend, so it can only ever agree with
+  -- itself; `\s` in particular behaves differently here than it does in Python
+  -- (it matches NO non-ASCII space in this database, and U+00A0 in Python),
+  -- which is exactly the class of disagreement a mocked suite cannot see.
+  --
+  -- SHARED NORMALISATION FIXTURE — web/tests/test_admin_analytics.py's
+  -- test_the_double_and_the_database_normalise_alike carries this identical
+  -- list against normalize_question(). Change a pair here and change it there
+  -- in the same commit, or the double and the database stop agreeing about
+  -- what one question is:
+  --
+  --   'Renew the licence' || '?'                      -> 'renew the licence'
+  --   q_en_old  (2/3/2/2 spaces, upper case)          -> 'renew the licence'
+  --   'Renew the' || nbsp || 'licence' || ell         -> 'renew the licence'
+  --   'Renew' || zwsp || ' the licence!'              -> 'renew the licence'
+  --   rlm || 'Renew the licence.'                     -> 'renew the licence'
+  --   q_ar || aqm                                     -> q_ar
+  --   'ما هي' || nbsp || 'متطلبات' || 2 spaces || 'التسجيل'  -> q_ar
+  --   rlm || q_ar || zwsp || ell                      -> q_ar
+  --
+  -- lang 'zzq' and 'zzc' isolate these turns from the real saved conversations
+  -- this database already holds: no real turn carries either, so every call
+  -- below runs against the whole table for real and still sees only what this
+  -- block seeded. It also exercises p_lang rather than needing a check of its
+  -- own.
+  n := n + 1;
+  if to_regprocedure('public.admin_top_questions(integer,text,text,integer,integer,text)') is null
+     or to_regprocedure('public.admin_citation_stats(integer,text,text)') is null then
+    raise exception 'FAIL rpc_behaviour — the analytics aggregates do not exist; apply the '
+      'three docs/admin-analytics-v1-plan.md §4 migrations before running this file';
+  end if;
+
+  -- Five phrasings of one English question, across TWO accounts: owners[1]
+  -- asks twice, owners[2] three times. Only the first turn cites anything.
+  perform public.chat_append_turn(owners[1], sess_en1, gen_random_uuid(),
+    'Renew the licence?', 'a',
+    jsonb_build_array(jsonb_build_object('source_index', 1, 'cited', true)),
+    'zzq', 'zzq_cat', 'm', 'r', null, null, true, 't', true);
+  perform public.chat_append_turn(owners[1], sess_en_old, gen_random_uuid(),
+    q_en_old, 'a', '[]'::jsonb,
+    'zzq', 'zzq_cat', 'm', 'r', null, null, true, 't', true);
+  perform public.chat_append_turn(owners[2], sess_en2, gen_random_uuid(),
+    'Renew the' || nbsp || 'licence' || ell, 'a', '[]'::jsonb,
+    'zzq', 'zzq_cat', 'm', 'r', null, null, true, 't', true);
+  perform public.chat_append_turn(owners[2], sess_en2, gen_random_uuid(),
+    'Renew' || zwsp || ' the licence!', 'a', '[]'::jsonb,
+    'zzq', 'zzq_cat', 'm', 'r', null, null, true, 't', true);
+  perform public.chat_append_turn(owners[2], sess_en2, gen_random_uuid(),
+    rlm || 'Renew the licence.', 'a', '[]'::jsonb,
+    'zzq', 'zzq_cat', 'm', 'r', null, null, true, 't', true);
+
+  -- The same three marks on an Arabic question, across the same two accounts.
+  perform public.chat_append_turn(owners[1], sess_ar1, gen_random_uuid(),
+    q_ar || aqm, 'a', '[]'::jsonb,
+    'zzq', 'zzq_cat', 'm', 'r', null, null, true, 't', true);
+  perform public.chat_append_turn(owners[2], sess_ar2, gen_random_uuid(),
+    'ما هي' || nbsp || 'متطلبات' || repeat(' ', 2) || 'التسجيل', 'a', '[]'::jsonb,
+    'zzq', 'zzq_cat', 'm', 'r', null, null, true, 't', true);
+  perform public.chat_append_turn(owners[2], sess_ar2, gen_random_uuid(),
+    rlm || q_ar || zwsp || ell, 'a', '[]'::jsonb,
+    'zzq', 'zzq_cat', 'm', 'r', null, null, true, 't', true);
+
+  -- One account asking the same thing five times. `group by` over turns does
+  -- not deduplicate by reader, so without a DISTINCT-asker floor this reads as
+  -- a five-count row and prints one reader's content to an operator.
+  for i in 1..5 loop
+    perform public.chat_append_turn(owners[4], sess_solo, gen_random_uuid(),
+      'Does the guideline require a local agent?', 'a', '[]'::jsonb,
+      'zzq', 'zzq_cat', 'm', 'r', null, null, true, 't', true);
+  end loop;
+
+  -- Four distinct accounts, then five: the two sides of the asker bucket.
+  for i in 1..4 loop
+    perform public.chat_append_turn(owners[i], gen_random_uuid(), gen_random_uuid(),
+      'Ask counted by four accounts', 'a', '[]'::jsonb,
+      'zzq', 'zzq_cat', 'm', 'r', null, null, true, 't', true);
+  end loop;
+  for i in 1..5 loop
+    perform public.chat_append_turn(owners[i], gen_random_uuid(), gen_random_uuid(),
+      'Ask counted by five accounts', 'a', '[]'::jsonb,
+      'zzq', 'zzq_cat', 'm', 'r', null, null, true, 't', true);
+  end loop;
+
+  -- Three turns for the citation split, under their own lang and two search
+  -- scopes: cited one of two retrieved / retrieved two and cited neither /
+  -- retrieved nothing at all.
+  perform public.chat_append_turn(owners[1], gen_random_uuid(), gen_random_uuid(),
+    'Cited one of two', 'a',
+    jsonb_build_array(jsonb_build_object('source_index', 1, 'cited', true),
+                      jsonb_build_object('source_index', 2, 'cited', false)),
+    'zzc', 'zzc_one', 'm', 'r', null, null, true, 't', true);
+  perform public.chat_append_turn(owners[2], gen_random_uuid(), gen_random_uuid(),
+    'Retrieved two and cited neither', 'a',
+    jsonb_build_array(jsonb_build_object('source_index', 1, 'cited', false),
+                      jsonb_build_object('source_index', 2, 'cited', false)),
+    'zzc', 'zzc_one', 'm', 'r', null, null, true, 't', true);
+  perform public.chat_append_turn(owners[3], gen_random_uuid(), gen_random_uuid(),
+    'Search found nothing', 'a', '[]'::jsonb,
+    'zzc', 'zzc_two', 'm', 'r', null, null, true, 't', true);
+
+  -- Backdated AFTER the fact rather than seeded that way: chat_append_turn
+  -- owns created_at and there is no parameter for it. Three days puts this one
+  -- turn outside a one-day window and inside the seven-day floor, which is
+  -- what makes the clamp observable further down.
+  update public.chat_messages set created_at = tx_now - interval '3 days'
+   where session_id = sess_en_old;
+
+  -- (a) Five phrasings, one group. Matched on a substring every phrasing still
+  --     contains, because which RAW phrasing array_agg returns is only pinned
+  --     down to "not the backdated one".
+  select count(*), max(q.asks), max(q.uncited), max(q.askers)
+    into n_rows, n_asks, n_uncited, n_askers
+    from public.admin_top_questions(p_lang => 'zzq') q
+   where lower(q.question) like '%licence%';
+  n := n + 1;
+  if n_rows <> 1 or n_asks is distinct from 5 then
+    raise exception 'FAIL rpc_behaviour — five English phrasings of one question produced '
+      '% group(s) totalling % ask(s) (want 1 and 5); mixed case, a doubled space run, an '
+      'NBSP, a zero-width space, an RLM and a trailing ? ! . or ellipsis must all '
+      'normalise to one key', n_rows, n_asks;
+  end if;
+
+  n := n + 1;
+  if n_askers is not null then
+    raise exception 'FAIL rpc_behaviour — a two-account group reported askers = %; the '
+      'bucket is NULL below five distinct accounts, and an exact count at two is a '
+      'participation oracle for any operator who asked it themselves', n_askers;
+  end if;
+
+  -- `uncited` must count TURNS WHOSE ANSWER CITED NOTHING, not every turn in
+  -- the group: four of these five cited nothing, the first cited one source.
+  n := n + 1;
+  if n_uncited is distinct from 4 then
+    raise exception 'FAIL rpc_behaviour — the English group reported % turn(s) without a '
+      'citation (want 4 of 5)', n_uncited;
+  end if;
+
+  n := n + 1;
+  select count(*), max(q.asks) into n_rows, n_asks
+    from public.admin_top_questions(p_lang => 'zzq') q
+   where q.question like '%' || ar_needle || '%';
+  if n_rows <> 1 or n_asks is distinct from 3 then
+    raise exception 'FAIL rpc_behaviour — three Arabic phrasings of one question produced '
+      '% group(s) totalling % ask(s) (want 1 and 3); this database classifies none of '
+      'NBSP, ZWSP or RLM as whitespace, so the explicit space and mark classes in the '
+      'function are what hold an Arabic group together', n_rows, n_asks;
+  end if;
+
+  -- (b) The floor. Absent by default…
+  n := n + 1;
+  if exists (select 1 from public.admin_top_questions(p_lang => 'zzq') q
+              where lower(q.question) like '%local agent%') then
+    raise exception 'FAIL rpc_behaviour — a question asked five times by ONE account was '
+      'returned; the floor counts DISTINCT ASKERS, not asks, and one reader''s content is '
+      'now printed verbatim in the console';
+  end if;
+
+  -- …and not lowerable by a caller, which is the property that lets this ship
+  -- with no privacy-policy edit and no audit row per read.
+  n := n + 1;
+  if exists (select 1 from public.admin_top_questions(p_lang => 'zzq', p_min_askers => 1) q
+              where lower(q.question) like '%local agent%') then
+    raise exception 'FAIL rpc_behaviour — p_min_askers => 1 lowered the floor; '
+      'greatest(coalesce(p_min_askers, 2), 2) is what makes it un-lowerable from '
+      '/rest/v1/rpc/ with a leaked service key as well as from the route';
+  end if;
+
+  -- Raising it still works. A floor that could not be raised would be a
+  -- constant, and follow-up work needs the parameter to mean something.
+  n := n + 1;
+  if exists (select 1 from public.admin_top_questions(p_lang => 'zzq', p_min_askers => 3) q
+              where lower(q.question) like '%licence%') then
+    raise exception 'FAIL rpc_behaviour — p_min_askers => 3 still returned a group with '
+      'exactly two distinct askers';
+  end if;
+
+  -- (c) The bucket, on both sides of five.
+  select max(q.asks), max(q.askers) into n_asks, n_askers
+    from public.admin_top_questions(p_lang => 'zzq') q
+   where lower(q.question) like '%four accounts%';
+  n := n + 1;
+  if n_asks is distinct from 4 or n_askers is not null then
+    raise exception 'FAIL rpc_behaviour — four distinct accounts reported asks = %, '
+      'askers = % (want 4 and NULL); the exact count opens at five, not at four',
+      n_asks, n_askers;
+  end if;
+
+  select max(q.asks), max(q.askers) into n_asks, n_askers
+    from public.admin_top_questions(p_lang => 'zzq') q
+   where lower(q.question) like '%five accounts%';
+  n := n + 1;
+  if n_asks is distinct from 5 or n_askers is distinct from 5 then
+    raise exception 'FAIL rpc_behaviour — five distinct accounts reported asks = %, '
+      'askers = % (want 5 and 5)', n_asks, n_askers;
+  end if;
+
+  -- (d) The seven-day window floor. One of the five English turns is three
+  --     days old, so a honoured p_days = 1 would report four.
+  select max(q.asks) into n_asks
+    from public.admin_top_questions(p_days => 1, p_lang => 'zzq') q
+   where lower(q.question) like '%licence%';
+  n := n + 1;
+  if n_asks is distinct from 5 then
+    raise exception 'FAIL rpc_behaviour — p_days => 1 returned % ask(s) for a group with '
+      'one turn backdated three days (want 5); without the clamp a direct caller can '
+      'difference two narrow windows down to a single turn', n_asks;
+  end if;
+
+  -- `question` is the MOST RECENT raw phrasing in the group. Every other turn
+  -- shares tx_now exactly — now() is transaction-stable — so which of the four
+  -- wins is a tie, but the three-day-old one must never.
+  select q.question into q_text
+    from public.admin_top_questions(p_lang => 'zzq') q
+   where lower(q.question) like '%licence%';
+  n := n + 1;
+  if q_text is not distinct from q_en_old then
+    raise exception 'FAIL rpc_behaviour — the group returned the three-day-old phrasing; '
+      'the array_agg ordering is load-bearing, not decorative';
+  end if;
+
+  -- (e) Citation stats: three grouping sets, and the two failures apart.
+  select string_agg(distinct c.scope, ', ' order by c.scope) into scopes
+    from public.admin_citation_stats(p_lang => 'zzc') c;
+  n := n + 1;
+  if scopes is distinct from 'category, lang, total' then
+    raise exception 'FAIL rpc_behaviour — admin_citation_stats emitted scopes [%] (want '
+      '[category, lang, total]); the three grouping sets are what the console''s two '
+      'breakdown tbodies read', scopes;
+  end if;
+
+  select * into cs from public.admin_citation_stats(p_lang => 'zzc') c
+   where c.scope = 'total';
+  n := n + 1;
+  if cs.turns is distinct from 3 or cs.turns_uncited is distinct from 1
+     or cs.turns_no_retrieval is distinct from 1 or cs.cited_total is distinct from 1
+     or cs.retrieved_total is distinct from 4 or cs.bucket is not null then
+    raise exception 'FAIL rpc_behaviour — the total row reads turns=%, uncited=%, '
+      'no_retrieval=%, cited=%, retrieved=%, bucket=% (want 3, 1, 1, 1, 4 and null)',
+      cs.turns, cs.turns_uncited, cs.turns_no_retrieval, cs.cited_total,
+      cs.retrieved_total, cs.bucket;
+  end if;
+
+  -- The turn with NO source rows at all. "Search found nothing" and "cited
+  -- nothing it found" are different failures, they are disjoint, and merging
+  -- them is the reading this assertion exists to refuse.
+  select * into cs from public.admin_citation_stats(p_lang => 'zzc') c
+   where c.scope = 'category' and c.bucket = 'zzc_two';
+  n := n + 1;
+  if cs.turns is distinct from 1 or cs.turns_no_retrieval is distinct from 1
+     or cs.turns_uncited is distinct from 0 or cs.retrieved_total is distinct from 0 then
+    raise exception 'FAIL rpc_behaviour — a turn with zero source rows read turns=%, '
+      'no_retrieval=%, uncited=%, retrieved=% (want 1, 1, 0, 0)',
+      cs.turns, cs.turns_no_retrieval, cs.turns_uncited, cs.retrieved_total;
+  end if;
+
+  -- …against the scope holding one cited turn and one that cited none of two.
+  select * into cs from public.admin_citation_stats(p_lang => 'zzc') c
+   where c.scope = 'category' and c.bucket = 'zzc_one';
+  n := n + 1;
+  if cs.turns is distinct from 2 or cs.turns_uncited is distinct from 1
+     or cs.turns_no_retrieval is distinct from 0 or cs.cited_total is distinct from 1
+     or cs.retrieved_total is distinct from 4 then
+    raise exception 'FAIL rpc_behaviour — the retrieved-but-uncited scope read turns=%, '
+      'uncited=%, no_retrieval=%, cited=%, retrieved=% (want 2, 1, 0, 1, 4)',
+      cs.turns, cs.turns_uncited, cs.turns_no_retrieval, cs.cited_total,
+      cs.retrieved_total;
+  end if;
+
+  -- (f) RETROACTIVITY, pinned as intended behaviour so nobody later "fixes" it
+  --     into the no-name log table this feature ruled out. Deleting one
+  --     conversation removes its turns from the aggregate through
+  --     chat_messages_session_owner_fk's cascade — the same cascade the
+  --     account-deletion purge rides. owners[1] keeps the backdated turn, so
+  --     the group still clears the floor and the drop is visible rather than
+  --     the whole row vanishing.
+  delete from public.chat_sessions where id = sess_en1;
+  select max(q.asks), max(q.uncited) into n_asks, n_uncited
+    from public.admin_top_questions(p_lang => 'zzq') q
+   where lower(q.question) like '%licence%';
+  n := n + 1;
+  if n_asks is distinct from 4 or n_uncited is distinct from 4 then
+    raise exception 'FAIL rpc_behaviour — after deleting one conversation the group reads '
+      '% ask(s) and % without a citation (want 4 and 4); last month''s figure going down '
+      'is the deletion promise working', n_asks, n_uncited;
+  end if;
+
+  -- (g) p_category NARROWS both functions. p_lang is exercised by every call
+  --     above (it is what isolates this block from real turns); without this
+  --     pair a function that ignored p_category would pass the whole file —
+  --     the Python suite found exactly that hole in its own double first.
+  n := n + 1;
+  if exists (select 1 from public.admin_top_questions(p_lang => 'zzq',
+                                                       p_category => 'zzq_other') q) then
+    raise exception 'FAIL rpc_behaviour — p_category did not narrow admin_top_questions; '
+      'a scope no seeded turn carries still returned a group';
+  end if;
+
+  select * into cs from public.admin_citation_stats(p_lang => 'zzc', p_category => 'zzc_two') c
+   where c.scope = 'total';
+  n := n + 1;
+  if cs.turns is distinct from 1 then
+    raise exception 'FAIL rpc_behaviour — p_category => zzc_two gave a total of % turn(s) '
+      '(want 1)', cs.turns;
+  end if;
+
+  -- (h) The line and paragraph separators a PDF emits for a soft break.
+  --     Postgres's `\s` matches U+2028 and U+2029 on this database and the
+  --     Python double did not, until a third review measured all 52 space,
+  --     control and format code points against the live expression. Pinned
+  --     here because this is the only place the SQL side of that is proven.
+  perform public.chat_append_turn(owners[1], gen_random_uuid(), gen_random_uuid(),
+    'Soft break question', 'a', '[]'::jsonb,
+    'zzq', 'zzq_cat', 'm', 'r', null, null, true, 't', true);
+  perform public.chat_append_turn(owners[2], gen_random_uuid(), gen_random_uuid(),
+    'soft' || chr(8232) || 'break' || chr(8233) || 'question', 'a', '[]'::jsonb,
+    'zzq', 'zzq_cat', 'm', 'r', null, null, true, 't', true);
+  select max(q.asks) into n_asks
+    from public.admin_top_questions(p_lang => 'zzq') q
+   where lower(q.question) like 'soft%question';
+  n := n + 1;
+  if n_asks is distinct from 2 then
+    raise exception 'FAIL rpc_behaviour — a question broken by U+2028 / U+2029 grouped as '
+      '% ask(s) with its plain twin (want 2)', n_asks;
+  end if;
+
+  -- (i) Ties break in "C" (code-point) order, not the database collation.
+  --     en_US.UTF-8 ignores spaces and hyphens at the primary level, so it
+  --     returns [tie a | tiea | tie b | tie-b]; the double sorts by code point,
+  --     and on a small population the tie-break decides which rows survive
+  --     `limit`. The four keys are chosen because the two orders DIFFER on
+  --     them — a first draft used three on which they agree, and passed against
+  --     the function it was meant to fail.
+  for i in 1..2 loop
+    perform public.chat_append_turn(owners[i], gen_random_uuid(), gen_random_uuid(),
+      'tie-b', 'a', '[]'::jsonb, 'zzt', 'zzt_cat', 'm', 'r', null, null, true, 't', true);
+    perform public.chat_append_turn(owners[i], gen_random_uuid(), gen_random_uuid(),
+      'tie a', 'a', '[]'::jsonb, 'zzt', 'zzt_cat', 'm', 'r', null, null, true, 't', true);
+    perform public.chat_append_turn(owners[i], gen_random_uuid(), gen_random_uuid(),
+      'tiea', 'a', '[]'::jsonb, 'zzt', 'zzt_cat', 'm', 'r', null, null, true, 't', true);
+    perform public.chat_append_turn(owners[i], gen_random_uuid(), gen_random_uuid(),
+      'tie b', 'a', '[]'::jsonb, 'zzt', 'zzt_cat', 'm', 'r', null, null, true, 't', true);
+  end loop;
+  select string_agg(q.question, ' | ' order by q.ord) into scopes
+    from public.admin_top_questions(p_lang => 'zzt')
+         with ordinality as q(question, asks, uncited, askers, ord);
+  n := n + 1;
+  if scopes is distinct from 'tie a | tie b | tie-b | tiea' then
+    raise exception 'FAIL rpc_behaviour — tied groups came back as [%] (want '
+      '[tie a | tie b | tie-b | tiea], code-point order)', scopes;
   end if;
 
   summary := format('PASS rpc_behaviour.test.sql — %s assertions', n);

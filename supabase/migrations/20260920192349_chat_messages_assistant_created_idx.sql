@@ -1,0 +1,42 @@
+-- One partial index for the date predicate both analytics aggregates share.
+-- ===========================================================================
+-- Plan: docs/admin-analytics-v1-plan.md §4.4. First of the three analytics
+-- migrations and deliberately its own file, so it can be dropped alone if it
+-- ever stops paying for itself — before either function that reads it exists.
+--
+-- THERE IS NO INDEX ON chat_messages.created_at TODAY. The table carries
+-- chat_messages_order_key (session_id, seq), chat_messages_idem_key
+-- (session_id, client_request_id, role) and chat_messages_session_owner_idx
+-- (session_id, owner_id) — 20260820131914:99-112 — and not one of them leads
+-- with a timestamp. admin_top_questions and admin_citation_stats share exactly
+-- one predicate, `role = 'assistant' and created_at >= now() - <window>`, so
+-- that is what is indexed and nothing more. The join back to the question row
+-- rides chat_messages_idem_key, which already exists and is not duplicated
+-- here.
+--
+-- PARTIAL, on `role = 'assistant'`. chat_messages is two rows per turn and
+-- only the assistant row carries lang, category and the metadata these
+-- functions filter on, so half the entries serve the same reads.
+--
+-- WHY NOW, WHILE IT IS FREE. The same argument 20260828002253 makes for its
+-- CHECK: this is cheap to add at today's size and expensive at millions of
+-- rows, and it costs one index entry per assistant row on every
+-- chat_append_turn from here on. That standing write cost is the reason it is
+-- a migration of its own rather than a line inside the function file.
+--
+-- live row count at apply time: 33 (2026-09-20)
+--   measured as: select count(*) from public.chat_messages where role = 'assistant';
+--
+-- NOT the expression index on the normalised question text that was also
+-- proposed. A B-tree entry is capped near 2.7 kB while chat_append_turn stores
+-- a question of up to 8,000 characters, so one long Arabic question would make
+-- the INSERT itself fail — a retrieval feature breaking the write path — and
+-- an expression index would not serve a date-windowed `group by` anyway.
+--
+-- NO CONCURRENTLY: apply_migration runs the whole file as one transaction and
+-- CREATE INDEX CONCURRENTLY cannot run inside one. At this size the ordinary
+-- form's brief SHARE lock (writes wait, reads do not) is not worth the two-phase build.
+
+create index chat_messages_assistant_created_idx
+  on public.chat_messages (created_at desc)
+  where role = 'assistant';
