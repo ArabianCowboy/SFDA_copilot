@@ -34,6 +34,7 @@ import threading
 import uuid
 from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timezone
+from itertools import pairwise
 from typing import Any, Protocol
 
 from web.utils.postgrest_errors import describe_api_error
@@ -1057,6 +1058,38 @@ class InMemoryChatBackend:
                 for turn_key in [k for k in self._turns if k[0] == key]:
                     del self._turns[turn_key]
             return owned
+
+    # Read accessor, not part of the Protocol. What InMemoryAdminBackend's
+    # analytics aggregate reads, so it neither reaches into these two dicts
+    # from another module nor skips the lock.
+    def turns(self) -> list[dict[str, Any]]:
+        """Every saved turn: the owner, the question, and the answer's metadata.
+
+        A turn is a user row and the assistant row that follows it. The SQL
+        finds that pair by `(session_id, client_request_id)`; `StoredMessage`
+        carries no request id, so here it is the adjacent pair `append_turn`
+        always writes, checked by role. The
+        owner lives on the session, `lang`, `category` and the sources on the
+        assistant message, matching where the schema puts each of them.
+        """
+        with self._lock:
+            return [
+                {
+                    "owner_id": self._sessions[session_id]["owner_id"],
+                    "question": user.content,
+                    "created_at": assistant.created_at,
+                    "lang": assistant.lang,
+                    "category": assistant.category,
+                    "sources": list(assistant.sources),
+                }
+                for session_id, messages in self._messages.items()
+                # By role, not by position: the SQL's inner join drops a row
+                # with no partner, and so does this. Pairing `[::2]` with
+                # `[1::2]` would mis-pair every later turn the day one
+                # unpaired row is appended.
+                for user, assistant in pairwise(messages)
+                if user.role == "user" and assistant.role == "assistant"
+            ]
 
     # Test affordance, not part of the Protocol.
     def sessions_for(self, owner_id: str) -> list[str]:

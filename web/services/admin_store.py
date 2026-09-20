@@ -20,6 +20,7 @@ today there is one implementation.
 from __future__ import annotations
 
 import logging
+import re
 import uuid
 from dataclasses import replace
 from datetime import timezone
@@ -237,6 +238,29 @@ class AdminBackend(Protocol):
         """Every tier with its member count, for the console's Tiers tab."""
         ...
 
+    def top_questions(self, *, days, lang, category, limit, order) -> list[dict]:
+        """Recurring questions in the window, most asked (or most uncited) first.
+
+        Returns ``[]`` for an empty window, never None, so the console's
+        null-means-failed rule keeps working.
+
+        There is no ``min_askers`` parameter, here or on the route. The floor of
+        two distinct askers lives in the database as
+        ``greatest(coalesce(p_min_askers, 2), 2)`` — a caller can raise it and
+        never lower it — and leaving the argument out of this signature is one
+        fewer place it could be lowered by accident.
+        """
+        ...
+
+    def citation_stats(self, *, days, lang, category) -> list[dict]:
+        """Citation counts for the window: one ``total`` row, then one per
+        question language and one per search scope.
+
+        Counts only, never percentages — the console divides and guards small
+        n. ``[]`` when the window holds no saved answer.
+        """
+        ...
+
     def create_tier(self, *, key, label_en, label_ar, daily_message_limit, ordering, actor) -> dict:
         """Create a tier. Refuses TQ001/TQ005/TQ006/TQ008."""
         ...
@@ -335,6 +359,60 @@ _DELETION_LEDGER_COLUMNS = (
     "completed_at",
     "last_error_code",
 )
+
+# The analytics columns the console may show — no owner, session, message or
+# email in either, matching what each RPC's `returns table` names. Same
+# reasoning as the ledger tuple above: enforced in code on BOTH backends, so a
+# column added to a function later cannot ride out through a copied row.
+_ANALYTICS_QUESTION_COLUMNS = ("question", "asks", "uncited", "askers")
+_ANALYTICS_CITATION_COLUMNS = (
+    "scope",
+    "bucket",
+    "turns",
+    "turns_uncited",
+    "turns_no_retrieval",
+    "cited_total",
+    "retrieved_total",
+)
+
+# The three normalisation passes of admin_top_questions, spelled by code point.
+#
+# NEVER a bare `\s`. Postgres's `\s` is `[[:space:]]`, whose classification of
+# non-ASCII characters follows the active collation — measured on the live
+# database (Postgres 17), it matches none of U+00A0, U+200B or U+200F, while
+# Python's `\s` matches U+00A0. A bare `\s` here would group in this double
+# exactly what production fragments, and the suite would stay green saying so.
+# The ASCII six are therefore listed outright, because those are what Postgres's
+# `\s` does cover.
+_INVISIBLE_MARK_RE = re.compile("[\u200b-\u200f\u2066-\u2069\ufeff]")
+# Postgres's `\s` on the live database (measured, code point by code point) is
+# the ASCII six plus U+1680, U+2000-U+2006, U+2008-U+200A, U+2028, U+2029 and
+# U+205F. The SQL adds U+00A0, U+2007, U+202F and U+3000 by hand; the union is
+# this class. U+2028/U+2029 are what a PDF emits for a soft line break.
+_SPACE_RUN_RE = re.compile("[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+")
+# One trailing run of `?` `؟` `!` `.` `۔` `…` and spaces — the SQL's
+# `'[?؟!.۔… ]+$'`. A `.` inside a character class is a literal full stop.
+_TRAILING_STOP_RE = re.compile("[?\u061f!.\u06d4\u2026 ]+$")
+
+
+def normalize_question(text: str) -> str:
+    """The grouping key for a saved question. One function, two callers.
+
+    Identical semantics to the inline expression in `admin_top_questions`
+    (docs/admin-analytics-v1-plan.md §4.1): delete the zero-width and direction
+    marks, lower, collapse every space kind to one space, trim, then strip one
+    trailing run of sentence-enders. `btrim` in the SQL strips U+0020 only,
+    so this strips U+0020 only: a bare `.strip()` also eats U+0085 and
+    U+001C-U+001F, which neither engine's collapse pass touches, and the two
+    keys then differ. Pinned against the live expression over 52 space, control
+    and format code points, not only by the fixture.
+
+    Known and accepted engine gap: `lower()` differs between Postgres and
+    Python for a handful of characters (`İ`, `ß`). Irrelevant to this corpus,
+    recorded so nobody is surprised.
+    """
+    collapsed = _SPACE_RUN_RE.sub(" ", _INVISIBLE_MARK_RE.sub("", text).lower())
+    return _TRAILING_STOP_RE.sub("", collapsed.strip(" "))
 
 
 class SupabaseAdminBackend:
@@ -658,6 +736,50 @@ class SupabaseAdminBackend:
         )
         return getattr(response, "data", None) or {}
 
+    # -- analytics ------------------------------------------------------------
+    #
+    # Two read-only aggregates, through the same `_rpc` helper every other
+    # reader uses, so a transport failure surfaces exactly as one. Neither
+    # takes an actor: they mutate nothing, which is what admin_list_tiers and
+    # admin_list_users already do. Both clamp their own window in SQL.
+
+    def top_questions(self, *, days, lang, category, limit, order) -> list[dict]:
+        response = self._rpc(
+            "admin_top_questions",
+            {
+                "p_days": days,
+                "p_lang": lang,
+                "p_category": category,
+                "p_limit": limit,
+                "p_order": order,
+                # p_min_askers is deliberately NOT sent. See the Protocol.
+            },
+        )
+        return [
+            {column: row.get(column) for column in _ANALYTICS_QUESTION_COLUMNS}
+            for row in (getattr(response, "data", None) or [])
+        ]
+
+    def citation_stats(self, *, days, lang, category) -> list[dict]:
+        response = self._rpc(
+            "admin_citation_stats",
+            {"p_days": days, "p_lang": lang, "p_category": category},
+        )
+        rows = [
+            {column: row.get(column) for column in _ANALYTICS_CITATION_COLUMNS}
+            for row in (getattr(response, "data", None) or [])
+        ]
+        # `grouping sets (())` over zero rows still yields ONE all-zero `total`
+        # row. An empty window must read the same from both backends, so it is
+        # dropped here rather than left for the console to special-case.
+        if any(row["scope"] == "total" and not row["turns"] for row in rows):
+            return []
+        for row in rows:
+            # `sum()` is null over no rows where `count()` is 0.
+            row["cited_total"] = row["cited_total"] or 0
+            row["retrieved_total"] = row["retrieved_total"] or 0
+        return rows
+
 
 class InMemoryAdminBackend:
     """A backend with no database behind it.
@@ -672,7 +794,7 @@ class InMemoryAdminBackend:
     change, and nothing survives a restart.
     """
 
-    def __init__(self, settings: dict | None = None, quota=None) -> None:
+    def __init__(self, settings: dict | None = None, quota=None, chat=None) -> None:
         self._settings = dict(settings or {})
         self._audit: list = []
         self._next_id = 1
@@ -689,6 +811,11 @@ class InMemoryAdminBackend:
         # the console and the chat route disagree about the same account, which
         # is the bug this feature exists to prevent.
         self._quota = quota
+        # SHARED with InMemoryChatBackend by injection, for the same reason: the
+        # analytics aggregates are computed over the REAL saved turns, so
+        # `?testing=true` is a working demo rather than a fixture, and a turn a
+        # test asks through the chat route is counted by the very next read.
+        self._chat = chat
 
     def _tiers(self) -> dict:
         """The tier catalogue this backend edits, or a local one under no quota."""
@@ -1285,6 +1412,124 @@ class InMemoryAdminBackend:
             )
 
         return {"role": row["role"], "tier": row["tier"], "is_disabled": row["is_disabled"]}
+
+    # ── analytics ─────────────────────────────────────────────────────────
+    #
+    # Computed over the injected InMemoryChatBackend's real turns, not over a
+    # fixture list of its own. It reimplements the normalisation, the window
+    # clamp, the asker floor and the asker bucket faithfully, because a double
+    # laxer than production is a green suite asserting the opposite of
+    # production — the same rule InMemoryChatBackend's own docstring states.
+
+    def _analytics_turns(self, days, lang, category) -> list[dict]:
+        """The saved turns inside the clamped window, filtered like the RPCs.
+
+        `lang` and `category` are read from the ASSISTANT side of the turn,
+        which is the only row that carries them
+        (supabase/migrations/20260820131914_chat_session_persistence.sql:86-92)
+        — a double that read them off the question would filter nothing.
+        """
+        from datetime import datetime, timedelta
+
+        if self._chat is None:
+            return []
+        # `greatest(least(coalesce(p_days, 30), 3650), 7)`, both functions.
+        clamped = max(min(int(30 if days is None else days), 3650), 7)
+        since = datetime.now(UTC) - timedelta(days=clamped)
+
+        rows = []
+        for turn in self._chat.turns():
+            created_at = turn.get("created_at")
+            if not created_at or datetime.fromisoformat(created_at) < since:
+                continue
+            if lang is not None and turn.get("lang") != lang:
+                continue
+            if category is not None and turn.get("category") != category:
+                continue
+            sources = turn.get("sources") or []
+            rows.append(
+                {
+                    **turn,
+                    "cited_count": sum(1 for source in sources if source.get("cited")),
+                    "retrieved_count": len(sources),
+                }
+            )
+        return rows
+
+    def top_questions(self, *, days, lang, category, limit, order) -> list[dict]:
+        groups: dict = {}
+        for turn in self._analytics_turns(days, lang, category):
+            groups.setdefault(normalize_question(turn["question"]), []).append(turn)
+
+        rows = []
+        for key, turns in groups.items():
+            owners = {turn["owner_id"] for turn in turns}
+            # The floor, hard-coded exactly as the SQL hard-codes it. There is
+            # no parameter on either side, so nothing can lower it.
+            if len(owners) < 2:
+                continue
+            rows.append(
+                {
+                    # `(array_agg(question order by created_at desc))[1]` — the
+                    # most recent RAW phrasing, never the normalised key.
+                    "question": max(turns, key=lambda turn: turn["created_at"])["question"],
+                    "asks": len(turns),
+                    # Zero cited sources, which by construction includes a turn
+                    # that retrieved nothing at all.
+                    "uncited": sum(1 for turn in turns if turn["cited_count"] == 0),
+                    # Bucketed HERE, like the SQL: null below five distinct
+                    # accounts, exact from five up.
+                    "askers": len(owners) if len(owners) >= 5 else None,
+                    "normalized": key,
+                }
+            )
+        rows.sort(
+            key=lambda row: (
+                -(row["uncited"] if order == "uncited" else row["asks"]),
+                row["normalized"],
+            )
+        )
+        clamped = max(min(int(20 if limit is None else limit), 100), 1)
+        return [
+            {column: row[column] for column in _ANALYTICS_QUESTION_COLUMNS}
+            for row in rows[:clamped]
+        ]
+
+    def citation_stats(self, *, days, lang, category) -> list[dict]:
+        turns = self._analytics_turns(days, lang, category)
+        if not turns:
+            # The Supabase side drops the all-zero `total` row Postgres emits
+            # over no rows, so this side must never invent one.
+            return []
+
+        def counted(scope, bucket, rows) -> dict:
+            return {
+                "scope": scope,
+                "bucket": bucket,
+                "turns": len(rows),
+                # Disjoint by construction, exactly as in SQL: retrieved
+                # something and cited none, versus retrieved nothing at all.
+                "turns_uncited": sum(
+                    1 for row in rows if row["cited_count"] == 0 and row["retrieved_count"] > 0
+                ),
+                "turns_no_retrieval": sum(1 for row in rows if row["retrieved_count"] == 0),
+                "cited_total": sum(row["cited_count"] for row in rows),
+                "retrieved_total": sum(row["retrieved_count"] for row in rows),
+            }
+
+        # The three grouping sets: (), (lang), (category).
+        stats = [counted("total", None, turns)]
+        for scope in ("lang", "category"):
+            buckets: dict = {}
+            for turn in turns:
+                buckets.setdefault(turn.get(scope), []).append(turn)
+            stats.extend(
+                counted(scope, bucket, rows)
+                for bucket, rows in sorted(
+                    buckets.items(), key=lambda item: (item[0] is None, item[0] or "")
+                )
+            )
+        return [{column: row[column] for column in _ANALYTICS_CITATION_COLUMNS} for row in stats]
 
 
 def get_admin_backend() -> AdminBackend | None:

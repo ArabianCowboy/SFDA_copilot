@@ -2310,12 +2310,16 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
     # a request is visible to the next one within the same test — and nothing
     # survives the process, which is what makes tests independent.
     app.config["_testing_quota_backend"] = InMemoryQuotaBackend()
+    # Built BEFORE the admin double, which is injected with it: the analytics
+    # aggregates are computed over these real saved turns, so `?testing=true`
+    # is a working demo rather than a fixture.
+    app.config["_testing_chat_backend"] = InMemoryChatBackend()
     # The admin double SHARES the quota double (not a copy): a tier assigned or
     # an override set through the console must be visible to the very next claim.
     app.config["_testing_admin_backend"] = InMemoryAdminBackend(
-        quota=app.config["_testing_quota_backend"]
+        quota=app.config["_testing_quota_backend"],
+        chat=app.config["_testing_chat_backend"],
     )
-    app.config["_testing_chat_backend"] = InMemoryChatBackend()
     # Shares the SAME _users list as _testing_admin_backend (not a copy) —
     # see InMemoryNotificationBackend's own docstring: a role/tier targeting
     # decision made here must agree with whatever the admin console fixtures

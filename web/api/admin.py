@@ -1824,3 +1824,138 @@ def identity() -> Response | tuple[Response, int]:
             "is_admin": flags.is_admin,
         }
     )
+
+
+# ── Analytics ─────────────────────────────────────────────────────────────────
+#
+# Two read-only aggregates over saved conversations. No per-route rate limit,
+# by choice rather than by necessity: a plain route limit would REPLACE the
+# blueprint's 60/minute, and a stacked one is possible
+# (`override_defaults=False`, see `_register_routes`) but buys nothing here —
+# these sit behind the admin gate, the console fires three per visit, and both
+# windows are clamped in SQL. No audit row either — `web/services/audit.py` draws the audit line at
+# access to a reader's own content, and the database's two-distinct-askers
+# floor means nothing here is one reader's content.
+
+
+def _parse_analytics_window(**defaults: int) -> list[int]:
+    """Parse the named integer arguments, raising like ``_parse_pagination_params``.
+
+    Each route names only what it reads — ``days`` and ``limit`` for questions,
+    ``days`` alone for citations — so neither refuses a caller over an argument
+    it would have ignored.
+
+    Deliberately does NOT clamp. The clamp is the database's, written once as
+    ``greatest(least(coalesce(p_days, 30), 3650), 7)`` in each function and
+    mirrored by the in-memory double; a second copy here would be a second
+    place for the 7-day floor to drift. So an out-of-range window is clamped
+    downstream and answered, and only a value that is not a window at all —
+    unparseable, or zero or negative — is a 400.
+    """
+    # `or`, not a default: `?days=` is no value, exactly as `?lang=` is no filter.
+    values = [int(request.args.get(name) or default) for name, default in defaults.items()]
+    # The ceiling is int4's, not a clamp: past it Postgres refuses the argument
+    # itself and the read would surface as a 500 instead of an answer.
+    if not all(0 < value < 2**31 for value in values):
+        raise ValueError("a window argument must be a positive 32-bit integer")
+    return values
+
+
+def _analytics_filters() -> tuple[dict, tuple[Response, int] | None]:
+    """``{"lang", "category"}`` validated against the chat route's own lists.
+
+    Imported inside the body, like ``_authenticate_request`` in `_gate` above:
+    `web.api.app` imports this module from inside `_register_routes`, and a
+    module-level import back would close the cycle.
+
+    An empty string is None — the console sends ``lang=`` for "both languages",
+    and an unfiltered read is what that means.
+    """
+    from web.api.app import CHAT_CATEGORIES, SUPPORTED_CHAT_LANGS
+
+    lang = request.args.get("lang") or None
+    category = request.args.get("category") or None
+    if lang is not None and lang not in SUPPORTED_CHAT_LANGS:
+        return {}, (jsonify({"error": "invalid_lang"}), 422)
+    if category is not None and category not in CHAT_CATEGORIES:
+        return {}, (jsonify({"error": "invalid_category"}), 422)
+    return {"lang": lang, "category": category}, None
+
+
+def _flag_sidebar_questions(rows: list[dict]) -> None:
+    """Mark the rows whose text is one of the sidebar's own FAQ questions.
+
+    A sidebar click sends the FAQ's text verbatim, and grouping is by exact
+    normalised string — so the rows that clear the asker floor first are the
+    sidebar's own questions. Unmarked, "recurring questions" would mirror
+    `faq.yaml`, which is the opposite of what the list is for.
+
+    Done here rather than in either backend, because the FAQ catalogue lives in
+    app config: two backends, zero copies. Applied AFTER the backends'
+    allow-list shaping, so that allow-list stays the single statement of what
+    the database may return. The key set is built once per application and kept
+    on `extensions` — the catalogue is loaded at startup and never changes.
+    """
+    from web.services.admin_store import normalize_question
+
+    keys = current_app.extensions.get("admin_faq_question_keys")
+    if keys is None:
+        keys = frozenset(
+            normalize_question(question["text"])
+            for categories in current_app.config.get("FREQUENT_QUESTIONS", {}).values()
+            if isinstance(categories, dict)
+            for block in categories.values()
+            if isinstance(block, dict)
+            for question in block.get("questions") or []
+            if isinstance(question, dict) and isinstance(question.get("text"), str)
+        )
+        current_app.extensions["admin_faq_question_keys"] = keys
+
+    for row in rows:
+        row["from_faq"] = normalize_question(row.get("question") or "") in keys
+
+
+@admin_bp.route("/api/analytics/questions")
+def analytics_questions() -> Response | tuple[Response, int]:
+    """Recurring questions in the window. What was asked, never who asked it."""
+    try:
+        days, limit = _parse_analytics_window(days=30, limit=20)
+    except (TypeError, ValueError):
+        return jsonify({"error": "invalid_window"}), 400
+
+    filters, error = _analytics_filters()
+    if error:
+        return error
+
+    order = request.args.get("order") or "asks"
+    if order not in ("asks", "uncited"):
+        return jsonify({"error": "invalid_order"}), 422
+
+    backend = current_app.config["admin_backend"]()
+    if backend is None:
+        return jsonify({"error": "storage_unavailable"}), 503
+
+    # `min_askers` is never read. The floor is the database's and cannot be
+    # lowered through any argument, so a caller sending one changes nothing.
+    rows = backend.top_questions(days=days, limit=limit, order=order, **filters)
+    _flag_sidebar_questions(rows)
+    return jsonify({"questions": rows})
+
+
+@admin_bp.route("/api/analytics/citations")
+def analytics_citations() -> Response | tuple[Response, int]:
+    """Citation counts for the window: one total, then by language and scope."""
+    try:
+        (days,) = _parse_analytics_window(days=30)
+    except (TypeError, ValueError):
+        return jsonify({"error": "invalid_window"}), 400
+
+    filters, error = _analytics_filters()
+    if error:
+        return error
+
+    backend = current_app.config["admin_backend"]()
+    if backend is None:
+        return jsonify({"error": "storage_unavailable"}), 503
+
+    return jsonify({"stats": backend.citation_stats(days=days, **filters)})
