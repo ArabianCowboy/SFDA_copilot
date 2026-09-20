@@ -233,6 +233,41 @@ def test_arabic_catalogue_covers_every_runtime_key():
         assert not missing, f"Arabic catalogue['{root}'] is missing: {sorted(missing)}"
 
 
+def test_analytics_scope_labels_match_page_categories():
+    """runtime.admin.analytics.scope duplicates page.categories on purpose
+    (page.* never reaches the browser, so the console cannot read it there —
+    docs/admin-analytics-v1-plan.md section 7.10), and a pytest is the thing
+    that is supposed to catch the two drifting apart. Checked in both
+    languages, since a translator could update one catalogue's category label
+    and miss the analytics copy sitting right beside it.
+    """
+    import yaml
+
+    i18n_dir = MODULES.parents[2] / "web" / "i18n"
+    for lang in ("en", "ar"):
+        catalog = yaml.safe_load((i18n_dir / f"{lang}.yaml").read_text(encoding="utf-8"))
+        scope = catalog["runtime"]["admin"]["analytics"]["scope"]
+        categories = catalog["page"]["categories"]
+        for key in ("regulatory", "pharmacovigilance", "veterinary", "biological"):
+            assert scope[key] == categories[key], (
+                f"{lang}.yaml: runtime.admin.analytics.scope.{key} "
+                f"({scope[key]!r}) != page.categories.{key} ({categories[key]!r})"
+            )
+
+
+def test_the_console_reads_the_analytics_catalogue_branch():
+    """`runtime.admin.analytics.*` landed in both catalogues in one commit.
+
+    Parity proves the Arabic side carries whatever the English side does; it
+    cannot prove that anything reads either. A whole branch present in both and
+    read by nothing is the failure this repo has shipped twice — and `I18n.t()`
+    does not throw on a miss, so the reverse (a read of a branch that was never
+    added) only warns to the console of whoever opened the page.
+    """
+    source = (ADMIN / "ui.js").read_text(encoding="utf-8")
+    assert "I18n.t('admin.analytics." in source
+
+
 def test_no_stale_reference_to_the_renamed_last_seen_column_key():
     """`columnLastSeen` was renamed to `columnLastSignIn` (it rendered "Last
     signed in" and was bound to `last_sign_in_at`, not to anything "seen" —

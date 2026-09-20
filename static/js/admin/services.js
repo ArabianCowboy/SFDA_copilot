@@ -231,6 +231,32 @@ export function createAdminServices(getToken) {
         },
       }),
 
+    /* Read-only aggregates over saved conversations
+       (docs/admin-analytics-v1-plan.md §6). Both take `signal`, like `users()`
+       and `deletions()` above: the period and language controls abort the
+       window an operator has just left rather than racing it.
+
+       `lang` and `category` go over the wire empty rather than omitted — the
+       routes read an empty value as "no filter", and building a different
+       query string per combination is how the two callers drift apart. */
+
+    analyticsCitations: ({ days = 30, lang = '', category = '', signal } = {}) =>
+      request(`analytics/citations?${new URLSearchParams({ days, lang, category })}`, { signal }),
+
+    /** `order` is `asks` or `uncited`; the same rows, ranked twice. */
+    analyticsQuestions: ({
+      days = 30,
+      lang = '',
+      category = '',
+      limit = 20,
+      order = 'asks',
+      signal,
+    } = {}) =>
+      request(
+        `analytics/questions?${new URLSearchParams({ days, lang, category, limit, order })}`,
+        { signal },
+      ),
+
     getPurgeRetentionDays: () => request('notifications/purge-settings'),
 
     setPurgeRetentionDays: (days) =>

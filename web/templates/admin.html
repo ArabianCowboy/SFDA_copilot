@@ -165,6 +165,14 @@
                 aria-labelledby="tab-overview" tabindex="0">
                 <h1 class="admin-heading">{{ t('page.admin.tabs.overview') }}</h1>
                 <div id="overview-body" class="admin-panel-body"></div>
+                {# A SIBLING body, the way Settings stacks its two above, not a
+                   second tab and not more of #overview-body. The figures above
+                   are four cheap reads an operator acts on; these are
+                   aggregates over saved conversations, slower and never
+                   urgent, and renderOverview repaints its body whole — so a
+                   refetch here must not be able to take the landing figures
+                   with it (docs/admin-analytics-v1-plan.md §7.1). #}
+                <div id="overview-analytics" class="admin-panel-body"></div>
             </section>
 
             <section class="admin-panel" role="tabpanel" id="panel-settings"

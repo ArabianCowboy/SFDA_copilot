@@ -600,32 +600,75 @@ function actionButton(label, { danger = false, action, id, disabled = false }) {
   return button;
 }
 
-let busyTimer = null;
+/* One timer per region, not one for the console: People and the analytics
+   region can be in flight at the same time, and a single shared timer meant
+   whichever finished first cancelled the other's pending dimming. */
+const busyTimers = new Map();
+
+/**
+ * The console's one loading treatment.
+ *
+ * `aria-busy` flips at once, because assistive tech has no other way to know;
+ * the visible dimming waits 100ms, so a response that arrives in 40 does not
+ * flash a grey table at anybody. Old content stays throughout — this never
+ * empties anything.
+ *
+ * @param regionId the element carrying `aria-busy`
+ * @param nodes a thunk, resolved per call: the region is repainted between
+ *        calls and holding node references across one is how a class ends up
+ *        stuck on a detached element.
+ */
+function setRegionBusy(regionId, loading, nodes) {
+  clearTimeout(busyTimers.get(regionId));
+  busyTimers.delete(regionId);
+
+  const region = el(regionId);
+  if (region) region.setAttribute('aria-busy', String(loading));
+
+  const targets = nodes().filter(Boolean);
+  if (loading) {
+    busyTimers.set(
+      regionId,
+      setTimeout(() => targets.forEach((node) => node.classList.add('is-busy-visual')), 100),
+    );
+  } else {
+    targets.forEach((node) => node.classList.remove('is-busy-visual'));
+  }
+}
 
 export function setPeopleLoading(loading) {
-  if (busyTimer) {
-    clearTimeout(busyTimer);
-    busyTimer = null;
-  }
-  const pager = el('people-pager');
-  const prev = el('people-prev');
-  const next = el('people-next');
-  const wrapper = document.querySelector('#people-list .admin-table-wrapper');
-  const table = el('people-table');
-
+  setRegionBusy('people-pager', loading, () => [
+    document.querySelector('#people-list .admin-table-wrapper'),
+    el('people-table'),
+  ]);
+  /* Only the pager's two buttons are disabled, and only on the way in — the
+     re-render builds fresh ones. The page-size select is deliberately left
+     alone; disabling a focused control drops focus. */
   if (loading) {
-    if (pager) pager.setAttribute('aria-busy', 'true');
+    const prev = el('people-prev');
+    const next = el('people-next');
     if (prev) prev.disabled = true;
     if (next) next.disabled = true;
-    busyTimer = setTimeout(() => {
-      if (wrapper) wrapper.classList.add('is-busy-visual');
-      if (table) table.classList.add('is-busy-visual');
-    }, 100);
-  } else {
-    if (pager) pager.setAttribute('aria-busy', 'false');
-    if (wrapper) wrapper.classList.remove('is-busy-visual');
-    if (table) table.classList.remove('is-busy-visual');
   }
+}
+
+/**
+ * The same treatment for the analytics region, and the same rule about
+ * controls: neither select is disabled while a refetch is in flight.
+ *
+ * The class goes on the region — which is what a test can see, and what a
+ * future rule would hang off — and on the tables inside it, which is where the
+ * existing `.admin-table.is-busy-visual tbody` rule actually dims something.
+ */
+export function setAnalyticsLoading(loading) {
+  /* Emptied when a refetch STARTS, so the same sentence set again when it
+     lands is a change a polite live region will announce a second time. */
+  const status = el('analytics-status');
+  if (loading && status) status.textContent = '';
+  setRegionBusy('analytics-results', loading, () => {
+    const region = el('analytics-results');
+    return region ? [region, ...region.querySelectorAll('.admin-table')] : [];
+  });
 }
 
 function appendPagerButtonContent(button, label, iconFirst) {
@@ -1625,11 +1668,16 @@ function quotaForm(account, tiers) {
  * catalogue string is split on its own `{date}` placeholder rather than
  * interpolated, because interpolation can only produce a string and an isolate
  * has to be an element.
+ *
+ * The placeholder and the stamp are parameters because the analytics region's
+ * "Counted at {time}" needs the clock as well as the day. Everything that makes
+ * this safe — parts rather than Intl, a split rather than an interpolation, an
+ * element for the isolate — is the same either way.
  */
-function stampedSentence(key, value) {
-  const [before, after = ''] = String(I18n.t(key)).split('{date}');
+function stampedSentence(key, value, { placeholder = '{date}', stamp = dayStamp } = {}) {
+  const [before, after = ''] = String(I18n.t(key)).split(placeholder);
   const line = document.createDocumentFragment();
-  line.append(before, machineValue(dayStamp(value)), after);
+  line.append(before, machineValue(stamp(value)), after);
   return line;
 }
 
@@ -2583,12 +2631,17 @@ export function setBulkSelectionState(count) {
  * The Overview tab: what the console knows, before you go looking for it.
  *
  * This panel shipped empty — the default landing tab of the whole console said
- * "Nothing here yet." to every operator on every visit. It is assembled
- * entirely from routes the other tabs already call, so it adds no endpoint, no
- * RPC and no stored state: how many accounts there are, whether signup is
- * open, how the tiers divide the readership, and the last few things anybody
- * did. Every figure here is a link to the tab that owns it — an overview that
- * cannot be acted on is a poster.
+ * "Nothing here yet." to every operator on every visit. What THIS function
+ * draws is assembled entirely from routes the other tabs already call, so it
+ * adds no endpoint, no RPC and no stored state: how many accounts there are,
+ * whether signup is open, how the tiers divide the readership, and the last few
+ * things anybody did. Every figure here is a link to the tab that owns it — an
+ * overview that cannot be acted on is a poster.
+ *
+ * The saved-conversation aggregates below are not this function's: they have
+ * endpoints of their own, they link nowhere because no tab owns them, and they
+ * are painted into `#overview-analytics` by `renderAnalyticsResults` so that a
+ * slow `group by` can never delay the four figures here.
  *
  * Failure is per-section, not per-panel. Four requests back this and any one
  * of them can fail on its own; a panel that renders nothing because the audit
@@ -2718,6 +2771,599 @@ function overviewLink(tabId, label) {
   button.textContent = label;
   row.append(button);
   return row;
+}
+
+/* ── Saved conversations (docs/admin-analytics-v1-plan.md §7) ─────────────── */
+//
+// The second body of the Overview panel, below the operational figures. Nothing
+// here links anywhere: these are aggregates, no tab owns them, and V1
+// deliberately ships no way through to one reader's conversation.
+
+/* Percentages are withheld below this many saved answers. At nine, one answer
+   moves the figure eleven points, which is more precision than it has;
+   `quality.smallSample` states the rule whenever one is withheld. */
+const MIN_RATE_DENOMINATOR = 10;
+
+/* Past this a question is disclosed rather than printed. Counted in GRAPHEMES,
+   because `slice` on the raw string splits a surrogate pair or strands a
+   shadda. */
+const QUESTION_PREVIEW_GRAPHEMES = 160;
+
+/* The four real search scopes plus `all`. A value outside this list is printed
+   raw rather than looked up: the RPC gains grouping sets over time (follow-up 4
+   adds a daily one), and a client that renders a missing catalogue key as the
+   key itself is worse than one that prints what the server said. */
+const SCOPE_BUCKETS = new Set([
+  'all',
+  'regulatory',
+  'pharmacovigilance',
+  'veterinary',
+  'biological',
+]);
+
+function emptyLine(text) {
+  const line = document.createElement('p');
+  line.className = 'admin-empty';
+  line.textContent = text;
+  return line;
+}
+
+/** Per zone, never per region — the same `null` = failed semantics as above. */
+const unavailableLine = () => emptyLine(I18n.t('admin.overview.unavailable'));
+
+/* One segmenter for the whole region, not one per table row, built on first
+   use: `I18n.lang` is not resolved at module load, and the console's language
+   cannot change without a page reload. `null` where the browser has none. */
+let graphemeSegmenter;
+
+/**
+ * The summary line for a question too long to print, cut at the last whitespace
+ * inside the budget. `null` when the whole question fits, which is the signal
+ * to print it plainly.
+ *
+ * `Intl.Segmenter` where it exists, `Array.from` where it does not — either
+ * way a list of whole graphemes, never an index into the raw string.
+ */
+function questionSummary(text) {
+  if (graphemeSegmenter === undefined)
+    graphemeSegmenter =
+      typeof Intl.Segmenter === 'function'
+        ? new Intl.Segmenter(I18n.lang, { granularity: 'grapheme' })
+        : null;
+  const units = graphemeSegmenter
+    ? Array.from(graphemeSegmenter.segment(text), (part) => part.segment)
+    : Array.from(text);
+  if (units.length <= QUESTION_PREVIEW_GRAPHEMES) return null;
+  const head = units.slice(0, QUESTION_PREVIEW_GRAPHEMES);
+  let end = head.length;
+  while (end > 0 && !/\s/.test(head[end - 1])) end -= 1;
+  /* A cut that keeps less than half the budget is not a preview: one leading
+     space, or one short word before a long unbroken token, collapsed the line
+     to `…`. Hard-cut instead, giving up one grapheme so the ellipsis still
+     fits the budget — which is also the no-whitespace-at-all case. */
+  if (end * 2 < QUESTION_PREVIEW_GRAPHEMES) end = head.length - 1;
+  /* `Array.from` yields code points, not grapheme clusters, so on a browser
+     with no segmenter the cut can still land between a base letter and its own
+     shadda. Step back until the next unit is not a combining mark. */
+  while (end > 0 && /^\p{M}/u.test(units[end])) end -= 1;
+  return `${head.slice(0, end).join('').trimEnd()}…`;
+}
+
+/**
+ * `3 of 14`, and a percentage only once the denominator has earned one.
+ *
+ * Two isolates and a word between them — the pager's own shape. Never `3 / 14`,
+ * and never one isolate around the whole phrase: that renders "14 of 3" to an
+ * Arabic reader, which is a figure that says the wrong thing rather than one
+ * that merely looks odd.
+ */
+function ratioSentence(count, total) {
+  const line = document.createDocumentFragment();
+  line.append(
+    machineValue(String(count)),
+    ` ${I18n.t('admin.people.of')} `,
+    machineValue(String(total)),
+  );
+  if (total >= MIN_RATE_DENOMINATOR) {
+    /* The secondary reading of the same fact, in the treatment the account
+       page's exact stamp already has: mono, muted, its own line. `dir="ltr"`
+       for the reason the timestamp carries it — admin.css restores the
+       alignment under `[dir="rtl"]`. */
+    const rate = document.createElement('span');
+    rate.className = 'admin-fact-exact';
+    rate.setAttribute('dir', 'ltr');
+    /* A rounded rate must not say "none" or "all" when the count beside it
+       says otherwise: 3 of 3000 is not 0%. */
+    const percent = Math.round((count / total) * 100);
+    if (percent === 0 && count > 0) rate.textContent = '<1%';
+    else if (percent === 100 && count < total) rate.textContent = '>99%';
+    else rate.textContent = `${percent}%`;
+    line.append(rate);
+  }
+  return line;
+}
+
+/** Latin digits, one decimal, from `toFixed` — never a localised number. */
+const perAnswer = (sum, turns) => (turns ? Number(sum || 0) / turns : 0).toFixed(1);
+
+function groupLabel(scope, bucket) {
+  /* `lang` and `category` are nullable columns. No writer leaves them empty
+     today, but a row header with no name is a cell a screen reader announces
+     as nothing — so a NULL bucket borrows the console's one existing
+     "Unknown" rather than this surface growing a 45th string for it. */
+  if (bucket == null) return I18n.t('admin.account.emailVerifiedUnknown');
+  const name = String(bucket);
+  if (scope === 'lang') {
+    if (name === 'en') return I18n.t('admin.analytics.languageEn');
+    if (name === 'ar') return I18n.t('admin.analytics.languageAr');
+    return name;
+  }
+  return SCOPE_BUCKETS.has(name) ? I18n.t(`admin.analytics.scope.${name}`) : name;
+}
+
+/**
+ * The same six columns twice, as two `<tbody>` groups under one header row —
+ * by question language, then by search scope. One table rather than two,
+ * because the columns are identical and two tables would invite a reader to
+ * compare figures that are two different partitions of the same answers.
+ *
+ * No `<caption>`: the templates load the LTR Bootstrap build, which aligns one
+ * physically.
+ */
+/* `admin_citation_stats` ends at its `group by` with no `order by`, so Postgres
+   may return the buckets in any order and the in-memory double returns them
+   sorted. Ordered here, once, so both backends draw the same table twice
+   running: the known buckets in the order the reader's own selector lists
+   them, anything unknown after, by name. */
+const BUCKET_ORDER = ['en', 'ar', ...SCOPE_BUCKETS];
+const bucketRank = (bucket) => {
+  const rank = BUCKET_ORDER.indexOf(bucket);
+  return rank < 0 ? BUCKET_ORDER.length : rank;
+};
+const byBucket = (a, b) =>
+  bucketRank(a.bucket) - bucketRank(b.bucket) ||
+  String(a.bucket ?? '').localeCompare(String(b.bucket ?? ''));
+
+function breakdownTable(stats) {
+  const groups = [
+    ['lang', 'byLanguage'],
+    ['category', 'byScope'],
+  ]
+    .map(([scope, key]) => [key, stats.filter((row) => row.scope === scope).sort(byBucket)])
+    .filter(([, rows]) => rows.length);
+  if (!groups.length) return null;
+
+  const table = document.createElement('table');
+  table.className = 'admin-table';
+
+  const head = document.createElement('thead');
+  const headRow = document.createElement('tr');
+  const columns = [
+    'group',
+    'turns',
+    'uncited',
+    'noRetrieval',
+    'citedPerAnswer',
+    'retrievedPerAnswer',
+  ];
+  for (const key of columns) {
+    const th = document.createElement('th');
+    th.scope = 'col';
+    th.textContent = I18n.t(`admin.analytics.quality.${key}`);
+    headRow.append(th);
+  }
+  head.append(headRow);
+  table.append(head);
+
+  for (const [key, rows] of groups) {
+    const tbody = document.createElement('tbody');
+
+    const leadRow = document.createElement('tr');
+    const lead = document.createElement('th');
+    lead.scope = 'rowgroup';
+    lead.colSpan = columns.length;
+    lead.textContent = I18n.t(`admin.analytics.quality.${key}`);
+    leadRow.append(lead);
+    tbody.append(leadRow);
+
+    for (const row of rows) {
+      const tr = document.createElement('tr');
+      const name = document.createElement('th');
+      name.scope = 'row';
+      name.textContent = groupLabel(row.scope, row.bucket);
+      tr.append(name);
+      for (const value of [
+        String(row.turns),
+        String(row.turns_uncited),
+        String(row.turns_no_retrieval),
+        perAnswer(row.cited_total, row.turns),
+        perAnswer(row.retrieved_total, row.turns),
+      ]) {
+        const td = document.createElement('td');
+        td.append(machineValue(value));
+        tr.append(td);
+      }
+      tbody.append(tr);
+    }
+    table.append(tbody);
+  }
+  return table;
+}
+
+/**
+ * Citation quality. It leads because it always has numbers — the question
+ * lists below it are legitimately empty until two accounts ask the same thing.
+ *
+ * No tone class and no colour on any of it. Nothing malfunctioned here; a
+ * number that is merely true does not need a mark.
+ */
+function citationZone(stats) {
+  const zone = section(I18n.t('admin.analytics.quality.heading'));
+  if (stats === null) {
+    zone.append(unavailableLine());
+    return zone;
+  }
+
+  const total = stats.find((row) => row.scope === 'total');
+  if (!total || !total.turns) {
+    /* Never `0%`, never `NaN`, and never `—` — a dash means FAILED everywhere
+       else in this console. */
+    zone.append(emptyLine(I18n.t('admin.analytics.quality.empty')));
+    return zone;
+  }
+
+  const facts = document.createElement('dl');
+  facts.className = 'admin-facts admin-card';
+  fact(facts, I18n.t('admin.analytics.quality.turns'), {
+    text: String(total.turns),
+    machine: true,
+  });
+  fact(facts, I18n.t('admin.analytics.quality.uncited'), {
+    node: ratioSentence(total.turns_uncited, total.turns),
+  });
+  fact(facts, I18n.t('admin.analytics.quality.noRetrieval'), {
+    node: ratioSentence(total.turns_no_retrieval, total.turns),
+  });
+  /* Two tiles, not `2.2 / 8.0`: a slash between two figures is read from the
+     wrong end in Arabic, and these two are not a ratio anyway. */
+  fact(facts, I18n.t('admin.analytics.quality.citedPerAnswer'), {
+    text: perAnswer(total.cited_total, total.turns),
+    machine: true,
+  });
+  fact(facts, I18n.t('admin.analytics.quality.retrievedPerAnswer'), {
+    text: perAnswer(total.retrieved_total, total.turns),
+    machine: true,
+  });
+  zone.append(facts);
+
+  if (total.turns < MIN_RATE_DENOMINATOR) {
+    zone.append(cardHint(I18n.t('admin.analytics.quality.smallSample')));
+  }
+
+  const table = breakdownTable(stats);
+  if (table) zone.append(table, cardHint(I18n.t('admin.analytics.quality.scopeHint')));
+  return zone;
+}
+
+/** Reader-written text: `dir="auto"` per row, `textContent` only, never
+    `innerHTML`, and a native `<details>` rather than a wall when it runs long —
+    which brings keyboard, screen-reader state and a mirrored marker for free. */
+function questionCell(row) {
+  const cell = document.createElement('td');
+  // dir="auto" on the cell, deliberately: `text-align: start` SHOULD flip per
+  // row here, which is the opposite of the machine-value case.
+  cell.setAttribute('dir', 'auto');
+
+  const summary = questionSummary(row.question);
+  if (summary === null) {
+    cell.textContent = row.question;
+  } else {
+    const details = document.createElement('details');
+    const line = document.createElement('summary');
+    line.textContent = summary;
+    details.append(line, document.createTextNode(row.question));
+    cell.append(details);
+  }
+
+  /* Without this the list mostly mirrors faq.yaml, which is the opposite of
+     what it is for. Text, not colour, and the plain `.admin-mark` rather than
+     one of its variants: `is-signal` means privileged, `is-off` means withdrawn
+     and `is-warning` means restricted, and where a question came from is a
+     provenance fact, not a state. */
+  if (row.from_faq) cell.append(' ', mark(I18n.t('admin.analytics.questions.fromFaq')));
+  return cell;
+}
+
+/**
+ * The recurring-questions table, built twice from one function: once ranked by
+ * asks, once by answers that cited nothing.
+ *
+ * The Accounts column renders only when some row carries an exact count.
+ * Until a question reaches five distinct accounts every cell would read `2–4`,
+ * and a constant column is noise. `showAskers` is decided by the caller across
+ * BOTH payloads rather than here, per table: the two are stacked, and one of
+ * them losing a column reads as two unrelated tables.
+ */
+function questionTable(rows, showAskers) {
+  const table = document.createElement('table');
+  table.className = 'admin-table';
+
+  const head = document.createElement('thead');
+  const headRow = document.createElement('tr');
+  for (const key of ['question', 'asks', ...(showAskers ? ['askers'] : []), 'uncited']) {
+    const th = document.createElement('th');
+    th.scope = 'col';
+    th.textContent = I18n.t(`admin.analytics.questions.${key}`);
+    headRow.append(th);
+  }
+  head.append(headRow);
+
+  const tbody = document.createElement('tbody');
+  for (const row of rows) {
+    const tr = document.createElement('tr');
+    tr.append(questionCell(row));
+    const counts = [String(row.asks)];
+    /* The exact figure, or the range the RPC bucketed it into. Digits in an
+       isolate, so the range needs no catalogue string in either language. */
+    if (showAskers) counts.push(row.askers == null ? '2–4' : String(row.askers));
+    counts.push(String(row.uncited));
+    for (const value of counts) {
+      const td = document.createElement('td');
+      td.append(machineValue(value));
+      tr.append(td);
+    }
+    tbody.append(tr);
+  }
+
+  table.append(head, tbody);
+  return table;
+}
+
+function recurringZone(rows, showAskers) {
+  const zone = section(I18n.t('admin.analytics.questions.heading'));
+  if (rows === null) {
+    zone.append(unavailableLine());
+    return zone;
+  }
+  if (!rows.length) {
+    /* A notice, not an empty state, and it has to LOOK unlike one: the list is
+       empty because the two-account floor is working, and an operator who reads
+       that as a broken query is the person who later asks for the floor to be
+       lowered. */
+    const notice = document.createElement('div');
+    notice.className = 'admin-notice';
+    const lead = document.createElement('strong');
+    lead.textContent = I18n.t('admin.analytics.questions.floorEmpty');
+    const why = document.createElement('p');
+    why.textContent = I18n.t('admin.analytics.questions.floorWhy');
+    notice.append(lead, why);
+    zone.append(notice);
+    return zone;
+  }
+  zone.append(
+    cardHint(I18n.t('admin.analytics.questions.grouping')),
+    questionTable(rows, showAskers),
+  );
+  return zone;
+}
+
+function uncitedZone(rows, showAskers) {
+  const zone = section(I18n.t('admin.analytics.uncitedQuestions.heading'));
+  if (rows === null) {
+    zone.append(unavailableLine());
+    return zone;
+  }
+  /* `order=uncited` ranks the same rows; it does not filter them, so a period
+     in which everything was cited still returns a full list. */
+  const withUncited = rows.filter((row) => row.uncited > 0);
+  zone.append(
+    withUncited.length
+      ? questionTable(withUncited, showAskers)
+      : emptyLine(I18n.t('admin.analytics.uncitedQuestions.empty')),
+  );
+  return zone;
+}
+
+/* Value first, catalogue key second. The window values are strings because an
+   `<option>`'s value is one; `handlers.js` is where the period becomes a
+   number again. Three fixed strings rather than a plural engine: Arabic takes
+   أيام at 7 and يوماً at 30 and 90, and `I18n.plural` knows two forms. */
+const ANALYTICS_WINDOW_OPTIONS = [
+  ['7', 'windowDays7'],
+  ['30', 'windowDays30'],
+  ['90', 'windowDays90'],
+];
+const ANALYTICS_LANG_OPTIONS = [
+  ['', 'languageAll'],
+  ['en', 'languageEn'],
+  ['ar', 'languageAr'],
+];
+
+/** One labelled select, in the page-size control's own classes so it reads as
+    the same kind of control rather than a new visual idiom — the same reuse
+    the notification history toolbar makes. */
+function filterSelect(id, labelKey, options, current) {
+  const group = document.createElement('div');
+  group.className = 'admin-pager-size';
+
+  const label = document.createElement('label');
+  label.className = 'admin-pager-size-label';
+  label.htmlFor = id;
+  label.textContent = I18n.t(`admin.analytics.${labelKey}`);
+
+  const select = document.createElement('select');
+  select.className = 'form-select admin-input admin-pager-select';
+  select.id = id;
+  for (const [value, key] of options) {
+    const option = document.createElement('option');
+    option.value = value;
+    option.textContent = I18n.t(`admin.analytics.${key}`);
+    option.selected = value === String(current);
+    select.append(option);
+  }
+
+  group.append(label, select);
+  return group;
+}
+
+/**
+ * The period, the question language, and a refresh — one wrapping row.
+ *
+ * `role="group"` with a label rather than the pager's `<nav>`: paging IS
+ * navigation and earns the landmark, but these controls change what the
+ * figures below COUNT, and a second landmark in this panel would be one more
+ * stop in the landmark list for something that is not a destination.
+ * `aria-controls` names the region they change, the way the pager names its
+ * table. No category filter — that is follow-up 6.
+ */
+function filterControls({ days, lang }) {
+  const controls = document.createElement('div');
+  controls.className = 'admin-filters';
+  controls.setAttribute('role', 'group');
+  controls.setAttribute('aria-label', I18n.t('admin.analytics.filtersLabel'));
+  controls.setAttribute('aria-controls', 'analytics-results');
+
+  const refresh = document.createElement('button');
+  refresh.type = 'button';
+  refresh.id = 'analytics-refresh';
+  refresh.className = 'btn btn-sm btn-ghost';
+  refresh.textContent = I18n.t('admin.analytics.refresh');
+
+  controls.append(
+    filterSelect('analytics-window', 'window', ANALYTICS_WINDOW_OPTIONS, days),
+    filterSelect('analytics-lang', 'language', ANALYTICS_LANG_OPTIONS, lang),
+    refresh,
+  );
+  return controls;
+}
+
+/**
+ * Zone 1 and an empty, busy results region, painted before any of the three
+ * requests land.
+ *
+ * No skeleton — this console has no skeleton idiom — and one `.admin-empty`
+ * for the whole region rather than one per zone, because three "loading" cards
+ * read as three things going wrong.
+ *
+ * `filters` is what `handlers.js` restored from `sessionStorage`, so the
+ * selects open on the choice the operator last made rather than on the default
+ * while the requests already carry something else.
+ */
+export function renderAnalyticsLead(filters = { days: 30, lang: '' }) {
+  const body = el('overview-analytics');
+  if (!body) return;
+  body.textContent = '';
+
+  const lead = section(I18n.t('admin.analytics.heading'));
+  lead.append(
+    cardHint(I18n.t('admin.analytics.source')),
+    cardHint(I18n.t('admin.analytics.privacy')),
+    filterControls(filters),
+  );
+
+  /* Empty until something has actually been counted, then rewritten in place on
+     every later fetch. It lives in the lead zone beside the controls, which is
+     precisely what a results repaint must not touch. */
+  const stamp = document.createElement('p');
+  stamp.className = 'admin-form-hint';
+  stamp.id = 'analytics-stamp';
+
+  /* The pager's live-region shape — role="status", polite, atomic — but
+     `.sr-only` rather than visible: the pager's status carries a FACT that is
+     worth reading ("showing 1–50 of 1290"), and this carries a confirmation
+     that a sighted operator already has, since the figures and the stamp above
+     it both just changed under their eyes. A line saying "Figures updated."
+     parked permanently under the controls is the kind of mark DESIGN.md
+     reserves for something that actually needs one. */
+  const status = document.createElement('p');
+  status.className = 'sr-only';
+  status.id = 'analytics-status';
+  status.setAttribute('role', 'status');
+  status.setAttribute('aria-live', 'polite');
+  status.setAttribute('aria-atomic', 'true');
+
+  lead.append(stamp, status);
+
+  /* `.admin-panel-body` again, one level in: a flex column at the panel's own
+     rhythm is exactly what three zones need, and borrowing the class that
+     already says so costs no stylesheet. */
+  const results = document.createElement('div');
+  results.id = 'analytics-results';
+  results.className = 'admin-panel-body';
+  results.setAttribute('aria-busy', 'true');
+  results.append(emptyLine(I18n.t('admin.analytics.loading')));
+
+  body.append(lead, results);
+}
+
+/**
+ * Repaint the results region, and only it.
+ *
+ * The lead zone above is left standing deliberately — it holds the period and
+ * language controls, and a repaint that destroyed a focused `<select>` is the
+ * whole reason this region is not part of `renderOverview`. This is the
+ * function a filter change calls.
+ *
+ * `null` is "could not load", `[]` is "nothing yet", per zone: each of the
+ * three requests stands or falls on its own, exactly like the four above them.
+ *
+ * `announce` is set by a refetch and not by the first load: on arrival the
+ * figures are the page, and a screen reader is about to read them anyway.
+ */
+export function renderAnalyticsResults({
+  citations = null,
+  questions = null,
+  uncited = null,
+  announce = false,
+} = {}) {
+  const results = el('analytics-results');
+  if (!results) return;
+  setAnalyticsLoading(false);
+  results.textContent = '';
+
+  /* Decided once, across BOTH payloads, and handed to both tables: derived per
+     table, the pair could disagree about whether there is an Accounts column
+     at all — the top one has a row that reached five accounts, the rows that
+     survive the uncited filter have not, and the `2–4` range silently vanishes
+     from the second. */
+  const showAskers = [...(questions || []), ...(uncited || [])].some((row) => row.askers != null);
+
+  results.append(citationZone(citations), recurringZone(questions, showAskers));
+  /* Omitted entirely while the recurring list is policy-empty. A second empty
+     table under the notice that explains the floor adds nothing the notice has
+     not already said. `uncited === null` is not empty, though: this zone is
+     the only place that request's failure can be reported, and omitting it
+     would render a failure as an absence. */
+  if (questions === null || questions.length || uncited === null)
+    results.append(uncitedZone(uncited, showAskers));
+
+  /* Non-null, not truthy: every value here is an array or `null`, and `[]` is
+     truthy — so the question this actually asks is "did anything come back",
+     which is the one the stamp below should answer. */
+  const counted = [citations, questions, uncited].some((rows) => rows !== null);
+  const stamp = el('analytics-stamp');
+  if (stamp) {
+    stamp.textContent = '';
+    if (counted) {
+      stamp.append(
+        stampedSentence('admin.analytics.countedAt', Date.now(), {
+          placeholder: '{time}',
+          stamp: exactWhen,
+        }),
+      );
+    }
+  }
+
+  /* `setAnalyticsLoading(true)` emptied this when the refetch started, so an
+     operator who pressed Refresh and got nothing back heard nothing at all —
+     silence where the screen now says "could not load" three times. A partial
+     failure still announces the update: the zone that failed says so in place,
+     which is this region's contract everywhere else. */
+  const status = el('analytics-status');
+  if (status)
+    status.textContent = announce
+      ? I18n.t(counted ? 'admin.analytics.updated' : 'admin.overview.unavailable')
+      : '';
 }
 
 /**

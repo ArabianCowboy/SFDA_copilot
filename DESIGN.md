@@ -383,6 +383,16 @@ overview that cannot be acted on is a poster. Its four requests are `Promise.all
 than the empty panel it replaced, so each section stands or falls alone and the one that failed
 says so.
 
+**The saved-conversation figures below them depart from that on all three counts, and the
+departure is the point.** `[TASTE]` They are the one part of this tab with endpoints of their
+own — three `/admin/api/analytics/*` reads beside the four above — and **not one of those
+figures links anywhere**, because no tab owns them: nothing in this console opens one
+reader's conversation, and V1 deliberately does not build the surface that would
+(`docs/admin-analytics-v1-plan.md` §7.1). So they sit in a second `.admin-panel-body` rather
+than inside `#overview-body`, unawaited, repainted separately. An aggregate over saved turns
+is slower than four cheap reads, and the figures an operator actually acts on must never wait
+on a `group by`.
+
 **A fulfilled request is not a usable one.** `[CORRECTNESS]` `request()` in
 `static/js/admin/services.js` returns `null` for a 200 whose body will not parse — its own
 comment names the case, "a gateway or proxy can return HTML on an error". Any consumer that
