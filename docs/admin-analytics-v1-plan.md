@@ -737,6 +737,11 @@ The research lane's PDPL claims (k-anonymity expectations, mandatory operator ac
   chevron sits on the physical left, 12px in, while the 48px of clearance lands on the right.
   Measured on `#analytics-window` at 390px; the Settings model select shows the same geometry, so
   it predates this work. It wants its own failing-first commit.
+  **Fixed 2026-09-21, in its own commit.** The cause was narrower than "pads the wrong side":
+  the base rule's `padding-inline-end` already mirrors, and the RTL override swapped it back.
+  The override's two padding lines are deleted; its `background-position` stays. Pinned by
+  `test_a_select_keeps_its_chevron_clearance_on_the_chevron_side_in_arabic`, red against the
+  old rule (`12.0 > 48.0`).
 
 ## Build record (2026-09-20)
 

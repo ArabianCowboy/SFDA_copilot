@@ -301,12 +301,11 @@ select.admin-input {
 
 /* Bootstrap pins the chevron with a physical `right` and we load the LTR
    build, so under RTL it stays on the right — over the text, which is now
-   right-aligned. Moved to the other side, and the padding with it.
+   right-aligned. Moved to the other side; the padding needs no moving, since
+   it is already logical and mirrors on its own.
    background-position takes no logical keywords, so this is the mirror. */
 [dir="rtl"] select.admin-input {
   background-position: left var(--space-3) center; /* physical-ok: background-position has no logical form; this IS the RTL branch */
-  padding-inline-end: var(--space-3);
-  padding-inline-start: var(--space-7);
 }
 
 .admin-input:focus {

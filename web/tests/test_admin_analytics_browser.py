@@ -839,6 +839,54 @@ def test_the_analytics_region_does_not_overflow_at_390px_in_arabic(browser_page:
     )
 
 
+def test_a_select_keeps_its_chevron_clearance_on_the_chevron_side_in_arabic(browser_page: Page):
+    """`select.admin-input`'s base rule already gives the chevron 48px of
+    clearance via `padding-inline-end`, which is logical and mirrors on its
+    own under `[dir="rtl"]`. The old RTL override un-mirrored it back to a
+    physical left/right split — 12px under the chevron (now sitting on the
+    physical left) and 48px on the right where nothing is — so a long select
+    label could run under the chevron. The clearance must stay on whichever
+    physical side the chevron itself is on.
+    """
+    _analytics_console(
+        browser_page,
+        citations=[
+            _citation_row(
+                turns=40, turns_uncited=5, turns_no_retrieval=3, cited_total=88, retrieved_total=100
+            )
+        ],
+        lang="&lang=ar",
+    )
+    expect(browser_page.locator("#analytics-window")).to_be_visible()
+
+    styles = browser_page.evaluate(
+        """() => {
+          const select = document.getElementById('analytics-window');
+          const cs = getComputedStyle(select);
+          return {
+            paddingInlineStart: cs.paddingInlineStart,
+            paddingInlineEnd: cs.paddingInlineEnd,
+            paddingLeft: cs.paddingLeft,
+            backgroundPositionX: cs.backgroundPositionX,
+          };
+        }"""
+    )
+    inline_start = float(styles["paddingInlineStart"].rstrip("px"))
+    inline_end = float(styles["paddingInlineEnd"].rstrip("px"))
+    assert inline_end > inline_start, f"chevron clearance is not on the inline-end side: {styles}"
+
+    padding_left = float(styles["paddingLeft"].rstrip("px"))
+    assert padding_left == inline_end, (
+        "paddingLeft does not match paddingInlineEnd — the clearance is not "
+        f"on the chevron's physical side (left, in RTL): {styles}"
+    )
+
+    # The chevron itself must be on the left. Pinned right, as Bootstrap's LTR
+    # build leaves it, Chromium reports `calc(100% - 12px)` per layer; pinned
+    # left it reports a bare length. No token value is assumed.
+    assert "%" not in styles["backgroundPositionX"], styles
+
+
 # ── The period and language controls ─────────────────────────────────────────
 #
 # Every test below drives the two selects with REAL KEYS. `select_option()`

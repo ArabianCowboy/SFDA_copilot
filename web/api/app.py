@@ -376,7 +376,7 @@ SUPPORTED_FAQ_LANGS = ("en", "ar")
 # that mixes a fresh template with a stale module is worse than a stale page —
 # post-icon-migration it would render an <i class="bi"> with no icon font behind
 # it, or print a glyph NAME as text. MODULE_IMPORT_MAP below closes that.
-ASSET_VERSION = "warm89"
+ASSET_VERSION = "warm90"
 
 # Product release, rendered in the landing footer. The single source — do not
 # hand-type this value into a JS docstring or any other comment; that duplication
