@@ -982,8 +982,8 @@ export const UI = {
     // bidi isolation above survives, and the limit is a machine value.
     const parts = I18n.t('chat.quota.body', {
       limit: quota.limit,
-      resets_at: ' ',
-    }).split(' ');
+      resets_at: '\0',
+    }).split('\0');
     message.append(document.createTextNode(parts[0] || ''), when);
     if (parts[1]) message.append(document.createTextNode(parts[1]));
 
