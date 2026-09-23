@@ -21,8 +21,9 @@ live_authority:
 > be read in a special order: analytics is the **last** tab; the `privacy` sentence is **in**
 > the popup; the trigger is a **28px** ghost "i"; the lead zone renders **once at init** and
 > a total failure **retries** on the next activation. Every `file:line` below describes the
-> tree **before** the build. What is still open: the one-time screen-reader check, now a
-> `TODO.md` entry. Every heading is prefixed `[HISTORICAL]`.
+> tree **before** the build. What is still open: the one-time screen-reader check — verified 2026-09-23
+> with VoiceOver; the popovers announce correctly and no code change was needed.
+> The check is now closed and archived in `TODO-resolved.md`. Every heading is prefixed `[HISTORICAL]`.
 
 # [HISTORICAL] Admin analytics — its own tab, explanations behind an "i"
 

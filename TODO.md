@@ -75,7 +75,7 @@ bottom of this file: [How this file works](#how-this-file-works).
 - [Measure the real statement and lock timeouts on the write path](#measure-the-real-statement-and-lock-timeouts-on-the-write-path) — needs a call through PostgREST, not MCP.
 - [Run the database assertions somewhere other than by hand](#run-the-database-assertions-somewhere-other-than-by-hand) — 3 of 6 files run green by hand 2026-09-19 (208 assertions); the other 3 are blocked on a disposable account or a disposable database.
 - [One Realtime socket per reader, not one per visible tab](#one-realtime-socket-per-reader-not-one-per-visible-tab) — not started; costs nothing measurable yet, written down because the cost is the interesting half.
-- [The analytics "i" popups have not been heard through a screen reader](#the-analytics-i-popups-have-not-been-heard-through-a-screen-reader) — owed by a human with NVDA or VoiceOver; the fallback is one attribute.
+
 - [Confirm on the live site that chat streaming arrives token by token](#confirm-on-the-live-site-that-chat-streaming-arrives-token-by-token) — post-restart verification; circumstantial log evidence says yes, owed by a human.
 
 ---
@@ -489,26 +489,6 @@ exist; the trigger is what matters.
 ---
 
 ## Planned work
-
-### The analytics "i" popups have not been heard through a screen reader
-
-**Where:** `static/js/admin/ui.js` `infoPopup`, and the four triggers it builds on the
-Analytics tab.
-
-**What is wrong.** Nothing known. The trigger is a named `<button popovertarget>`, so the
-browser adds `aria-expanded` and `aria-details` itself, and the popover sits directly after
-its button in the DOM. Whether NVDA, JAWS or VoiceOver then read the popup text as the next
-thing after "expanded" has not been checked; `aria-details` is exposed for separate
-navigation, not announced. If it is not read, the one-line fix is `aria-describedby` on the
-trigger, not focus management.
-
-**Who it reaches.** An operator using a screen reader on the Analytics tab. Nobody yet.
-
-**How it was found.** A review pass on the plan (`docs/archive/2026-09-23_admin-analytics-tab.md`),
-which said "not sure" and asked for an AT check the browser suite cannot make.
-
-**What fixing it would disturb.** One attribute in `infoPopup` and one assertion in
-`test_explanations_are_popups_and_states_are_not`; `ASSET_VERSION`.
 
 ### Confirm on the live site that chat streaming arrives token by token
 

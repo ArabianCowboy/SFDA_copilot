@@ -1786,6 +1786,32 @@ real index (4,545 chunks ×
 the characterization test was the blocker, and it caught nothing wrong with the rewrite —
 all three characterization tests passed unmodified against the new code.
 
+### [HISTORICAL] ~~The analytics "i" popups have not been heard through a screen reader~~ — VERIFIED 2026-09-23
+
+**Where:** `static/js/admin/ui.js` `infoPopup`, and the four triggers it builds on the
+Analytics tab.
+
+**What was wrong.** Nothing known. The trigger is a named `<button popovertarget>`, so the
+browser adds `aria-expanded` and `aria-details` itself, and the popover sits directly after
+its button in the DOM. Whether NVDA, JAWS or VoiceOver then read the popup text as the next
+thing after "expanded" had not been checked; `aria-details` is exposed for separate
+navigation, not announced. If it was not read, the one-line fix was `aria-describedby` on the
+trigger, not focus management.
+
+**Who it reaches.** An operator using a screen reader on the Analytics tab. Nobody yet.
+
+**How it was found.** A review pass on the plan (`docs/archive/2026-09-23_admin-analytics-tab.md`),
+which said "not sure" and asked for an AT check the browser suite cannot make.
+
+**What fixing it would disturb.** One attribute in `infoPopup` and one assertion in
+`test_explanations_are_popups_and_states_are_not`; `ASSET_VERSION`.
+
+**Closed 2026-09-23.** Verified with a screen reader (VoiceOver on macOS): opening any of the
+four analytics "i" popovers reads the popup text aloud as the next thing after "expanded". The
+browser's native `aria-expanded` plus the popover's position in the DOM after its trigger is
+enough; `aria-details` is not announced automatically and does not need to be. No code change
+was required — the fallback (`aria-describedby`) was not needed.
+
 ### [HISTORICAL] ~~`CATEGORY_MAP` in `search_engine.py` has no callers~~ — DONE 2026-09-16
 
 **Where:** `CATEGORY_MAP` in `web/services/search_engine.py`, under the "Public category
