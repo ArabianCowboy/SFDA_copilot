@@ -302,7 +302,7 @@ sign-in APIs.
 
 # Database recovery, and the timeouts nobody has measured
 
-Added 2026-08-28, when `docs/database-improvement-plan.md` was applied and the
+Added 2026-08-28, when `docs/archive/2026-08-28_database-improvement.md` was applied and the
 database's recovery position turned out to be written down nowhere.
 
 ## Backups and point-in-time recovery — an assumption, not a fact
@@ -675,7 +675,7 @@ The vhost's only non-Certbot include is `snippets/security-headers.conf`, which 
 `add_header` directives and no `proxy_set_header`. So every proxy header is the list above.
 
 **This settles the open proxy question** in
-[`auth-login-rate-limit-plan.md`](auth-login-rate-limit-plan.md) §4 C1. `X-Forwarded-For` is
+[the archived `/auth/login` plan](archive/2026-09-23_auth-login-retirement.md) §4 C1. `X-Forwarded-For` is
 set with the appending `$proxy_add_x_forwarded_for` form, `BEHIND_PROXY=true` makes `ProxyFix`
 trust exactly one hop, and gunicorn is loopback-only so the header cannot be forged from
 outside. Rate-limit keys are therefore per-reader, not one global bucket.

@@ -3,7 +3,7 @@
 Model output renders through a DOMPurify profile that permits `<img>`
 (static/js/modules/stream-render.js:24), so a markdown image in an answer was
 a live outbound beacon under the previous `'self' data: https:` policy. See
-docs/security-hardening-plan.md Task 1.
+docs/archive/2026-09-23_security-hardening.md Task 1.
 """
 
 from web.api.app import create_app, realtime_ws_origins
@@ -43,6 +43,17 @@ def test_the_debug_branch_does_not_loosen_img_src():
     directives = _directives(client.get("/"))
 
     assert directives["img-src"] == "'self' data:"
+
+
+def test_no_directive_admits_the_retired_icon_cdn():
+    """`cdn.lordicon.com` sat in script-src and connect-src with no `lord-icon`
+    element or reference anywhere in the tree. A script origin nobody uses is
+    attack surface nobody watches; removed 2026-09-23."""
+    for testing in (True, False):
+        policy = (
+            create_app(testing=testing).test_client().get("/").headers["Content-Security-Policy"]
+        )
+        assert "lordicon" not in policy
 
 
 def test_the_realtime_origin_comes_from_the_url_the_browser_uses():

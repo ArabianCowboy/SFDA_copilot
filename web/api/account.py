@@ -569,7 +569,7 @@ def deletion_request() -> Response | tuple[Response, int]:
     # that ordering is the point of it. The server-side sign-in below reaches
     # GoTrue from this host's single address, which blinds GoTrue's own per-IP
     # limiter to the guesser's real one — the reason `POST /auth/login` was
-    # retired (`docs/ARCHITECTURE.md:345-352`). The Flask limit in front of
+    # deleted (`docs/ARCHITECTURE.md:346-353`). The Flask limit in front of
     # this route is `memory://` and resets on every worker recycle, so it is
     # not the floor it looks like. A locked-out caller must produce no round
     # trip at all.

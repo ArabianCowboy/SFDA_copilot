@@ -380,7 +380,7 @@ This closes the `TODO.md` entry that originally read "`profiles.last_seen_at` is
 by nothing" — retitled to track the column's disposal instead, and itself closed
 2026-08-28 when the column was dropped; both entries are now in
 [`docs/archive/TODO-resolved.md`](archive/TODO-resolved.md) — and finding 13 in
-[`docs/database-improvement-plan.md`](database-improvement-plan.md), by writing the field
+[`docs/archive/2026-08-28_database-improvement.md`](archive/2026-08-28_database-improvement.md), by writing the field
 rather than dropping it: the operator's call, made after seeing the admin console still
 show "Never" next to a working "Last Signed In" (2026-08-28 screenshot).
 
@@ -444,7 +444,7 @@ trigger function that stamps `profiles.updated_at`. Terra's review named the rea
 with that: **`handle_profile_update()` predates this repo's migration discipline and its
 live body is not in this checkout.** The draft's own "verify before writing" step was
 already an admission that the design depended on an object nobody could currently read.
-`docs/database-improvement-plan.md`'s own finding 13 had already pointed at the fix: _"the
+`docs/archive/2026-08-28_database-improvement.md`'s own finding 13 had already pointed at the fix: _"the
 cleaner design ... is to keep last-seen off `profiles` entirely rather than add a
 per-request write to the one table every request already reads"_ (line 1247-1249) — the
 first draft read past that sentence and did the opposite anyway.
@@ -884,7 +884,7 @@ before/after capture of `handle_profile_update()`'s owner/ACL/trigger definition
 
 #### Docs
 
-- `TODO.md`'s entry on this and `docs/database-improvement-plan.md`'s finding 13 both now
+- `TODO.md`'s entry on this and `docs/archive/2026-08-28_database-improvement.md`'s finding 13 both now
   point at this document — merged here on 2026-08-28 rather than left as two documents where
   one could disagree with the other about whether this is decided. That merge, and the
   correction callout at the top of this section, are the "record this as a correction, not a
@@ -905,7 +905,7 @@ before/after capture of `handle_profile_update()`'s owner/ACL/trigger definition
 3. `en.yaml`/`ar.yaml` renames and the one `ui.js` reference (design piece 5), `ASSET_VERSION`
    bump. **Done.**
 4. Tests, above. **Done.**
-5. `TODO.md` and `docs/database-improvement-plan.md` pointers to this document. **Done** —
+5. `TODO.md` and `docs/archive/2026-08-28_database-improvement.md` pointers to this document. **Done** —
    this merge is that step; see "Docs" above.
 6. Separately, later, not part of this change: drop `profiles.last_seen_at` and its guard
    -trigger reference, alongside `chatbot_settings`, next time `profiles` is migrated for

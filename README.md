@@ -107,11 +107,19 @@ each answer until it completed. The app sends `X-Accel-Buffering: no`; set it ex
 ```nginx
 location /api/chat/stream {
     proxy_pass http://127.0.0.1:5001;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
     proxy_buffering off;
     proxy_read_timeout 300s;
     gzip off;
 }
 ```
+
+The four headers are what the live vhost sets (`docs/OPERATIONS.md`, nginx section). With
+`BEHIND_PROXY=true`, `ProxyFix` trusts one hop of `X-Forwarded-For`, and every rate limit keys on
+the address it yields — drop the header and every reader shares one bucket.
 
 ---
 

@@ -182,10 +182,10 @@ LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 # guard PASSES under `gunicorn --preload`, so LOG_LEVEL really does land on
 # root. Gunicorn hangs its own handlers off the `gunicorn.error` logger rather
 # than root, and every in-app import that would install a root handler
-# (`openai_app` at :242, `config_loader` at :259) happens BELOW this line.
+# (`openai_app`, `config_loader`) happens BELOW this line.
 #
 # Proof, by a controlled boot rather than a line count: a spare worker started
-# with LOG_LEVEL=WARNING served normally but dropped `Loaded .env` (:163) — a
+# with LOG_LEVEL=WARNING served normally but dropped `Loaded .env` (below) — a
 # `web.api.app` record with no explicit level, so purely root-gated — which
 # appears 6x in the live journal at the default INFO. Explicitly-levelled
 # loggers (`openai_app` below, `search_engine` via LOG_LEVEL_*) kept emitting in
@@ -1977,7 +1977,6 @@ def _init_extensions(app: Flask, testing: bool) -> Limiter:
     connect_src = [
         "'self'",
         "https://*.supabase.co",
-        "https://cdn.lordicon.com",
         "https://cdn.jsdelivr.net",
     ]
 
@@ -2004,7 +2003,6 @@ def _init_extensions(app: Flask, testing: bool) -> Limiter:
             "'self'",
             "'unsafe-inline'",
             "https://cdn.jsdelivr.net",
-            "https://cdn.lordicon.com",
             "https://cdnjs.cloudflare.com",
             *impeccable_live_dev,
         ],

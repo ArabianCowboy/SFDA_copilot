@@ -35,7 +35,6 @@ bottom of this file: [How this file works](#how-this-file-works).
 - [A deletion request may leave the requesting access token usable until it expires](#a-deletion-request-may-leave-the-requesting-access-token-usable-until-it-expires) — diagnosed, unconfirmed; one bearer-token call decides it.
 - [Live code cites plan sections instead of the live contract](#live-code-cites-plan-sections-instead-of-the-live-contract) — blocks archiving three finished plans; count citations, do not trust a written figure.
 - [Leaked-password protection is disabled in Supabase Auth](#leaked-password-protection-is-disabled-in-supabase-auth) — blocked on a Pro-plan upgrade, not code.
-- [`POST /auth/login` is a 410 tombstone pending deletion](#post-authlogin-is-a-410-tombstone-pending-deletion) — tombstone shipped; the bare deletion is still owed next release.
 - [A silent truncation from a provider that omits `finish_reason` is still undetected](#a-silent-truncation-from-a-provider-that-omits-finish_reason-is-still-undetected) — diagnosed; needs `include_usage`, not a different default.
 - [An empty answer toasts "failed to send", which is the wrong thing](#an-empty-answer-toasts-failed-to-send-which-is-the-wrong-thing) — cosmetic, needs a bilingual key pair.
 - [`max_tokens` has no floor, and a low one guarantees empty answers](#max_tokens-has-no-floor-and-a-low-one-guarantees-empty-answers) — not started; prevention rather than the reporting that now exists.
@@ -79,6 +78,10 @@ bottom of this file: [How this file works](#how-this-file-works).
 - [Confirm on the live site that chat streaming arrives token by token](#confirm-on-the-live-site-that-chat-streaming-arrives-token-by-token) — post-restart verification; circumstantial log evidence says yes, owed by a human.
 - [The console's "i" popups have been heard through VoiceOver only, not NVDA or JAWS](#the-consoles-i-popups-have-been-heard-through-voiceover-only-not-nvda-or-jaws) — not started; a manual screen-reader check, owed by a human.
 - [Seven console strings are in both catalogues but never rendered](#seven-console-strings-are-in-both-catalogues-but-never-rendered) — diagnosed 2026-09-23; re-trace each key, then delete.
+- [Debug mode accepts credentialed requests from any origin](#debug-mode-accepts-credentialed-requests-from-any-origin) — diagnosed, unfixed; small.
+- [`pytest -m integration` collects nothing, and CLAUDE.md still says to run it](#pytest--m-integration-collects-nothing-and-claudemd-still-says-to-run-it) — diagnosed; pick a fix.
+- [No limit caps a reader's total requests across routes](#no-limit-caps-a-readers-total-requests-across-routes) — not started; needs a measured number first.
+- [Nothing pins that an explicit route limit replaces the global defaults](#nothing-pins-that-an-explicit-route-limit-replaces-the-global-defaults) — not started; one test.
 
 ---
 
@@ -268,6 +271,12 @@ Authentication → Attack Protection, but the toggle is a **Pro-plan feature**
 and this project is on a lower tier while actively developing. Left off
 intentionally rather than forced — revisit when the project upgrades to Pro
 or moves toward production.
+
+**It is also the only control against password spraying** (added 2026-09-23, lifted from the
+archived `/auth/login` plan §1.6). One common password tried once per address from a
+residential pool stays under every per-IP and per-email limit this app or GoTrue sets, and
+sign-in is browser-direct, so no Flask-side limit can see it. Compromised-password checking is
+the control that touches it; nothing in code substitutes.
 
 **Companion item, resolved:** the same audit flagged the project's Postgres
 as behind on security patches. That side is done — upgraded to `17.6.1.155`
@@ -492,6 +501,55 @@ exist; the trigger is what matters.
 
 ---
 
+### Debug mode accepts credentialed requests from any origin
+
+**Where:** `web/api/app.py:1966-1969`, the CORS block in `_configure_app`. Debug is
+`config.is_debug()` (`web/utils/config_loader.py:126-134`): the `DEBUG` environment variable,
+else `server.debug` in `web/config.yaml`.
+
+**What is wrong.** With debug on, the app calls `CORS(app, supports_credentials=True)` with no
+origin list. flask-cors then echoes any `Origin` back with `Access-Control-Allow-Credentials:
+true`; checked 2026-09-23 against the installed version with `Origin: https://evil.example`, and
+it answered with that origin. The non-debug branch restricts to `server.allowed_origins`.
+Little is exposed today: every authenticated route takes a bearer header that a foreign page
+cannot read, and the session cookie sets no `SameSite`, so browsers default it to `Lax`. But
+the policy fails open by construction, and nothing ties "debug" to "loopback only".
+
+**Who it reaches.** A developer running with debug on who browses other sites at the same time.
+Production reaches it only if `DEBUG` is set there, which nobody has checked. That is a live
+check, not a repo one.
+
+**How it was found.** The 2026-09-08 three-way review of the `/auth/login` plan (§4, "neighbouring
+hazard"). It was lifted here when that plan was archived on 2026-09-23.
+
+**What fixing it would disturb.** Very little. Give the debug branch an explicit list of
+localhost origins instead of none, and add one test that asserts a foreign origin is not echoed
+under debug. `testing` shares the branch (`is_debug_mode = config.is_debug() or testing`), so
+check that no browser test relies on a foreign origin being accepted.
+
+### `pytest -m integration` collects nothing, and CLAUDE.md still says to run it
+
+**Where:** `pytest.ini` defines the marker, and `CLAUDE.md`'s Commands section says
+"`integration`-marked tests are selected by neither CI job. Run them by hand." No test in
+`web/tests/` carries the marker.
+
+**What is wrong.** `web/tests/test_auth.py` held the marker's only users, and it was deleted
+whole on 2026-09-09 with the `/auth/login` tombstone work. The instruction now runs zero tests
+and exits green. One of the deleted tests was the only end-to-end check that a real bearer
+token is accepted by `/api/chat`. Nothing replaced it: `scripts/smoke_real.py` calls the handler
+directly and never authenticates.
+
+**Who it reaches.** Contributors who follow `CLAUDE.md` and read a pass that ran nothing.
+
+**How it was found.** Noted in the `/auth/login` entry's 2026-09-09 update, and lifted here when
+that entry closed on 2026-09-23.
+
+**What fixing it would disturb.** Either write one real-token check (a signed-in bearer against
+a live `/api/chat/stream`, run by hand, never in CI), or delete the marker and the `CLAUDE.md`
+line together. The second is an edit to `CLAUDE.md`, so it bumps `APP_VERSION`.
+
+---
+
 ## Planned work
 
 ### Confirm on the live site that chat streaming arrives token by token
@@ -517,69 +575,6 @@ left an unresolved verification instruction that belongs in active tracking.
 **What fixing it would disturb.** No code changes. A human logs in, asks a question
 on the production site, and confirms visually that tokens stream incrementally.
 Once confirmed, this entry can be closed and moved to `docs/archive/TODO-resolved.md`.
-
-### `POST /auth/login` is a 410 tombstone pending deletion
-
-**Where:** `login()` at `web/api/auth.py:316-356` — the tombstone itself, which is
-what the remaining work deletes — plus the test that pins it,
-`test_login_route_is_a_gone_tombstone` at `web/tests/test_auth_routes.py:285-321`.
-For context: `web/api/app.py:2318` registers `auth_bp` with no limiter, while
-`recover_bp` and `signup_bp` get one immediately after (`:2324-2336`).
-
-**What is wrong.** This entry's original title was false: the route was never
-unlimited — with no explicit limit it inherited the global defaults (200/day,
-50/hour, 10/minute per IP) all along. The real defect was worse than a missing
-limit: the route forwarded unauthenticated credentials to GoTrue's `/token`
-from this host's single address, blinding GoTrue's own per-IP limiter to the
-attacker's real address, while answering with distinguishable refusal bodies.
-What shipped is a one-release `410 Gone` tombstone answering
-`{"error": "endpoint_removed"}` without reading the request body or calling
-GoTrue — a tombstone rather than a deletion because no in-tree caller exists
-(the browser signs in browser-direct) but an out-of-tree client cannot be
-ruled out from the repository alone. Nothing in the UI ever called it —
-`Services.login` goes browser-direct — which is why the route attracted no
-attention for a year, and why the module comment above it was left describing
-a logout exemption that never existed.
-
-**Who it reaches.** Nobody through the UI. Anyone who can reach the public API.
-
-**How it was found.** The 2026-09-05 review pass, as an aside to the logout finding
-([the archived plan](docs/archive/2026-09-05_review-findings-fix.md), finding 1).
-The "unlimited" premise was corrected by measurement in
-`docs/auth-login-rate-limit-plan.md` §0.
-
-**What fixing it would disturb.** Deleting `login()` and its route entry outright,
-plus the tombstone test that pins the 410 — that test must go with the route, or it
-fails on a green tree. The plan document (`docs/auth-login-rate-limit-plan.md`) is
-then archived per the closing procedure at the bottom of this file, with its
-still-open items (C1, C2, C3 and the password-spraying note) lifted back here as
-their own entries **first** — the archive is excluded from search, so anything left
-inside that document at archiving time disappears.
-
-**Update 2026-09-09 — the tombstone landed; the deletion did not.** `login()` now
-answers `410 {"error": "endpoint_removed"}` under both `GET` and `POST`, reads no
-request body, and calls nothing. It logs one bounded `warning` per call naming the
-method, address and user agent: **that log is the whole point of the release.** The
-route was tombstoned rather than deleted only because the production access log
-could not be consulted, so an out-of-tree caller could not be ruled out — and a
-tombstone that records nothing would end the release knowing exactly as much as a
-deletion would have. Read that log before deleting: silence is the evidence to
-delete on, and a hit is a caller to find first.
-
-Also landed: the module comment claiming a logout exemption that never existed is
-gone (logout keeps the global defaults, and one sign-out press spends two of them —
-`Services.logout` and `clearSessionState` each POST to `/auth/logout`; _corrected
-2026-09-11: it was three, because `clearSessionState` ran twice; fixed 2026-09-12 to one
-per press, plus one per other open chat tab on a broadcast sign-out — see
-the closed "One logout-button press sends `POST /auth/logout` three times" entry in
-[`docs/archive/TODO-resolved.md`](docs/archive/TODO-resolved.md)_), and
-`web/tests/test_auth.py` was deleted whole. **That deletion left the `integration`
-pytest marker with no users at all** — `pytest.ini:6` still defines it and
-`CLAUDE.md` still tells contributors to run those tests by hand, so
-`pytest -m integration` now collects nothing. The two tests were genuinely stale
-(they hit port 5000 and asserted a top-level `access_token` the route stopped
-returning long ago), but one of them was the only end-to-end check that a real
-bearer token is accepted by `/api/chat`. Nothing replaces it.
 
 ---
 
@@ -1078,10 +1073,10 @@ harness as a hand-built caller. That was wrong — `scripts/eval_citations.py:15
 
 ### LOG_LEVEL works only because of import order, and nothing protects that
 
-**Where:** `web/api/app.py:147-174` — the `if not logging.getLogger().handlers:` guard around
+**Where:** `web/api/app.py:204-207` — the `if not logging.getLogger().handlers:` guard around
 `basicConfig(level=LOG_LEVEL, format=...)`. The imports that would install a root handler and
 make that guard false — `web/utils/config_loader.py`, whose module-level `logging.warning(...)`
-makes Python install a root handler implicitly — is imported at `:259`, below it.
+makes Python install a root handler implicitly — is imported at `:322`, below it.
 
 **What is wrong.** Nothing, today, and this entry is a correction of one that claimed otherwise.
 **It previously read "LOG_LEVEL is silently ignored", which was wrong.** That was measured by
@@ -1089,7 +1084,7 @@ importing `config_loader` alone, which does install a root handler and does make
 but that is the CLI's import order, not the app's. Under `gunicorn --preload` the guard passes,
 because gunicorn hangs its handlers off `gunicorn.error` rather than root and every in-app import
 that would poison root happens afterwards. Measured on the VPS on 2026-09-18 by booting a spare
-worker with `LOG_LEVEL=WARNING`: it dropped `Loaded .env` (`app.py:163`, a `web.api.app` record
+worker with `LOG_LEVEL=WARNING`: it dropped `Loaded .env` (`app.py:218`, a `web.api.app` record
 with no explicit level, so purely root-gated) which appears six times in the live journal at the
 default. One variable changed, the knob moved.
 
@@ -1776,7 +1771,7 @@ administrative action, in a jurisdiction with data-protection law, and no answer
 long do you keep it".
 
 **How it was found.** The 2026-08-28 database review
-(`docs/database-improvement-plan.md`, finding 8).
+(`docs/archive/2026-08-28_database-improvement.md`, finding 8).
 
 **What fixing it would disturb.** **Do not build a purge before somebody owns the
 retention period** — a job that deletes before a legal hold is defined is worse than no
@@ -1891,7 +1886,7 @@ population at risk is currently zero; the race needs a deletion to race against.
 detector should land before the first real completion**, because after that point "we have
 never seen an orphan" stops being reassuring and starts being a statement about not looking.
 
-**If it is ever rebuilt** the design is unchanged and is recorded in `docs/database-improvement-plan.md`
+**If it is ever rebuilt** the design is unchanged and is recorded in `docs/archive/2026-08-28_database-improvement.md`
 (finding 5) and in git history at `supabase/pending/13_chat_sessions_owner_fk.sql`: an orphan
 check that aborts, then `NOT VALID` + a separate `VALIDATE` under `SET LOCAL lock_timeout`,
 referencing `public.profiles(id)` — not `auth.users`, which service_role cannot reach. Run the
@@ -1922,7 +1917,7 @@ match a deleted user's id) and unreachable through the RPCs (every one filters
 problem rather than an access problem.
 
 **How it was found.** The 2026-08-28 database review
-(`docs/database-improvement-plan.md`, finding 5).
+(`docs/archive/2026-08-28_database-improvement.md`, finding 5).
 
 **What fixing it would disturb.** `ON DELETE RESTRICT` **changes an existing operator
 capability**: deleting a user from the Supabase dashboard or through GoTrue's admin API
@@ -1984,7 +1979,7 @@ escalation. It is a disabled user still able to change their name, organization,
 specialization, age and marketing consent.
 
 **How it was found.** The 2026-08-28 database review
-(`docs/database-improvement-plan.md`, finding 6).
+(`docs/archive/2026-08-28_database-improvement.md`, finding 6).
 
 **What fixing it would disturb.** Whether it matters at all is a product question, and
 that is why this is open rather than fixed: "disabled" might reasonably mean "cannot use
@@ -2017,7 +2012,7 @@ an assumption, stated as one.
 and unreproducible: reader conversations, an audit log of administrative action, consent
 records with timestamps and policy versions. There is no re-derivation path for any of it.
 
-**How it was found.** Writing Wave 0 of `docs/database-improvement-plan.md`, which asked
+**How it was found.** Writing Wave 0 of `docs/archive/2026-08-28_database-improvement.md`, which asked
 for a pre-migration export and discovered the question had no answer. A row-count and
 content-hash baseline was taken instead — that is a verification baseline, not a backup,
 and it is stored outside this repository because it names real account ids.
@@ -2054,7 +2049,7 @@ there is nothing to apply, so a service-role request most likely inherits `authe
 layer below the app, not an active incident.
 
 **How it was found.** The 2026-08-28 database review
-(`docs/database-improvement-plan.md`, finding 11), whose first two drafts both got the
+(`docs/archive/2026-08-28_database-improvement.md`, finding 11), whose first two drafts both got the
 premise wrong in opposite directions before it was reduced to "measure it".
 
 **What fixing it would disturb.** The measurement is the deliverable and it needs a call
@@ -2235,6 +2230,55 @@ than alongside a feature. Re-trace each key first, because planned work may want
 any of them. **`account.absentHeading` is not one of the seven.** It is drawn only while
 `absentEntries` in `renderAccountDetail` is non-empty, which it is not today, but that block is
 kept on purpose (see its comment in `static/js/admin/ui.js`).
+
+---
+
+### No limit caps a reader's total requests across routes
+
+**Where:** `web/api/app.py:2077-2085` builds the `Limiter` with `default_limits` only. Every
+route with an explicit limit in `web/config.yaml` (`rate_limit`) replaces those defaults rather
+than adding to them.
+
+**What is wrong.** `/auth/recover` and `/auth/signup` carry `5 per minute` and no daily ceiling,
+because their explicit limit replaced the 200/day default. The same holds for every other route
+with its own limit. Flask-Limiter's `application_limits` apply regardless of route limits and
+would close that class of gap in one place.
+
+**Who it reaches.** Anyone scripting the unauthenticated routes. Recovery and signup both send
+mail against GoTrue's project-wide ceiling.
+
+**How it was found.** The `/auth/login` plan, §4 C2, lifted here when the plan was archived on
+2026-09-23. C1, the proxy question that blocked choosing a number, was answered on 2026-09-12:
+keys are per client address (`docs/OPERATIONS.md`, nginx section).
+
+**What fixing it would disturb.** The number, not the mechanism. The bucket is per key and
+shared across routes. It was measured as not global: two keys each got their own `[200,200,200,429]`.
+But an office behind one NAT is one key, so notification polling, history loads and chat all
+spend the same budget. The plan's `1000 per day` was rejected for exactly that reason. Measure
+per-address daily volume at the busiest real site, add headroom, and re-derive it whenever the
+polling cadence changes. Do not ship the mechanism with an unmeasured number.
+
+---
+
+### Nothing pins that an explicit route limit replaces the global defaults
+
+**Where:** `web/tests/test_rate_limit_keys.py`.
+
+**What is wrong.** The suite proves limits fire. Nothing proves what they replace, and several
+`web/config.yaml` comments (`history_api`, `sessions_api`) rest on "an explicit limit replaces
+the defaults". The `/auth/login` plan §0 measured it only by hand: with `/auth/recover`'s
+limit raised to `500 per minute`, 260 consecutive requests passed, where the 200/day default
+would have refused number 201.
+
+**Who it reaches.** Nobody until a Flask-Limiter upgrade changes the semantics. Then the budgets
+those comments reason about change silently.
+
+**How it was found.** The `/auth/login` plan, §4 C3, lifted here when the plan was archived on
+2026-09-23.
+
+**What fixing it would disturb.** One test. Build an app with tiny defaults and one route with a
+larger explicit limit, then assert that route passes the default's count. Keep the numbers
+small so the test stays fast.
 
 ---
 

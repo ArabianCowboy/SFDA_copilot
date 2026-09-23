@@ -1,13 +1,44 @@
-# Fixing the `/auth/login` rate limit
+---
+authority: historical
+status: superseded
+do_not_implement: true
+archived: 2026-09-23
+supersedes_note: >
+  This document is a finished plan. It shipped as a one-release 410 tombstone on
+  2026-09-09, and the route was deleted outright on 2026-09-23. It corrected its own
+  first draft twice (the 405 pin became a 404; "unlimited" was measured false) and
+  never built Option B. It is a record of what was decided and what it cost, not a
+  specification.
+live_authority:
+  - docs/ARCHITECTURE.md
+  - docs/OPERATIONS.md
+  - TODO.md
+---
 
-STATUS: PARTIALLY BUILT 2026-09-09 — Option A shipped as a one-release `410 Gone`
+> [!CAUTION]
+> **You are reading history, not a specification.** Final position, so no section here has
+> to be read in a special order: `/auth/login` is **deleted** and answers `404`. That is
+> Option A, reached through §2 step 7's one-release `410` tombstone (§10). Option B (§3) was
+> never built. Logout keeps the global defaults (200/day, 50/hour, 10/minute per IP). §4 C1
+> is answered (`docs/OPERATIONS.md`, nginx section). C2, C3 and the CORS debug branch are
+> `TODO.md` entries, and §1.6's spraying note lives in the leaked-password entry. §2 step
+> 7's log check ran **late**: after the deletion was written but before it was deployed. It
+> found no calls, but it covered only 2026-09-16 onward, because older journal entries had
+> been rotated out; see the closed entry in `TODO-resolved.md`. Every `file:line` below
+> describes the tree when it was written. Every heading is prefixed `[HISTORICAL]`.
+
+STATUS: HISTORICAL RECORD — archived 2026-09-23. Nothing here is an instruction.
+
+# [HISTORICAL] Fixing the `/auth/login` rate limit
+
+Last live status: PARTIALLY BUILT 2026-09-09 — Option A shipped as a one-release `410 Gone`
 tombstone, not yet as the bare deletion. See §10 for what landed and what is still owed.
 Written 2026-09-06 against commit `f4d8976`; revised 2026-09-06 after an
 adversarial review and a measured adjudication of that review; **rebased
 2026-09-08 onto `ade91f4`**, with every citation renumbered and every
 measurement re-taken (see §8); implemented 2026-09-09 (§10).
 Tracks TODO.md's
-[`POST /auth/login` is a 410 tombstone pending deletion](../TODO.md#post-authlogin-is-a-410-tombstone-pending-deletion)
+[`POST /auth/login` is a 410 tombstone pending deletion](../../TODO.md#post-authlogin-is-a-410-tombstone-pending-deletion)
 — an entry this work retitled, because its original title ("`auth_bp` carries no rate
 limit, so `/auth/login` is unlimited") stated a premise §0 disproves.
 
@@ -18,7 +49,7 @@ two places v1 itself was wrong.
 
 ---
 
-## 0. The entry's premise is wrong, and that changes the fix
+## [HISTORICAL] 0. The entry's premise is wrong, and that changes the fix
 
 TODO.md:73 says `/auth/login` is **unlimited**. It is not. Measured — an app built with
 `create_app(testing=True, enforce_rate_limits=True)`, fourteen consecutive
@@ -77,11 +108,11 @@ lines to the module comment above it, so a range like section 2 step 1's
 would delete the tail of `_signup_error_response` and the head of `recover()`. Section 10
 carries the current numbers for the work that is still owed. Use those.
 
-## 1. What is actually wrong with `/auth/login`
+## [HISTORICAL] 1. What is actually wrong with `/auth/login`
 
 Ranked by how much a fix buys.
 
-### 1.1 The IP key is not trustworthy, so no per-IP number on this route means anything
+### [HISTORICAL] 1.1 The IP key is not trustworthy, so no per-IP number on this route means anything
 
 `ProxyFix` is applied only when `BEHIND_PROXY=true` (`web/api/app.py:1697-1712`,
 `web/utils/config_loader.py:124-126`), which **defaults to false**
@@ -130,7 +161,7 @@ The same commit added a startup warning naming every variable set in both places
 of the logs rather than out of a conversation: if `BEHIND_PROXY` appears in that line,
 someone has set it in both places and the two disagree.
 
-### 1.2 The route launders the attacker's IP past GoTrue's own limiter
+### [HISTORICAL] 1.2 The route launders the attacker's IP past GoTrue's own limiter
 
 GoTrue rate-limits its `/token` password grant **per IP** (`GOTRUE_RATE_LIMIT_TOKEN_REFRESH`,
 default 150 requests; the window is not documented in the source consulted). The review
@@ -150,7 +181,7 @@ VPS's single trusted IP, so the one limiter that can see the attacker no longer 
 Our route is not merely an unmetered door — it is an anonymising proxy in front of
 someone else's working defence.
 
-### 1.3 The response is an enumeration and information oracle
+### [HISTORICAL] 1.3 The response is an enumeration and information oracle
 
 Nine distinguishable outcomes from `web/api/auth.py:295-360`. The ones that matter:
 
@@ -180,7 +211,7 @@ unknown address but spend ~100–250 ms in password hashing on a known one, so e
 byte-identical refusals may still separate the two by latency. Only deletion removes the
 endpoint the measurement is taken against.
 
-### 1.4 The route is free to call and expensive to serve
+### [HISTORICAL] 1.4 The route is free to call and expensive to serve
 
 `login()` costs one outbound GoTrue round trip per request (`web/api/auth.py:309`) and
 runs no auth hooks — no `before_request` on `auth_bp` gates or meters it — so the
@@ -189,7 +220,7 @@ password, an ERROR-severity traceback (`:353`, logged with `exc_info=True`). A s
 run therefore fills the error log while spending our upstream budget. `signup()` logs
 refusals at `warning` (`:233`); login logs them at `error`.
 
-### 1.5 Three smaller defects in the same view
+### [HISTORICAL] 1.5 Three smaller defects in the same view
 
 - `request.get_json()` **without `silent=True`** (`:297`), above the `try`, with no
   `errorhandler` registered anywhere in `web/`. A wrong `Content-Type` returns an **HTML
@@ -203,7 +234,7 @@ refusals at `warning` (`:233`); login logs them at `error`.
 - The log-severity defect belongs here too, and is stated once in §1.4 rather than
   twice: `:353` logs a mistyped password at `error` with a full traceback.
 
-### 1.6 Neither option stops password spraying
+### [HISTORICAL] 1.6 Neither option stops password spraying
 
 Stated here so it is not discovered later: an attacker trying one common password
 across thousands of addresses — one attempt per email, one per IP, from a residential
@@ -215,7 +246,7 @@ upgrade, not on code. Nothing in §2 or §3 substitutes for it.
 
 ---
 
-## 2. Recommendation — delete the route (Option A)
+## [HISTORICAL] 2. Recommendation — delete the route (Option A)
 
 **`POST /auth/login` is dead code.** Verified across the whole tree: no
 `fetch('/auth/login')` in any JS module or template, no `action=` form, no `url_for`, no
@@ -237,7 +268,7 @@ and `session["supabase_access_token"]` / `session["is_admin_hint"]` are written 
 `_authenticate_request` (`web/api/app.py:789-794`) on every authenticated request seeded
 by the browser-direct sign-in — so no session fallback is orphaned by deletion.
 
-### Steps
+### [HISTORICAL] Steps
 
 1. Delete `login()` — `web/api/auth.py:295-360`.
 2. Delete `test_auth_api_endpoints`'s login third (`web/tests/test_auth_routes.py:273-288`);
@@ -316,7 +347,7 @@ by the browser-direct sign-in — so no session fallback is orphaned by deletion
    limited blueprints at **2324-2337**. Carry the corrected numbers across rather than
    archiving the wrong ones.
 
-### What deletion does not fix
+### [HISTORICAL] What deletion does not fix
 
 Credential stuffing against **this product** is unaffected: the anon key and the GoTrue
 endpoint are public by design, and the browser already authenticates there directly.
@@ -340,7 +371,7 @@ not.
 
 ---
 
-## 3. Fallback — keep and harden (Option B, rewritten)
+## [HISTORICAL] 3. Fallback — keep and harden (Option B, rewritten)
 
 V1's Option B is not shippable, and this section now says so instead of describing it.
 Its centrepiece — step 3's email-keyed limit, `sha256(email.lower())` via
@@ -389,7 +420,7 @@ limit still binds) — so this is not a bypass. It is a victim-lockout and memor
 vector instead. That does not save it; it only changes what it breaks. No existing limit
 in this app is keyed on attacker-controlled input — all four `key_func=` sites pass `_rate_key` (account id, IP fallback) — and Option B's step 3 would have been the first.
 
-### Option B′ — what is actually shippable
+### [HISTORICAL] Option B′ — what is actually shippable
 
 Drop the email key entirely. What remains is strictly hardening, and it buys strictly
 less than v1's Option B claimed: no per-account throttling, no spraying resistance, no
@@ -465,7 +496,7 @@ belongs in GoTrue's config, not in Flask — same sentence as §2's closing para
 
 ---
 
-## 4. Independent of A and B — the work that actually protects anything
+## [HISTORICAL] 4. Independent of A and B — the work that actually protects anything
 
 Neither option is worth much until these are done. Each deserves its own TODO entry;
 none belongs in the same commit.
@@ -476,7 +507,7 @@ none belongs in the same commit.
   `X-Forwarded-Proto`), `BEHIND_PROXY=true` makes `ProxyFix` trust exactly one hop, and
   gunicorn is bound to `127.0.0.1:5001` so the header cannot be forged from outside. Every
   IP-keyed limit therefore keys on the real client address — neither §1.1 failure is live. The
-  vhost is quoted in [`OPERATIONS.md`](OPERATIONS.md#nginx-what-the-proxy-actually-sets).
+  vhost is quoted in [`OPERATIONS.md`](../OPERATIONS.md#nginx-what-the-proxy-actually-sets).
   **This unblocks C2**, whose number must still be derived from measured per-IP volume.
   One trap for whoever re-verifies: `sites-enabled/` is all symlinks and `grep -r` does not
   follow them, so `-r` returns nothing on a correctly-configured host. Use `grep -R` or
@@ -514,7 +545,7 @@ none belongs in the same commit.
 
 ---
 
-## 5. Tests
+## [HISTORICAL] 5. Tests
 
 Option A: the 404 pin (§2.3 — status only; a JSON-body assertion would fail on a green
 tree), plus the two deletions. Nothing else in the suite touches
@@ -551,7 +582,7 @@ Each must be seen failing against the current code before it is believed
 
 ---
 
-## 6. Sequencing
+## [HISTORICAL] 6. Sequencing
 
 **A now.** Then C3, then C1 (a question, not a commit), then B′ step 2 and C2 if the
 route is kept.
@@ -569,7 +600,7 @@ opposite. That is the whole reason step 2 is the one item still held behind C1.
 
 ---
 
-## 7. Open decisions for the owner
+## [HISTORICAL] 7. Open decisions for the owner
 
 1. **Delete or keep?** TODO.md:94-95 already flags this as a product decision. §2 is the
    engineering recommendation; the counter-argument is a future non-browser client, and
@@ -583,7 +614,7 @@ opposite. That is the whole reason step 2 is the one item still held behind C1.
 
 ---
 
-## 8. Rebase onto `ade91f4` — what the incident work changed, and what it did not
+## [HISTORICAL] 8. Rebase onto `ade91f4` — what the incident work changed, and what it did not
 
 Written after merging the sixteen commits that landed 2026-09-07/08 (the Supabase
 key incident, `f4d8976..ade91f4`). Recorded so the next reader does not repeat the
@@ -632,7 +663,7 @@ new machine code reaches `formatAuthError`, which it does — so B′ bumps
 
 ---
 
-## 9. The three-way review of 2026-09-08, and what it changed
+## [HISTORICAL] 9. The three-way review of 2026-09-08, and what it changed
 
 Three independent reviewers read revision 3 in parallel — `muse-spark-1.3`,
 `gpt-5.6-sol` and `gemini-3.8-flash-high` — each told to be adversarial and to verify
@@ -671,7 +702,7 @@ which no amount of reviewing can answer because the answer is not in this reposi
 
 ---
 
-## 10. What shipped, 2026-09-09
+## [HISTORICAL] 10. What shipped, 2026-09-09
 
 Option A, in the tombstone form §2 step 7 prescribes rather than as the bare deletion.
 Implemented by a delegated agent (OpenCode, `muse-spark-1.3`, high effort) against a brief

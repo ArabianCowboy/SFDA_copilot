@@ -8,11 +8,10 @@ failure the same day.
 An `Unregistered API key` 401 took every privileged Supabase call down on
 2026-09-07. This plan records the confirmed root cause, the recovery, and the
 defects the incident exposed. **P0, P1, P4, P6, P7, P8, P9 and P10 are done**, each
-in its own commit on `fix/supabase-key-incident-followups`. **P5 is half done** —
-the observability half shipped; the three-state model has not. **P2 and P3 remain
-open**, both blocked on things this machine cannot supply: P2 needs sanitized
-fixtures captured from live GoTrue, and P3 needs a Python 3.10 environment to
-resolve against.
+in its own commit on `fix/supabase-key-incident-followups`. **P3 is done** (2026-09-23;
+see its section). **P5 is half done** — the observability half shipped; the
+three-state model has not. **P2 remains open**, blocked on something this machine
+cannot supply: sanitized fixtures captured from live GoTrue.
 
 **Revision 2 changed the plan materially.** Revision 1's P0 was judged unsafe to
 execute (no production scope, no rollback, no acceptance checks) and its P5
@@ -291,7 +290,17 @@ acceptance scope includes password recovery's separate cached client
 access, session refresh and private Realtime reconnection — not just login and
 rendered templates.
 
-### P3 — Pin dependencies (MEDIUM)
+### P3 — Pin dependencies (MEDIUM) — **DONE 2026-09-23**
+
+**As shipped:** `requirements.txt` pins `supabase==2.30.1` and `httpx==0.28.1`, and
+only those two. The siblings stay unpinned so they follow `supabase`'s own metadata,
+as prescribed below. The set was resolved in a fresh Python 3.10.20 venv (a uv-managed
+interpreter this machine did have), imported cleanly there, and a `pip install
+--dry-run` of the whole `requirements.txt` with both pins resolved without conflict.
+The constraint is enforced where installs happen: CI installs from `requirements.txt`,
+and `docs/OPERATIONS.md`'s deploy checklist calls for a `pip install` whenever that file
+changes, which this change does. That install moves the VPS to these versions if it
+runs others. Nobody has checked what it runs now.
 
 `requirements.txt` pins nothing relevant: `supabase` (line 35) and `httpx`
 (line 41) are bare; `postgrest`, `supabase_auth`, `pydantic` are transitive. No

@@ -5,7 +5,7 @@ are shaped the way they are. Last verified against the live project 2026-08-28.
 
 Every Python test in this repository mocks the Supabase client. That is the
 right trade for the application logic and it means **the test suite cannot fail
-because of a grant**. `docs/database-improvement-plan.md` findings 1, 2, 3 and
+because of a grant**. `docs/archive/2026-08-28_database-improvement.md` findings 1, 2, 3 and
 14 were all grant-layer facts, sitting undetected under a green CI run, and the
 advisors do not check grants at all — which is why those findings came from
 reading `pg_default_acl` rather than from a linter.

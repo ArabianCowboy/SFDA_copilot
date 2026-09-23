@@ -1,13 +1,46 @@
-STATUS: LARGELY APPLIED — waves 1, 2, 3 and 5 landed on 2026-08-28 as twelve
+---
+authority: historical
+status: superseded
+do_not_implement: true
+archived: 2026-09-23
+supersedes_note: >
+  This document is a finished plan, applied on 2026-08-28 as twelve migrations and then
+  corrected by its own apply record and a second review pass. Three findings were partly
+  wrong at apply time. It is a record of what was decided and what it cost, not a
+  specification.
+live_authority:
+  - supabase/README.md
+  - docs/ARCHITECTURE.md
+  - TODO.md
+---
+
+> [!CAUTION]
+> **You are reading history, not a specification.** `supabase/README.md` and the migrations
+> are the live authority. Final position, so no section needs reading in a special order.
+> "What actually happened" overrides every finding it names. Findings 1, 2, 4, 9, 10, 12
+> and 14-18 were applied on 2026-08-28, along with finding 3's revoke, finding 7's test
+> files and finding 8's question-length bound. Finding 15 shipped as one shared
+> `admin_actor_email` helper, not the guard inlined seven times that its sketch shows.
+> Finding 3's table was **dropped** on 2026-09-03 (`20260903200806`). Finding 6 was applied
+> to the `UPDATE` policy on 2026-09-19 (`20260919013800`). Finding 13 was resolved by
+> `profile_last_seen`. **Still open, each a `TODO.md` entry:** finding 5 (the
+> `chat_sessions.owner_id` FK), finding 7's CI half (the database assertions run only by
+> hand), finding 8's retention and remaining bounds, and finding 11's timeout measurement.
+> Every `file:line` below describes the tree on 2026-08-28. Every heading is prefixed
+> `[HISTORICAL]`.
+
+STATUS: HISTORICAL RECORD — archived 2026-09-23. Nothing here is an instruction.
+
+Last live status: LARGELY APPLIED — waves 1, 2, 3 and 5 landed on 2026-08-28 as twelve
 migrations. Wave 4 needed a decision first; three of its four items are still open and
 are entries in `TODO.md`, and the fourth (finding 13, `last_seen_at`) was resolved
-2026-08-28 by [`docs/data-policy-decisions.md`'s §4](data-policy-decisions.md#4-profileslast_seen_at).
+2026-08-28 by [`docs/data-policy-decisions.md`'s §4](../data-policy-decisions.md#4-profileslast_seen_at).
 Audited against the live project `yjjuudnsnjzhyqllsqrd` on 2026-08-28.
-**Read [What actually happened](#what-actually-happened-when-this-was-applied) first** —
+**Read [What actually happened](#historical-what-actually-happened-when-this-was-applied) first** —
 three of the findings below turned out to be partly wrong at apply time, and that
 section is where the corrections live.
 
-# Supabase database improvement plan
+# [HISTORICAL] Supabase database improvement plan
 
 A full read of the live database — every grant, policy, foreign key, trigger, index,
 function ACL and table statistic — against `supabase/README.md`, the 43 applied
@@ -20,12 +53,12 @@ written in the optimised `(select auth.uid())` / `TO authenticated` form the Sup
 performance guide asks for; no unindexed foreign key; no duplicate permissive policy; an
 append-only audit log defended by both a revoke and a trigger. The security advisor
 returns nothing that `supabase/README.md` has not already argued for in writing.
-[Checked and clean](#checked-and-clean) lists what was examined and passed.
+[Checked and clean](#historical-checked-and-clean) lists what was examined and passed.
 
 The headline is that **all of that is discipline rather than structure**, and this
 document's first finding is the one that converts it.
 
-## How this plan was produced
+## [HISTORICAL] How this plan was produced
 
 Four passes, then a merge. This file is the merge; it is the only artifact, and the
 intermediate reports have been folded into it rather than kept alongside it.
@@ -44,12 +77,12 @@ intermediate reports have been folded into it rather than kept alongside it.
 
 Where the four disagreed, the disagreement was resolved against the database rather than
 split. Seven of those adjudications changed this document and are recorded in
-[Corrections](#corrections-made-during-the-merge) — including two where this plan's own
+[Corrections](#historical-corrections-made-during-the-merge) — including two where this plan's own
 proposed fix was wrong.
 
 ---
 
-## What actually happened when this was applied
+## [HISTORICAL] What actually happened when this was applied
 
 Applied 2026-08-28 as twelve migrations, `20260828000737` through `20260828004228`.
 Every migration was verified against the live database immediately after applying, and
@@ -61,7 +94,7 @@ This section exists because three findings were partly wrong, and one thing nobo
 predicted changed. Recorded here rather than edited into the findings above, per this
 repository's own working style — the corrections are the part worth reading.
 
-### Finding 1 did not work for functions at first, and the diagnosis was wrong
+### [HISTORICAL] Finding 1 did not work for functions at first, and the diagnosis was wrong
 
 The migration applied cleanly and the verification failed.
 
@@ -117,7 +150,7 @@ nil — a default ACL only applies to objects created _by_ that grantor, and all
 tables in `public` are owned by `postgres`, `chatbot_settings` included. Recorded because
 "nil today" is not the same as "cannot happen".
 
-### Finding 15 made finding AD002 unreachable, and nobody saw that coming
+### [HISTORICAL] Finding 15 made finding AD002 unreachable, and nobody saw that coming
 
 Requiring an enabled administrator on every mutating `admin_*` RPC has a consequence the
 finding does not mention: **the last-administrator guard can no longer fire.** To pass the
@@ -134,7 +167,7 @@ code, it is a backstop if the gate is ever loosened. This is collision #11 in
 asserting a state the database cannot reach — the two tests that used to "prove" `AD002`
 were passing on an actor id (`"someone-else"`) that matched no account.
 
-### Finding 8's audit_log half was not applied
+### [HISTORICAL] Finding 8's audit_log half was not applied
 
 The question bound landed in full: `chat_append_turn` clamps `p_question` to 8,000
 characters and `chat_messages_user_content_len_chk` is added and validated. The assistant
@@ -148,7 +181,7 @@ function and abort an administrative action, which is the exact failure mode the
 `chat_messages` half was designed around. The right shape is a clamp in the seven admin
 writers plus `admin_store.py`. Now a `TODO.md` entry, folded into the retention one.
 
-### Finding 11 was not applied at all
+### [HISTORICAL] Finding 11 was not applied at all
 
 The measurement it asks for has to be made by calling a probe **as `service_role` through
 `/rest/v1/rpc/`**, which is the whole point of the finding — measuring through MCP is how
@@ -158,7 +191,7 @@ function in production for no gain. The procedure, the probe SQL and the caveat 
 `service_role` being the operator's own connection are now in `docs/OPERATIONS.md`, with a
 `TODO.md` entry pointing at them.
 
-### One correction the plan did not contain, found by the tests it asked for
+### [HISTORICAL] One correction the plan did not contain, found by the tests it asked for
 
 `supabase/tests/privileges.test.sql` failed on its first run against an assertion that
 `authenticated` holds no `DELETE` on `chat_sessions`. It does — `chat_sessions_delete_own`
@@ -169,7 +202,7 @@ because the grant without the policy would let any signed-in reader delete any
 conversation. This is a small thing and it is the argument for the whole of finding 7: the
 first run of a real assertion found something four review passes had read past.
 
-### What was applied, in order
+### [HISTORICAL] What was applied, in order
 
 | Migration                                                                      | Finding | Verified by                                                                                                                 |
 | ------------------------------------------------------------------------------ | ------- | --------------------------------------------------------------------------------------------------------------------------- |
@@ -193,7 +226,7 @@ notice looping on an error toast; keyset pagination on **both** unbounded fan-ou
 (finding 10); `supabase/tests/` (finding 7); and the register rows, rule 8 and the
 statistics procedure in `supabase/README.md` (finding 12).
 
-### What was not applied, and why
+### [HISTORICAL] What was not applied, and why
 
 | Finding                                            | Status                                                                                                                                                                                                                                                                                                                  |
 | -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -205,7 +238,7 @@ statistics procedure in `supabase/README.md` (finding 12).
 | 11                                                 | Needs a measurement through PostgREST. Procedure in `docs/OPERATIONS.md`.                                                                                                                                                                                                                                               |
 | 13                                                 | ~~Blocked on write-it-or-drop-it.~~ **Resolved 2026-08-28** — written. See `docs/data-policy-decisions.md`'s §4.                                                                                                                                                                                                        |
 
-### A second review pass, and what it changed
+### [HISTORICAL] A second review pass, and what it changed
 
 `docs/database-improvement-plan.md` was reviewed adversarially again **after** it was
 applied (`openai/gpt-5.6-sol`, read-only, 2026-08-28), specifically to find where the
@@ -257,7 +290,7 @@ touches data should wait for a real backup. `docs/OPERATIONS.md` now says so, an
 
 ---
 
-## Findings, most costly first
+## [HISTORICAL] Findings, most costly first
 
 Each row names the general mistake it is an instance of, so a finding that is closed stays
 closed by recognising the class rather than the line.
@@ -293,12 +326,12 @@ rather than the linter.
 
 <a id="1"></a>
 
-## 1. `public`'s default privileges grant ALL to `anon` on every future table
+## [HISTORICAL] 1. `public`'s default privileges grant ALL to `anon` on every future table
 
 **Severity: High.** This is the finding that makes findings 2 and 3 inevitable rather
 than accidental.
 
-### What is wrong
+### [HISTORICAL] What is wrong
 
 ```sql
 select pg_get_userbyid(defaclrole) as grantor,
@@ -324,7 +357,7 @@ explicitly revokes it. `supabase/README.md`'s five-part RPC contract — points 
 `revoke execute` then `grant execute to service_role` — exists precisely to undo this,
 by hand, on every function, forever.
 
-### Why it bites
+### [HISTORICAL] Why it bites
 
 A contract enforced by remembering is a contract that fails on the migration written at
 the end of a long session. Two objects in this database already prove the failure mode:
@@ -347,7 +380,7 @@ would miss a consequential one, and nothing in CI would have said so. The next
 `security definer` function whose `revoke` line is forgotten is browser-callable at
 `/rest/v1/rpc/<name>` on the day it is applied.
 
-### The fix
+### [HISTORICAL] The fix
 
 One migration, no behaviour change, flipping the default from open to closed:
 
@@ -415,7 +448,7 @@ door"_ and become _"remember to open it, and only for `is_active_account()`-styl
 exemptions"_ — a rule that fails safe, because the failure mode is a 404 in testing rather
 than an open endpoint in production.
 
-### Proving it worked
+### [HISTORICAL] Proving it worked
 
 ```sql
 -- In a transaction that ends in ROLLBACK:
@@ -436,11 +469,11 @@ was closed; doing them first just means doing them again for the next table.
 
 <a id="2"></a>
 
-## 2. `profiles` carries `DELETE` and `TRUNCATE` for `anon` and `authenticated`
+## [HISTORICAL] 2. `profiles` carries `DELETE` and `TRUNCATE` for `anon` and `authenticated`
 
 **Severity: High** on the identity and authorization table.
 
-### What is wrong
+### [HISTORICAL] What is wrong
 
 ```sql
 select has_table_privilege('anon','public.profiles','DELETE'),    -- t
@@ -455,7 +488,7 @@ All true, and all true for `authenticated` as well.
 and `is_disabled` excluded. That part is correct and narrow. The **table-level**
 privileges left over from the default ACL were never revoked.
 
-### Why it bites
+### [HISTORICAL] Why it bites
 
 Three separate ways, in descending order of how much they should worry anyone:
 
@@ -478,7 +511,7 @@ PostgREST exposes a table when any role holds any privilege on it. The rows are 
 `disabled_reason`, and six `marketing_consent_*` columns. Minor, and worth one line of a
 migration to remove.
 
-### The fix
+### [HISTORICAL] The fix
 
 ```sql
 -- Table-level only. The column grants from 20260814005509 are correct and must survive,
@@ -490,7 +523,7 @@ revoke select on public.profiles from anon;
 `SELECT` stays for `authenticated`: the browser reads its own profile row directly, and
 that is Decision 6 in `docs/ARCHITECTURE.md`, not an oversight.
 
-### Proving it worked
+### [HISTORICAL] Proving it worked
 
 ```sql
 select has_table_privilege('authenticated','public.profiles','DELETE')   as must_be_false,
@@ -510,12 +543,12 @@ table revoke and the column grant that is at risk.
 
 <a id="3"></a>
 
-## 3. `chatbot_settings` is fully writable by `anon` at the grant layer
+## [HISTORICAL] 3. `chatbot_settings` is fully writable by `anon` at the grant layer
 
 **Severity: Medium** — because the table is empty and unread, not because the grant is
 mild.
 
-### What is wrong
+### [HISTORICAL] What is wrong
 
 ```sql
 select has_table_privilege('anon','public.chatbot_settings','INSERT'),   -- t
@@ -528,7 +561,7 @@ Every privilege, for `anon` and `authenticated` both. RLS is enabled with zero p
 which blocks the four DML verbs and leaves `TRUNCATE` unguarded — on a table with zero
 rows, so truncating it is a no-op.
 
-### Why it bites
+### [HISTORICAL] Why it bites
 
 It does not, today. It is in this list because it is **the receipt for finding 1**: a
 table created through the dashboard before the migration discipline existed, carrying the
@@ -540,7 +573,7 @@ dropped or finally used"_, in the tier-quota entry), and `supabase/README.md` li
 `rls_enabled_no_policy` finding as _"Unused table from an abandoned design, left untouched
 rather than dropped by an unrelated migration."_
 
-### The fix
+### [HISTORICAL] The fix
 
 Two options, and the choice is the product decision `TODO.md` already owns:
 
@@ -559,12 +592,12 @@ Do not do both in one migration, and do not attach either to finding 1's migrati
 
 <a id="4"></a>
 
-## 4. Two notification list RPCs write a dead tuple on every read
+## [HISTORICAL] 4. Two notification list RPCs write a dead tuple on every read
 
 **Severity: Medium**, and currently **dormant** — it activates on the first live
 notification.
 
-### What is wrong
+### [HISTORICAL] What is wrong
 
 `notifications_list_active_for_reader(p_user_id)` — called on every reader page load —
 opens with a write:
@@ -607,7 +640,7 @@ bell would stop recording reads, dismissals and acknowledgements entirely. They 
 not the problem: they fire on a user action, not on every page load, so their write
 amplification is one row per actual click. **Leave them alone.**
 
-### Why it bites
+### [HISTORICAL] Why it bites
 
 `pg_stat_user_tables` already shows the signature, from testing alone:
 
@@ -622,7 +655,7 @@ maintenance. Autovacuum will keep up at the current size and will visibly not ke
 the size this table is designed for. The symptom, when it arrives, will look like "the
 notification bell got slow" and will be traced to bloat rather than to this line.
 
-### The fix
+### [HISTORICAL] The fix
 
 One predicate, applied at the two **list** sites only (lines 63 and 143):
 
@@ -640,7 +673,7 @@ wins, later serves are no-ops.
 Per `supabase/README.md`, these are `create or replace` (no argument list changes), so
 they are one file and one concern: the served-at write.
 
-### Proving it worked
+### [HISTORICAL] Proving it worked
 
 ```sql
 -- In a transaction that ends in ROLLBACK, with one active notification and one reader:
@@ -665,12 +698,12 @@ fix, not a claim that the poll becomes lock-free.
 
 <a id="5"></a>
 
-## 5. `chat_sessions.owner_id` has no FK, for a reason that is factually wrong
+## [HISTORICAL] 5. `chat_sessions.owner_id` has no FK, for a reason that is factually wrong
 
 **Severity: Medium.** The decision may still be right; the sentence that justifies it is
 not, and it is load-bearing.
 
-### What is wrong
+### [HISTORICAL] What is wrong
 
 `20260820131914_chat_session_persistence.sql:37-42` reads:
 
@@ -692,7 +725,7 @@ So the stated trade-off — _"an FK, or a year of retained conversation"_ — is
 choice. A third option was available and was not considered: an FK with `NO ACTION` or
 `RESTRICT`, which keeps every conversation and makes an orphan impossible.
 
-### Why it bites
+### [HISTORICAL] Why it bites
 
 `profiles.id → auth.users(id)` cascades. So deleting an account today succeeds, removes
 the profile, and leaves `chat_sessions`, `chat_messages` and `chat_message_sources`
@@ -706,7 +739,7 @@ Note what this is _not_: it is not a live leak. Those rows are unreachable throu
 (every one filters `p_owner_id`). They are invisible and permanent, which is precisely
 the shape of a retention problem rather than an access problem.
 
-### The fix
+### [HISTORICAL] The fix
 
 ```sql
 -- 1. Prove there are no orphans, and abort the migration if there are.
@@ -731,7 +764,7 @@ No new index is required: `chat_sessions_owner_updated_idx (owner_id, updated_at
 id desc)` leads with `owner_id` and satisfies rule 4. Say so in the migration, or the
 next reader will add a redundant one.
 
-### The caveat that makes this a decision, not a cleanup
+### [HISTORICAL] The caveat that makes this a decision, not a cleanup
 
 `ON DELETE RESTRICT` **changes an existing operator capability.** Today, deleting a user
 from the Supabase dashboard or through GoTrue's admin API succeeds. After this migration
@@ -749,12 +782,12 @@ first, this constraint second, as its guarantee.
 
 <a id="6"></a>
 
-## 6. `profiles` policies do not gate on `is_active_account()`
+## [HISTORICAL] 6. `profiles` policies do not gate on `is_active_account()`
 
 **Severity: Medium.** An inconsistency in what "disabled" means, on the table that stores
 the flag.
 
-### What is wrong
+### [HISTORICAL] What is wrong
 
 Every chat policy gates on activity:
 
@@ -772,7 +805,7 @@ Users can update own profile | (select auth.uid()) = id
 Users can insert own profile | with_check: (select auth.uid()) = id
 ```
 
-### Why it bites
+### [HISTORICAL] Why it bites
 
 Flask refuses a disabled account at `web/api/app.py:747` (`if identity.is_disabled:`), so
 no Flask route is affected. But `profiles` is the one browser-direct table: a disabled
@@ -790,7 +823,7 @@ Whether that matters is a product question. "Disabled" might reasonably mean "ca
 the product" rather than "is frozen". But it should be a decision, and right now it is an
 asymmetry nobody chose.
 
-### The fix
+### [HISTORICAL] The fix
 
 If the answer is that disabled means frozen, change `UPDATE` only:
 
@@ -811,7 +844,7 @@ read of `profiles` is not subject to the policy that calls it. Wrapping it in `(
 keeps it an InitPlan and out of the per-row path, so it adds no `auth_rls_initplan`
 advisor finding.
 
-### Open question this depends on
+### [HISTORICAL] Open question this depends on
 
 Does "disabled" freeze the account's own profile edits, or only its use of the product?
 `docs/PRODUCT.md` does not say. This finding is blocked on that answer, not on
@@ -821,11 +854,11 @@ engineering.
 
 <a id="7"></a>
 
-## 7. No database-level test proves any grant or policy holds
+## [HISTORICAL] 7. No database-level test proves any grant or policy holds
 
 **Severity: Medium**, and the reason findings 1–3 could sit undetected.
 
-### What is wrong
+### [HISTORICAL] What is wrong
 
 Every Python test mocks the Supabase client. `pgtap` is available in this project's
 extension list and is **not installed**. There is no Supabase CLI in the repo and no local
@@ -842,7 +875,7 @@ The historical evidence that this matters is in this repo:
 `20260814005509_lock_profile_privileges_and_repair_signup.sql` exists because a signup
 trigger broke user creation, and a mock-only suite passed throughout.
 
-### The fix
+### [HISTORICAL] The fix
 
 A `supabase/tests/` directory of pgTAP files, and a way to run them. In rough priority:
 
@@ -898,11 +931,11 @@ suite: fail the check if `get_advisors` returns any finding not listed in
 
 <a id="8"></a>
 
-## 8. Unbounded text columns, and no retention anywhere
+## [HISTORICAL] 8. Unbounded text columns, and no retention anywhere
 
 **Severity: Medium**, rising with time rather than with load.
 
-### What is wrong
+### [HISTORICAL] What is wrong
 
 There is no `pg_cron`, no scheduled job, no partition, and no retention policy on any
 table. Four grow forever:
@@ -923,7 +956,7 @@ Separately, at the column level: `chat_messages.content` has no length `CHECK`
 (`chat_sessions.title` has one, `chat_message_sources.snippet` has one), and `audit_log`'s
 `action`, `target_id`, `user_agent`, `note` and `actor_email` are all plain `text`.
 
-### Why it bites
+### [HISTORICAL] Why it bites
 
 Not for a long time — 14 MB total, and Postgres does not care about a million-row
 `audit_log`. It bites as a **compliance** problem before it bites as a performance one: an
@@ -931,7 +964,7 @@ app that records what regulators' guidance was asked about, keyed to named profe
 with an audit log of administrative action, in a jurisdiction with data-protection law,
 and no answer to "how long do you keep it".
 
-### The fix, in two independent halves
+### [HISTORICAL] The fix, in two independent halves
 
 **A bound can land now for the question, and only for the question.** Flask caps a
 question at `MAX_CHAT_QUERY_CHARS = 8_000` (`web/api/app.py:235`, enforced at line 2415),
@@ -997,7 +1030,7 @@ not.
 
 <a id="9"></a>
 
-## 9. Two notification FKs make purge ordering load-bearing
+## [HISTORICAL] 9. Two notification FKs make purge ordering load-bearing
 
 **Severity: Low**, and it is a latent trap rather than a live defect.
 
@@ -1036,7 +1069,7 @@ design.
 
 <a id="10"></a>
 
-## 10. The `all`-target broadcast fetches every enabled profile id
+## [HISTORICAL] 10. The `all`-target broadcast fetches every enabled profile id
 
 **Severity: Low** today, and it is the one finding that gets worse with user count rather
 than with traffic.
@@ -1092,13 +1125,13 @@ are fine.
 
 <a id="11"></a>
 
-## 11. Liveness bounds on the write path are unverified, not absent
+## [HISTORICAL] 11. Liveness bounds on the write path are unverified, not absent
 
 **Severity: Low.** This finding survived the adversarial pass with its premise demoted:
 what looked like a missing timeout is a timeout nobody has measured on the path that
 actually carries the writes.
 
-### What is wrong
+### [HISTORICAL] What is wrong
 
 ```sql
 select rolname, rolconfig from pg_roles where rolname in ('anon','authenticated','authenticator','service_role');
@@ -1143,7 +1176,7 @@ minutes.** That is a guess from the mechanism, not a measurement.
 What is certain from `pg_settings`: no role and no cluster default sets a `lock_timeout`
 or an `idle_in_transaction_session_timeout`.
 
-### Why it bites
+### [HISTORICAL] Why it bites
 
 `chat_append_turn` takes `select … for update` on the session row and holds it until the
 transaction commits — which, called as an RPC, means until the function returns. Correct
@@ -1164,7 +1197,7 @@ The application is single-worker (`gunicorn --workers 1 --threads 8`,
 `docs/ARCHITECTURE.md:104`), which narrows all of this considerably. It is a gap in the
 layer below the app, not an active incident.
 
-### The fix — measure first, and measure through PostgREST
+### [HISTORICAL] The fix — measure first, and measure through PostgREST
 
 The measurement is the deliverable; the `ALTER ROLE` is a footnote to it. Add a temporary
 `security definer` reporter, call it as `service_role` through `/rest/v1/rpc/`, read what
@@ -1198,7 +1231,7 @@ than a silent `alter role`.
 
 <a id="12"></a>
 
-## 12. Three standing advisor findings are missing from the register
+## [HISTORICAL] 12. Three standing advisor findings are missing from the register
 
 **Severity: Low**, and it is a documentation rule this repo wrote for itself.
 
@@ -1220,7 +1253,7 @@ prevent" — the same drift, one feature later.
 
 <a id="13"></a>
 
-## 13. `profiles.last_seen_at` is written by nothing
+## [HISTORICAL] 13. `profiles.last_seen_at` is written by nothing
 
 **Severity: Low.** A column that promises a feature that was never built.
 
@@ -1265,11 +1298,11 @@ dropped it. The column no longer exists.
 
 <a id="14"></a>
 
-## 14. `service_role` can write around the RPCs on five tables
+## [HISTORICAL] 14. `service_role` can write around the RPCs on five tables
 
 **Severity: High**, and it is the finding this plan's own framing hid.
 
-### What is wrong
+### [HISTORICAL] What is wrong
 
 Finding 1 leaves `service_role`'s default privileges alone, on the reasoning that every
 RPC is granted to it anyway. That reasoning covers _functions_. It quietly extends the
@@ -1296,7 +1329,7 @@ even the service role cannot rewrite history. The notification migrations and
 So on five tables there is a second write surface sitting beside the RPC that is supposed
 to be the only one. RLS does not close it: `service_role` carries `rolbypassrls`.
 
-### Why it bites
+### [HISTORICAL] Why it bites
 
 Every invariant those RPCs enforce is optional on that surface. A direct write can create
 a notification with no recipient snapshot and no audit row; overwrite the singleton
@@ -1311,7 +1344,7 @@ This is defense in depth, not a live vulnerability: anyone holding the service k
 already do a great deal. The point is that the schema currently has two standards for the
 same class of invariant, and the weaker one is the accident.
 
-### Why the fix is safe here
+### [HISTORICAL] Why the fix is safe here
 
 Because the direct service-role usage is read-only, and that is checkable. Every direct
 table call from the service-role client is a `.select(...)`:
@@ -1328,7 +1361,7 @@ The one direct write in either module is `admin_store.py:402`,
 `table("audit_log").insert(...)` — which is exactly why `audit_log` keeps its `INSERT`
 grant. Everything else goes through an RPC.
 
-### The fix
+### [HISTORICAL] The fix
 
 ```sql
 revoke all on public.profiles                from service_role;
@@ -1351,7 +1384,7 @@ This is a **different migration from finding 1**. Finding 1 changes what future 
 inherit; this changes the ACL of existing ones. They are one concern only if you squint,
 and rule 1 says do not squint.
 
-### Proving it worked
+### [HISTORICAL] Proving it worked
 
 ```sql
 select has_table_privilege('service_role','public.notifications','INSERT')  as must_be_false,
@@ -1369,11 +1402,11 @@ is a distinct one of the reads above, and a `42501` from any of them means one m
 
 <a id="15"></a>
 
-## 15. A NULL `p_actor_id` skips every admin check; the audit email is unverified
+## [HISTORICAL] 15. A NULL `p_actor_id` skips every admin check; the audit email is unverified
 
 **Severity: Medium.** Not privilege escalation — an audit-integrity finding.
 
-### What is wrong
+### [HISTORICAL] What is wrong
 
 Every mutating `admin_*` RPC takes `p_actor_id` and `p_actor_email` as parameters, and
 guards on the first **only when it is present**:
@@ -1413,7 +1446,7 @@ So:
   administrator's id — passing the role check — and any string at all as the email, and
   the audit log records the string.
 
-### Why it bites
+### [HISTORICAL] Why it bites
 
 Anyone with the service key can already do anything, so this is not a privilege boundary.
 It is the _audit log's_ boundary: `audit_log` is defended by a revoke and an append-only
@@ -1429,7 +1462,7 @@ Flask does pass its verified identity at every current call site
 (`admin_store.py:301-311`, `366-380`, `445-456`; `notification_store.py:283-304`). The
 database simply does not require it.
 
-### The fix
+### [HISTORICAL] The fix
 
 In each of the seven mutating functions, make the actor mandatory and derive the email
 rather than accepting it. Keep each family's existing SQLSTATE so the Flask error mapping
@@ -1464,7 +1497,7 @@ whole of what this fix claims.
 `admin_write_settings` needs the guard added rather than tightened: it performs no actor
 check today.
 
-### And `admin_write_settings` has no error path on the Flask side either
+### [HISTORICAL] And `admin_write_settings` has no error path on the Flask side either
 
 This is the part that turns a hardening change into a 500. `AD004` is in `_REFUSAL_CODES`
 (`web/services/admin_store.py:51-60`) and `_refusal_from` converts it — but only where it
@@ -1501,7 +1534,7 @@ Wrap `put_settings` the way `update_profile` and `set_user_flags` already are
 concrete case of `supabase/README.md`'s _schema before code_ rule where the interval
 between the two is user-visible, so keep it short.
 
-### The test doubles encode the same flaw and must change in lockstep
+### [HISTORICAL] The test doubles encode the same flaw and must change in lockstep
 
 This is the part that will be missed. The in-memory backends that stand in for Supabase in
 every Python test carry the identical conditional:
@@ -1548,7 +1581,7 @@ a behaviour the database no longer has.
 
 <a id="16"></a>
 
-## 16. Reader receipt writes ignore the notification lifecycle
+## [HISTORICAL] 16. Reader receipt writes ignore the notification lifecycle
 
 **Severity: Medium.**
 
@@ -1621,7 +1654,7 @@ before the migration can raise it.
 
 <a id="17"></a>
 
-## 17. Notification replay races, and its payload hash omits `resend_of`
+## [HISTORICAL] 17. Notification replay races, and its payload hash omits `resend_of`
 
 **Severity: Medium**, on the admin path rather than the reader path.
 
@@ -1659,7 +1692,7 @@ serialises only genuine duplicates; the unique index stays the final arbiter. Ad
 but it changes what a hash means across a deploy, so old in-flight retries would stop
 matching. The in-function comparison has no such boundary.
 
-### This fix depends on finding 15, and gets it wrong silently
+### [HISTORICAL] This fix depends on finding 15, and gets it wrong silently
 
 `pg_advisory_xact_lock` and `hashtextextended` are both **strict**:
 
@@ -1690,7 +1723,7 @@ that a null can poison.
 
 <a id="18"></a>
 
-## 18. `chat_append_turn` validates the sources array but not its elements
+## [HISTORICAL] 18. `chat_append_turn` validates the sources array but not its elements
 
 **Severity: Low** today, Medium the day a source serialiser changes.
 
@@ -1749,7 +1782,7 @@ normalise to null, never cast blind.
 
 ---
 
-## Checked and clean
+## [HISTORICAL] Checked and clean
 
 Audited and found correct. Recorded so that a later reader knows these were examined
 rather than skipped, and so a regression in any of them is visible as a change from a
@@ -1787,7 +1820,7 @@ then verified against the live project with a two-reader simulation rather than 
 
 ---
 
-## Pre-flight: verified against the code, 2026-08-28
+## [HISTORICAL] Pre-flight: verified against the code, 2026-08-28
 
 Before any of this is applied, five assumptions the plan makes about the Flask code were
 checked by reading it. Three held; two did not and are folded into the findings above.
@@ -1800,7 +1833,7 @@ checked by reading it. Three held; two did not and are folded into the findings 
 | Test doubles need lockstep changes            | **Yes — four sites and five test files.** Folded into finding 15.                                                                                                                 |
 | Finding 10 covers every unbounded fetch       | **No — a second one.** Folded into finding 10.                                                                                                                                    |
 
-### Wave readiness
+### [HISTORICAL] Wave readiness
 
 - **Wave 1 — ready.** Finding 14 is confirmed safe against every call site; findings 1 and
   12 carry no regression risk. This wave can be applied as written.
@@ -1823,7 +1856,7 @@ is reachable from the MCP tools, and it should be taken before Wave 1.
 
 ---
 
-## Sequencing
+## [HISTORICAL] Sequencing
 
 Each numbered item is one migration, one concern, per `supabase/README.md` rule 1.
 
@@ -1914,7 +1947,7 @@ re-opened by the next table.
 exception to rule 1; every one splits cleanly by concern, and no `drop` rides along with a
 fix.
 
-### Migration sketch index
+### [HISTORICAL] Migration sketch index
 
 | Wave | Sketch filename                                | One-liner                                                     | Risk                              |
 | ---- | ---------------------------------------------- | ------------------------------------------------------------- | --------------------------------- |
@@ -1934,7 +1967,7 @@ fix.
 
 ---
 
-## What this plan deliberately does not do
+## [HISTORICAL] What this plan deliberately does not do
 
 A plan that only adds work is a bad plan. These were considered and rejected:
 
@@ -2019,7 +2052,7 @@ plan doubles in size. It deserves its own decision.
 
 ---
 
-## Where this schema will break first as it grows
+## [HISTORICAL] Where this schema will break first as it grows
 
 Reasoning from the actual indexes and function bodies, in the order it will happen.
 Magnitudes, not promises — they assume the current Flask shape and Supabase tier.
@@ -2069,7 +2102,7 @@ per-session, so two readers never contend. It will scale.
 
 ---
 
-## Operational gaps
+## [HISTORICAL] Operational gaps
 
 **Backups and PITR are not visible from here, and are written down nowhere.** The MCP
 `get_project` response reports status, region and Postgres version, and says nothing about
@@ -2118,7 +2151,7 @@ changes — exactly the class where a `rollback`-terminated round trip plus the
 
 ---
 
-## Corrections made during the merge
+## [HISTORICAL] Corrections made during the merge
 
 Recorded rather than silently edited away, per this repository's own working style. Each
 of these is a case where an independently-produced plan was wrong, and the database
@@ -2265,7 +2298,7 @@ Extending that convention to grant migrations is where it turns into a trap.
 
 ---
 
-## Open questions this plan cannot close
+## [HISTORICAL] Open questions this plan cannot close
 
 These are decisions, not engineering, and each blocks a wave-4 item:
 

@@ -205,7 +205,7 @@ def test_the_anon_client_never_stores_a_session(monkeypatch):
 
     This client is process-global and shared by all eight request threads. With
     session persistence on — supabase-py's default — `sign_in_with_password`
-    (which `/auth/login` called until that route was retired to a 410) and
+    (which `/auth/login` called until that route was deleted) and
     `sign_up` (`/auth/signup`, which IS browser-called) save the authenticating
     reader into it, and every later no-arg auth call on that client acts as that
     reader. That is how a stranger's `POST /auth/logout` came to revoke somebody

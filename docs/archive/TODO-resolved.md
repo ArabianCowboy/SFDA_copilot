@@ -1735,6 +1735,94 @@ second dashboard trip rather than a grep. Worth remembering the next time an ent
 
 ## [HISTORICAL] Resolved planned work
 
+### [HISTORICAL] ~~`POST /auth/login` is a 410 tombstone pending deletion~~ — DELETED 2026-09-23
+
+**Where:** `login()` at `web/api/auth.py:316-356` — the tombstone itself, which is
+what the remaining work deletes — plus the test that pins it,
+`test_login_route_is_a_gone_tombstone` at `web/tests/test_auth_routes.py:285-321`.
+For context: `web/api/app.py:2318` registers `auth_bp` with no limiter, while
+`recover_bp` and `signup_bp` get one immediately after (`:2324-2336`).
+
+**What is wrong.** This entry's original title was false: the route was never
+unlimited — with no explicit limit it inherited the global defaults (200/day,
+50/hour, 10/minute per IP) all along. The real defect was worse than a missing
+limit: the route forwarded unauthenticated credentials to GoTrue's `/token`
+from this host's single address, blinding GoTrue's own per-IP limiter to the
+attacker's real address, while answering with distinguishable refusal bodies.
+What shipped is a one-release `410 Gone` tombstone answering
+`{"error": "endpoint_removed"}` without reading the request body or calling
+GoTrue — a tombstone rather than a deletion because no in-tree caller exists
+(the browser signs in browser-direct) but an out-of-tree client cannot be
+ruled out from the repository alone. Nothing in the UI ever called it —
+`Services.login` goes browser-direct — which is why the route attracted no
+attention for a year, and why the module comment above it was left describing
+a logout exemption that never existed.
+
+**Who it reaches.** Nobody through the UI. Anyone who can reach the public API.
+
+**How it was found.** The 2026-09-05 review pass, as an aside to the logout finding
+([the archived plan](2026-09-05_review-findings-fix.md), finding 1).
+The "unlimited" premise was corrected by measurement in
+`docs/auth-login-rate-limit-plan.md` §0.
+
+**What fixing it would disturb.** Deleting `login()` and its route entry outright,
+plus the tombstone test that pins the 410 — that test must go with the route, or it
+fails on a green tree. The plan document (`docs/auth-login-rate-limit-plan.md`) is
+then archived per the closing procedure at the bottom of this file, with its
+still-open items (C1, C2, C3 and the password-spraying note) lifted back here as
+their own entries **first** — the archive is excluded from search, so anything left
+inside that document at archiving time disappears.
+
+**Update 2026-09-09 — the tombstone landed; the deletion did not.** `login()` now
+answers `410 {"error": "endpoint_removed"}` under both `GET` and `POST`, reads no
+request body, and calls nothing. It logs one bounded `warning` per call naming the
+method, address and user agent: **that log is the whole point of the release.** The
+route was tombstoned rather than deleted only because the production access log
+could not be consulted, so an out-of-tree caller could not be ruled out — and a
+tombstone that records nothing would end the release knowing exactly as much as a
+deletion would have. Read that log before deleting: silence is the evidence to
+delete on, and a hit is a caller to find first.
+
+Also landed: the module comment claiming a logout exemption that never existed is
+gone (logout keeps the global defaults, and one sign-out press spends two of them —
+`Services.logout` and `clearSessionState` each POST to `/auth/logout`; _corrected
+2026-09-11: it was three, because `clearSessionState` ran twice; fixed 2026-09-12 to one
+per press, plus one per other open chat tab on a broadcast sign-out — see
+the closed "One logout-button press sends `POST /auth/logout` three times" entry in
+[`docs/archive/TODO-resolved.md`](TODO-resolved.md)_), and
+`web/tests/test_auth.py` was deleted whole. **That deletion left the `integration`
+pytest marker with no users at all** — `pytest.ini:6` still defines it and
+`CLAUDE.md` still tells contributors to run those tests by hand, so
+`pytest -m integration` now collects nothing. The two tests were genuinely stale
+(they hit port 5000 and asserted a top-level `access_token` the route stopped
+returning long ago), but one of them was the only end-to-end check that a real
+bearer token is accepted by `/api/chat`. Nothing replaces it.
+
+**Closed 2026-09-23 — deleted.** `login()` is gone from `web/api/auth.py` (it had drifted to
+`:389-428`, and `auth_bp`'s registration to `web/api/app.py:2618`, before the deletion), and
+`test_login_route_is_a_gone_tombstone` is replaced by `test_login_route_is_gone`, which pins the
+plan's `404` by status only — the page is Werkzeug's own HTML, since no `errorhandler` in `web/`
+turns it into JSON. The new test was run against the old `auth.py` and fails there.
+
+**The log was read after the deletion was written, but before it was deployed.** On 2026-09-23
+the owner ran `journalctl -u sfda-copilot --since 2026-09-09 --no-pager | grep 'Retired endpoint
+called'` on the VPS, and it returned no lines. Production was running the tombstone: `7a1028e` is
+an ancestor of the deployed `HEAD`. Coverage is partial. The journal's oldest entry is
+2026-09-16 21:34, because older entries had been rotated out, and the tombstone went live with the
+2026-09-12 deploy. So the silence covers the last seven days of its time in production, and
+nothing is known about the four days before that. A caller from that window would now get an HTML
+`404` instead of a JSON `410`, which is what the end of the tombstone release would have given it
+anyway.
+
+The plan is archived as `docs/archive/2026-09-23_auth-login-retirement.md`. Its open items were
+lifted first: C2 and C3 are their own entries in `TODO.md`, the CORS debug branch and the empty
+`integration` marker are known bugs there, and §1.6's password-spraying note is folded into the
+leaked-password entry, which is the only control that touches it. C1 needed no entry: it was
+answered on 2026-09-12 in `docs/OPERATIONS.md`, and the README's nginx snippet now carries the
+proxy headers that answer found deployed.
+
+---
+
 ### [HISTORICAL] ~~`ResultCombiner` reconstructs one FAISS vector per candidate, in a Python loop~~ — DONE 2026-09-16
 
 **Where:** `ResultCombiner.combine` and `_compute_semantic_score` in

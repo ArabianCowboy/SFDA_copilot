@@ -30,7 +30,7 @@ auth_bp = Blueprint("auth", __name__)
 # three of them: 200/day, 50/hour, 10/minute per IP. An accepted ceiling now,
 # not an oversight. It reaches GoTrue (`admin.sign_out`) from this host's
 # address, so exempting it would mint a second unmetered proxy of the shape
-# the `/login` tombstone below closes.
+# the deleted `/auth/login` route was.
 #
 # One sign-out spends one of the budget from the tab that pressed the button:
 # `Services.logout` posts here first, and the `SIGNED_OUT` listener's
@@ -44,7 +44,7 @@ auth_bp = Blueprint("auth", __name__)
 # address only under the topology this app requires: exactly one reverse proxy
 # in front, setting `X-Forwarded-For`, with `BEHIND_PROXY=true` so `ProxyFix`
 # trusts exactly that one hop, and the app itself bound where only that proxy
-# can reach it. `docs/auth-login-rate-limit-plan.md` §1.1 describes both ways
+# can reach it. `docs/archive/2026-09-23_auth-login-retirement.md` §1.1 describes both ways
 # that goes wrong — every key collapsing to one address, or a forged header
 # minting a fresh bucket per request — and neither is detectable from inside
 # the app, so every number here rests on the deployment being right.
@@ -82,10 +82,9 @@ auth_bp = Blueprint("auth", __name__)
 # What would reopen it: `ratelimit ... exceeded at endpoint: auth.logout` lines
 # in a production log, clustered with multi-tab sign-outs. Flask-Limiter already
 # emits them. Nothing in this repo measures N or how often readers sign out, so
-# there is no number to optimise against until then. The proxy question above is
-# worth answering on its own account — it repairs every IP-keyed default at once
-# — but it is not a prerequisite for this decision, per the 2026-09-08
-# correction in `docs/auth-login-rate-limit-plan.md`.
+# there is no number to optimise against until then. The proxy question above
+# was answered on 2026-09-12: production has exactly that topology
+# (`docs/OPERATIONS.md`, nginx section).
 #
 # A refused logout still signs the reader out: `Services.endServerSession`
 # (`static/js/modules/services.js`) only catches network errors, and a 429 is
@@ -383,49 +382,6 @@ def _signup_error_response(gotrue_code: str | None, message: str) -> tuple[str, 
     # NOT `provider_unavailable`, which is reserved for the exception path
     # above where nothing answered at all.
     return "signup_refused", 400
-
-
-@auth_bp.route("/login", methods=["GET", "POST"])
-def login():
-    """Retired. One-release tombstone — delete this function outright next release.
-
-    This route was an unmetered proxy in front of GoTrue's own per-IP `/token`
-    limiter: every request reached the provider from this host's single
-    address, so the one limiter that could see the attacker no longer could.
-    Sign-in is and always was browser-direct (`Services.login` calls
-    `supabase.auth.signInWithPassword` straight to GoTrue); nothing in-tree
-    ever called this route.
-
-    `410` and not `404` is deliberate: an unknown out-of-tree client gets a
-    diagnosable JSON answer rather than the app's HTML 404. `GET` is accepted
-    for the same reason and only for that reason — a human diagnosing a broken
-    integration reaches for `GET` first, and Werkzeug's HTML 405 would be the
-    very failure the JSON body exists to avoid. The route reads no body under
-    either method.
-
-    **The log line is the point of the tombstone.** A release that answers 410
-    and records nothing gathers exactly the evidence a bare deletion would
-    have: none. This route exists for one release *because* the production
-    access log could not be consulted (see `docs/auth-login-rate-limit-plan.md`
-    §2 step 7), so the deletion decision needs a caller list, and this is where
-    it comes from. Logging an unauthenticated endpoint is normally how an
-    attacker gets to drive our storage bill — it is refused deliberately
-    elsewhere in this plan — but here the volume is bounded by the limiter:
-    `auth_bp` carries no explicit limit, so this route inherits the global
-    defaults and one address can write at most 200 records a day.
-
-    TODO.md once called this route unlimited. It never was: with no explicit
-    limit it inherited those same defaults (200/day, 50/hour, 10/minute per
-    IP) all along.
-    """
-    logger.warning(
-        "Retired endpoint called: %s /auth/login from %s (ua=%r). If this line "
-        "never appears, delete the route; if it does, find the caller first.",
-        request.method,
-        request.remote_addr,
-        request.user_agent.string,
-    )
-    return jsonify({"error": "endpoint_removed"}), 410
 
 
 @recover_bp.route("/recover", methods=["POST"])

@@ -27,7 +27,7 @@ when something does, rather than committing an empty file that implies otherwise
 
 `tests/` is new as of 2026-08-28 and exists because **the Python suite cannot fail because
 of a grant.** Every Python test mocks the Supabase client, so the four grant-layer defects
-that `docs/database-improvement-plan.md` opens with sat under a green CI run indefinitely,
+that `docs/archive/2026-08-28_database-improvement.md` opens with sat under a green CI run indefinitely,
 and the advisors do not check grants at all. Those three files assert the privilege and
 policy state directly. Run them before and after any migration that touches a grant, a
 policy or a role — that is the cheap half of the plan's finding 7 and it does not wait on
@@ -208,7 +208,7 @@ get_advisors performance
 And, for anything touching a grant, a policy, a role or an `admin_*` function, paste each
 of `supabase/tests/*.test.sql` into `execute_sql`. They answer the question the advisors
 cannot: the advisors do not check grants, which is why the four grant-layer defects
-`docs/database-improvement-plan.md` opens with were invisible to both the linter and CI.
+`docs/archive/2026-08-28_database-improvement.md` opens with were invisible to both the linter and CI.
 Each file raises `PASS …` or `FAIL …`; see `supabase/tests/README.md`.
 
 ### Checking that a migration touched no rows

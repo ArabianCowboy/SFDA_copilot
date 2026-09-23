@@ -1,7 +1,37 @@
-STATUS: PARTIALLY EXECUTED — Tasks 1 and 2 shipped 2026-08-27 (`366f1a6`, `d9e542c`);
+---
+authority: historical
+status: superseded
+do_not_implement: true
+archived: 2026-09-23
+supersedes_note: >
+  This document is a finished plan as far as code goes. Tasks 1 and 2 shipped on
+  2026-08-27, and the dead lordicon CSP allowance it found was removed on 2026-09-23.
+  Tasks 3 and 4 need live access rather than code, and continue as TODO.md entries.
+  It is a record of what was decided and what it cost, not a specification.
+live_authority:
+  - docs/ARCHITECTURE.md
+  - docs/OPERATIONS.md
+  - TODO.md
+---
+
+> [!CAUTION]
+> **You are reading history, not a specification.** Final position: `img-src` is
+> `'self' data:` (Task 1), and the signup spread puts explicit fields last (Task 2). Both are
+> pinned by tests (`web/tests/test_security_headers.py`,
+> `web/tests/test_signup_identity_capture.py`). The lordicon allowance this plan left out of
+> scope never got the TODO entry it asked for; it was removed outright on 2026-09-23.
+> **Archived with Tasks 3 and 4 still open**, against its own "archive when all four are
+> done" line: both need credentials or the production host rather than code. Task 3's live
+> Realtime check lives in the Notification Center entry in `TODO.md`, and Task 4 is "A
+> conversation id now reaches the access log". Every `file:line` below describes the tree
+> when it was written. Every heading is prefixed `[HISTORICAL]`.
+
+STATUS: HISTORICAL RECORD — archived 2026-09-23. Nothing here is an instruction.
+
+Last live status: PARTIALLY EXECUTED — Tasks 1 and 2 shipped 2026-08-27 (`366f1a6`, `d9e542c`);
 Tasks 3 and 4 still open, blocked as described below. Written 2026-08-26.
 
-# Security hardening plan: four TODO entries
+# [HISTORICAL] Security hardening plan: four TODO entries
 
 Four `TODO.md` entries, planned together because two of them ship as code and two are
 verification work whose answers live outside this repository. Every `file:line` below was read
@@ -9,11 +39,11 @@ in the session that wrote this. Where a claim could not be verified here, it say
 
 Supersedes nothing. When each item lands, close its `TODO.md` entry and update this file's
 `STATUS:` line; when all four are done, archive this file per
-[`docs/archive/README.md`](archive/README.md#adding-to-this-archive).
+[`docs/archive/README.md`](README.md#adding-to-this-archive).
 
 ---
 
-## Summary
+## [HISTORICAL] Summary
 
 | #   | Task                                    | Verdict                                                     | Ships as            |
 | --- | --------------------------------------- | ----------------------------------------------------------- | ------------------- |
@@ -24,11 +54,11 @@ Supersedes nothing. When each item lands, close its `TODO.md` entry and update t
 
 ---
 
-## Task 1 — Tighten `img-src` to `'self' data:`
+## [HISTORICAL] Task 1 — Tighten `img-src` to `'self' data:`
 
 **Where:** `web/api/app.py:1364`, inside the `csp` dict that begins at `web/api/app.py:1347`.
 
-### Why this is worth more than the TODO entry argues
+### [HISTORICAL] Why this is worth more than the TODO entry argues
 
 `TODO.md` files this as a `Referer`-leak defence: an `<img>` to a foreign host would carry
 `/c/<uuid>` in the referrer. **That premise does not hold.** Talisman already sets
@@ -52,7 +82,7 @@ back out as answer markdown — which is exactly the path this directive closes.
 
 Do the task. Fix the reasoning in the entry when you close it.
 
-### The image surface, enumerated
+### [HISTORICAL] The image surface, enumerated
 
 `TODO.md` asks for a real enumeration rather than a guessed replacement list. This is it.
 **Nothing in any template loads an image from any external origin.**
@@ -97,7 +127,7 @@ is hard to review.
 close-out, in the same commit that closes this one. A discovery that lives only in a plan
 document is a discovery that gets archived and lost.
 
-### The change
+### [HISTORICAL] The change
 
 ```diff
 --- a/web/api/app.py
@@ -121,7 +151,7 @@ opposite of what a verification matrix run locally is meant to establish.
 it to commits touching CSS or JS. This commit touches neither. If this change is ever bundled
 into a commit that also touches CSS or JS, the bump comes back with that other change.
 
-### The test
+### [HISTORICAL] The test
 
 There is no CSP test in `web/tests/` today — confirmed. New file
 `web/tests/test_security_headers.py`.
@@ -177,7 +207,7 @@ def test_the_debug_branch_does_not_loosen_img_src():
 Both fail today against `'self' data: https:`. Neither mocks the thing under test — they read
 the header a browser will actually receive.
 
-### Manual verification: all twelve permutations
+### [HISTORICAL] Manual verification: all twelve permutations
 
 **Theme is not a URL parameter.** `static/js/modules/theme.js:16,37` reads and writes
 `localStorage.theme`, reflected as `data-bs-theme`. So each row is: set the key, then load.
@@ -215,12 +245,12 @@ mistake it for a defect during the sweep, and do not add the host back.
 
 ---
 
-## Task 2 — Explicit signup fields must survive a metadata collision
+## [HISTORICAL] Task 2 — Explicit signup fields must survive a metadata collision
 
 **Where:** `static/js/modules/services.js:384`, inside `Services.signup()` at
 `static/js/modules/services.js:379`.
 
-### What is actually at stake
+### [HISTORICAL] What is actually at stake
 
 This is a **correctness fix, not a security fix**, and the plan should say so plainly.
 
@@ -241,7 +271,7 @@ directly from the top level of the parsed body and forwards metadata separately 
 metadata only, never atop a credential. There is nothing on the server for a collision guard to
 protect.
 
-### The change
+### [HISTORICAL] The change
 
 ```diff
 --- a/static/js/modules/services.js
@@ -269,7 +299,7 @@ still true and still worth keeping:
 
 **`ASSET_VERSION` at `web/api/app.py:249` must be bumped** — this commit touches JS.
 
-### The `undefined lang` question, settled
+### [HISTORICAL] The `undefined lang` question, settled
 
 This is the one regression the reorder could introduce, and it does not fire.
 
@@ -285,7 +315,7 @@ entirely. It is harmless on both ends:
 
 No guard is needed.
 
-### The regression test
+### [HISTORICAL] The regression test
 
 `web/tests/test_signup_identity_capture.py:23-39` already has a `signup_capture` fixture that
 routes `**/auth/signup` and records `route.request.post_data_json`. `web/tests/conftest.py:594-601`
@@ -340,12 +370,12 @@ one that proves the behaviour.
 
 ---
 
-## Task 3 — Notification-center auth, against a live Supabase project
+## [HISTORICAL] Task 3 — Notification-center auth, against a live Supabase project
 
 **Where:** no code change expected. `TODO.md` names this the one check owed before the feature
 ships to production.
 
-### One suspected defect, cleared by reading the SDK
+### [HISTORICAL] One suspected defect, cleared by reading the SDK
 
 The open worry was whether the private Realtime channel re-authorizes after a token refresh —
 `Notifications.subscribe` (`static/js/modules/services.js:930-939`) never calls `setAuth` itself.
@@ -370,7 +400,7 @@ end-to-end run is for.
 `SIGNED_IN`; the first authorization of the channel on a fresh page load is covered by step 4,
 not step 11. Do not let a passing step 11 stand in for it.
 
-### The auth path being exercised
+### [HISTORICAL] The auth path being exercised
 
 | Stage              | Location                                         | Behaviour under test                                          |
 | ------------------ | ------------------------------------------------ | ------------------------------------------------------------- |
@@ -386,7 +416,7 @@ not step 11. Do not let a passing step 11 stand in for it.
 | Realtime           | `static/js/modules/services.js:930-939`          | `notify:user:<id>`, `{ private: true }`                       |
 | REST reconcile     | `static/js/modules/handlers.js:1114`             | `setInterval(tick, 45000)` — the guaranteed path              |
 
-### What the runner needs
+### [HISTORICAL] What the runner needs
 
 Names only, never values.
 
@@ -420,7 +450,7 @@ cleanup.
   resets is comfortably inside it, but a repeated run in the same hour is not. Create the
   accounts once, early, and reuse them across attempts rather than re-creating per attempt.
 
-### The checklist
+### [HISTORICAL] The checklist
 
 1. Run production-shaped:
    `gunicorn --workers 1 --threads 8 --timeout 300 "web.api.app:create_app()"` against the live project.
@@ -473,7 +503,7 @@ cleanup.
 16. Delete the test notifications and accounts. Record ids, timestamps, and statuses — never
     tokens or credentials.
 
-### What a mock cannot establish
+### [HISTORICAL] What a mock cannot establish
 
 Steps 6, 9, 11, 12 and 14 are the ones worth the credentials. A mock cannot prove GoTrue
 signature validation or refresh-token rotation, cannot prove `realtime.messages` RLS admits A's
@@ -483,26 +513,26 @@ service-role publish endpoint accepts the private-channel request shape.
 The prior session's live session-variable RLS simulation covers the database leg only — it says
 nothing about the browser auth leg.
 
-### Recording the result
+### [HISTORICAL] Recording the result
 
 - `docs/notification-center-plan.md` — advance the `STATUS:` line and add a dated
   live-verification section.
 - `TODO.md` — replace "that one check is still owed before this ships to production" with the
   date, the environment class, and anything deferred. Then move the entry through the archive
-  procedure in [`docs/archive/README.md`](archive/README.md#adding-to-this-archive) and delete
+  procedure in [`docs/archive/README.md`](README.md#adding-to-this-archive) and delete
   its index line.
 - The unrelated `mypy`/numpy stub failure reproduces on clean `main` and does **not** block this
   item. Say so rather than leaving it ambiguous.
 
 ---
 
-## Task 4 — Whether `/c/<uuid>` survives in the access log
+## [HISTORICAL] Task 4 — Whether `/c/<uuid>` survives in the access log
 
 **Where:** documentation only, on the scope as filed. The `TODO.md` entry is right that no
 application change is needed _for the access log_ — but it frames the task as one surface when
 there are two, and the second one is application code. See below before accepting the framing.
 
-### There are two log surfaces here, not one
+### [HISTORICAL] There are two log surfaces here, not one
 
 The `TODO.md` entry is written as though the only question were the **HTTP access log**. It is
 not. This application writes conversation ids into its **own** logs at roughly a dozen sites, and
@@ -529,7 +559,7 @@ proxy and the WSGI server) and the application log (owned by this code, but reta
 captures stderr — journald, a file, or a forwarder). They have different owners, different
 retention, and possibly different readers. Answering only the first one leaves the question open.
 
-### What this repository configures
+### [HISTORICAL] What this repository configures
 
 Nothing at the HTTP layer. There is no nginx config, no gunicorn config, no systemd unit, no
 Dockerfile, no APM SDK, and no log-export configuration anywhere in the tree.
@@ -554,7 +584,7 @@ something terminates TLS upstream.
 Treat that as a reason to **ask about nginx first**, not as evidence that nginx is there. This
 repository cannot establish the live topology, and the plan should not pretend otherwise.
 
-### The threat-model claim, checked
+### [HISTORICAL] The threat-model claim, checked
 
 The `TODO.md` claim holds, with **one wording correction that must carry into the write-up**.
 
@@ -581,7 +611,7 @@ is forwarded off-host — is an operator finding, not a repository fact
 (`docs/OPERATIONS.md:3-10`). Do not write the stronger sentence into `docs/OPERATIONS.md` before
 the questionnaire below is answered.
 
-### Ask the operator first
+### [HISTORICAL] Ask the operator first
 
 The section cannot be written honestly before these are answered. Each has a discovery command
 to run on the host:
@@ -597,7 +627,7 @@ to run on the host:
 | 7   | **Where does the app's own stderr go, and for how long is it kept?**         | `journalctl -u <unit>`; check the unit's `StandardOutput=`/`StandardError=` |
 | 8   | **Does anything grep or forward those application logs?**                    | operator knowledge — this is the surface carrying `conv=<uuid>` at INFO     |
 
-### Then write the section
+### [HISTORICAL] Then write the section
 
 Add it as a sibling `#` section after "Registrations pause" — that file's own instruction
 (`docs/OPERATIONS.md:12-13`) is to add siblings rather than new files. Match the
@@ -614,7 +644,7 @@ posture chosen; and the date and operator who verified it.
 this item means editing that paragraph too, in the same commit — CLAUDE.md's rule about a change
 that makes a document wrong.
 
-### If scrubbing turns out to be needed
+### [HISTORICAL] If scrubbing turns out to be needed
 
 It belongs in the proxy, not in Flask — the WSGI server and proxy log the request line before
 and independently of any Flask hook, so a `before_request` cannot help.
@@ -647,7 +677,7 @@ impression that the identifier is gone from the host.
 
 ---
 
-## Rollout order
+## [HISTORICAL] Rollout order
 
 Four commits. **Only one ordering constraint is a genuine dependency; the rest is sequencing
 preference, and the plan should not dress it up as more.**
@@ -663,11 +693,11 @@ preference, and the plan should not dress it up as more.**
   deployment already, with shell access, looking at logs.
 
 **Closing each `TODO.md` entry is part of its commit, not a follow-up.** Per
-[`docs/archive/README.md`](archive/README.md#adding-to-this-archive): add a dated closing note,
+[`docs/archive/README.md`](README.md#adding-to-this-archive): add a dated closing note,
 move the whole entry to `docs/archive/TODO-resolved.md`, and delete its line from the Open index
 at the top of `TODO.md`. This applies to all four, including A and B.
 
-### Commit A — CSP `img-src` and its first test
+### [HISTORICAL] Commit A — CSP `img-src` and its first test
 
 `web/api/app.py:1364` and new `web/tests/test_security_headers.py`. First because it is
 self-contained, touches no JS, and needs no `ASSET_VERSION` bump — so it cannot collide with
@@ -685,7 +715,7 @@ and it must not be treated as a red gate. Confirm the failure is the same one �
 `main` — and proceed. It gates the `lint` CI job, so if CI is green there, that is the signal to
 trust.
 
-### Commit B — Signup spread order, JSDoc, browser test, `ASSET_VERSION`
+### [HISTORICAL] Commit B — Signup spread order, JSDoc, browser test, `ASSET_VERSION`
 
 `static/js/modules/services.js:384` and its JSDoc, the new test in
 `web/tests/test_signup_identity_capture.py`, and the bump at `web/api/app.py:249`. Second because
@@ -698,7 +728,7 @@ Gate: `python -m pytest -m browser --browser chromium`, `npm run lint:fix && npm
 — `pre-commit` deliberately does not run it (see CLAUDE.md), so this gate is really the browser
 suite plus the JS linters.
 
-### Commit C — Notification-center live-auth verification
+### [HISTORICAL] Commit C — Notification-center live-auth verification
 
 Blocked on credentials, not on A or B. Prefer running it against a host that already carries A
 and B so the pass exercises what will ship — but if the credentials arrive first, run it and
@@ -708,7 +738,7 @@ pass, each with the evidence named beside it.
 
 Gate: the sixteen-step checklist against a live project; full suite still green.
 
-### Commit D — `docs/OPERATIONS.md` access-log section
+### [HISTORICAL] Commit D — `docs/OPERATIONS.md` access-log section
 
 Last because it depends on operator answers this repository cannot produce, and because Commit
 C's run is a natural moment to inspect the deployment's logging while already inside it. Edit
@@ -718,7 +748,7 @@ Gate: `npm run lint:md && npm run format:md`; questionnaire answered, no placeho
 
 ---
 
-## Close-out
+## [HISTORICAL] Close-out
 
 - Both non-browser and browser suites green, including the two new tests.
 - Twelve-cell console sweep clean, plus `/privacy` and `/c/<uuid>` spot checks.
@@ -733,7 +763,7 @@ Gate: `npm run lint:md && npm run format:md`; questionnaire answered, no placeho
 
 ---
 
-## How this plan was built, and what is still unverified
+## [HISTORICAL] How this plan was built, and what is still unverified
 
 Three independent passes, then a review. A first-party audit of the tree; a security-research
 pass (Gemini 3.7 Flash, high effort); an independent read-only implementation audit (GPT-5.6

@@ -32,11 +32,16 @@ MarkupSafe
 itsdangerous
 click
 sentence_transformers>=5.5.1
-supabase
+# Pinned, not floating: the auth and quota classifiers read this SDK's error
+# shapes, so a silent upgrade on the next deploy can change what counts as an
+# outage. It pins its own siblings (postgrest, supabase-auth, realtime,
+# storage3) to its release, so pin it alone — never the siblings. Resolved and
+# imported under Python 3.10, the production floor; bump deliberately.
+supabase==2.30.1
 # Already arrives with supabase, but named here because the app imports it
 # directly: web/api/app.py classifies httpx.TransportError as an outage rather
 # than a rejected credential, and web/utils/supabase_client.py injects an httpx
 # client to bound the auth call. A transitive dependency that code imports by
 # name is a direct dependency.
-httpx
+httpx==0.28.1
 tiktoken
