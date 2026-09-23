@@ -102,9 +102,8 @@ export function showAccessFailure(error) {
 /**
  * Tablist keyboard model: arrows move and activate, Home/End jump to the ends.
  *
- * Activation follows focus, which is correct for panels that are already in the
- * document — there is nothing to load, so requiring a second keypress would be
- * ceremony. Delegated from the tablist so a tab added later is wired for free.
+ * Routed through click() so lazy loaders run; activation follows focus.
+ * Delegated from the tablist so a tab added later is wired for free.
  */
 export function bindConsoleEvents() {
   const tablist = document.querySelector('.admin-tabs');
@@ -134,7 +133,7 @@ export function bindConsoleEvents() {
 
     event.preventDefault();
     const target = ids[(next + ids.length) % ids.length];
-    selectTab(target);
+    document.getElementById(target)?.click();
     focusTab(target);
   });
 }
@@ -204,6 +203,13 @@ function syncSelectAll(selectAll, checkboxes, isSelected) {
   selectAll.indeterminate = checkedCount > 0 && checkedCount < checkboxes.length;
 }
 
+/* Only take focus back if it was lost to <body> — the control that held it
+   was hidden — never from wherever the operator has since moved on to. */
+function recoverFocus(target) {
+  const active = document.activeElement;
+  if (!active || active === document.body) target?.focus();
+}
+
 export async function initNotificationsTab(services) {
   /* The composer's tier select is built empty; fill it from the catalogue.
      Allowed to fail quietly — a composer with an empty select still refuses to
@@ -230,6 +236,7 @@ export async function initNotificationsTab(services) {
   // deleted notification stayed in this table forever.
   let historyStatus = 'active';
   let historyGeneration = 0;
+  let returnTo = null;
   // Ids checked via the per-row/select-all checkboxes — cleared on every
   // fresh (non-append) load, since a filter change or a bulk clear both
   // replace the rendered row set.
@@ -286,12 +293,15 @@ export async function initNotificationsTab(services) {
 
   function setHistoryControlsDisabled(disabled) {
     const select = document.getElementById('notification-history-status');
+    if (disabled) {
+      const active = document.activeElement;
+      returnTo ??= active && active !== document.body ? active : null;
+    }
     const loadMore = document.getElementById('notification-history-load-more');
     const clearAll = document.getElementById('notification-history-clear-all');
     const clearSelected = document.getElementById('notification-history-clear-selected');
     const purgeSelected = document.getElementById('notification-history-purge-selected');
     const purgeEligible = document.getElementById('notification-purge-eligible');
-    if (select) select.disabled = disabled;
     if (loadMore) loadMore.disabled = disabled;
     if (clearSelected) clearSelected.disabled = disabled;
     if (purgeSelected) purgeSelected.disabled = disabled;
@@ -299,6 +309,10 @@ export async function initNotificationsTab(services) {
     // Re-disabling "Clear all" always follows the deleted-filter rule, not
     // just the in-flight one, so it doesn't spuriously re-enable mid-filter.
     if (clearAll) clearAll.disabled = disabled || historyStatus === 'deleted';
+    if (!disabled && returnTo) {
+      recoverFocus(returnTo.isConnected && returnTo.checkVisibility() ? returnTo : select);
+      returnTo = null;
+    }
   }
 
   // Race-safety: a filter change and a "Load more" click can both be in
@@ -811,9 +825,11 @@ export async function loadAudit(services) {
    Tiers tab's two entry points need. */
 let showPeopleForTier = null;
 
-/* Set by initTiersTab. A Move changes member counts the Tiers table loaded
-   once, so it is told to re-read them on its next activation. */
+/* Set by initTiersTab and initOverviewTab: each re-reads its tier counts on
+   its next activation. */
 let markTiersStale = null;
+let markOverviewStale = null;
+const markTierCountsStale = () => (markTiersStale?.(), markOverviewStale?.());
 
 /**
  * Switch to People for one tier: its members (`filter: true`, focus on the
@@ -822,7 +838,7 @@ let markTiersStale = null;
  * in the Tiers panel this has just hidden.
  */
 function openPeopleForTier(key, { filter }) {
-  // A click, not selectTab(): any lazy loader hangs off the tab button's click.
+  // Routed through click(); see bindConsoleEvents.
   document.getElementById('tab-people')?.click();
   return showPeopleForTier?.(key, { filter });
 }
@@ -997,13 +1013,6 @@ export async function initPeopleTab(services) {
     }
   }
 
-  /* Only take focus back if it was lost to <body> — the control that held it
-     was hidden — never from wherever the operator has since moved on to. */
-  function recoverFocus(target) {
-    const active = document.activeElement;
-    if (!active || active === document.body) target?.focus();
-  }
-
   async function moveSelected(button) {
     const key = document.getElementById('people-bulk-tier')?.value;
     const ids = Array.from(selectedIds);
@@ -1022,7 +1031,7 @@ export async function initPeopleTab(services) {
         }),
       );
       loadAudit(services);
-      markTiersStale?.();
+      markTierCountsStale();
       /* An account opened while the request was out keeps its page: reloading
          the list here would close it. Its Back button reloads the list anyway. */
       if (opening || !document.getElementById('people-detail')?.hidden) {
@@ -1563,7 +1572,7 @@ export async function saveAccountQuota(services, form, reopen) {
     await reopen(userId);
     loadAudit(services);
     // The tier may have changed, and with it two of the Tiers tab's counts.
-    markTiersStale?.();
+    markTierCountsStale();
   } catch (error) {
     const code = error?.code;
     const key = code ? `admin.tiers.${code}` : null;
@@ -1730,7 +1739,6 @@ export function initAnalyticsTab(services) {
   }
 
   document.getElementById('tab-analytics')?.addEventListener('click', loadOnce);
-  if (document.getElementById('panel-analytics')?.hidden === false) loadOnce();
 }
 
 /**
@@ -1779,8 +1787,10 @@ export function initOverviewTab(services) {
     if (results.every((result) => result.status === 'rejected')) loaded = false;
   }
 
+  markOverviewStale = () => {
+    loaded = false;
+  };
   document.getElementById('tab-overview')?.addEventListener('click', loadOnce);
-  if (document.getElementById('panel-overview')?.hidden === false) loadOnce();
 
   /* The figures are links. Delegated, because the panel is rebuilt whole.
      The id is matched against the tab-button shape before it is used: as
@@ -1842,8 +1852,6 @@ export async function initTiersTab(services) {
     loaded = false;
   };
   document.getElementById('tab-tiers')?.addEventListener('click', loadOnce);
-  /* Already showing when the console booted (a reload with this tab selected). */
-  if (document.getElementById('panel-tiers')?.hidden === false) loadOnce();
 
   /* Delegated, because renderTiers replaces the whole subtree on every save —
      the same reason the settings and registrations panels bind on the body. */
@@ -1877,6 +1885,7 @@ export async function initTiersTab(services) {
         await reload();
         ErrorHandler.showToast(I18n.t('admin.tiers.deleted'));
         loadAudit(services);
+        markOverviewStale?.();
       } catch (error) {
         ErrorHandler.showToast(tierFailureMessage(error, 'admin.tiers.deleteFailed'), true);
       }
@@ -1908,6 +1917,7 @@ export async function initTiersTab(services) {
       /* The save just wrote an audit row; a stale log beside a change that is
          already live is the one moment the record looks untrustworthy. */
       loadAudit(services);
+      markOverviewStale?.();
     } catch (error) {
       ErrorHandler.showToast(tierFailureMessage(error, 'admin.tiers.saveFailed'), true);
     }
@@ -1949,8 +1959,6 @@ export async function initDeletionsTab(services) {
   }
 
   document.getElementById('tab-deletions')?.addEventListener('click', loadOnce);
-  /* Already showing when the console booted (a reload with this tab selected). */
-  if (document.getElementById('panel-deletions')?.hidden === false) loadOnce();
 
   /* Delegated, because renderDeletions replaces the whole table on every
      reload — the same reason the Tiers tab binds on its body. */

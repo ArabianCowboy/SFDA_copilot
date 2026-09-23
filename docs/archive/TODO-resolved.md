@@ -43,6 +43,44 @@ recording.
 
 ## [HISTORICAL] Resolved bugs
 
+### [HISTORICAL] ~~Console tabs chosen with the arrow keys never run their lazy loaders~~ — FIXED 2026-09-24
+
+**Where:** `static/js/admin/handlers.js`, the tablist `keydown` handler (`ArrowRight`,
+`ArrowLeft`, `Home`, `End`), which calls `selectTab()` and `focusTab()`, never `click()`.
+Every lazy tab loader (`initTiersTab`'s `loadOnce`, and the others bound the same way) hangs off
+the tab button's `click`.
+
+**What is wrong.** A keyboard operator who arrows onto Tiers sees an empty panel: nothing loads
+until the tab is clicked or Enter is pressed. The bulk tier-membership work added one more
+consumer of the same hook — the Tiers table re-reads its Readers counts on its next
+activation after a Move — and that re-read is equally invisible to arrow-key activation, so a
+keyboard operator can see a stale count.
+
+**Who it reaches.** Keyboard and screen-reader operators, on every lazily loaded console tab.
+
+**How it was found.** A code review of bulk tier membership (2026-09-23), confirmed by reading
+the handler: the arrow path never dispatches a click.
+
+**What fixing it would disturb.** Either the arrow path clicks the tab (simple, but every lazy
+loader then also runs on arrow-key browsing — the WAI-ARIA "automatic activation" model, which
+is what `selectTab` already implies), or loaders move from `click` to a tab-selected hook that
+both paths call. The second touches every `init*Tab`. Two smaller gaps belong in the same
+commit: the Notification History bulk actions drop focus to `<body>` when their toolbar hides
+(People's Move already restores it to the filter), and the Overview's per-tier counts never
+refresh after a Move.
+
+**Closed 2026-09-24.** Built from a plan revised after two reviews (`docs/archive/2026-09-24_admin-console-gaps.md`).
+The arrow keys now click the tab, so every lazy loader runs, and the four "already showing
+at boot" checks are gone: `admin.js` clicks Overview once after the `init*` calls. The second
+of the two options above was not needed. The Overview now re-reads its tier counts after a
+Move, a single-account tier save, and a tier create, edit or delete. This goes one step past
+the entry, which named the Move only. Notification History no longer disables its status
+select while reloading. It hands focus back to the control that held it, or to the select
+when that control is gone. The entry's framing, that focus dropped "when their toolbar
+hides", was too narrow: every reload disabled the focused control. Five new tests and two
+new assertions in existing ones, all proven fail-first, in `test_admin_browser.py` and
+`test_notifications_browser.py`.
+
 ### [HISTORICAL] ~~Live code cites plan sections instead of the live contract~~ — FIXED 2026-09-23
 
 **Where:** the per-tab set was repointed at

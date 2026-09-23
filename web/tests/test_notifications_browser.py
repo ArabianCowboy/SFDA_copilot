@@ -828,6 +828,8 @@ def test_composer_submit_adds_a_row_to_the_history_table(browser_page: Page):
 
     expect(browser_page.locator("#notification-history-table")).to_be_visible()
     expect(browser_page.locator("#notification-history-table")).to_contain_text("toast")
+    # The history reload that follows a send must not pull focus down into it.
+    expect(browser_page.locator("#notification-history-status")).not_to_be_focused()
 
     assert sent["title_en"] == "Maintenance window"
     assert sent["target_kind"] == "all"
@@ -1030,6 +1032,8 @@ def test_clearing_selected_notifications_deletes_only_those_checked(browser_page
 
     expect(browser_page.locator("#toast")).to_contain_text("2 notifications deleted")
     expect(toolbar).to_be_hidden()
+    # The button that held focus is gone with its toolbar; focus is not left on <body>.
+    expect(browser_page.locator("#notification-history-status")).to_be_focused()
 
     # Only the two checked ids were sent to the delete endpoint — the third,
     # unchecked row was never touched.
@@ -1097,6 +1101,48 @@ def test_clear_all_pages_through_every_row_in_the_filter_not_just_one_page(brows
     )
     assert len(deleted_ids) == 201
     assert set(deleted_ids) == {row["id"] for row in rows}
+
+
+def test_a_cancelled_clear_all_hands_focus_back_to_its_button(browser_page: Page):
+    _route_identity(browser_page)
+    _route_bulk_history(browser_page, [_bulk_row(1)])
+    browser_page.goto("/admin?testing=true")
+    browser_page.locator("#tab-notifications").click()
+    expect(browser_page.locator("#notification-history-table")).to_be_visible()
+
+    clear_all = browser_page.locator("#notification-history-clear-all")
+    browser_page.once("dialog", lambda dialog: dialog.dismiss())
+    clear_all.click()
+
+    expect(clear_all).to_be_enabled()
+    expect(clear_all).to_be_focused()
+
+
+def test_changing_the_history_filter_keeps_focus_on_it(browser_page: Page):
+    """Focus stays on the select while the new filter loads, not only after:
+    a disabled control drops focus, which is why the select stays enabled."""
+    _route_identity(browser_page)
+    _route_bulk_history(browser_page, [_bulk_row(1), _bulk_row(2, deleted=True)])
+    held = []
+    browser_page.route(
+        "**/admin/api/notifications/history*",
+        lambda route: (
+            held.append(route) if "status=deleted" in route.request.url else route.fallback()
+        ),
+    )
+    browser_page.goto("/admin?testing=true")
+    browser_page.locator("#tab-notifications").click()
+    expect(browser_page.locator("#notification-history-table")).to_be_visible()
+
+    status = browser_page.locator("#notification-history-status")
+    status.focus()
+    with browser_page.expect_request(lambda r: "status=deleted" in r.url):
+        status.select_option("deleted")
+    expect(status).to_be_focused()
+
+    held[0].fallback()
+    expect(browser_page.locator("#notification-history-table tbody tr")).to_have_count(1)
+    expect(status).to_be_focused()
 
 
 def test_audience_preview_updates_when_targeting_changes_to_role(browser_page: Page):

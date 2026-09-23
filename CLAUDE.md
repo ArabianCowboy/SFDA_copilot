@@ -219,6 +219,9 @@ replaced, and the cleanup that followed had to archive 8,000 lines to undo it.
 - **Record a reversal, do not silently edit it away.** When a decision changes, say that it
   changed and why. Most of the value in `docs/archive/` is in the corrections.
 - **Default `/agy-delegate` dispatch:** unless the user names a different model or effort,
-  run it as `agy --model gemini-3.7-flash-high --dangerously-skip-permissions`. The user has
+  run it as `agy --model gemini-3.8-flash-high --dangerously-skip-permissions`. The user has
   standing-authorized the permission bypass for this repo — don't re-ask before every
   dispatch — but still verify the resulting diff yourself per the rule above.
+- **Default `/opencode-delegate` dispatch:** unless the user names a different model or effort,
+  run it with `--model opencode/muse-spark-1.3-contributor-free --variant max`. The same
+  verify-the-diff rule applies; for a review, add `--read-only`.

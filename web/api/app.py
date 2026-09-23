@@ -376,13 +376,13 @@ SUPPORTED_FAQ_LANGS = ("en", "ar")
 # that mixes a fresh template with a stale module is worse than a stale page —
 # post-icon-migration it would render an <i class="bi"> with no icon font behind
 # it, or print a glyph NAME as text. MODULE_IMPORT_MAP below closes that.
-ASSET_VERSION = "warm95"
+ASSET_VERSION = "warm96"
 
 # Product release, rendered in the landing footer. The single source — do not
 # hand-type this value into a JS docstring or any other comment; that duplication
 # is exactly what let static/js/app.js and admin.js drift out of step before both
 # were cleaned up. See CLAUDE.md rule 9 for when a commit must bump this.
-APP_VERSION = "0.7.4 (Beta)"
+APP_VERSION = "0.8.0 (Beta)"
 
 # The privacy policy's own version, recorded on every consent grant
 # (docs/ARCHITECTURE.md#account-page-and-profile; reasoning in

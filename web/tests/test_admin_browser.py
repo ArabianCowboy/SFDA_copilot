@@ -3016,3 +3016,73 @@ def test_a_session_ending_elsewhere_takes_the_console_down(authenticated_page: P
     page.evaluate(REVOKE_JS)
     expect(page.locator("#admin-console")).to_be_hidden()
     expect(page.locator("#admin-gate")).to_be_visible()
+
+
+# ── Lazy tabs load however they are activated; tier counts follow a change ──
+
+
+def test_arrowing_onto_tiers_loads_it(browser_page: Page):
+    """Arrow keys activate by clicking the tab, so its lazy loader runs too."""
+    browser_page.route("**/admin/api/tiers", lambda route: _json(route, TIERS_RESPONSE))
+    _admin_console(browser_page)
+
+    browser_page.locator("#tab-overview").focus()
+    while browser_page.evaluate("document.activeElement.id") != "tab-tiers":
+        browser_page.keyboard.press("ArrowRight")
+
+    expect(browser_page.locator("#tiers-body")).to_contain_text("Free")
+
+
+def test_the_overview_rereads_tier_counts_after_a_move(browser_page: Page):
+    """Overview loaded its counts at boot; a Move must make it read them again."""
+    _open_people(browser_page)
+    handle_members, calls = _members_route()
+    browser_page.route("**/admin/api/tiers/staff/members", handle_members)
+    browser_page.route(
+        "**/admin/api/tiers",
+        lambda route: _json(
+            route,
+            {
+                "tiers": [
+                    {**t, "member_count": t["member_count"] + len(calls) * (t["key"] == "staff")}
+                    for t in TIERS_RESPONSE["tiers"]
+                ]
+            },
+        ),
+    )
+
+    browser_page.locator("[data-people-select]").first.check()
+    browser_page.locator("#people-bulk-tier").select_option("staff")
+    browser_page.locator("#people-bulk-move").click()
+    expect(browser_page.locator("#toast")).to_contain_text("Moved")
+
+    browser_page.locator("#tab-overview").click()
+    staff = browser_page.locator("#overview-body tbody tr", has_text="Staff")
+    expect(staff.locator("td").nth(2)).to_have_text("2")
+
+
+def test_the_overview_rereads_the_tier_count_after_a_tier_is_created(browser_page: Page):
+    tiers = [dict(t) for t in TIERS_RESPONSE["tiers"]]
+
+    def handle_tiers(route):
+        if route.request.method == "POST":
+            tiers.append({**route.request.post_data_json, "member_count": 0})
+            _json(route, {"tier": tiers[-1]})
+            return
+        _json(route, {"tiers": tiers})
+
+    browser_page.route("**/admin/api/tiers", handle_tiers)
+    _admin_console(browser_page)
+    tier_count = browser_page.locator('#overview-body [data-overview-goto="tab-tiers"]').first
+    expect(tier_count).to_have_text("2")
+
+    browser_page.locator("#tab-tiers").click()
+    browser_page.locator("#tier-key").fill("vip")
+    browser_page.locator("#tier-label_en").fill("VIP")
+    browser_page.locator("#tier-label_ar").fill("VIP")
+    browser_page.locator("#tier-daily_message_limit").fill("100")
+    browser_page.locator("#tier-form button[type='submit']").click()
+    expect(browser_page.locator("#toast")).to_contain_text("Tier saved")
+
+    browser_page.locator("#tab-overview").click()
+    expect(tier_count).to_have_text("3")

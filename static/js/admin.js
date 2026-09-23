@@ -88,6 +88,7 @@ const Admin = {
       initDeletionsTab(services);
       initOverviewTab(services);
       initAnalyticsTab(services);
+      document.getElementById('tab-overview')?.click();
     } catch (error) {
       showAccessFailure(error);
     }

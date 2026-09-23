@@ -57,7 +57,6 @@ bottom of this file: [How this file works](#how-this-file-works).
 - [Marketing consent has no re-prompt path](#marketing-consent-has-no-re-prompt-path-and-the-trigger-cannot-record-a-re-affirmation) — deferred by decision 2026-09-18; due when the policy next changes materially.
 - [The privacy policy (/privacy) is a draft, not reviewed legal text](#the-privacy-policy-privacy-is-a-draft-not-reviewed-legal-text) — consent shipped against this draft; deletion copy corrected it to `-draft-2` on 2026-09-18, and the legal review of the text is still owed.
 - [Account deletion (Spec 4)](#account-deletion-spec-4--blocked-on-a-product-decision-not-on-engineering) — decision closed 2026-09-18 (yes, 30-day grace); built and **fourteen of fifteen migrations applied 2026-09-19**, code deployed, reconcile timer running. Held only on the feature switch, and on one real deletion before `13`. See `supabase/pending/README.md`.
-- [Console tabs chosen with the arrow keys never run their lazy loaders](#console-tabs-chosen-with-the-arrow-keys-never-run-their-lazy-loaders) — found 2026-09-23 in the tier-membership review; also owes Notification History's post-action focus and the Overview's tier counts.
 - [Gunicorn writes no access log](#gunicorn-writes-no-access-log-so-served-fine-and-never-asked-look-identical) — found 2026-09-19 when it made a deploy check ambiguous; decide it WITH the entry below, not before.
 - [A conversation id now reaches the access log](#a-conversation-id-now-reaches-the-access-log) — a verification task, possibly already fine; unverified either way.
 - [Six of the seven admin RPCs validate the actor without holding a lock](#six-of-the-seven-admin-rpcs-validate-the-actor-without-holding-a-lock) — a check-then-act window; pre-existing, not introduced by the actor gate.
@@ -506,32 +505,6 @@ a live `/api/chat/stream`, run by hand, never in CI), or delete the marker and t
 line together. The second is an edit to `CLAUDE.md`, so it bumps `APP_VERSION`.
 
 ---
-
-### Console tabs chosen with the arrow keys never run their lazy loaders
-
-**Where:** `static/js/admin/handlers.js`, the tablist `keydown` handler (`ArrowRight`,
-`ArrowLeft`, `Home`, `End`), which calls `selectTab()` and `focusTab()`, never `click()`.
-Every lazy tab loader (`initTiersTab`'s `loadOnce`, and the others bound the same way) hangs off
-the tab button's `click`.
-
-**What is wrong.** A keyboard operator who arrows onto Tiers sees an empty panel: nothing loads
-until the tab is clicked or Enter is pressed. The bulk tier-membership work added one more
-consumer of the same hook — the Tiers table re-reads its Readers counts on its next
-activation after a Move — and that re-read is equally invisible to arrow-key activation, so a
-keyboard operator can see a stale count.
-
-**Who it reaches.** Keyboard and screen-reader operators, on every lazily loaded console tab.
-
-**How it was found.** A code review of bulk tier membership (2026-09-23), confirmed by reading
-the handler: the arrow path never dispatches a click.
-
-**What fixing it would disturb.** Either the arrow path clicks the tab (simple, but every lazy
-loader then also runs on arrow-key browsing — the WAI-ARIA "automatic activation" model, which
-is what `selectTab` already implies), or loaders move from `click` to a tab-selected hook that
-both paths call. The second touches every `init*Tab`. Two smaller gaps belong in the same
-commit: the Notification History bulk actions drop focus to `<body>` when their toolbar hides
-(People's Move already restores it to the filter), and the Overview's per-tier counts never
-refresh after a Move.
 
 ## Planned work
 
