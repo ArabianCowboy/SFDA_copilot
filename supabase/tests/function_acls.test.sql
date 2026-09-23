@@ -201,7 +201,9 @@ begin
                       -- assert that a function which mutates nothing calls the mutation
                       -- gate, which it has no reason to.
                       'admin_create_tier','admin_update_tier','admin_delete_tier',
-                      'admin_set_reader_quota']) as x
+                      'admin_set_reader_quota',
+                      -- Added 2026-09-23 with bulk tier membership.
+                      'admin_set_users_tier']) as x
    where not exists (
      select 1 from pg_proc p
       where p.pronamespace = 'public'::regnamespace and p.proname = x

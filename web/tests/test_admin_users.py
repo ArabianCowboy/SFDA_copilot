@@ -48,27 +48,61 @@ def test_accounts_are_listed_with_their_standing(client):
         "test@example.com",
         "disabled@example.com",
         # An account with no profile row. It appears in the list looking
-        # perfectly ordinary, which is the defect the detail view exists to
-        # surface — `admin_list_users` coalesces the missing columns to healthy
-        # defaults and cannot tell you otherwise.
+        # perfectly ordinary apart from `has_profile`, which is the one column
+        # the list does not coalesce — everything else still comes back as a
+        # manufactured default.
         "orphan@example.com",
     }
 
 
-def test_the_list_cannot_tell_a_broken_account_from_a_healthy_one(client):
-    """Pins the limitation rather than the fix.
+def test_the_list_still_cannot_tell_a_broken_account_from_a_healthy_one_by_its_other_columns(
+    client,
+):
+    """Pins the remaining limitation, now that `has_profile` is not it.
 
-    `admin_list_users` coalesces role/tier/is_disabled, so a profile-less
-    account is indistinguishable here. Asserted so that if someone later makes
-    the list honest, this test fails and points at the detail view that was
-    built to compensate.
+    `admin_list_users` still coalesces role/tier/is_disabled, so those three
+    columns alone cannot distinguish a profile-less account. `has_profile` is
+    the exception: it is reported plainly, precisely so the list can make an
+    orphan row unselectable rather than silently ordinary.
     """
     body = client.get("/admin/api/users", headers=ADMIN).get_json()
     orphan = next(u for u in body["users"] if u["email"] == "orphan@example.com")
 
     assert orphan["role"] == "user"
     assert orphan["is_disabled"] is False
-    assert "has_profile" not in orphan
+    assert orphan["has_profile"] is False
+
+
+def test_a_normal_row_reports_has_profile_true(client):
+    body = client.get("/admin/api/users", headers=ADMIN).get_json()
+    normal = next(u for u in body["users"] if u["email"] == "test@example.com")
+    assert normal["has_profile"] is True
+
+
+def test_the_list_can_be_filtered_to_one_tier(client):
+    """`?tier=staff` returns only the seeded staff reader (the admin account),
+    filtered on the stored tier rather than any display default."""
+    body = client.get("/admin/api/users?tier=staff", headers=ADMIN).get_json()
+    assert [u["email"] for u in body["users"]] == ["admin@example.com"]
+    assert body["total"] == 1
+
+
+def test_the_orphan_is_absent_under_a_tier_filter_but_present_under_all(client):
+    """The orphan's stored tier is `free`, but it has no profile row to be IN a
+    tier, so it must never appear under a tier filter even though it appears,
+    marked broken, when nothing is filtered."""
+    filtered = client.get("/admin/api/users?tier=free", headers=ADMIN).get_json()
+    assert "orphan@example.com" not in {u["email"] for u in filtered["users"]}
+
+    unfiltered = client.get("/admin/api/users", headers=ADMIN).get_json()
+    orphan = next(u for u in unfiltered["users"] if u["email"] == "orphan@example.com")
+    assert orphan["has_profile"] is False
+
+
+def test_a_bad_tier_filter_is_refused(client):
+    response = client.get("/admin/api/users?tier=Bad-Key!", headers=ADMIN)
+    assert response.status_code == 422
+    assert response.get_json() == {"error": "invalid_tier"}
 
 
 def test_the_list_says_which_account_is_yours(client):

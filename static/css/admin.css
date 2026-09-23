@@ -543,12 +543,47 @@ select.admin-input {
   color: var(--fg-muted);
 }
 
+/* Search and tier filter side by side, wrapping under each other on a phone.
+   Each is a label over its control; the bulk-move toolbar reuses the same
+   field shape for its destination and reason. */
 .admin-people-search {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-3) var(--space-4);
+  margin-block-end: var(--space-5);
+}
+
+.admin-people-field {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  margin-block-end: var(--space-5);
+}
+
+.admin-people-field.is-query {
+  flex: 1 1 16rem;
   max-inline-size: 22rem;
+}
+
+/* Always shown, "0 selected" with Move disabled at rest, so the first tick
+   does not push the table down. The hint takes a line of its own under the
+   controls. */
+.admin-people-bulk {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-3);
+  margin-block-end: var(--space-3);
+}
+
+.admin-people-bulk .admin-form-hint {
+  flex-basis: 100%;
+}
+
+/* The checkbox cell: as narrow as its box, and not a way into the account. */
+.admin-people-select {
+  inline-size: 1px;
+  cursor: default;
 }
 
 /* A whole row opens its account. The button stays because a keyboard and a

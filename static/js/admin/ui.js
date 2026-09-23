@@ -565,6 +565,133 @@ export function setSettingsSaving(isSaving) {
 
 /* ── People ──────────────────────────────────────────────────────────────── */
 
+/** A stored tier label, resolved to the console's language (DESIGN.md
+    "Display resolves one"). */
+function tierLabel(tier) {
+  return (I18n.lang === 'ar' ? tier.label_ar : tier.label_en) || '';
+}
+
+/* Replace a select's tier options with the catalogue's, keeping any "" option
+   (the filter's "All tiers", the composer's "choose a tier"). A `chosen` key the
+   catalogue no longer has falls back to the first option rather than to a blank
+   select. Every tier <select> in the console is filled here. */
+function fillTierOptions(select, tiers, chosen) {
+  select.querySelectorAll('option:not([value=""])').forEach((option) => option.remove());
+  for (const tier of tiers || []) {
+    const option = document.createElement('option');
+    option.value = tier.key;
+    option.textContent = tierLabel(tier);
+    select.appendChild(option);
+  }
+  select.value = chosen;
+  if (select.selectedIndex < 0) select.selectedIndex = 0;
+}
+
+/* The toolbar's half of the catalogue. `undefined` is "not arrived yet" and
+   `null` is "could not be read": only the second replaces the hint. */
+function fillPeopleBulkTiers(select, hint, tiers, destination) {
+  fillTierOptions(select, tiers, destination);
+  select.disabled = !tiers?.length;
+  hint.textContent = I18n.t(
+    tiers === null ? 'admin.people.tierFilterUnavailable' : 'admin.people.moveHint',
+  );
+}
+
+/**
+ * Give the People tab the tier catalogue: the filter's options and the bulk
+ * destination's. `null` means the catalogue could not be read, so the filter
+ * is held on "All" and moving is off — the list itself is unaffected.
+ */
+export function populatePeopleTiers(tiers, { filter = '', destination = '' } = {}) {
+  const select = el('people-tier-filter');
+  if (select) {
+    fillTierOptions(select, tiers, filter);
+    select.disabled = tiers === null;
+    select.title = tiers === null ? I18n.t('admin.people.tierFilterUnavailable') : '';
+    /* The title is invisible to a keyboard or a touch, so the reason is also
+       wired to the toolbar hint, which says the same thing on screen. */
+    if (tiers === null) select.setAttribute('aria-describedby', 'people-bulk-hint');
+    else select.removeAttribute('aria-describedby');
+  }
+  const bulk = el('people-bulk-tier');
+  const hint = el('people-bulk-hint');
+  if (bulk && hint) fillPeopleBulkTiers(bulk, hint, tiers, destination);
+}
+
+/**
+ * The bulk-move toolbar. Rebuilt with the list on every render — every render
+ * clears the selection it acts on, too — and it leaves with the list when an
+ * account is opened. Always shown, reading "0 selected" with Move disabled at
+ * rest: a toolbar that appeared on the first tick pushed the table down under
+ * the cursor (DESIGN.md, reserve a revealed control's space at rest), and it
+ * carries the catalogue-failure hint, which must be readable before anything
+ * is ticked. The destination is the handler's, passed back in, so a choice
+ * survives paging, filtering and the Tiers tab's "Add readers" preset.
+ */
+function peopleBulkToolbar(tiers, destination) {
+  const toolbar = document.createElement('div');
+  toolbar.id = 'people-bulk';
+  toolbar.className = 'admin-people-bulk';
+
+  const count = document.createElement('span');
+  count.id = 'people-bulk-count';
+  count.className = 'admin-pager-size-label';
+  count.setAttribute('aria-live', 'polite');
+
+  const field = (id, labelKey, control) =>
+    cardField(id, I18n.t(labelKey), control, { className: 'admin-people-field' });
+
+  const select = document.createElement('select');
+  select.className = 'form-select admin-input';
+
+  const reason = document.createElement('input');
+  reason.type = 'text';
+  reason.className = 'admin-input';
+  reason.autocomplete = 'off';
+
+  // After the select, so the verb and its target read in one pass.
+  const move = document.createElement('button');
+  move.type = 'button';
+  move.id = 'people-bulk-move';
+  move.className = 'btn btn-primary btn-sm';
+
+  const hint = cardHint('');
+  hint.id = 'people-bulk-hint';
+  fillPeopleBulkTiers(select, hint, tiers, destination);
+
+  toolbar.append(
+    count,
+    field('people-bulk-tier', 'admin.people.moveDestination', select),
+    field('people-bulk-reason', 'admin.people.moveReason', reason),
+    move,
+    hint,
+  );
+  return toolbar;
+}
+
+/** Count `count` ticked rows and name the destination on the button, which is
+    off with nothing ticked and while a Move is `moving` — a tick mid-request
+    must not re-arm it for a second POST. */
+export function setPeopleSelectionState(count, { moving = false } = {}) {
+  if (!el('people-bulk')) return;
+  el('people-bulk-count').textContent = I18n.t('admin.people.selectedCount', { count });
+  const select = el('people-bulk-tier');
+  const move = el('people-bulk-move');
+  const tier = select.selectedOptions[0]?.textContent || '';
+  move.textContent = I18n.t('admin.people.moveTo', { tier });
+  move.disabled = moving || count === 0 || select.disabled || !select.value;
+}
+
+/** A bare row-selection checkbox; the aria-label is its only name. Shared by
+    Notification History and People. */
+function selectCheckbox(ariaLabel) {
+  const box = document.createElement('input');
+  box.type = 'checkbox';
+  box.className = 'admin-notif-select';
+  box.setAttribute('aria-label', ariaLabel);
+  return box;
+}
+
 function machineCell(text, { mono = true } = {}) {
   const td = document.createElement('td');
   if (mono) {
@@ -772,6 +899,8 @@ export function renderUsers({
   limit = 50,
   loading = false,
   activeId = null,
+  tiers,
+  destination = '',
 }) {
   const focusTargetId = activeId || document.activeElement?.id;
   setPeopleLoading(false);
@@ -795,8 +924,18 @@ export function renderUsers({
   table.className = 'admin-table';
   table.id = 'people-table';
 
+  /* The Notification History precedent: a bare checkbox per row, the header
+     one selecting every movable row on this page. */
   const head = document.createElement('thead');
   const headRow = document.createElement('tr');
+  const selectTh = document.createElement('th');
+  selectTh.scope = 'col';
+  selectTh.className = 'admin-people-select';
+  selectTh.textContent = I18n.t('admin.people.columnSelect');
+  const selectAll = selectCheckbox(I18n.t('admin.people.selectAll'));
+  selectAll.id = 'people-select-all';
+  selectTh.appendChild(selectAll);
+  headRow.appendChild(selectTh);
   [
     'columnEmail',
     'columnRole',
@@ -818,6 +957,21 @@ export function renderUsers({
     const row = document.createElement('tr');
     row.dataset.userId = user.id;
 
+    /* An account with no profile row has no tier to replace, so it cannot be
+       moved: the box is there, disabled, and the reason is written beside the
+       address rather than left to a tooltip. */
+    const movable = user.has_profile !== false;
+    const selectTd = document.createElement('td');
+    selectTd.className = 'admin-people-select';
+    const select = selectCheckbox(I18n.t('admin.people.selectRow', { email: user.email }));
+    select.dataset.peopleSelect = '';
+    select.value = user.id;
+    if (!movable) {
+      select.disabled = true;
+      select.title = I18n.t('admin.people.noProfileCannotMove');
+    }
+    selectTd.appendChild(select);
+
     /* The email is the way in. A row that opens a detail view needs an
        affordance a keyboard can reach, and the address is the thing an operator
        is already looking for. `textContent` of the cell is unchanged, which the
@@ -835,6 +989,14 @@ export function renderUsers({
       you.className = 'admin-you';
       you.textContent = ` (${I18n.t('admin.people.you')})`;
       email.appendChild(you);
+    }
+    if (!movable) {
+      // The cell is an LTR box for the address; the note is a sentence.
+      const note = document.createElement('span');
+      note.className = 'admin-cell-note';
+      note.dir = 'auto';
+      note.textContent = I18n.t('admin.people.noProfileCannotMove');
+      email.append(document.createElement('br'), note);
     }
 
     const role = document.createElement('td');
@@ -885,13 +1047,14 @@ export function renderUsers({
     go.setAttribute('aria-hidden', 'true');
     go.innerHTML = iconMarkup('chevron-right', 14);
 
-    row.append(email, role, tier, access, seen, go);
+    row.append(selectTd, email, role, tier, access, seen, go);
     tbody.appendChild(row);
   });
 
   table.append(head, tbody);
   wrapper.appendChild(table);
-  body.appendChild(wrapper);
+  body.append(peopleBulkToolbar(tiers, destination), wrapper);
+  setPeopleSelectionState(0);
 
   const pager = createPeoplePager({
     offset,
@@ -1451,9 +1614,14 @@ let currentSelfId = null;
  * uses — so an operator who has learned to edit a profile has learned to edit
  * an allowance and a tier as well.
  */
-function cardField(id, labelText, control, { hints = [], wide = false } = {}) {
+function cardField(
+  id,
+  labelText,
+  control,
+  { hints = [], wide = false, className = 'admin-profile-field' } = {},
+) {
   const wrap = document.createElement('div');
-  wrap.className = wide ? 'admin-profile-field is-wide' : 'admin-profile-field';
+  wrap.className = wide ? `${className} is-wide` : className;
 
   const label = document.createElement('label');
   label.className = 'admin-label';
@@ -1596,15 +1764,7 @@ function quotaForm(account, tiers) {
   const select = document.createElement('select');
   select.className = 'admin-input';
   select.name = 'tier';
-  for (const tier of tiers || []) {
-    const option = document.createElement('option');
-    option.value = tier.key;
-    /* The operator's own label, in their console language — data, not a
-       catalogue key, because a tier they create cannot have one. */
-    option.textContent = I18n.lang === 'ar' ? tier.label_ar : tier.label_en;
-    if (tier.key === account.tier) option.selected = true;
-    select.append(option);
-  }
+  fillTierOptions(select, tiers, account.tier);
 
   const override = document.createElement('input');
   override.className = 'admin-input';
@@ -1770,9 +1930,10 @@ export function renderAccountDetail(account, entries, selfId = null, tiers = [])
   }
   detail.appendChild(head);
 
-  /* The state the list cannot express at all: `admin_list_users` coalesces the
-     missing columns to healthy defaults, so a broken account reads there as an
-     ordinary reader. Said plainly here instead. */
+  /* The list only flags this: `admin_list_users` still coalesces the missing
+     columns to healthy defaults, and its `has_profile` just disables the row's
+     checkbox with a "cannot be moved" note. What is actually wrong is said
+     plainly here. */
   if (!account.has_profile) {
     const broken = document.createElement('div');
     broken.className = 'admin-notice';
@@ -2715,7 +2876,7 @@ export function renderOverview({ total = null, tiers = null, entries = null, sig
     for (const tier of tiers || []) {
       const row = document.createElement('tr');
       const label = document.createElement('td');
-      label.textContent = (I18n.lang === 'ar' ? tier.label_ar : tier.label_en) || tier.key;
+      label.textContent = tierLabel(tier) || tier.key;
       const limit = document.createElement('td');
       limit.append(machineValue(String(tier.daily_message_limit)));
       const members = document.createElement('td');
@@ -3443,16 +3604,25 @@ export function renderTiers(tiers, { editingKey = null } = {}) {
     row.append(keyCell);
 
     const labelCell = document.createElement('td');
-    labelCell.textContent = (I18n.lang === 'ar' ? tier.label_ar : tier.label_en) || '';
+    const label = tierLabel(tier);
+    labelCell.textContent = label;
     row.append(labelCell);
 
-    for (const value of [
-      String(tier.daily_message_limit),
-      String(tier.member_count ?? 0),
-      String(tier.ordering ?? 0),
-    ]) {
+    /* The member count is the way to those members: it opens People filtered
+       to this tier. The visible text stays the bare number; the accessible
+       name says what it counts. */
+    const count = String(tier.member_count ?? 0);
+    const members = document.createElement('button');
+    members.type = 'button';
+    members.className = 'admin-account-open';
+    members.dataset.tierAction = 'members';
+    members.dataset.tierKey = tier.key;
+    members.setAttribute('aria-label', I18n.t('admin.tiers.membersButton', { count, label }));
+    members.append(machineValue(count));
+
+    for (const value of [String(tier.daily_message_limit), members, String(tier.ordering ?? 0)]) {
       const td = document.createElement('td');
-      td.append(machineValue(value));
+      td.append(typeof value === 'string' ? machineValue(value) : value);
       row.append(td);
     }
 
@@ -3460,19 +3630,23 @@ export function renderTiers(tiers, { editingKey = null } = {}) {
     const group = document.createElement('div');
     group.className = 'admin-row-actions';
 
-    const edit = document.createElement('button');
-    edit.type = 'button';
-    edit.className = 'btn btn-sm btn-ghost admin-row-action';
-    edit.dataset.tierAction = 'edit';
-    edit.textContent = I18n.t('admin.tiers.edit');
-    group.append(edit);
+    const rowAction = (action, textKey) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'btn btn-sm btn-ghost admin-row-action';
+      button.dataset.tierAction = action;
+      button.textContent = I18n.t(textKey);
+      return button;
+    };
+
+    const add = rowAction('add', 'admin.tiers.addReaders');
+    add.dataset.tierKey = tier.key;
+    add.setAttribute('aria-label', I18n.t('admin.tiers.addReadersTo', { label }));
+    group.append(add, rowAction('edit', 'admin.tiers.edit'));
 
     if (tier.key !== 'free') {
-      const del = document.createElement('button');
-      del.type = 'button';
-      del.className = 'btn btn-sm btn-ghost admin-row-action is-destructive';
-      del.dataset.tierAction = 'delete';
-      del.textContent = I18n.t('admin.tiers.delete');
+      const del = rowAction('delete', 'admin.tiers.delete');
+      del.classList.add('is-destructive');
       group.append(del);
     }
     actions.append(group);
@@ -3509,7 +3683,7 @@ export function renderTiers(tiers, { editingKey = null } = {}) {
     input.className = 'admin-input';
     input.name = name;
     input.type = type;
-    input.value = value === null || value === undefined ? '' : String(value);
+    input.defaultValue = value === null || value === undefined ? '' : String(value);
     if (type === 'number') input.min = '0';
     if (name === 'key' && editing) input.readOnly = true;
     /* Two labels, one per script, each typed in its own. `dir="auto"` keeps an
@@ -3545,19 +3719,8 @@ export function renderTiers(tiers, { editingKey = null } = {}) {
 export function populateComposerTiers(tiers) {
   const select = document.getElementById('notif-target-tier');
   if (!select) return;
-  const chosen = select.value;
-  select.textContent = '';
-  const empty = document.createElement('option');
-  empty.value = '';
-  empty.textContent = I18n.t('admin.notifications.composer.tierSelectEmpty');
-  select.appendChild(empty);
-  for (const tier of tiers || []) {
-    const option = document.createElement('option');
-    option.value = tier.key;
-    option.textContent = I18n.lang === 'ar' ? tier.label_ar : tier.label_en;
-    select.appendChild(option);
-  }
-  if (chosen) select.value = chosen;
+  // The empty option is built with the composer and kept by fillTierOptions.
+  fillTierOptions(select, tiers, select.value);
 }
 
 export function renderNotificationsPanel() {
@@ -3623,11 +3786,8 @@ export function renderNotificationHistory(rows, { append = false, filterStatus =
 
     const selectAllTh = document.createElement('th');
     selectAllTh.scope = 'col';
-    const selectAll = document.createElement('input');
-    selectAll.type = 'checkbox';
+    const selectAll = selectCheckbox(I18n.t('admin.notifications.history.selectAllAria'));
     selectAll.id = 'notification-history-select-all';
-    selectAll.className = 'admin-notif-select';
-    selectAll.setAttribute('aria-label', I18n.t('admin.notifications.history.selectAllAria'));
     selectAllTh.appendChild(selectAll);
     headRow.appendChild(selectAllTh);
 
@@ -3676,12 +3836,9 @@ export function renderNotificationHistory(rows, { append = false, filterStatus =
     // "Clear selected"/"Purge selected" each filter the shared selection
     // down to the rows their own action actually applies to.
     const selectTd = document.createElement('td');
-    const selectCheckbox = document.createElement('input');
-    selectCheckbox.type = 'checkbox';
-    selectCheckbox.className = 'admin-notif-select';
-    selectCheckbox.dataset.notifSelect = row.id;
-    selectCheckbox.setAttribute('aria-label', I18n.t('admin.notifications.history.selectRowAria'));
-    selectTd.appendChild(selectCheckbox);
+    const rowSelect = selectCheckbox(I18n.t('admin.notifications.history.selectRowAria'));
+    rowSelect.dataset.notifSelect = row.id;
+    selectTd.appendChild(rowSelect);
 
     const status = document.createElement('td');
     const statusKey =

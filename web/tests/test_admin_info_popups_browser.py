@@ -119,7 +119,9 @@ TABS = {
 KEPT = {
     "overview": (),
     "settings": (("registrations.bypassHeading", "registrations.bypassNote"), "settings.notLive"),
-    "people": (),
+    # A consequence read before the Move click (DESIGN.md: never hides). Added
+    # with bulk tier membership, 2026-09-23.
+    "people": ("people.moveHint",),
     "account": (
         "account.overrideHint",
         "account.overrideWindowHint",

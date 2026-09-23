@@ -198,11 +198,23 @@
 
                    The id is on the FIELD, not the input: opening an account
                    hides this whole block, and hiding the input alone stranded
-                   its label over the account page with nothing underneath. #}
+                   its label over the account page with nothing underneath.
+
+                   The tier filter ships with "All tiers" only; handlers.js
+                   fills the rest from /admin/api/tiers and leaves it on "All"
+                   if the catalogue cannot be read. #}
                 <div class="admin-people-search" id="people-search-field">
-                    <label class="admin-label" for="people-search">{{ t('page.admin.searchLabel') }}</label>
-                    <input type="search" id="people-search" class="admin-input"
-                        autocomplete="off" placeholder="{{ t('page.admin.searchLabel') }}">
+                    <div class="admin-people-field is-query">
+                        <label class="admin-label" for="people-search">{{ t('page.admin.searchLabel') }}</label>
+                        <input type="search" id="people-search" class="admin-input"
+                            autocomplete="off" placeholder="{{ t('page.admin.searchLabel') }}">
+                    </div>
+                    <div class="admin-people-field">
+                        <label class="admin-label" for="people-tier-filter">{{ t('page.admin.tierFilterLabel') }}</label>
+                        <select id="people-tier-filter" class="form-select admin-input">
+                            <option value="">{{ t('page.admin.tierFilterAll') }}</option>
+                        </select>
+                    </div>
                 </div>
                 <div id="people-body" class="admin-panel-body">
                     <div id="people-list"></div>

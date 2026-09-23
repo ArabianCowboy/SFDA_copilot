@@ -88,6 +88,15 @@ declare
   q_text text;
   scopes text;
   cs record;
+
+  -- ── Bulk tier membership (docs/ARCHITECTURE.md#reader-quota) ──────────────────
+  -- ghost is an id no profile row carries, so it must come back as missing.
+  ghost uuid := gen_random_uuid();
+  mv jsonb;
+  audit_mark bigint;
+  ov_before jsonb; ov_after jsonb;
+  t_from text;
+  reader_email text;
 begin
   tx_now := now();
   select id into admin_a from public.profiles where role = 'admin' and not is_disabled order by id limit 1;
@@ -779,6 +788,256 @@ begin
   if scopes is distinct from 'tie a | tie b | tie-b | tiea' then
     raise exception 'FAIL rpc_behaviour — tied groups came back as [%] (want '
       '[tie a | tie b | tie-b | tiea], code-point order)', scopes;
+  end if;
+
+  -- ── Bulk tier membership: admin_set_users_tier and admin_list_users' tier
+  --    filter (docs/ARCHITECTURE.md#reader-quota) ────────────
+  -- THE ONLY REAL PROOF of either: the Flask suite mocks Supabase, so its
+  -- double can only agree with itself about whether an override survives.
+  --
+  -- A scratch destination tier nobody is in, so which ids move is decided by
+  -- this block and not by whatever tiers the live accounts happen to hold.
+  -- admin_a is put there first so it is the one `unchanged` id; reader and
+  -- admin_b are the two that move. Both inserts are rolled back with the rest.
+  insert into public.tiers (key, label_en, label_ar, daily_message_limit, ordering)
+    values ('zz_move_test', 'Move test', 'Move test', 7, 999);
+  update public.profiles set tier = 'zz_move_test' where id = admin_a;
+  select tier into t_from from public.profiles where id = reader;
+
+  -- The override the move must not touch. Captured as the WHOLE row, set_at
+  -- included, so a delete-and-reinsert that restored the same number would
+  -- still fail below.
+  insert into public.reader_quota_overrides (user_id, daily_message_limit, reason, set_by)
+    values (reader, 17, 'kept through a move', admin_a)
+    on conflict (user_id) do update
+      set daily_message_limit = excluded.daily_message_limit, reason = excluded.reason;
+  select to_jsonb(o) into ov_before from public.reader_quota_overrides o where o.user_id = reader;
+  select coalesce(max(id), 0) into audit_mark from public.audit_log;
+
+  -- reader twice, once upper-cased: duplicates are counted once, and case
+  -- does not make a second account. 'not-a-uuid' names no account, so it is
+  -- missing rather than a failed cast (20260923194026).
+  mv := public.admin_set_users_tier(
+          array[reader::text, pg_catalog.upper(reader::text), admin_a::text, ghost::text,
+                admin_b::text, 'not-a-uuid'],
+          'zz_move_test', 'bulk move test', admin_a);
+
+  n := n + 1;
+  if jsonb_array_length(mv -> 'moved_ids') <> 2
+     or not (mv -> 'moved_ids' @> to_jsonb(array[reader, admin_b]))
+     or (mv ->> 'unchanged')::int <> 1
+     or (mv -> 'missing') is distinct from to_jsonb(array['not-a-uuid', ghost::text]) then
+    raise exception 'FAIL rpc_behaviour — a batch of [reader, READER, admin_a (already '
+      'there), ghost, admin_b, not-a-uuid] returned %; want moved_ids = [reader, admin_b] '
+      'with the duplicate counted once, unchanged = 1, missing = [not-a-uuid, ghost]', mv;
+  end if;
+
+  n := n + 1;
+  if (select tier from public.profiles where id = reader) is distinct from 'zz_move_test'
+     or (select tier from public.profiles where id = admin_b) is distinct from 'zz_move_test' then
+    raise exception 'FAIL rpc_behaviour — admin_set_users_tier reported a move that did not '
+      'land in profiles.tier';
+  end if;
+
+  n := n + 1;
+  select to_jsonb(o) into ov_after from public.reader_quota_overrides o where o.user_id = reader;
+  if ov_after is distinct from ov_before then
+    raise exception 'FAIL rpc_behaviour — moving a reader changed their override row from % '
+      'to %; a tier move must never read or write reader_quota_overrides, or every bulk '
+      'move silently wipes personal allowances', ov_before, ov_after;
+  end if;
+
+  -- Exactly one audit row per MOVED profile, none for unchanged or missing.
+  n := n + 1;
+  if (select count(*) from public.audit_log
+       where id > audit_mark and action = 'user.tier_change') <> 2
+     or (select count(*) from public.audit_log
+          where id > audit_mark and action = 'user.tier_change'
+            and target_id = reader::text) <> 1
+     or (select count(*) from public.audit_log
+          where id > audit_mark and action = 'user.tier_change'
+            and target_id = admin_b::text) <> 1 then
+    raise exception 'FAIL rpc_behaviour — want exactly one user.tier_change row each for '
+      'reader and admin_b and none for admin_a (unchanged) or ghost (missing); found %',
+      (select string_agg(target_id, ', ') from public.audit_log
+        where id > audit_mark and action = 'user.tier_change');
+  end if;
+
+  -- …in the shape admin_set_reader_quota writes, so the audit view needs no
+  -- new action.
+  n := n + 1;
+  select to_jsonb(x) into a from (
+    select actor_id, before, after, note from public.audit_log
+     where id > audit_mark and action = 'user.tier_change' and target_id = reader::text) x;
+  if a is distinct from jsonb_build_object(
+       'actor_id', admin_a, 'before', jsonb_build_object('tier', t_from),
+       'after', jsonb_build_object('tier', 'zz_move_test'), 'note', 'bulk move test') then
+    raise exception 'FAIL rpc_behaviour — the tier_change audit row reads %', a;
+  end if;
+
+  -- A batch where nothing moves still returns ARRAYS. jsonb_agg over an empty
+  -- set is null, and a null here reaches the route as `len(None)`.
+  n := n + 1;
+  mv := public.admin_set_users_tier(array[reader::text], 'zz_move_test', null, admin_a);
+  if (mv -> 'moved_ids') is distinct from '[]'::jsonb
+     or (mv -> 'missing') is distinct from '[]'::jsonb
+     or (mv ->> 'unchanged')::int <> 1 then
+    raise exception 'FAIL rpc_behaviour — a no-op batch returned % (want moved_ids [], '
+      'missing [], unchanged 1)', mv;
+  end if;
+
+  -- TQ009: null, empty and 201 elements.
+  n := n + 1;
+  r := 'ACCEPTED';
+  begin perform public.admin_set_users_tier(null, 'zz_move_test', null, admin_a);
+  exception when others then r := sqlstate; end;
+  if r <> 'TQ009' then
+    raise exception 'FAIL rpc_behaviour — a NULL id array gave % (want TQ009)', r;
+  end if;
+
+  n := n + 1;
+  r := 'ACCEPTED';
+  begin perform public.admin_set_users_tier('{}'::text[], 'zz_move_test', null, admin_a);
+  exception when others then r := sqlstate; end;
+  if r <> 'TQ009' then
+    raise exception 'FAIL rpc_behaviour — an empty id array gave % (want TQ009)', r;
+  end if;
+
+  n := n + 1;
+  r := 'ACCEPTED';
+  begin
+    perform public.admin_set_users_tier(
+      array(select gen_random_uuid()::text from generate_series(1, 201)), 'zz_move_test', null,
+      admin_a);
+  exception when others then r := sqlstate; end;
+  if r <> 'TQ009' then
+    raise exception 'FAIL rpc_behaviour — a 201-id array gave % (want TQ009); the batch cap '
+      'is counted on the raw array', r;
+  end if;
+
+  -- A null ELEMENT, not only a null array: it would otherwise come back as a
+  -- JSON null in `missing`, which names no account.
+  n := n + 1;
+  r := 'ACCEPTED';
+  begin perform public.admin_set_users_tier(array[reader::text, null], 'zz_move_test', null,
+                                            admin_a);
+  exception when others then r := sqlstate; end;
+  if r <> 'TQ009' then
+    raise exception 'FAIL rpc_behaviour — an id array holding a null gave % (want TQ009)', r;
+  end if;
+
+  -- TQ002. A check that nothing was written would prove nothing here: the
+  -- caught exception rolls back its own block whatever the function did.
+  -- The second call is the case Flask used to short-circuit: no id is a
+  -- uuid, and the refusal must still come back.
+  n := n + 1;
+  r := 'ACCEPTED';
+  begin perform public.admin_set_users_tier(array[admin_b::text], 'zz_no_such_tier', null,
+                                            admin_a);
+  exception when others then r := sqlstate; end;
+  if r <> 'TQ002' then
+    raise exception 'FAIL rpc_behaviour — an unknown tier gave % (want TQ002)', r;
+  end if;
+
+  n := n + 1;
+  r := 'ACCEPTED';
+  begin perform public.admin_set_users_tier(array['not-a-uuid'], 'zz_no_such_tier', null,
+                                            admin_a);
+  exception when others then r := sqlstate; end;
+  if r <> 'TQ002' then
+    raise exception 'FAIL rpc_behaviour — an unknown tier with no uuid-shaped id gave % '
+      '(want TQ002)', r;
+  end if;
+
+  -- AD004: a null actor, and a non-administrator one.
+  n := n + 1;
+  r := 'ACCEPTED';
+  begin perform public.admin_set_users_tier(array[admin_b::text], 'zz_move_test', null, null);
+  exception when others then r := sqlstate; end;
+  if r <> 'AD004' then
+    raise exception 'FAIL rpc_behaviour — a NULL actor moving readers gave % (want AD004)', r;
+  end if;
+
+  n := n + 1;
+  r := 'ACCEPTED';
+  begin perform public.admin_set_users_tier(array[admin_b::text], 'zz_move_test', null, reader);
+  exception when others then r := sqlstate; end;
+  if r <> 'AD004' then
+    raise exception 'FAIL rpc_behaviour — a non-administrator actor moving readers gave % '
+      '(want AD004)', r;
+  end if;
+
+  -- …and a DISABLED administrator, the third case admin_actor_email refuses.
+  n := n + 1;
+  r := 'ACCEPTED';
+  begin
+    update public.profiles set is_disabled = true where id = admin_b;
+    perform public.admin_set_users_tier(array[reader::text], 'zz_move_test', null, admin_b);
+  exception when others then r := sqlstate; end;
+  if r <> 'AD004' then
+    raise exception 'FAIL rpc_behaviour — a disabled administrator moving readers gave % '
+      '(want AD004)', r;
+  end if;
+
+  -- admin_list_users' tier filter. 'staff' is seeded by 20260903194624, but an
+  -- operator may have deleted it since; ensured here so the filter under test
+  -- is the one the plan names.
+  insert into public.tiers (key, label_en, label_ar, daily_message_limit, ordering)
+    values ('staff', 'Staff', 'Staff', 200, 10)
+    on conflict (key) do nothing;
+  update public.profiles set tier = 'staff' where id = reader;
+  select email::text into reader_email from auth.users where id = reader;
+
+  -- Every row under a tier filter is a profile in that tier, and the total is
+  -- exactly the profile count admin_list_tiers.member_count reports — which is
+  -- what shows no orphan is listed, whether or not this database holds one.
+  n := n + 1;
+  if exists (select 1 from public.admin_list_users(p_limit => 200, p_tier => 'staff') x
+              where not x.has_profile or x.tier <> 'staff')
+     or (select max(x.total) from public.admin_list_users(p_limit => 200, p_tier => 'staff') x)
+        is distinct from (select count(*) from public.profiles where tier = 'staff')
+     or not exists (select 1 from public.admin_list_users(p_limit => 200, p_tier => 'staff') x
+                     where x.id = reader and x.has_profile) then
+    raise exception 'FAIL rpc_behaviour — admin_list_users(p_tier => staff) listed a row '
+      'without a profile or outside staff, missed reader, or disagreed with the profile count';
+  end if;
+
+  -- has_profile agrees with the join on every unfiltered row.
+  n := n + 1;
+  if exists (select 1 from public.admin_list_users(p_limit => 200) x
+              where x.has_profile is distinct from
+                    exists (select 1 from public.profiles p where p.id = x.id)) then
+    raise exception 'FAIL rpc_behaviour — admin_list_users reported has_profile wrongly for '
+      'at least one account';
+  end if;
+
+  -- A concrete orphan, made by deleting reader's profile inside a savepoint
+  -- that the sentinel raise rolls back. Every FK onto profiles(id) cascades
+  -- (profile_last_seen, reader_quota_overrides), and variables assigned here
+  -- survive the rollback. The orphan must be absent under 'staff' and under
+  -- 'free' — the coalesced display value, which a filter on the wrong column
+  -- would match — and present, with has_profile false, under All.
+  n := n + 1;
+  r := 'ACCEPTED';
+  scopes := null;
+  begin
+    delete from public.profiles where id = reader;
+    select string_agg(coalesce(p_tier_case, 'all') || ':' || x.has_profile::text, ', ')
+      into scopes
+      from (values (null::text), ('staff'), ('free')) as t(p_tier_case)
+      cross join lateral public.admin_list_users(p_limit => 200, p_search => reader_email,
+                                                 p_tier => t.p_tier_case) x
+     where x.id = reader;
+    raise exception 'rollback the orphan' using errcode = 'ZZ901';
+  exception when others then r := sqlstate; end;
+  if r <> 'ZZ901' then
+    raise exception 'FAIL rpc_behaviour — could not stage an orphan (deleting reader''s '
+      'profile gave %)', r;
+  end if;
+  if scopes is distinct from 'all:false' then
+    raise exception 'FAIL rpc_behaviour — a profile-less account listed as [%] (want '
+      '[all:false]: present under All with has_profile false, absent under staff and free)',
+      scopes;
   end if;
 
   summary := format('PASS rpc_behaviour.test.sql — %s assertions', n);

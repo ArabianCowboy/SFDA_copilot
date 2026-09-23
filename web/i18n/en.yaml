@@ -698,6 +698,18 @@ runtime:
       showing: 'Showing'
       of: 'of'
       pageSize: 'Rows per page'
+      columnSelect: ''
+      selectAll: 'Select all rows on this page'
+      selectRow: 'Select {email}'
+      selectedCount: '{count} selected'
+      moveDestination: 'Destination tier'
+      moveReason: 'Reason (optional)'
+      moveTo: 'Move to {tier}'
+      moveHint: 'A reader is in one tier at a time — moving replaces their current tier. Personal allowances are kept.'
+      moveSummary: 'Moved {moved}. Already in that tier: {unchanged}. Not found: {missing}. Personal allowances are kept.'
+      moveFailed: 'Could not move those readers.'
+      noProfileCannotMove: 'No profile — cannot be moved'
+      tierFilterUnavailable: 'Tiers could not be loaded; filtering and moving are unavailable.'
     # docs/ARCHITECTURE.md#notification-center (reasoning in
     # docs/archive/2026-08-24_notification-center.md). The admin composer and send history.
     tiers:
@@ -733,6 +745,11 @@ runtime:
       invalid_labels: 'Both labels are required, up to 40 characters.'
       invalid_key: 'A key must start with a letter and use only lower-case letters, digits and underscores.'
       invalid_window: 'The end of the window must be in the future, and after its start.'
+      membersButton: 'Readers in {label}: {count}'
+      addReaders: 'Add readers'
+      addReadersTo: 'Add readers to {label}'
+      invalid_member_batch: 'Choose between 1 and 200 readers to move.'
+      actor_no_longer_administrator: 'Your administrator access changed while you were working. Reload and try again.'
     # The self-serve deletion ledger (supabase/pending/07 + /10) and the
     # console reconcile action (slice 2c). Nested under `admin` like every
     # other console surface: the inlined runtime.* top-level keys are a
@@ -1161,3 +1178,5 @@ page:
       deletions: 'Deletions'
       analytics: 'Analytics'
     searchLabel: 'Search by email'
+    tierFilterLabel: 'Tier'
+    tierFilterAll: 'All tiers'

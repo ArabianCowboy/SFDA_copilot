@@ -300,3 +300,230 @@ def test_the_override_reason_is_recorded_as_the_audit_note(client, user_id):
     row = next(e for e in entries if e["action"] == "user.quota_override_change")
     assert row["note"] == "conference week"
     assert row["after"]["daily_message_limit"] == 50
+
+
+# ── bulk tier membership ─────────────────────────────────────────────────────
+#
+# These tests seed their own UUID-shaped rows into the in-memory backend, the
+# same way `test_admin_users.py`'s pagination tests seed synthetic rows, so the
+# ids look like production's. The route itself accepts any non-empty string: a
+# non-uuid is reported missing, never refused (see the plan's "Changes during
+# implementation").
+
+_UUID_A = "11111111-1111-4111-8111-111111111111"
+_UUID_B = "22222222-2222-4222-8222-222222222222"
+_UUID_ALREADY_STAFF = "33333333-3333-4333-8333-333333333333"
+_UUID_ORPHAN = "44444444-4444-4444-8444-444444444444"
+_UUID_NONEXISTENT = "55555555-5555-4555-8555-555555555555"
+
+
+def _uuid_user(uid: str, *, tier: str = "free", has_profile: bool = True) -> dict:
+    row = {
+        "id": uid,
+        "email": f"{uid}@example.com",
+        "role": "user",
+        "tier": tier,
+        "is_disabled": False,
+        "disabled_at": None,
+        "disabled_reason": None,
+        "created_at": "2026-05-01T00:00:00+00:00",
+        "last_sign_in_at": None,
+        "email_identity_verified": True,
+    }
+    if not has_profile:
+        row["has_profile"] = False
+    return row
+
+
+def _seed(app, *rows) -> None:
+    app.config["_testing_admin_backend"]._users.extend(rows)
+
+
+def test_moving_readers_into_a_tier_records_one_audit_row_each(client, app):
+    _seed(app, _uuid_user(_UUID_A), _uuid_user(_UUID_B))
+
+    response = client.post(
+        "/admin/api/tiers/staff/members", json={"user_ids": [_UUID_A, _UUID_B]}, headers=ADMIN
+    )
+    assert response.status_code == 200
+    assert response.get_json() == {"moved": 2, "unchanged": 0, "missing": []}
+
+    entries = client.get("/admin/api/audit", headers=ADMIN).get_json()["entries"]
+    moved_entries = [
+        e
+        for e in entries
+        if e["action"] == "user.tier_change" and e["target_id"] in (_UUID_A, _UUID_B)
+    ]
+    assert len(moved_entries) == 2
+    assert {e["target_id"] for e in moved_entries} == {_UUID_A, _UUID_B}
+
+
+def test_unchanged_and_missing_readers_are_counted(client, app):
+    _seed(
+        app,
+        _uuid_user(_UUID_ALREADY_STAFF, tier="staff"),
+        _uuid_user(_UUID_ORPHAN, has_profile=False),
+    )
+
+    response = client.post(
+        "/admin/api/tiers/staff/members",
+        json={"user_ids": [_UUID_ALREADY_STAFF, _UUID_ORPHAN, _UUID_NONEXISTENT]},
+        headers=ADMIN,
+    )
+    assert response.status_code == 200
+    body = response.get_json()
+    assert body["moved"] == 0
+    assert body["unchanged"] == 1
+    assert set(body["missing"]) == {_UUID_ORPHAN, _UUID_NONEXISTENT}
+
+
+def test_a_per_reader_quota_override_survives_a_tier_move(client, app, quota):
+    _seed(app, _uuid_user(_UUID_A))
+    client.put(
+        f"/admin/api/users/{_UUID_A}/quota",
+        json=quota_body(daily_message_limit_override=42, reason="conference"),
+        headers=ADMIN,
+    )
+    assert quota.overrides.get(_UUID_A) is not None
+
+    response = client.post(
+        "/admin/api/tiers/staff/members", json={"user_ids": [_UUID_A]}, headers=ADMIN
+    )
+    assert response.status_code == 200
+    assert response.get_json()["moved"] == 1
+    # The move never touched the override -- it is the same one set above.
+    assert quota.overrides[_UUID_A]["daily_message_limit"] == 42
+
+
+@pytest.mark.parametrize(
+    "user_ids",
+    [
+        "not-a-list",
+        [],
+        [123],
+        [None],
+        [""],
+        [_UUID_A] * 201,
+    ],
+    ids=["non_list", "empty", "non_string_item", "null_item", "empty_string_item", "over_200"],
+)
+def test_a_bad_member_batch_is_refused(client, app, user_ids):
+    """400 here is about *shape*: not a list, an out-of-range count (checked on
+    the raw list, before dedup), or an item that is not even a non-empty
+    string. A well-formed string that merely isn't a real UUID is a different
+    case -- see the next test -- because the double (and, in production, the
+    RPC) can tell "malformed" from "unknown" apart without help from the
+    route."""
+    _seed(app, _uuid_user(_UUID_A))
+    response = client.post(
+        "/admin/api/tiers/staff/members", json={"user_ids": user_ids}, headers=ADMIN
+    )
+    assert response.status_code == 400
+    assert response.get_json() == {"error": "invalid_payload"}
+
+
+def test_a_non_uuid_id_is_reported_missing_rather_than_rejected(client, app):
+    """A string that is not a UUID identifies no account, so it is reported
+    `missing` like any other id the batch does not find -- not a 400. This is
+    also what lets the double's non-UUID seed ids (`test-user-id`, ...) be
+    moved at all."""
+    _seed(app, _uuid_user(_UUID_A))
+    response = client.post(
+        "/admin/api/tiers/staff/members",
+        json={"user_ids": [_UUID_A, "not-a-uuid"]},
+        headers=ADMIN,
+    )
+    assert response.status_code == 200
+    body = response.get_json()
+    assert body["moved"] == 1
+    assert body["missing"] == ["not-a-uuid"]
+
+
+def test_duplicate_ids_are_deduped_and_counted_once(client, app):
+    _seed(app, _uuid_user(_UUID_A))
+
+    response = client.post(
+        "/admin/api/tiers/staff/members",
+        json={"user_ids": [_UUID_A, _UUID_A, _UUID_A]},
+        headers=ADMIN,
+    )
+    assert response.status_code == 200
+    assert response.get_json() == {"moved": 1, "unchanged": 0, "missing": []}
+
+    entries = client.get("/admin/api/audit", headers=ADMIN).get_json()["entries"]
+    moved_entries = [
+        e for e in entries if e["action"] == "user.tier_change" and e["target_id"] == _UUID_A
+    ]
+    assert len(moved_entries) == 1
+
+
+def test_moving_into_an_unknown_tier_is_refused(client, app):
+    _seed(app, _uuid_user(_UUID_A))
+    response = client.post(
+        "/admin/api/tiers/ghost/members", json={"user_ids": [_UUID_A]}, headers=ADMIN
+    )
+    assert response.status_code == 409
+    assert response.get_json() == {"error": "no_such_tier"}
+
+
+def test_a_reader_cannot_move_anyone(client, app):
+    _seed(app, _uuid_user(_UUID_A))
+    response = client.post(
+        "/admin/api/tiers/staff/members", json={"user_ids": [_UUID_A]}, headers=READER
+    )
+    assert response.status_code == 403
+
+
+def test_a_demoted_actor_cannot_move_anyone(client, app):
+    """Re-checked in the double the same way `set_user_flags` is, mirroring the
+    SQL's actor gate rather than trusting the route-level auth alone."""
+    _seed(app, _uuid_user(_UUID_A))
+    admin_row = next(
+        r for r in app.config["_testing_admin_backend"]._users if r["id"] == "test-admin-id"
+    )
+    admin_row["is_disabled"] = True
+    try:
+        response = client.post(
+            "/admin/api/tiers/staff/members", json={"user_ids": [_UUID_A]}, headers=ADMIN
+        )
+        assert response.status_code == 409
+        assert response.get_json() == {"error": "actor_no_longer_administrator"}
+    finally:
+        admin_row["is_disabled"] = False
+
+
+def test_identity_caches_are_evicted_for_moved_ids_only(client, app):
+    from web.services.identity_cache import IdentityFlags
+
+    _seed(app, _uuid_user(_UUID_A), _uuid_user(_UUID_ALREADY_STAFF, tier="staff"))
+    cache = app.config["identity_flags"]
+    cache.put(IdentityFlags(_UUID_A, f"{_UUID_A}@example.com", "user", "free", False))
+    cache.put(
+        IdentityFlags(
+            _UUID_ALREADY_STAFF, f"{_UUID_ALREADY_STAFF}@example.com", "user", "staff", False
+        )
+    )
+    assert cache.get(_UUID_A) is not None
+    assert cache.get(_UUID_ALREADY_STAFF) is not None
+
+    response = client.post(
+        "/admin/api/tiers/staff/members",
+        json={"user_ids": [_UUID_A, _UUID_ALREADY_STAFF]},
+        headers=ADMIN,
+    )
+    assert response.get_json()["moved"] == 1
+
+    assert cache.get(_UUID_A) is None, "the moved reader's cached flags must be dropped"
+    assert cache.get(_UUID_ALREADY_STAFF) is not None, (
+        "an unchanged reader's cache has nothing stale to evict"
+    )
+
+
+def test_member_count_excludes_the_profile_less_orphan(client):
+    """The seeded orphan carries a stored `free` tier but no profile row, so it
+    must not inflate `free`'s member count -- keeping the count and the
+    tier-filtered People list in agreement."""
+    tiers = client.get("/admin/api/tiers", headers=ADMIN).get_json()["tiers"]
+    free = next(t for t in tiers if t["key"] == "free")
+    # test-user-id and test-disabled-id only; test-orphan-id is excluded.
+    assert free["member_count"] == 2

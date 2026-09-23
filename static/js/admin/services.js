@@ -132,8 +132,10 @@ export function createAdminServices(getToken) {
       request('registrations', { method: 'PUT', body: { signup_enabled: signupEnabled } }),
 
     /** Accounts and their standing. */
-    users: ({ limit = 50, offset = 0, q = '', signal } = {}) =>
-      request(`users?limit=${limit}&offset=${offset}&q=${encodeURIComponent(q)}`, { signal }),
+    users: ({ limit = 50, offset = 0, q = '', tier = '', signal } = {}) => {
+      const query = `users?limit=${limit}&offset=${offset}&q=${encodeURIComponent(q)}`;
+      return request(tier ? `${query}&tier=${encodeURIComponent(tier)}` : query, { signal });
+    },
 
     /** Change a role or chat access. Refusals arrive as 409 with a code. */
     setUserFlags: (id, patch) =>
@@ -217,6 +219,14 @@ export function createAdminServices(getToken) {
       request(`tiers/${encodeURIComponent(key)}`, { method: 'PATCH', body: payload }),
 
     deleteTier: (key) => request(`tiers/${encodeURIComponent(key)}`, { method: 'DELETE' }),
+
+    /* Move readers INTO a tier. Replaces each reader's current tier; personal
+       overrides are never touched. 409 carries a refusal code. */
+    addTierMembers: (key, userIds, reason) =>
+      request(`tiers/${encodeURIComponent(key)}/members`, {
+        method: 'POST',
+        body: { user_ids: userIds, reason },
+      }),
 
     /* A PUT of the WHOLE quota state — every key, every time. The route refuses
        a partial body because the RPC's nulls are asymmetric: `tier: null` leaves

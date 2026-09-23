@@ -50,6 +50,20 @@ class AdminActionRefused(Exception):
         self.code = code
 
 
+def _is_uuid(value) -> bool:
+    """The canonical hyphenated form, in either case.
+
+    ``uuid.UUID`` alone also accepts a ``urn:uuid:`` prefix, braces, a leading
+    ``+`` and non-ASCII digits, all of which Postgres's uuid input rejects -- as
+    a 22P02 that surfaces as a 500. Round-tripping through ``str`` keeps only
+    the form both sides agree on.
+    """
+    try:
+        return str(uuid.UUID(str(value))) == str(value).lower()
+    except (ValueError, AttributeError, TypeError):
+        return False
+
+
 def _require_uuid(value: str, refusal_code: str) -> None:
     """Refuse an id that is not a uuid before it reaches the database.
 
@@ -61,10 +75,8 @@ def _require_uuid(value: str, refusal_code: str) -> None:
     Deliberately backend-only: the in-memory testing doubles' fixtures use
     non-uuid ids on purpose, and this check must never see them.
     """
-    try:
-        uuid.UUID(str(value))
-    except (ValueError, AttributeError, TypeError):
-        raise AdminActionRefused(refusal_code) from None
+    if not _is_uuid(value):
+        raise AdminActionRefused(refusal_code)
 
 
 # Postgres SQLSTATEs raised by admin_set_user_flags, mapped to the codes the
@@ -89,6 +101,8 @@ _REFUSAL_CODES = {
     "TQ006": "invalid_labels",
     "TQ007": "invalid_window",
     "TQ008": "invalid_key",
+    # admin_set_users_tier: an empty batch or one over 200 ids.
+    "TQ009": "invalid_member_batch",
 }
 
 # The columns that describe a reader's standing. Named once so the query and
@@ -198,8 +212,15 @@ class AdminBackend(Protocol):
         """
         ...
 
-    def list_users(self, *, limit: int, offset: int, search: str | None) -> tuple:
-        """``(rows, total)``. Emails come from auth, standing from profiles."""
+    def list_users(
+        self, *, limit: int, offset: int, search: str | None, tier: str | None = None
+    ) -> tuple:
+        """``(rows, total)``. Emails come from auth, standing from profiles.
+
+        ``tier`` filters on the stored ``profiles.tier``, so an account with no
+        profile row never appears under a tier. Every row carries
+        ``has_profile`` so the console can make such an account unselectable.
+        """
         ...
 
     def get_user(self, user_id: str) -> dict | None:
@@ -284,6 +305,15 @@ class AdminBackend(Protocol):
         Both levels in one audited transaction, because the console saves them
         together. ``override=None`` CLEARS the override; ``tier=None`` leaves the
         tier alone. The asymmetry is why the route always sends every key.
+        """
+        ...
+
+    def set_users_tier(self, user_ids: list[str], *, tier: str, reason: str | None, actor) -> dict:
+        """Move up to 200 accounts into ``tier`` in one audited transaction.
+
+        Returns ``{"moved_ids": [...], "unchanged": n, "missing": [...]}``.
+        One ``user.tier_change`` audit row per moved account; personal
+        overrides are never read or written. Refuses TQ009/TQ002/AD004.
         """
         ...
 
@@ -533,11 +563,16 @@ class SupabaseAdminBackend:
 
     # ── Accounts ──────────────────────────────────────────────────────────────
 
-    def list_users(self, *, limit: int, offset: int, search: str | None) -> tuple:
-        response = self._client.rpc(
-            "admin_list_users",
-            {"p_limit": limit, "p_offset": offset, "p_search": search or None},
-        ).execute()
+    def list_users(
+        self, *, limit: int, offset: int, search: str | None, tier: str | None = None
+    ) -> tuple:
+        # p_tier only when filtering, so the unfiltered list -- People and the
+        # Overview count -- also works against the 3-argument function a
+        # schema-first rollback of 20260923174827 would restore.
+        params = {"p_limit": limit, "p_offset": offset, "p_search": search or None}
+        if tier:
+            params["p_tier"] = tier
+        response = self._client.rpc("admin_list_users", params).execute()
         rows = getattr(response, "data", None) or []
         # `total` is carried on every row by the window in the function, so a
         # paginated view can say "12 of 400" without a second count query.
@@ -609,9 +644,7 @@ class SupabaseAdminBackend:
         # Same reasoning as `_require_uuid`: a non-uuid identifies no account,
         # and that is a "not found", not a crash. None rather than a refusal,
         # because a read has nothing to refuse.
-        try:
-            uuid.UUID(str(user_id))
-        except (ValueError, AttributeError, TypeError):
+        if not _is_uuid(user_id):
             return None
 
         response = self._client.rpc("admin_get_user", {"p_user_id": user_id}).execute()
@@ -738,6 +771,22 @@ class SupabaseAdminBackend:
         )
         return getattr(response, "data", None) or {}
 
+    def set_users_tier(self, user_ids: list[str], *, tier: str, reason: str | None, actor) -> dict:
+        # Every id goes to the RPC as text, uuid-shaped or not. It reports a
+        # non-uuid as missing itself (20260923194026), AFTER its actor and tier
+        # checks -- so the refusals do not depend on what the ids look like,
+        # and no uuid cast can fail the batch.
+        response = self._rpc(
+            "admin_set_users_tier",
+            {
+                "p_user_ids": list(user_ids),
+                "p_tier": tier,
+                "p_reason": reason,
+                **actor.as_rpc_args(with_email=False),
+            },
+        )
+        return getattr(response, "data", None) or {}
+
     # -- analytics ------------------------------------------------------------
     #
     # Two read-only aggregates, through the same `_rpc` helper every other
@@ -848,7 +897,7 @@ class InMemoryAdminBackend:
             {
                 "key": key,
                 **row,
-                "member_count": sum(1 for u in self._users if u.get("tier") == key),
+                "member_count": self._member_count(key),
             }
             for key, row in tiers.items()
         ]
@@ -921,7 +970,7 @@ class InMemoryAdminBackend:
             raise AdminActionRefused("default_tier_protected")
         if key not in tiers:
             raise AdminActionRefused("no_such_tier")
-        if any(u.get("tier") == key for u in self._users):
+        if self._member_count(key):
             raise AdminActionRefused("tier_in_use")
         before = dict(tiers.pop(key))
         self._record(
@@ -937,7 +986,7 @@ class InMemoryAdminBackend:
     def set_reader_quota(
         self, user_id: str, *, tier, override, starts_at, expires_at, reason, actor
     ) -> dict:
-        row = next((r for r in self._users if r["id"] == user_id), None)
+        row = self._user(user_id)
         if row is None:
             raise AdminActionRefused("no_such_account")
         if override is not None and int(override) < 0:
@@ -949,16 +998,7 @@ class InMemoryAdminBackend:
             raise AdminActionRefused("no_such_tier")
 
         if tier is not None and tier != row.get("tier"):
-            self._record(
-                action="user.tier_change",
-                target_type="user",
-                target_id=user_id,
-                actor=actor,
-                before={"tier": row.get("tier")},
-                after={"tier": tier},
-                note=reason,
-            )
-            row["tier"] = tier
+            self._move_tier(row, tier, actor=actor, reason=reason)
 
         # Synced UNCONDITIONALLY, not only when the tier changed. The seeded
         # users already carry a tier, so a first save that leaves it alone would
@@ -992,6 +1032,33 @@ class InMemoryAdminBackend:
                 )
         return {"tier": row.get("tier"), "override": override}
 
+    def set_users_tier(self, user_ids: list[str], *, tier: str, reason: str | None, actor) -> dict:
+        # The actor check comes first, as in the SQL — unlike the older tier
+        # doubles above, which skip it and so accept what production refuses.
+        self._require_admin_actor(actor)
+        if not user_ids or len(user_ids) > 200:
+            raise AdminActionRefused("invalid_member_batch")
+        if tier not in self._tiers():
+            raise AdminActionRefused("no_such_tier")
+
+        moved_ids: list[str] = []
+        missing: list[str] = []
+        unchanged = 0
+        for user_id in dict.fromkeys(user_ids):
+            row = self._user(user_id)
+            if row is None or not row.get("has_profile", True):
+                missing.append(user_id)
+            elif row.get("tier") == tier:
+                unchanged += 1
+                if self._quota is not None:
+                    self._quota.profile_tiers[user_id] = tier
+            else:
+                # Overrides are deliberately untouched: a personal allowance
+                # outlives a tier move, exactly as in admin_set_users_tier.
+                self._move_tier(row, tier, actor=actor, reason=reason)
+                moved_ids.append(user_id)
+        return {"moved_ids": moved_ids, "unchanged": unchanged, "missing": missing}
+
     def fetch_identity(self, user_id: str, email: str | None) -> IdentityFlags | None:
         # Identity in TESTING comes from _TESTING_IDENTITIES before any backend
         # is consulted, so this is only reached by a caller that bypassed the
@@ -999,13 +1066,37 @@ class InMemoryAdminBackend:
         return None
 
     def get_standing_line_facts(self, user_id: str) -> dict | None:
-        row = next((r for r in self._users if r["id"] == user_id), None)
+        row = self._user(user_id)
         if row is None:
             return None
         return {
             "created_at": row.get("created_at"),
             "conversation_count": row.get("conversation_count", 0),
         }
+
+    def _move_tier(self, row: dict, tier: str, *, actor, reason) -> None:
+        """One account's tier change: its audit row, the row, and the quota double."""
+        self._record(
+            action="user.tier_change",
+            target_type="user",
+            target_id=row["id"],
+            actor=actor,
+            before={"tier": row.get("tier")},
+            after={"tier": tier},
+            note=reason,
+        )
+        row["tier"] = tier
+        if self._quota is not None:
+            self._quota.profile_tiers[row["id"]] = tier
+
+    def _member_count(self, key: str) -> int:
+        """Profile rows only, like the SQL: the profile-less seed has no stored
+        tier, so counting it as `free` would disagree with the tier-filtered
+        People list the count links to, and block a delete the SQL allows."""
+        return sum(1 for u in self._users if u.get("has_profile", True) and u.get("tier") == key)
+
+    def _user(self, user_id) -> dict | None:
+        return next((r for r in self._users if r["id"] == user_id), None)
 
     def _require_admin_actor(self, actor) -> None:
         """Mirror public.admin_actor_email, which every mutating RPC now calls.
@@ -1022,7 +1113,7 @@ class InMemoryAdminBackend:
         """
         if not actor.user_id:
             raise AdminActionRefused("actor_no_longer_administrator")
-        acting = next((r for r in self._users if r["id"] == actor.user_id), None)
+        acting = self._user(actor.user_id)
         # `has_profile` is part of the gate, not decoration. The SQL joins
         # public.profiles to auth.users, so an account that exists in auth with
         # no profile row matches nothing and is refused. Without this the double
@@ -1154,14 +1245,20 @@ class InMemoryAdminBackend:
             },
         ]
 
-    def list_users(self, *, limit: int, offset: int, search: str | None) -> tuple:
+    def list_users(
+        self, *, limit: int, offset: int, search: str | None, tier: str | None = None
+    ) -> tuple:
         rows = self._users
         if search:
             needle = search.lower()
             rows = [r for r in rows if needle in r["email"].lower()]
-        # `has_profile` is detail-only; the list deliberately does not carry it,
-        # matching admin_list_users, which cannot distinguish the case at all.
-        listed = [{k: v for k, v in r.items() if k != "has_profile"} for r in rows]
+        # On the stored tier, as the SQL filters `p.tier`: the profile-less seed
+        # carries a display `free` but has no profile row to be in a tier.
+        if tier is not None:
+            rows = [r for r in rows if r.get("has_profile", True) and r["tier"] == tier]
+        # `has_profile` on every row, matching admin_list_users' projection, so
+        # the console can refuse to select an account it cannot move.
+        listed = [{**r, "has_profile": r.get("has_profile", True)} for r in rows]
         return listed[offset : offset + limit], len(rows)
 
     # ── The deletion ledger ───────────────────────────────────────────────
@@ -1238,7 +1335,7 @@ class InMemoryAdminBackend:
         # stale-write refusal, and writing NO audit row for an empty diff.
         self._require_admin_actor(actor)
 
-        row = next((r for r in self._users if r["id"] == user_id), None)
+        row = self._user(user_id)
         if row is None or not row.get("has_profile", True):
             raise AdminActionRefused("no_such_account")
 
@@ -1274,7 +1371,7 @@ class InMemoryAdminBackend:
         return after
 
     def get_user(self, user_id: str) -> dict | None:
-        row = next((r for r in self._users if r["id"] == user_id), None)
+        row = self._user(user_id)
         if row is None:
             return None
 
@@ -1335,7 +1432,7 @@ class InMemoryAdminBackend:
         # (silent for an hour) — the throttle itself is proven only by
         # supabase/tests/rpc_behaviour.test.sql, against the live function,
         # not by anything routed through this fake.
-        row = next((r for r in self._users if r["id"] == user_id), None)
+        row = self._user(user_id)
         if row is None or not row.get("has_profile", True):
             return
         from datetime import datetime
@@ -1361,7 +1458,7 @@ class InMemoryAdminBackend:
         # which covers both.
         self._require_admin_actor(actor)
 
-        row = next((r for r in self._users if r["id"] == user_id), None)
+        row = self._user(user_id)
         # A profile-less account is `no_such_account` here too, matching
         # admin_set_user_flags: its `select ... from public.profiles where id =
         # p_user_id for update` finds nothing and raises AD003. update_profile

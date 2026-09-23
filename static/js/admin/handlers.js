@@ -28,6 +28,8 @@ import {
   setBulkSelectionState,
   setNotificationComposerSending,
   setPeopleLoading,
+  setPeopleSelectionState,
+  populatePeopleTiers,
   showAccountList,
   showAccountMessage,
   showComposerError,
@@ -190,6 +192,18 @@ function describeHistoryActionError(error, fallbackKey) {
   return key ? I18n.t(key) : I18n.t(fallbackKey);
 }
 
+/**
+ * A header "select all" checkbox, tri-state: checked when every row box is
+ * selected, indeterminate when only some are. Shared by Notification History
+ * and People, which each own their own selection set.
+ */
+function syncSelectAll(selectAll, checkboxes, isSelected) {
+  if (!selectAll) return;
+  const checkedCount = checkboxes.filter(isSelected).length;
+  selectAll.checked = checkboxes.length > 0 && checkedCount === checkboxes.length;
+  selectAll.indeterminate = checkedCount > 0 && checkedCount < checkboxes.length;
+}
+
 export async function initNotificationsTab(services) {
   /* The composer's tier select is built empty; fill it from the catalogue.
      Allowed to fail quietly — a composer with an empty select still refuses to
@@ -248,16 +262,11 @@ export async function initNotificationsTab(services) {
   // header checked while only the pre-append rows were actually selected
   // (found in review).
   function syncSelectAllCheckbox() {
-    const selectAll = document.getElementById('notification-history-select-all');
-    if (!selectAll) return;
-    const checkboxes = Array.from(
-      document.querySelectorAll('#notification-history-table [data-notif-select]'),
+    syncSelectAll(
+      document.getElementById('notification-history-select-all'),
+      Array.from(document.querySelectorAll('#notification-history-table [data-notif-select]')),
+      (checkbox) => selectedIds.has(checkbox.dataset.notifSelect),
     );
-    const checkedCount = checkboxes.filter((checkbox) =>
-      selectedIds.has(checkbox.dataset.notifSelect),
-    ).length;
-    selectAll.checked = checkboxes.length > 0 && checkedCount === checkboxes.length;
-    selectAll.indeterminate = checkedCount > 0 && checkedCount < checkboxes.length;
   }
 
   function updateClearAllAvailability() {
@@ -798,6 +807,26 @@ export async function loadAudit(services) {
   }
 }
 
+/* Set by initPeopleTab, which owns the filter, destination and list state the
+   Tiers tab's two entry points need. */
+let showPeopleForTier = null;
+
+/* Set by initTiersTab. A Move changes member counts the Tiers table loaded
+   once, so it is told to re-read them on its next activation. */
+let markTiersStale = null;
+
+/**
+ * Switch to People for one tier: its members (`filter: true`, focus on the
+ * filter) or everyone, with that tier preset as the move destination (focus on
+ * the search box). Focus moves either way, because the control that asked is
+ * in the Tiers panel this has just hidden.
+ */
+function openPeopleForTier(key, { filter }) {
+  // A click, not selectTab(): any lazy loader hangs off the tab button's click.
+  document.getElementById('tab-people')?.click();
+  return showPeopleForTier?.(key, { filter });
+}
+
 /**
  * Load the People tab and wire its actions.
  *
@@ -836,10 +865,25 @@ export async function initPeopleTab(services) {
   let requestSequence = 0;
   let activeListAbort = null;
 
+  /* The tier filter and the bulk-move destination are state, not read off
+     their selects: the Tiers tab can set either before the catalogue has put
+     the matching option in. `tiers` is undefined until the catalogue arrives
+     and null if it could not be read. */
+  const tierFilter = document.getElementById('people-tier-filter');
+  let tier = '';
+  let destination = '';
+  let tiers;
+  let tiersSequence = 0;
+  // Ticked rows, by user id. Cleared by every successful render.
+  const selectedIds = new Set();
+  // A Move is in flight: its button stays off whatever the selection does.
+  let moving = false;
+
   async function loadPage({
     targetOffset = offset,
     targetLimit = limit,
     targetQuery = search?.value.trim() || '',
+    targetTier = tier,
     callerActiveId = null,
   } = {}) {
     clearTimeout(searchTimer);
@@ -867,6 +911,7 @@ export async function initPeopleTab(services) {
         q: targetQuery,
         limit: targetLimit,
         offset: targetOffset,
+        tier: targetTier,
         signal: controller.signal,
       });
       if (mine !== generation || seq !== requestSequence) return;
@@ -875,7 +920,7 @@ export async function initPeopleTab(services) {
       // regardless of total, reset to offset 0 and refetch once unconditionally.
       if (result.users && result.users.length === 0 && targetOffset > 0) {
         offset = 0;
-        return await loadPage({ targetOffset: 0, targetLimit, targetQuery });
+        return await loadPage({ targetOffset: 0, targetLimit, targetQuery, targetTier });
       }
 
       offset = typeof result.offset === 'number' ? result.offset : targetOffset;
@@ -884,6 +929,7 @@ export async function initPeopleTab(services) {
       query = targetQuery;
 
       showAccountList();
+      selectedIds.clear();
       renderUsers({
         users: result.users || [],
         total,
@@ -892,7 +938,10 @@ export async function initPeopleTab(services) {
         limit,
         loading: false,
         activeId,
+        tiers,
+        destination,
       });
+      syncSelection();
     } catch (error) {
       if (error?.name === 'AbortError' || controller.signal.aborted) {
         return;
@@ -910,6 +959,108 @@ export async function initPeopleTab(services) {
       }
     }
   }
+
+  /* Header box, toolbar and Move button, from the ticked set. Only enabled
+     boxes count: a row with no profile can never be selected. */
+  function syncSelection() {
+    const boxes = Array.from(body.querySelectorAll('[data-people-select]:not(:disabled)'));
+    const selectAll = document.getElementById('people-select-all');
+    if (selectAll) selectAll.disabled = !boxes.length;
+    syncSelectAll(selectAll, boxes, (box) => selectedIds.has(box.value));
+    setPeopleSelectionState(selectedIds.size, { moving });
+  }
+
+  /* The catalogue is fetched on its own, never ahead of the list: if it cannot
+     be read the list still renders, the filter stays on "All", and moving is
+     off with the reason written where the Move button would be. */
+  async function loadTiers() {
+    const seq = ++tiersSequence;
+    let next;
+    try {
+      next = (await services.tiers())?.tiers || [];
+    } catch {
+      next = null;
+    }
+    // A slow older read must not overwrite a newer one.
+    if (seq !== tiersSequence) return;
+    tiers = next;
+    /* A filter the catalogue cannot back (unreadable, or the tier is gone)
+       would leave the select on "All" while the list stays filtered. Drop it
+       and reload unfiltered, so the two agree. */
+    const orphaned = tier && !tiers?.some((row) => row.key === tier);
+    if (orphaned) tier = '';
+    populatePeopleTiers(tiers, { filter: tier, destination });
+    syncSelection();
+    if (orphaned) {
+      offset = 0;
+      await loadPage({ targetOffset: 0 });
+    }
+  }
+
+  /* Only take focus back if it was lost to <body> — the control that held it
+     was hidden — never from wherever the operator has since moved on to. */
+  function recoverFocus(target) {
+    const active = document.activeElement;
+    if (!active || active === document.body) target?.focus();
+  }
+
+  async function moveSelected(button) {
+    const key = document.getElementById('people-bulk-tier')?.value;
+    const ids = Array.from(selectedIds);
+    if (!key || !ids.length) return;
+    const reason = document.getElementById('people-bulk-reason')?.value.trim() || null;
+
+    moving = true;
+    button.disabled = true;
+    try {
+      const result = await services.addTierMembers(key, ids, reason);
+      ErrorHandler.showToast(
+        I18n.t('admin.people.moveSummary', {
+          moved: result?.moved ?? 0,
+          unchanged: result?.unchanged ?? 0,
+          missing: result?.missing?.length ?? 0,
+        }),
+      );
+      loadAudit(services);
+      markTiersStale?.();
+      /* An account opened while the request was out keeps its page: reloading
+         the list here would close it. Its Back button reloads the list anyway. */
+      if (opening || !document.getElementById('people-detail')?.hidden) {
+        selectedIds.clear();
+        return;
+      }
+      /* The search box, not the last rendered query: a search typed while the
+         request was out is what the operator wants to see next. */
+      await loadPage();
+      /* The reload rebuilt the toolbar that held focus, so focus would otherwise
+         fall to <body>. */
+      recoverFocus(tierFilter);
+    } catch (error) {
+      ErrorHandler.showToast(tierFailureMessage(error, 'admin.people.moveFailed'), true);
+    } finally {
+      // Held through the reload too, so the old ticks cannot send it twice.
+      moving = false;
+      syncSelection();
+    }
+  }
+
+  /* The Tiers tab's way in: a tier's members (`filter`), or everyone with the
+     destination preset to that tier. The catalogue is re-read because the tier
+     may have been created since this tab loaded it. */
+  showPeopleForTier = async (key, { filter }) => {
+    tier = filter ? key : '';
+    if (!filter) destination = key;
+    offset = 0;
+    if (search) search.value = '';
+    await Promise.all([loadTiers(), loadPage({ targetOffset: 0, targetQuery: '' })]);
+    recoverFocus(filter ? tierFilter : search);
+  };
+
+  tierFilter?.addEventListener('change', () => {
+    tier = tierFilter.value;
+    offset = 0;
+    loadPage({ targetOffset: 0, callerActiveId: 'people-tier-filter' });
+  });
 
   /* The detail view is reachable only from this list, and the list serves one
      page of 50. Without a search box it is a door with no corridor the moment an
@@ -980,8 +1131,6 @@ export async function initPeopleTab(services) {
     }
   }
 
-  await loadPage();
-
   /* Saving a profile is its own route and its own RPC, so it is its own
      listener. Delegated from the panel, because the form is rebuilt from
      scratch every time an account is opened. */
@@ -1019,6 +1168,25 @@ export async function initPeopleTab(services) {
   });
 
   body.addEventListener('change', async (event) => {
+    const box = event.target;
+    if (box.id === 'people-select-all' || box.matches('[data-people-select]')) {
+      const boxes =
+        box.id === 'people-select-all'
+          ? body.querySelectorAll('[data-people-select]:not(:disabled)')
+          : [box];
+      boxes.forEach((row) => {
+        row.checked = box.checked;
+        if (box.checked) selectedIds.add(row.value);
+        else selectedIds.delete(row.value);
+      });
+      syncSelection();
+      return;
+    }
+    if (box.id === 'people-bulk-tier') {
+      destination = box.value;
+      syncSelection();
+      return;
+    }
     if (event.target.id === 'people-page-size') {
       const newSize = parseInt(event.target.value, 10);
       if (![25, 50, 100, 200].includes(newSize)) return;
@@ -1054,6 +1222,12 @@ export async function initPeopleTab(services) {
       return;
     }
 
+    const moveBtn = event.target.closest('#people-bulk-move');
+    if (moveBtn) {
+      if (!moveBtn.disabled) await moveSelected(moveBtn);
+      return;
+    }
+
     const nextBtn = event.target.closest('#people-next');
     if (nextBtn) {
       if (loading || offset + limit >= total) return;
@@ -1071,7 +1245,10 @@ export async function initPeopleTab(services) {
     /* The whole row opens its account. The address stays a real button because
        a keyboard and a screen reader need a control to land on, but a
        five-column row where only the first cell answers is a target the eye has
-       to aim at. Anything that is itself a control keeps its own behaviour. */
+       to aim at. Anything that is itself a control keeps its own behaviour —
+       and neither the checkbox nor its cell opens anything: a near miss on a
+       small box must not throw the selection away by leaving the list. */
+    if (event.target.closest('.admin-people-select')) return;
     const row = event.target.closest('#people-table tbody tr[data-user-id]');
     if (row && !event.target.closest('button')) {
       await openAccount(row.dataset.userId);
@@ -1265,6 +1442,12 @@ export async function initPeopleTab(services) {
       button.disabled = false;
     }
   });
+
+  /* Last, so every listener above is bound before the first await: a filter
+     change or a Tiers-tab jump that lands while the first page is loading is
+     not lost. The catalogue is not awaited — the list never waits on it. */
+  loadTiers();
+  await loadPage();
 }
 
 /**
@@ -1379,6 +1562,8 @@ export async function saveAccountQuota(services, form, reopen) {
     // painting over a newer one.
     await reopen(userId);
     loadAudit(services);
+    // The tier may have changed, and with it two of the Tiers tab's counts.
+    markTiersStale?.();
   } catch (error) {
     const code = error?.code;
     const key = code ? `admin.tiers.${code}` : null;
@@ -1636,6 +1821,16 @@ export async function initTiersTab(services) {
      nothing races the first load. */
   async function loadOnce() {
     if (loaded) return;
+    /* Stale after a Move, the tab re-reads its counts — but not over a tier
+       form in progress, which re-rendering would discard; it stays stale for
+       the next activation. The form is always drawn, so "in progress" means
+       editing a tier or holding a typed value (renderTiers sets defaults). */
+    const form = document.getElementById('tier-form');
+    const inProgress =
+      form &&
+      (form.dataset.editingKey ||
+        Array.from(form.elements).some((c) => 'defaultValue' in c && c.value !== c.defaultValue));
+    if (inProgress) return;
     try {
       await reload();
     } catch {
@@ -1643,6 +1838,9 @@ export async function initTiersTab(services) {
     }
   }
 
+  markTiersStale = () => {
+    loaded = false;
+  };
   document.getElementById('tab-tiers')?.addEventListener('click', loadOnce);
   /* Already showing when the console booted (a reload with this tab selected). */
   if (document.getElementById('panel-tiers')?.hidden === false) loadOnce();
@@ -1657,6 +1855,9 @@ export async function initTiersTab(services) {
 
     if (action === 'cancel') return renderTiers(tiers, { editingKey: null });
     if (action === 'edit') return renderTiers(tiers, { editingKey: key });
+    if (action === 'members' || action === 'add') {
+      return openPeopleForTier(key, { filter: action === 'members' });
+    }
 
     if (action === 'delete') {
       const tier = tiers.find((row) => row.key === key);
@@ -1677,7 +1878,7 @@ export async function initTiersTab(services) {
         ErrorHandler.showToast(I18n.t('admin.tiers.deleted'));
         loadAudit(services);
       } catch (error) {
-        ErrorHandler.showToast(tierFailureMessage(error, 'deleteFailed'), true);
+        ErrorHandler.showToast(tierFailureMessage(error, 'admin.tiers.deleteFailed'), true);
       }
     }
   });
@@ -1708,7 +1909,7 @@ export async function initTiersTab(services) {
          already live is the one moment the record looks untrustworthy. */
       loadAudit(services);
     } catch (error) {
-      ErrorHandler.showToast(tierFailureMessage(error, 'saveFailed'), true);
+      ErrorHandler.showToast(tierFailureMessage(error, 'admin.tiers.saveFailed'), true);
     }
   });
 }
@@ -1819,13 +2020,14 @@ function deletionFailureMessage(error) {
  * The RPC and the route both answer with machine codes (`tier_in_use`,
  * `invalid_limit`, …) precisely so this layer can translate them; falling back
  * to a generic message when the code is unknown keeps a new code from rendering
- * as `undefined`.
+ * as `undefined`. `fallbackKey` is a full catalogue key: the People tab's bulk
+ * move reports tier refusals too, with its own fallback.
  */
 function tierFailureMessage(error, fallbackKey) {
   const code = error?.code;
   const key = code ? `admin.tiers.${code}` : null;
   const translated = key ? I18n.t(key) : null;
-  return translated && translated !== key ? translated : I18n.t(`admin.tiers.${fallbackKey}`);
+  return translated && translated !== key ? translated : I18n.t(fallbackKey);
 }
 
 export async function initSettingsTab(services) {

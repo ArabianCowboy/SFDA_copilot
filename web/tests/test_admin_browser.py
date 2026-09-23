@@ -806,6 +806,7 @@ ACCOUNTS = [
         "tier": "staff",
         "is_disabled": False,
         "last_sign_in_at": None,
+        "has_profile": True,
     },
     # The only seeded account that has ever signed in. Every entry here used to
     # carry None, so the people table's date path was never rendered by a test
@@ -818,6 +819,7 @@ ACCOUNTS = [
         "tier": "free",
         "is_disabled": False,
         "last_sign_in_at": "2026-08-15T12:00:00+00:00",
+        "has_profile": True,
     },
     {
         "id": "test-disabled-id",
@@ -826,6 +828,7 @@ ACCOUNTS = [
         "tier": "free",
         "is_disabled": True,
         "last_sign_in_at": None,
+        "has_profile": True,
     },
     {
         "id": "test-orphan-id",
@@ -834,6 +837,7 @@ ACCOUNTS = [
         "tier": "free",
         "is_disabled": False,
         "last_sign_in_at": None,
+        "has_profile": False,
     },
 ]
 
@@ -955,6 +959,9 @@ def _open_people(page: Page, *, lang: str = "", accounts=None) -> None:
         "**/admin/api/audit*", lambda route: _json(route, {"entries": [], "limit": 50, "offset": 0})
     )
     page.route("**/admin/api/settings*", lambda route: _json(route, SETTINGS))
+    # The tier catalogue is loaded independently of the user list (see
+    # docs/ARCHITECTURE.md#reader-quota), so the People tab needs it fulfilled too.
+    page.route("**/admin/api/tiers", lambda route: _json(route, TIERS_RESPONSE))
 
     page.goto(f"/admin?testing=true{lang}")
     expect(page.locator("#admin-console")).to_be_visible()
@@ -985,8 +992,9 @@ def test_going_back_returns_to_the_list_and_restores_focus(browser_page: Page):
 
 
 def test_an_account_with_no_profile_is_shown_as_broken(browser_page: Page):
-    """The state the People table cannot express at all: `admin_list_users`
-    coalesces the missing columns, so there it reads as an ordinary reader."""
+    """The People table only flags this state — `admin_list_users` coalesces the
+    missing columns, and `has_profile: false` just disables the row's checkbox —
+    so the account page is where it is explained."""
     _open_people(browser_page)
     browser_page.locator(".admin-account-open", has_text="orphan@example.com").click()
 
@@ -1371,8 +1379,10 @@ def test_clicking_anywhere_in_a_row_opens_that_account(browser_page: Page):
     because a five-column row where only the first cell responds is a target the
     eye has to aim at."""
     _open_people(browser_page)
-    # The Role cell — not the address button, so this proves the row itself.
-    browser_page.locator("#people-table tbody tr[data-user-id='test-user-id'] td").nth(1).click()
+    # The Role cell — not the address button nor the select checkbox, so this
+    # proves the row itself. The tier-membership select column shifted every
+    # index by one (see docs/ARCHITECTURE.md#reader-quota).
+    browser_page.locator("#people-table tbody tr[data-user-id='test-user-id'] td").nth(2).click()
 
     expect(browser_page.locator("#account-heading")).to_contain_text("test@example.com")
 
@@ -1632,6 +1642,7 @@ MANY_ACCOUNTS = [
         "tier": "free",
         "is_disabled": False,
         "last_sign_in_at": None,
+        "has_profile": True,
     }
     for i in range(1, 61)
 ]
@@ -2192,6 +2203,528 @@ def test_the_tier_form_still_edits_both_labels(browser_page: Page):
     expect(browser_page.locator("#tier-key")).to_have_attribute("readonly", "")
 
 
+# ── Tier membership: People is the one selection surface ────────────────────
+# docs/ARCHITECTURE.md#reader-quota. The Tiers tab has two entry points into People
+# (Readers count -> filtered list, "Add readers" -> preset destination); the
+# actual selecting and moving happens on People, never in a second card.
+
+
+def _members_route(*, moved=None, unchanged=0, missing=None):
+    """A POST /admin/api/tiers/<key>/members handler that records every call."""
+    calls = []
+
+    def handle(route):
+        if route.request.method != "POST":
+            route.fulfill(status=404, content_type="application/json", body="{}")
+            return
+        body = route.request.post_data_json
+        calls.append(body)
+        moved_ids = moved if moved is not None else body["user_ids"]
+        _json(
+            route,
+            {"moved": len(moved_ids), "unchanged": unchanged, "missing": missing or []},
+        )
+
+    return handle, calls
+
+
+def test_the_readers_button_by_keyboard_lands_on_filtered_people(browser_page: Page):
+    """The Readers count is a button; activating it by keyboard (not just a
+    click) must switch tabs, filter People to that tier, and move focus there."""
+    _open_people(browser_page)
+    browser_page.locator("#tab-tiers").click()
+    expect(browser_page.locator("#panel-tiers")).to_be_visible()
+
+    members_button = browser_page.locator(
+        'button[data-tier-action="members"][data-tier-key="staff"]'
+    )
+    members_button.focus()
+    with browser_page.expect_request(
+        lambda r: "/admin/api/users" in r.url and "tier=staff" in r.url
+    ):
+        members_button.press("Enter")
+
+    expect(browser_page.locator("#panel-people")).to_be_visible()
+    tier_filter = browser_page.locator("#people-tier-filter")
+    expect(tier_filter).to_have_value("staff")
+    expect(tier_filter).to_be_focused()
+
+
+def test_add_readers_presets_the_destination_and_focuses_search(browser_page: Page):
+    """ "Add readers" is additive, not a filter: All tiers stay visible, the
+    bulk destination is preset, and focus goes to search rather than the
+    filter."""
+    _open_people(browser_page)
+    browser_page.locator("#tab-tiers").click()
+    expect(browser_page.locator("#panel-tiers")).to_be_visible()
+
+    # The catalogue is re-read: the tier may be newer than People's copy.
+    with browser_page.expect_request(
+        lambda r: r.method == "GET" and urlparse(r.url).path.endswith("/admin/api/tiers")
+    ):
+        browser_page.locator('button[data-tier-action="add"][data-tier-key="staff"]').click()
+
+    expect(browser_page.locator("#panel-people")).to_be_visible()
+    expect(browser_page.locator("#people-tier-filter")).to_have_value("")
+    expect(browser_page.locator("#people-bulk-tier")).to_have_value("staff")
+    expect(browser_page.locator("#people-search")).to_be_focused()
+
+
+def test_a_filter_change_is_applied_even_behind_a_slow_response(browser_page: Page):
+    """A held response for the OLD filter must not overwrite the newer one,
+    the same guarantee the search box already has (see the out-of-order
+    pager test above), now exercised through the tier filter: `staff` is held,
+    "All" is chosen and answered, and only then does `staff` arrive."""
+    _open_people(browser_page)
+
+    held = []
+
+    def custom_users(route):
+        params = parse_qs(urlparse(route.request.url).query)
+        tier = (params.get("tier") or [""])[0]
+        if tier == "staff":
+            held.append(route)
+            return
+        rows = [a for a in ACCOUNTS if tier == "" or a["tier"] == tier]
+        _json(
+            route,
+            {
+                "users": rows,
+                "total": len(rows),
+                "limit": 50,
+                "offset": 0,
+                "self_id": "test-admin-id",
+            },
+        )
+
+    browser_page.route("**/admin/api/users*", custom_users)
+
+    with browser_page.expect_request(
+        lambda r: "/admin/api/users" in r.url and "tier=staff" in r.url
+    ):
+        browser_page.locator("#people-tier-filter").select_option("staff")
+    browser_page.wait_for_timeout(200)
+    assert held, "expected the tier=staff request to be held"
+
+    # The newer choice, answered at once.
+    browser_page.locator("#people-tier-filter").select_option("")
+    expect(browser_page.locator(".admin-account-open")).to_have_count(len(ACCOUNTS))
+
+    staff_rows = [a for a in ACCOUNTS if a["tier"] == "staff"]
+    assert len(staff_rows) != len(ACCOUNTS)
+    for route in held:
+        with contextlib.suppress(Exception):
+            _json(
+                route,
+                {
+                    "users": staff_rows,
+                    "total": len(staff_rows),
+                    "limit": 50,
+                    "offset": 0,
+                    "self_id": "test-admin-id",
+                },
+            )
+    browser_page.wait_for_timeout(300)
+
+    # The late `staff` answer is discarded: every row is still there.
+    expect(browser_page.locator(".admin-account-open")).to_have_count(len(ACCOUNTS))
+    expect(browser_page.locator("#people-tier-filter")).to_have_value("")
+
+
+def test_checking_a_row_does_not_open_the_account(browser_page: Page):
+    """The checkbox (and its cell) must be a no-op for the row-click-opens-
+    account behaviour: no account-detail request at all."""
+    _open_people(browser_page)
+    detail_requests = []
+    browser_page.on(
+        "request",
+        lambda r: (
+            detail_requests.append(r.url) if re.search(r"/admin/api/users/[^?]+", r.url) else None
+        ),
+    )
+
+    browser_page.locator('input[data-people-select][value="test-user-id"]').check()
+
+    expect(browser_page.locator("#people-detail")).to_be_hidden()
+    assert detail_requests == []
+
+
+def test_a_row_without_a_profile_has_a_disabled_checkbox(browser_page: Page):
+    _open_people(browser_page)
+    checkbox = browser_page.locator('input[data-people-select][value="test-orphan-id"]')
+    expect(checkbox).to_be_disabled()
+
+
+def test_ticking_one_of_several_rows_marks_select_all_indeterminate(browser_page: Page):
+    _open_people(browser_page)
+    browser_page.locator('input[data-people-select][value="test-user-id"]').check()
+
+    is_indeterminate = browser_page.locator("#people-select-all").evaluate("el => el.indeterminate")
+    assert is_indeterminate is True
+
+
+def test_bulk_move_sends_one_post_and_the_reloaded_list_shows_the_new_tier(
+    browser_page: Page,
+):
+    """Two rows selected, one of them unticked and reticked on the way: the
+    move is exactly one POST, each id once. (Duplicate ids inside one payload
+    cannot come from this UI -- the selection is a Set -- so dedup is the route
+    tests' job.) The stateful mock then serves the moved tier back, and the
+    reloaded rows must show it in their Tier cell."""
+    _open_people(browser_page)
+    tiers = {a["id"]: a["tier"] for a in ACCOUNTS}
+    handle, calls = _members_route()
+
+    def users_or_detail(route):
+        match = re.search(r"/admin/api/users/([^?]+)", route.request.url)
+        if match:
+            account = DETAILS.get(match.group(1))
+            _json(route, {"user": account, "self_id": "test-admin-id"})
+            return
+        params = parse_qs(urlparse(route.request.url).query)
+        tier = (params.get("tier") or [""])[0]
+        rows = [
+            {**a, "tier": tiers[a["id"]]} for a in ACCOUNTS if tier == "" or tiers[a["id"]] == tier
+        ]
+        _json(
+            route,
+            {
+                "users": rows,
+                "total": len(rows),
+                "limit": 50,
+                "offset": 0,
+                "self_id": "test-admin-id",
+            },
+        )
+
+    def members_and_advance(route):
+        handle(route)
+        if route.request.method == "POST":
+            for uid in route.request.post_data_json["user_ids"]:
+                tiers[uid] = "staff"
+
+    browser_page.route("**/admin/api/users*", users_or_detail)
+    browser_page.route("**/admin/api/tiers/staff/members", members_and_advance)
+
+    browser_page.locator('input[data-people-select][value="test-user-id"]').check()
+    browser_page.locator('input[data-people-select][value="test-disabled-id"]').check()
+    # A duplicate tick-untick-tick must not double the id in the payload.
+    browser_page.locator('input[data-people-select][value="test-user-id"]').uncheck()
+    browser_page.locator('input[data-people-select][value="test-user-id"]').check()
+
+    browser_page.locator("#people-bulk-tier").select_option("staff")
+    browser_page.locator("#people-bulk-move").click()
+
+    expect(browser_page.locator("#toast")).to_contain_text("Moved", ignore_case=True)
+    assert len(calls) == 1
+    assert sorted(calls[0]["user_ids"]) == sorted(["test-user-id", "test-disabled-id"])
+    assert tiers["test-user-id"] == "staff"
+    assert tiers["test-disabled-id"] == "staff"
+    # Column 3 is Tier (select, email, role, tier, ...).
+    for uid in ("test-user-id", "test-disabled-id"):
+        expect(
+            browser_page.locator(f'#people-table tr[data-user-id="{uid}"] td').nth(3)
+        ).to_have_text("staff")
+
+
+def test_a_move_makes_the_tiers_tab_reread_its_member_counts(browser_page: Page):
+    """The Tiers table loads once. After a Move its Readers counts are stale,
+    so the next visit to the tab must fetch the catalogue again."""
+    _open_people(browser_page)
+    browser_page.locator("#tab-tiers").click()
+    expect(
+        browser_page.locator('button[data-tier-action="add"][data-tier-key="staff"]')
+    ).to_be_visible()
+
+    handle, _ = _members_route()
+    browser_page.route("**/admin/api/tiers/staff/members", handle)
+    browser_page.locator('button[data-tier-action="add"][data-tier-key="staff"]').click()
+    browser_page.locator('input[data-people-select][value="test-user-id"]').check()
+    browser_page.locator("#people-bulk-move").click()
+    expect(browser_page.locator("#toast")).to_contain_text("Moved", ignore_case=True)
+
+    with browser_page.expect_request(lambda r: r.url.endswith("/admin/api/tiers")):
+        browser_page.locator("#tab-tiers").click()
+
+
+def test_selection_clears_on_page_change_and_on_filter_change(browser_page: Page):
+    _open_people(browser_page, accounts=MANY_ACCOUNTS)
+    count = browser_page.locator("#people-bulk-count")
+    move = browser_page.locator("#people-bulk-move")
+    browser_page.locator('input[data-people-select][value="test-user-1"]').check()
+    expect(count).to_have_text("1 selected")
+    expect(move).to_be_enabled()
+
+    browser_page.locator("#people-next").click()
+    expect(count).to_have_text("0 selected")
+    expect(move).to_be_disabled()
+    expect(browser_page.locator("input[data-people-select]:checked")).to_have_count(0)
+
+    browser_page.locator("input[data-people-select]").first.check()
+    expect(count).to_have_text("1 selected")
+
+    browser_page.locator("#people-tier-filter").select_option("free")
+    expect(count).to_have_text("0 selected")
+    expect(move).to_be_disabled()
+    expect(browser_page.locator("input[data-people-select]:checked")).to_have_count(0)
+
+
+def test_the_bulk_toolbar_holds_its_space_before_anything_is_ticked(browser_page: Page):
+    """Shown at rest, so the first tick does not push the table down under the
+    cursor (DESIGN.md: reserve a revealed control's space at rest)."""
+    _open_people(browser_page)
+    toolbar = browser_page.locator("#people-bulk")
+    expect(toolbar).to_be_visible()
+    expect(browser_page.locator("#people-bulk-count")).to_have_text("0 selected")
+    expect(browser_page.locator("#people-bulk-count")).to_have_attribute("aria-live", "polite")
+    expect(browser_page.locator("#people-bulk-move")).to_be_disabled()
+
+    table = browser_page.locator("#people-table")
+    before = table.bounding_box()["y"]
+    browser_page.locator('input[data-people-select][value="test-user-id"]').check()
+    expect(browser_page.locator("#people-bulk-count")).to_have_text("1 selected")
+    assert table.bounding_box()["y"] == before
+
+
+def test_a_tick_during_a_move_does_not_rearm_the_button(browser_page: Page):
+    """Ticking another row re-syncs the toolbar; that must not re-enable Move
+    while the first POST is still out, or a second click sends it twice."""
+    _open_people(browser_page)
+    held = []
+    calls = []
+
+    def hold(route):
+        calls.append(route.request.post_data_json)
+        held.append(route)
+
+    browser_page.route("**/admin/api/tiers/staff/members", hold)
+
+    browser_page.locator('input[data-people-select][value="test-user-id"]').check()
+    browser_page.locator("#people-bulk-tier").select_option("staff")
+    move = browser_page.locator("#people-bulk-move")
+    move.click()
+    browser_page.wait_for_timeout(100)
+    assert len(held) == 1
+    expect(move).to_be_disabled()
+
+    browser_page.locator('input[data-people-select][value="test-disabled-id"]').check()
+    expect(browser_page.locator("#people-bulk-count")).to_have_text("2 selected")
+    expect(move).to_be_disabled()
+    browser_page.locator("#people-bulk-tier").select_option("free")
+    expect(move).to_be_disabled()
+
+    _json(held[0], {"moved": 1, "unchanged": 0, "missing": []})
+    expect(browser_page.locator("#toast")).to_contain_text("Moved", ignore_case=True)
+    assert len(calls) == 1
+
+
+def test_typing_into_search_during_a_move_keeps_focus_there(browser_page: Page):
+    """The post-Move focus handoff is for focus lost to <body>, never a steal
+    from a control the operator has moved on to."""
+    _open_people(browser_page)
+    held = []
+    browser_page.route("**/admin/api/tiers/staff/members", lambda route: held.append(route))
+
+    browser_page.locator('input[data-people-select][value="test-user-id"]').check()
+    browser_page.locator("#people-bulk-tier").select_option("staff")
+    browser_page.locator("#people-bulk-move").click()
+    browser_page.wait_for_timeout(100)
+    assert held
+
+    search = browser_page.locator("#people-search")
+    search.click()
+    search.press_sequentially("test")
+    _json(held[0], {"moved": 1, "unchanged": 0, "missing": []})
+    expect(browser_page.locator("#toast")).to_contain_text("Moved", ignore_case=True)
+    browser_page.wait_for_timeout(500)
+
+    expect(search).to_be_focused()
+    expect(search).to_have_value("test")
+
+
+def test_an_account_opened_during_a_move_stays_open(browser_page: Page):
+    """Reloading the list after the Move would close the account the operator
+    opened while it was out."""
+    _open_people(browser_page)
+    held = []
+    browser_page.route("**/admin/api/tiers/staff/members", lambda route: held.append(route))
+
+    browser_page.locator('input[data-people-select][value="test-user-id"]').check()
+    browser_page.locator("#people-bulk-tier").select_option("staff")
+    browser_page.locator("#people-bulk-move").click()
+    browser_page.wait_for_timeout(100)
+    assert held
+
+    browser_page.locator(".admin-account-open", has_text="test@example.com").click()
+    expect(browser_page.locator("#people-detail")).to_be_visible()
+    _json(held[0], {"moved": 1, "unchanged": 0, "missing": []})
+    expect(browser_page.locator("#toast")).to_contain_text("Moved", ignore_case=True)
+    browser_page.wait_for_timeout(300)
+
+    expect(browser_page.locator("#people-detail")).to_be_visible()
+    expect(browser_page.locator("#people-list")).to_be_hidden()
+
+
+def test_a_keyboard_driven_move_focuses_the_tier_filter(browser_page: Page):
+    """The toolbar hides on a successful Move and takes the focused button
+    with it; focus must land on the filter, not fall back to <body>."""
+    _open_people(browser_page)
+    handle, _calls = _members_route()
+    browser_page.route("**/admin/api/tiers/staff/members", handle)
+
+    browser_page.locator('input[data-people-select][value="test-user-id"]').check()
+    browser_page.locator("#people-bulk-tier").select_option("staff")
+    move_button = browser_page.locator("#people-bulk-move")
+    move_button.focus()
+    move_button.press("Enter")
+
+    expect(browser_page.locator("#people-tier-filter")).to_be_focused()
+
+
+def test_move_button_label_follows_the_selected_destination(browser_page: Page):
+    _open_people(browser_page)
+    browser_page.locator('input[data-people-select][value="test-user-id"]').check()
+
+    select = browser_page.locator("#people-bulk-tier")
+    select.select_option("staff")
+    staff_label = select.locator("option[value='staff']").text_content()
+    expect(browser_page.locator("#people-bulk-move")).to_contain_text(staff_label)
+
+    select.select_option("free")
+    free_label = select.locator("option[value='free']").text_content()
+    expect(browser_page.locator("#people-bulk-move")).to_contain_text(free_label)
+
+
+def test_a_tier_catalogue_that_never_answers_does_not_hold_the_user_list(
+    browser_page: Page,
+):
+    """The People list is not held hostage by the tier catalogue: with the
+    catalogue request hanging, the list still renders."""
+    _route_identity(browser_page, status=200, body=ADMIN_IDENTITY)
+    hanging = []
+    browser_page.route("**/admin/api/tiers", lambda route: hanging.append(route))
+    browser_page.route(
+        "**/admin/api/users*",
+        lambda route: _json(
+            route,
+            {
+                "users": ACCOUNTS,
+                "total": len(ACCOUNTS),
+                "limit": 50,
+                "offset": 0,
+                "self_id": "test-admin-id",
+            },
+        ),
+    )
+    browser_page.route(
+        "**/admin/api/audit*", lambda route: _json(route, {"entries": [], "limit": 50, "offset": 0})
+    )
+
+    browser_page.goto("/admin?testing=true")
+    expect(browser_page.locator("#admin-console")).to_be_visible()
+    browser_page.locator("#tab-people").click()
+
+    expect(browser_page.locator(".admin-account-open")).to_have_count(len(ACCOUNTS))
+    assert hanging, "the catalogue request should be out, and unanswered"
+
+
+def test_a_tier_catalogue_failure_says_why_filtering_is_off(browser_page: Page):
+    """The disabled filter's `title` is invisible to a keyboard or touch, so it
+    is described by the on-screen hint as well."""
+    _open_people(browser_page)
+    browser_page.route(
+        "**/admin/api/tiers",
+        lambda route: route.fulfill(status=500, content_type="application/json", body="{}"),
+    )
+    browser_page.goto("/admin?testing=true")
+    browser_page.locator("#tab-people").click()
+
+    tier_filter = browser_page.locator("#people-tier-filter")
+    expect(tier_filter).to_be_disabled()
+    expect(tier_filter).to_have_attribute("aria-describedby", "people-bulk-hint")
+    expect(browser_page.locator("#people-bulk-hint")).to_have_text(
+        "Tiers could not be loaded; filtering and moving are unavailable."
+    )
+
+
+@pytest.mark.parametrize("catalogue", ["failed", "tier_gone"])
+def test_a_tier_filter_the_catalogue_cannot_back_is_dropped(browser_page: Page, catalogue):
+    """Readers button, then the People re-read of the catalogue fails or no
+    longer has that tier: the filter would sit on "All" while the list stayed
+    filtered. Both must agree on All instead."""
+    _open_people(browser_page)
+    browser_page.locator("#tab-tiers").click()
+    members = browser_page.locator('button[data-tier-action="members"][data-tier-key="staff"]')
+    expect(members).to_be_visible()
+
+    if catalogue == "failed":
+        browser_page.route(
+            "**/admin/api/tiers",
+            lambda route: route.fulfill(status=500, content_type="application/json", body="{}"),
+        )
+    else:
+        without_staff = {"tiers": [t for t in TIERS_RESPONSE["tiers"] if t["key"] != "staff"]}
+        browser_page.route("**/admin/api/tiers", lambda route: _json(route, without_staff))
+
+    lists = []
+    browser_page.on(
+        "request",
+        lambda r: (
+            lists.append(r.url) if urlparse(r.url).path.endswith("/admin/api/users") else None
+        ),
+    )
+    with browser_page.expect_request(
+        lambda r: urlparse(r.url).path.endswith("/admin/api/users") and "tier=" not in r.url
+    ):
+        members.click()
+
+    expect(browser_page.locator("#people-tier-filter")).to_have_value("")
+    expect(browser_page.locator("#people-table .admin-account-open")).to_have_count(len(ACCOUNTS))
+    browser_page.wait_for_timeout(300)
+    assert "tier=" not in lists[-1]
+
+
+def test_a_move_does_not_discard_a_tier_form_in_progress(browser_page: Page):
+    """The Tiers tab re-renders after a Move to refresh its counts, but not over
+    a form the operator has typed into."""
+    _open_people(browser_page)
+    browser_page.locator("#tab-tiers").click()
+    browser_page.locator("#tier-key").fill("gold")
+
+    handle, _ = _members_route()
+    browser_page.route("**/admin/api/tiers/staff/members", handle)
+    browser_page.locator("#tab-people").click()
+    browser_page.locator('input[data-people-select][value="test-user-id"]').check()
+    browser_page.locator("#people-bulk-tier").select_option("staff")
+    browser_page.locator("#people-bulk-move").click()
+    expect(browser_page.locator("#toast")).to_contain_text("Moved", ignore_case=True)
+
+    browser_page.locator("#tab-tiers").click()
+    browser_page.wait_for_timeout(300)
+    expect(browser_page.locator("#tier-key")).to_have_value("gold")
+
+
+def test_saving_one_readers_tier_makes_the_tiers_tab_reread(browser_page: Page):
+    """The single-account allowance card can change a tier too, so it marks
+    the Tiers counts stale just as a bulk Move does."""
+    _open_people(browser_page)
+    browser_page.locator("#tab-tiers").click()
+    expect(browser_page.locator("#tiers-body table")).to_be_visible()
+
+    browser_page.route("**/admin/api/users/*/quota", lambda route: _json(route, {}))
+    browser_page.locator("#tab-people").click()
+    browser_page.locator(".admin-account-open", has_text="test@example.com").click()
+    form = browser_page.locator("#account-quota-form")
+    form.locator("select[name='tier']").select_option("staff")
+    form.locator("button[type='submit']").click()
+    expect(browser_page.locator("#toast")).to_contain_text("Allowance saved")
+
+    with browser_page.expect_request(
+        lambda r: r.method == "GET" and urlparse(r.url).path.endswith("/admin/api/tiers")
+    ):
+        browser_page.locator("#tab-tiers").click()
+
+
 # ── The Overview tab ─────────────────────────────────────────────────────────
 
 
@@ -2443,15 +2976,17 @@ def test_the_users_table_shows_which_tier_each_account_is_in(browser_page: Page)
     table = browser_page.locator("#people-table")
 
     headers = table.locator("thead th")
-    expect(headers).to_have_count(6)
-    expect(headers.nth(2)).to_have_text(I18N_TIER_COLUMN)
+    # The tier membership work added a leading select column ahead of email,
+    # role, tier... — see docs/ARCHITECTURE.md#reader-quota.
+    expect(headers).to_have_count(7)
+    expect(headers.nth(3)).to_have_text(I18N_TIER_COLUMN)
 
     # The key, in the mono face — the same form the Activity table prints.
     # `machineCell` puts the class on the cell itself, not on a span inside it.
-    admin_tier = table.locator("tbody tr").first.locator("td").nth(2)
+    admin_tier = table.locator("tbody tr").first.locator("td").nth(3)
     expect(admin_tier).to_have_text("staff")
     expect(admin_tier).to_have_class("admin-cell-machine")
-    expect(table.locator("tbody tr").nth(1).locator("td").nth(2)).to_have_text("free")
+    expect(table.locator("tbody tr").nth(1).locator("td").nth(3)).to_have_text("free")
 
 
 I18N_TIER_COLUMN = "Tier"

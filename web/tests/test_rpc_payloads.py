@@ -149,6 +149,12 @@ ADMIN_CASES = [
         id="delete_tier",
     ),
     pytest.param(
+        lambda b: b.set_users_tier([USER_ID], tier="staff", reason="move week", actor=ACTOR),
+        "admin_set_users_tier",
+        {"p_user_ids": [USER_ID], "p_tier": "staff", "p_reason": "move week", **WITHOUT_EMAIL},
+        id="set_users_tier",
+    ),
+    pytest.param(
         lambda b: b.set_reader_quota(
             USER_ID,
             tier="pro",
@@ -178,6 +184,58 @@ def test_admin_writes_send_exactly_these_arguments(invoke, name, args):
     client = RecordingClient()
     invoke(SupabaseAdminBackend(client))
     assert _only_call(client) == (name, args)
+
+
+def test_list_users_omits_p_tier_when_not_filtering():
+    """Unfiltered, the call names only the three original arguments, so People
+    keeps working against the 3-argument function a schema-first rollback
+    would restore."""
+    client = RecordingClient(data=[])
+    SupabaseAdminBackend(client).list_users(limit=10, offset=0, search=None)
+    assert _only_call(client) == (
+        "admin_list_users",
+        {"p_limit": 10, "p_offset": 0, "p_search": None},
+    )
+
+
+def test_list_users_sends_the_tier_key_when_filtering():
+    client = RecordingClient(data=[])
+    SupabaseAdminBackend(client).list_users(limit=10, offset=0, search=None, tier="staff")
+    assert _only_call(client) == (
+        "admin_list_users",
+        {"p_limit": 10, "p_offset": 0, "p_search": None, "p_tier": "staff"},
+    )
+
+
+def test_set_users_tier_sends_every_id_even_when_none_is_a_uuid():
+    """The RPC takes text and reports a non-uuid as missing itself, after its
+    actor and tier checks. Short-circuiting here would skip those refusals."""
+    client = RecordingClient(data={"moved_ids": [], "unchanged": 0, "missing": ["not-a-uuid"]})
+    SupabaseAdminBackend(client).set_users_tier(
+        ["not-a-uuid"], tier="staff", reason=None, actor=ACTOR
+    )
+    name, args = _only_call(client)
+    assert name == "admin_set_users_tier"
+    assert args["p_user_ids"] == ["not-a-uuid"]
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "urn:uuid:12345678-1234-1234-1234-123456789abc",
+        "{12345678-1234-1234-1234-123456789abc}",
+        "+12345678-1234-1234-1234-123456789abc",
+        "123456781234123412341234567890ab",
+        "\u0661" * 8 + "-1234-1234-1234-123456789abc",
+    ],
+)
+def test_is_uuid_accepts_only_the_form_postgres_accepts(value):
+    """uuid.UUID alone takes every one of these; Postgres's uuid input fails
+    them with 22P02, which surfaces as a 500."""
+    from web.services.admin_store import _is_uuid
+
+    assert _is_uuid(value) is False
+    assert _is_uuid("12345678-1234-1234-1234-123456789ABC") is True
 
 
 # ── notifications ────────────────────────────────────────────────────────────

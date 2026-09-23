@@ -372,12 +372,17 @@ def users() -> Response | tuple[Response, int]:
     except (TypeError, ValueError):
         return jsonify({"error": "invalid_pagination"}), 400
 
+    # Optional, and refused before the RPC like every other tier key here.
+    tier = request.args.get("tier") or None
+    if tier is not None and not TIER_KEY_RE.fullmatch(tier):
+        return jsonify({"error": "invalid_tier"}), 422
+
     backend = current_app.config["admin_backend"]()
     if backend is None:
         return jsonify({"error": "storage_unavailable"}), 503
 
     rows, total = backend.list_users(
-        limit=limit, offset=offset, search=request.args.get("q") or None
+        limit=limit, offset=offset, search=request.args.get("q") or None, tier=tier
     )
     return jsonify(
         {
@@ -1104,6 +1109,66 @@ def delete_tier(key: str) -> Response | tuple[Response, int]:
         return jsonify({"error": refused.code}), 409
     logger.info("%s deleted tier %s", g.identity.email, key)
     return jsonify({"tier": tier})
+
+
+@admin_bp.route("/api/tiers/<key>/members", methods=["POST"])
+def move_tier_members(key: str) -> Response | tuple[Response, int]:
+    """Move a batch of accounts into one tier, in one audited transaction.
+
+    Only the tier changes. Personal overrides are never read or written, so an
+    allowance an operator granted survives the move.
+
+    The route checks the payload's shape: 1-200 non-empty strings, counted on
+    the raw list before dedup so a padded body cannot slip past the bound. A
+    string that is not a uuid identifies no account, so it is reported as
+    missing -- by admin_set_users_tier itself, which takes the ids as text, and
+    only after its actor and tier checks.
+    """
+    from web.services.admin_store import AdminActionRefused
+    from web.services.audit import actor_from_request
+
+    payload = request.get_json(silent=True)
+    if not TIER_KEY_RE.fullmatch(key) or not isinstance(payload, dict):
+        return jsonify({"error": "invalid_payload"}), 400
+    user_ids = payload.get("user_ids")
+    if (
+        not isinstance(user_ids, list)
+        or not 1 <= len(user_ids) <= 200
+        or not all(isinstance(uid, str) and uid for uid in user_ids)
+    ):
+        return jsonify({"error": "invalid_payload"}), 400
+    reason = payload.get("reason")
+    if reason is not None and not isinstance(reason, str):
+        return jsonify({"error": "invalid_payload"}), 400
+    reason = (reason or "").strip() or None
+
+    backend = current_app.config["admin_backend"]()
+    if backend is None:
+        return jsonify({"error": "storage_unavailable"}), 503
+    try:
+        result = backend.set_users_tier(
+            list(dict.fromkeys(user_ids)),
+            tier=key,
+            reason=reason,
+            actor=actor_from_request(g.identity),
+        )
+    except AdminActionRefused as refused:
+        logger.warning("Refused a tier move into %s by %s: %s", key, g.identity.email, refused.code)
+        return jsonify({"error": refused.code}), 409
+
+    moved_ids = result.get("moved_ids") or []
+    # Before returning, as put_user_quota does -- and only for the moved ids:
+    # an unchanged or missing account has no cached tier that went stale.
+    for uid in moved_ids:
+        _evict_identity_caches(uid)
+    logger.info("%s moved %d accounts into tier %s", g.identity.email, len(moved_ids), key)
+    return jsonify(
+        {
+            "moved": len(moved_ids),
+            "unchanged": result.get("unchanged", 0),
+            "missing": result.get("missing") or [],
+        }
+    )
 
 
 @admin_bp.route("/api/users/<user_id>/quota", methods=["PUT"])
