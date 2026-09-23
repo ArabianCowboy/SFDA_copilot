@@ -17,6 +17,11 @@ Two read-only aggregate RPCs over `chat_messages` + `chat_message_sources`, two
 analytics region at the bottom of the existing Overview tab. No new table, no materialised view,
 no scheduler, no cache, no new tab, no charting library, no new frontend module file.
 
+> **Reversed 2026-09-23.** "No new tab" did not hold: the region is now its own tab, last in
+> the tablist, with the hint prose behind an "i" beside each zone heading. The reasoning and the
+> build are in [`archive/2026-09-23_admin-analytics-tab.md`](archive/2026-09-23_admin-analytics-tab.md). Everything else in
+> this section still stands.
+
 **Out, unchanged from the TODO entry:** the answer cache, an index-version identifier, the V2
 no-name log table, the per-member conversation viewer, and all seven follow-ups. Section 9 says
 how each follow-up slots in later.
@@ -371,6 +376,15 @@ tests). The UI lane wanted a sibling. **Sibling wins**, for three reasons:
 
 Analytics goes **below** the operational figures: signup state and account count are what an
 operator acts on, and at three accounts the question lists will usually be policy-empty.
+
+> **Reversed 2026-09-23** by [`archive/2026-09-23_admin-analytics-tab.md`](archive/2026-09-23_admin-analytics-tab.md). The
+> three reasons above were all reasons not to put analytics _inside_ `renderOverview`; none was
+> a reason against a tab, and a tab satisfies all three better while restoring Overview's own
+> contract (cheap reads, every figure links to the tab that owns it). The region now lives in
+> `#analytics-body` inside `#panel-analytics`, the last tab; the lead zone is drawn once at
+> init and the three requests fire on first activation. The zone list in §7.2 is unchanged
+> except that the hint prose in zones 1–3 moved behind an "i" beside each heading and the
+> `privacy` line joined the `source` popup.
 
 ### 7.2 Zones
 

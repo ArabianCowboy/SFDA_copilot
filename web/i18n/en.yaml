@@ -407,6 +407,9 @@ runtime:
       unavailable: 'Could not load this just now.'
     analytics:
       heading: 'Saved conversations'
+      # The accessible name of an "i" trigger; {topic} is the zone heading or
+      # the notice lead it explains.
+      about: 'About {topic}'
       source: 'Counted from conversations readers have saved. When a reader deletes a conversation, or an account is deleted, its questions leave these figures — so a number here can go down.'
       privacy: 'These lists show saved question text without account identifiers.'
       filtersLabel: 'Filter the figures below'
@@ -1146,4 +1149,5 @@ page:
       notifications: 'Notifications'
       tiers: 'Tiers'
       deletions: 'Deletions'
+      analytics: 'Analytics'
     searchLabel: 'Search by email'

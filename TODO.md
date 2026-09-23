@@ -75,6 +75,7 @@ bottom of this file: [How this file works](#how-this-file-works).
 - [Measure the real statement and lock timeouts on the write path](#measure-the-real-statement-and-lock-timeouts-on-the-write-path) — needs a call through PostgREST, not MCP.
 - [Run the database assertions somewhere other than by hand](#run-the-database-assertions-somewhere-other-than-by-hand) — 3 of 6 files run green by hand 2026-09-19 (208 assertions); the other 3 are blocked on a disposable account or a disposable database.
 - [One Realtime socket per reader, not one per visible tab](#one-realtime-socket-per-reader-not-one-per-visible-tab) — not started; costs nothing measurable yet, written down because the cost is the interesting half.
+- [The analytics "i" popups have not been heard through a screen reader](#the-analytics-i-popups-have-not-been-heard-through-a-screen-reader) — owed by a human with NVDA or VoiceOver; the fallback is one attribute.
 - [Confirm on the live site that chat streaming arrives token by token](#confirm-on-the-live-site-that-chat-streaming-arrives-token-by-token) — post-restart verification; circumstantial log evidence says yes, owed by a human.
 
 ---
@@ -488,6 +489,26 @@ exist; the trigger is what matters.
 ---
 
 ## Planned work
+
+### The analytics "i" popups have not been heard through a screen reader
+
+**Where:** `static/js/admin/ui.js` `infoPopup`, and the four triggers it builds on the
+Analytics tab.
+
+**What is wrong.** Nothing known. The trigger is a named `<button popovertarget>`, so the
+browser adds `aria-expanded` and `aria-details` itself, and the popover sits directly after
+its button in the DOM. Whether NVDA, JAWS or VoiceOver then read the popup text as the next
+thing after "expanded" has not been checked; `aria-details` is exposed for separate
+navigation, not announced. If it is not read, the one-line fix is `aria-describedby` on the
+trigger, not focus management.
+
+**Who it reaches.** An operator using a screen reader on the Analytics tab. Nobody yet.
+
+**How it was found.** A review pass on the plan (`docs/archive/2026-09-23_admin-analytics-tab.md`),
+which said "not sure" and asked for an AT check the browser suite cannot make.
+
+**What fixing it would disturb.** One attribute in `infoPopup` and one assertion in
+`test_explanations_are_popups_and_states_are_not`; `ASSET_VERSION`.
 
 ### Confirm on the live site that chat streaming arrives token by token
 
@@ -1346,12 +1367,12 @@ the sidebar populating itself.
 
 **V1 scope (2026-09-18, owner-locked).** No new log table. Aggregate off saved chats: `chat_messages` + `chat_message_sources` via reader RPCs (`admin_top_questions`, `admin_citation_stats`). Common = `group by` normalized question (lowercase, trim, collapse whitespace; embedding similarity out). Unanswered = `cited == []` (refusals persist; `empty_answer` / `generation_failed` never save per `web/api/app.py:3927` (streaming route's `empty_answer` return, before the durable write) and `:4277-4301` (blocking route's `empty_answer` guard), so excluded). Quality = `% with 0 citations`, avg cited/retrieved, by category/lang; invalid-marker rate and coverage (`citations.py:294-370`) not stored, out of V1. Responses never include `owner_id`.
 
-**What V1 would disturb.** 2 reader RPCs (`security definer`, `search_path=''`, revoke all, grant `service_role` only); `AdminBackend` + both backends in `web/services/admin_store.py`; routes `GET /admin/api/analytics/*` in `web/api/admin.py`; Overview tab render in `static/js/admin/`; strings under existing `runtime.admin.*` in `en.yaml` + `ar.yaml`; `ASSET_VERSION` bump; tests for aggregation + no identity in response.
+**What V1 would disturb.** 2 reader RPCs (`security definer`, `search_path=''`, revoke all, grant `service_role` only); `AdminBackend` + both backends in `web/services/admin_store.py`; routes `GET /admin/api/analytics/*` in `web/api/admin.py`; an Analytics tab render in `static/js/admin/` (first built under Overview, moved to its own tab 2026-09-23 — `docs/archive/2026-09-23_admin-analytics-tab.md`); strings under existing `runtime.admin.*` in `en.yaml` + `ar.yaml`; `ASSET_VERSION` bump; tests for aggregation + no identity in response.
 
 **Update 2026-09-20 — V1 built, controls included; uncommitted.** Both reader RPCs
 (`admin_top_questions`, `admin_citation_stats`), both `AdminBackend` methods, the two
-`GET /admin/api/analytics/*` routes, the bilingual copy, and the `#overview-analytics` region are
-built and tested — see `docs/admin-analytics-v1-plan.md` →
+`GET /admin/api/analytics/*` routes, the bilingual copy, and the analytics region (now
+`#analytics-body`, its own tab since 2026-09-23) are built and tested — see `docs/admin-analytics-v1-plan.md` →
 [_Build record (2026-09-20)_](docs/admin-analytics-v1-plan.md#build-record-2026-09-20) for what
 shipped and what it corrected in the plan above. Not done, so this entry stays open: landing the
 commit, and an owner eyeball of the Arabic actually rendered in the console (reviewed as text on

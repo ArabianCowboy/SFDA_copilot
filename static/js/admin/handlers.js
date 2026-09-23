@@ -1432,56 +1432,52 @@ function storeAnalyticsFilters(filters) {
   }
 }
 
+/* A FULFILLED request is not the same as a usable one. `request()` in
+   services.js returns `null` for a 200 whose body would not parse — its own
+   comment names the case: "a gateway or proxy can return HTML on an error.
+   Falling through with a null payload keeps the status". Reading a field off
+   that null threw, and because the tab inits are deliberately not awaited the
+   rejection went nowhere: the panel stayed blank with `loaded` already true,
+   and no way back but a page reload. Shared by Overview and Analytics. */
+const value = (result, pick) => {
+  if (result.status !== 'fulfilled') return null;
+  const payload = result.value;
+  if (!payload || typeof payload !== 'object') return null;
+  return pick(payload);
+};
+
 /**
- * The Overview tab.
+ * The Analytics tab: aggregates over saved conversations, on the same
+ * null-vs-empty contract as Overview (DESIGN.md, "The saved-conversation
+ * figures are their own tab").
  *
- * Four requests, each awaited independently and each allowed to fail on its
- * own, plus three more for the saved-conversation figures in the second body
- * below them. `Promise.allSettled`, not `Promise.all`: this is the console's
- * landing tab, and one slow audit query must not be able to leave an operator
- * looking at the empty panel this replaced. A section whose request failed
- * says so; the rest still render.
+ * The lead zone — both selects, Refresh, the stamp, the live region — is drawn
+ * once, here, into the hidden panel. Every load after that repaints only
+ * `#analytics-results`, so a focused `<select>` is never rebuilt under the
+ * operator. The three requests fire on first activation, never at boot: this
+ * is the last tab, occasional and never urgent, and it costs nothing until
+ * opened.
  *
- * It loads once, on first activation. Overview is the default tab, so in
- * practice that is at boot — but writing it as an activation makes it behave
- * correctly if the default ever moves, which is the mistake the Tiers tab made
- * in the other direction (it fetched on boot and toasted over whichever tab
- * the operator was actually on).
+ * Silent on failure, unlike every other loader in this file. A zone that
+ * could not load says so in place, and a toast would fire on every visit the
+ * moment this one endpoint is slow — over whichever tab the operator had
+ * already moved on to.
  */
-export function initOverviewTab(services) {
+export function initAnalyticsTab(services) {
+  const body = document.getElementById('analytics-body');
+  if (!body) return;
+
   let loaded = false;
-
-  /* A FULFILLED request is not the same as a usable one. `request()` in
-     services.js returns `null` for a 200 whose body would not parse — its own
-     comment names the case: "a gateway or proxy can return HTML on an error.
-     Falling through with a null payload keeps the status". Reading a field off
-     that null threw, and because this init is deliberately not awaited the
-     rejection went nowhere: the landing tab stayed blank with `loaded` already
-     true, and no way back but a page reload. */
-  const value = (result, pick) => {
-    if (result.status !== 'fulfilled') return null;
-    const payload = result.value;
-    if (!payload || typeof payload !== 'object') return null;
-    return pick(payload);
-  };
-
   let filters = readAnalyticsFilters();
   let analyticsRequest = null;
   let analyticsSequence = 0;
 
-  /**
-   * The saved-conversation figures, on the same null-vs-empty contract.
-   *
-   * Never awaited by `loadOnce`: these are aggregates over `chat_messages` and
-   * are slower than the four cheap reads, and the landing figures must not wait
-   * on a `group by`.
-   *
-   * Silent on failure, unlike every other loader in this file. A zone that
-   * could not load says so in place, and a toast would fire on every visit the
-   * moment this one endpoint is slow — over whichever tab the operator had
-   * already moved on to.
-   */
-  async function loadAnalytics({ refetch = false } = {}) {
+  renderAnalyticsLead(filters);
+
+  /** Resolves `false` only when this run finished with nothing usable — a
+      superseded run resolves `true`, since the window it described is not
+      the one on screen and the current run answers for itself. */
+  async function loadAnalytics({ announce = false } = {}) {
     /* Abort AND a sequence token, because they cover different races. The
        abort stops the three requests still on the wire; the token discards the
        answer that had ALREADY resolved when the operator picked the next
@@ -1493,12 +1489,7 @@ export function initOverviewTab(services) {
     const { signal } = analyticsRequest;
     const token = (analyticsSequence += 1);
 
-    /* The lead zone is drawn ONCE. `loadOnce` un-sets its own guard when all
-       four cheap reads fail, so a second tab activation re-enters here — and a
-       second lead render would throw away figures that DID load and rebuild
-       both selects out from under the operator's focus. */
-    if (refetch || document.getElementById('analytics-results')) setAnalyticsLoading(true);
-    else renderAnalyticsLead(filters);
+    setAnalyticsLoading(true);
 
     try {
       const [citations, questions, uncited] = await Promise.allSettled([
@@ -1506,46 +1497,76 @@ export function initOverviewTab(services) {
         services.analyticsQuestions({ ...filters, signal }),
         services.analyticsQuestions({ ...filters, order: 'uncited', signal }),
       ]);
-      if (token !== analyticsSequence) return;
+      if (token !== analyticsSequence) return true;
 
-      renderAnalyticsResults({
+      const results = {
         citations: value(citations, (v) => v.stats ?? null),
         questions: value(questions, (v) => v.questions ?? null),
         uncited: value(uncited, (v) => v.questions ?? null),
-        announce: refetch,
-      });
+      };
+      renderAnalyticsResults({ ...results, announce });
+      return Object.values(results).some((rows) => rows !== null);
     } catch {
-      /* Nothing awaits this call, so a render that threw on a malformed row
-         went nowhere at all: the region kept whatever half-state it was in,
-         busy, for the rest of the session. Every zone unavailable instead,
-         which clears busy on the way — behind the token, so an abandoned
-         window still cannot paint. */
-      if (token === analyticsSequence) renderAnalyticsResults({ announce: refetch });
+      /* Nothing awaits this call from the listeners below, so a render that
+         threw on a malformed row went nowhere at all: the region kept whatever
+         half-state it was in, busy, for the rest of the session. Every zone
+         unavailable instead, which clears busy on the way — behind the token,
+         so an abandoned window still cannot paint. */
+      if (token === analyticsSequence) renderAnalyticsResults({ announce });
+      return false;
     }
   }
 
   /* Delegated on the template's own div, which outlives every repaint — the
-     same shape the figure links above use, and the reason a filter change can
+     same shape Overview's figure links use, and the reason a filter change can
      repaint the results region without rebinding anything. */
-  const analyticsRegion = document.getElementById('overview-analytics');
-  analyticsRegion?.addEventListener('change', (event) => {
+  body.addEventListener('change', (event) => {
     const { id, value: chosen } = event.target;
     if (id === 'analytics-window')
       filters = validAnalyticsFilters({ ...filters, days: Number(chosen) });
     else if (id === 'analytics-lang') filters = validAnalyticsFilters({ ...filters, lang: chosen });
     else return;
     storeAnalyticsFilters(filters);
-    loadAnalytics({ refetch: true });
+    loadAnalytics({ announce: true });
   });
-  analyticsRegion?.addEventListener('click', (event) => {
-    if (event.target.closest('#analytics-refresh')) loadAnalytics({ refetch: true });
+  body.addEventListener('click', (event) => {
+    if (event.target.closest('#analytics-refresh')) loadAnalytics({ announce: true });
   });
+
+  /* Set before the await for the double-click race, then set to what the run
+     actually earned: a total failure leaves it clear so the next activation
+     retries, as DESIGN.md requires and Overview does. */
+  async function loadOnce() {
+    if (loaded) return;
+    loaded = true;
+    loaded = await loadAnalytics();
+  }
+
+  document.getElementById('tab-analytics')?.addEventListener('click', loadOnce);
+  if (document.getElementById('panel-analytics')?.hidden === false) loadOnce();
+}
+
+/**
+ * The Overview tab.
+ *
+ * Four requests, each awaited independently and each allowed to fail on its
+ * own. `Promise.allSettled`, not `Promise.all`: this is the console's landing
+ * tab, and one slow audit query must not be able to leave an operator looking
+ * at the empty panel this replaced. A section whose request failed says so;
+ * the rest still render.
+ *
+ * It loads once, on first activation. Overview is the default tab, so in
+ * practice that is at boot — but writing it as an activation makes it behave
+ * correctly if the default ever moves, which is the mistake the Tiers tab made
+ * in the other direction (it fetched on boot and toasted over whichever tab
+ * the operator was actually on).
+ */
+export function initOverviewTab(services) {
+  let loaded = false;
 
   async function loadOnce() {
     if (loaded) return;
     loaded = true;
-
-    loadAnalytics();
 
     const results = await Promise.allSettled([
       services.users({ limit: 1, offset: 0 }),

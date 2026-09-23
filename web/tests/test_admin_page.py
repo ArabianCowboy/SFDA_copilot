@@ -454,7 +454,7 @@ def test_zone_headings_do_not_skip_a_rank():
     user navigates a long console panel.
     """
     source = ADMIN_UI_JS.read_text(encoding="utf-8")
-    block = re.search(r"function section\(title\) \{(.*?)\n\}", source, re.DOTALL)
+    block = re.search(r"function section\(title(?:, \w+)?\) \{(.*?)\n\}", source, re.DOTALL)
     assert block, "section() not found in ui.js"
     assert "createElement('h2')" in block.group(1), (
         "section() must emit an h2: the panel heading above it is an h1"

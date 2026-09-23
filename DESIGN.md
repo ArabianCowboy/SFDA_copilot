@@ -315,7 +315,7 @@ Borders are 1px hairlines by default. 2px is the system's one _meaningful_ rule 
 - **Shape:** Full pill for the primary landing action and all icon chrome (999px); 6px for quiet list buttons; 10px on the composer's send button, squared on its inner edge so it welds to the input.
 - **Primary (`.unified-button`):** Teal fill, white label, `--fw-display` (700) at 17px, 16px/48px padding, a coloured lift shadow, and a trailing arrow. Hover darkens the fill, raises the button 1px, deepens the shadow, and nudges the arrow 3px _toward the reading direction_ (`translateX(calc(3px * var(--flip)))`) so it points onward in both scripts.
 - **Ghost:** Transparent with a `rule-300` hairline; fills to sunken porcelain and darkens its text on hover.
-- **Icon controls:** 38×38 circles, white fill, `rule-200` hairline, muted glyph; the border and glyph both go teal on hover. Language and theme toggles share this base.
+- **Icon controls:** 38×38 circles, white fill, `rule-200` hairline, muted glyph; the border and glyph both go teal on hover. Language and theme toggles share this base. **One named exception:** the console's info-popup trigger (`.admin-info-btn`) is a 28px borderless ghost circle. That rule describes page chrome; three bordered 38px circles beside 12px cap zone headings would be louder than the paragraphs they replace, and 28px still clears WCAG 2.5.8's 24px target.
 - **New chat (`.new-chat-btn`):** A 38px pill with a plus glyph and a label, at the head of the sidebar body. It carries the **citation marker's resting treatment at control size** — `signal-tint` fill, `signal` hairline, `signal` label — because white-on-white in a column of white-on-white left the one actionable control indistinguishable from the labels around it. Not a destructive red: the system has no danger variant, and logout, the one genuinely irreversible control in the app, is a quiet ghost. **Its hover deepens to `signal-hover`; it does not invert to a solid fill the way `.cite-marker` does,** because `#send-button` is already solid teal at the same size and weight, and inverting would put a visual twin of Send in the sidebar — one that clears your work. Solid teal stays the primary action's alone. It is _labelled_ because it sits among interchangeable 38px circles. **Hidden, not disabled, until there is a conversation to end:** on a first visit the FAQ rail is what the column is for. Server-rendered `hidden`, revealed by `ui.js` — a dead module leaves no button, which is honest, because a dead module leaves no chat either. It animates in on the hidden→visible transition only, and explicitly **not** on an undo, which should read as the clear never having happened.
 - **Focus:** Global — `2px solid var(--focus-ring)` at 2px offset. Fields instead take a teal border plus a 3px `rgb(15 94 99 / .28)` ring.
 
@@ -383,15 +383,28 @@ overview that cannot be acted on is a poster. Its four requests are `Promise.all
 than the empty panel it replaced, so each section stands or falls alone and the one that failed
 says so.
 
-**The saved-conversation figures below them depart from that on all three counts, and the
-departure is the point.** `[TASTE]` They are the one part of this tab with endpoints of their
-own — three `/admin/api/analytics/*` reads beside the four above — and **not one of those
-figures links anywhere**, because no tab owns them: nothing in this console opens one
-reader's conversation, and V1 deliberately does not build the surface that would
-(`docs/admin-analytics-v1-plan.md` §7.1). So they sit in a second `.admin-panel-body` rather
-than inside `#overview-body`, unawaited, repainted separately. An aggregate over saved turns
-is slower than four cheap reads, and the figures an operator actually acts on must never wait
-on a `group by`.
+**The saved-conversation figures are their own tab, the last one, so Overview's rule holds as
+written.** `[TASTE]` They have endpoints of their own — three `/admin/api/analytics/*`
+aggregates over saved turns, slower than four cheap reads — and none of their figures links
+anywhere, because nothing in this console opens one reader's conversation. For a while they sat
+in a second body under Overview, which broke that tab's contract on every count and had to be
+excused here. A tab breaks nothing: it is occasional and never urgent, so it goes last and costs
+nothing until opened; the lead zone (controls, stamp, live region) is drawn once at init and
+only `#analytics-results` is ever repainted, so a focused `<select>` is never rebuilt
+(`docs/archive/2026-09-23_admin-analytics-tab.md`).
+
+**Standing context may hide; a state may not.** `[CORRECTNESS]` Where the numbers come from,
+how the data is handled, what a term means — that is standing context, and it goes behind an
+"i" (`infoPopup` in `static/js/admin/ui.js`: a native `popover`, anchored under its trigger,
+flipping to stay in the viewport, centred by the UA where anchor positioning is missing). What
+never hides: "could not load", "nothing yet", the small-sample line, the floor notice's lead
+sentence, control labels and the stamp — anything that changes what the operator does next. The
+trigger sits directly after a zone heading (or a notice's lead), never in a table cell and never
+one per tile: the tile labels were written to be self-describing, and an icon beside every label
+is the most common way this pattern goes wrong. It is an "i", not a "?": the Arabic question mark
+is "؟", so a Latin "?" in an RTL console reads as a bug, while "i" is symmetric. The trigger's
+accessible name is `About {topic}`, with the heading as the topic, so two triggers in one zone
+never share a name.
 
 **A fulfilled request is not a usable one.** `[CORRECTNESS]` `request()` in
 `static/js/admin/services.js` returns `null` for a 200 whose body will not parse — its own

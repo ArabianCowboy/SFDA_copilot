@@ -411,6 +411,15 @@ ICONS: dict[str, str] = {
         '<path d="M11.35 5.6a.5.5 0 0 1 .05.7l-2.4 2.87a1.3 1.3 0 1 1-.77-.64l'
         '2.41-2.88a.5.5 0 0 1 .71-.06"/>'
     ),
+    # Three bars on a baseline: the analytics tab. Its own glyph because every
+    # tab carries a distinct one and each reusable candidate already means
+    # something else here — `gauge` is Overview, `info` is "explain this".
+    "chart": (
+        '<path d="M3 9.5a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 .5.5V13H3zm4-4a.5.5 0 0 1 '
+        ".5-.5h1a.5.5 0 0 1 .5.5V13H7zm4-3a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 .5.5V13"
+        'h-2z"/>'
+        '<path d="M2.5 13h11a.5.5 0 0 1 0 1h-11a.5.5 0 0 1 0-1"/>'
+    ),
 }
 
 

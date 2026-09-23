@@ -1,12 +1,13 @@
-"""The saved-conversations analytics region on the Overview tab, in a browser.
+"""The saved-conversations analytics tab, in a browser.
 
-The region is the Overview tab's second body: a lead zone holding the period
-and language selects, the refresh button, the "counted at" stamp and a polite
-live region, above `#analytics-results` — three zones that each render `null`
-as "could not load" and `[]` as "nothing yet", and each fail on their own
-(docs/admin-analytics-v1-plan.md §7.1-§7.7). Every selector
-here scopes past the lead zone rather than assuming it holds nothing but hint
-lines, because a results repaint must never touch it.
+The tab is the last one, and `#analytics-body` is its panel body: a lead zone
+holding the period and language selects, the refresh button, the "counted at"
+stamp and a polite live region, above `#analytics-results` — three zones that
+each render `null` as "could not load" and `[]` as "nothing yet", and each fail
+on their own (docs/admin-analytics-v1-plan.md §7.2-§7.7; the placement is
+DESIGN.md). Every selector here scopes past the lead
+zone rather than assuming it holds nothing but the controls, because a results
+repaint must never touch it.
 
 Two console helpers, because one cannot express both jobs. `_analytics_console`
 serves canned payloads to the three requests and is what most tests want; it
@@ -16,7 +17,8 @@ analytics routes only after it returns would race the page's own fetches, which
 fire the moment identity resolves. `_filtered_console` answers per window
 instead, so the DOM says WHICH response it is showing, and can hold a route
 open across a second choice — which is what the race and control tests need.
-Both register every route before navigating.
+Both register every route before navigating, and both then click the tab,
+because nothing is requested until it is opened.
 """
 
 from __future__ import annotations
@@ -130,9 +132,9 @@ def _analytics_console(
     lang="",
     delay_ms=None,
 ) -> None:
-    """Open the console on Overview with the four operational routes
-    `_overview_console` uses, PLUS the three analytics requests routed to
-    canned payloads.
+    """Open the console with the four operational routes `_overview_console`
+    uses, PLUS the three analytics requests routed to canned payloads, then
+    open the Analytics tab — which is what fires them.
 
     `uncited` defaults to mirroring `questions` — most tests do not care that
     the two `order=` calls can return different rows, and only the tests that
@@ -172,6 +174,8 @@ def _analytics_console(
 
     page.goto(f"/admin?testing=true{lang}")
     expect(page.locator("#admin-console")).to_be_visible()
+    page.locator("#tab-analytics").click()
+    expect(page.locator("#panel-analytics")).to_be_visible()
 
 
 def _zone(page: Page, index: int):
@@ -205,8 +209,14 @@ def test_an_empty_question_list_reads_as_a_privacy_rule_not_a_fault(browser_page
     zone = _zone(browser_page, 1)
     notice = zone.locator(".admin-notice")
     expect(notice).to_be_visible()
-    expect(notice.locator("strong")).to_have_text(strings["questions"]["floorEmpty"])
-    expect(notice.locator("p")).to_have_text(strings["questions"]["floorWhy"])
+    # The lead is the state and stays visible; the reason behind it is standing
+    # context and sits in the lead's own closed popup.
+    lead = notice.locator("strong")
+    expect(lead).to_be_visible()
+    expect(lead).to_have_text(strings["questions"]["floorEmpty"], use_inner_text=True)
+    why = lead.locator(".admin-info-pop")
+    expect(why).to_have_text(strings["questions"]["floorWhy"])
+    expect(why).to_be_hidden()
     expect(zone.locator(".admin-empty")).to_have_count(0)
 
 
@@ -492,7 +502,7 @@ def test_analytics_numbers_stay_latin_and_carry_no_bidi_marks_in_arabic(browser_
     )
 
     machine_texts = browser_page.eval_on_selector_all(
-        "#overview-analytics .admin-cell-machine", "els => els.map(e => e.textContent)"
+        "#analytics-body .admin-cell-machine", "els => els.map(e => e.textContent)"
     )
     assert machine_texts, "no machine-value spans rendered — nothing to check"
     bidi_marks = "‎‏‪‫‬‭‮⁦⁧⁨⁩"
@@ -500,7 +510,7 @@ def test_analytics_numbers_stay_latin_and_carry_no_bidi_marks_in_arabic(browser_
         assert re.match(r"^[0-9–.: %-]+$", text), f"non-Latin machine value: {text!r}"
         assert not any(ch in bidi_marks for ch in text), f"bidi mark in machine value: {text!r}"
 
-    region_text = browser_page.locator("#overview-analytics").inner_text()
+    region_text = browser_page.locator("#analytics-body").inner_text()
     arabic_indic_digits = [ch for ch in region_text if "٠" <= ch <= "٩" or "۰" <= ch <= "۹"]
     assert not arabic_indic_digits, (
         f"Arabic-Indic digits leaked into the region: {arabic_indic_digits!r}"
@@ -519,7 +529,7 @@ def test_question_text_is_never_parsed_as_html(browser_page: Page):
         questions=[_question_row(payload, asks=2, uncited=0, askers=2)],
     )
 
-    region = browser_page.locator("#overview-analytics")
+    region = browser_page.locator("#analytics-body")
     expect(region.locator("img")).to_have_count(0)
     assert browser_page.evaluate("() => window.__pwned") is None
     expect(region).to_contain_text(payload)
@@ -680,7 +690,13 @@ def test_the_uncited_zone_shows_its_own_empty_state_when_every_answer_was_cited(
 # ── Timing and failure isolation ──────────────────────────────────────────────
 
 
-def test_a_slow_analytics_request_does_not_delay_the_overview_figures(browser_page: Page):
+def test_a_slow_analytics_request_holds_the_results_region_busy_until_it_lands(
+    browser_page: Page,
+):
+    """The region says it is counting while it counts, and stops saying so the
+    moment the figures land. That Overview never waits on this at all is
+    `test_opening_the_console_on_overview_fires_no_analytics_request`'s claim.
+    """
     strings = _analytics_strings("en")
     _analytics_console(
         browser_page,
@@ -688,9 +704,6 @@ def test_a_slow_analytics_request_does_not_delay_the_overview_figures(browser_pa
         questions=[_question_row("Renew a licence", asks=3, uncited=1, askers=2)],
         delay_ms=1500,
     )
-
-    # Four cheap operational reads, unrelated to the analytics delay.
-    expect(browser_page.locator("#overview-body .admin-facts .admin-fact")).to_have_count(3)
 
     results = browser_page.locator("#analytics-results")
     expect(results).to_have_attribute("aria-busy", "true")
@@ -808,7 +821,7 @@ def test_the_analytics_region_does_not_overflow_at_390px_in_arabic(browser_page:
 
     wrap = browser_page.evaluate(
         """() => {
-          const ths = [...document.querySelectorAll('#overview-analytics table thead th')];
+          const ths = [...document.querySelectorAll('#analytics-body table thead th')];
           const th = ths[ths.length - 1];
           const rect = th.getBoundingClientRect();
           const cs = getComputedStyle(th);
@@ -920,7 +933,7 @@ def _window_stats(days: str) -> dict:
 def _filtered_console(
     page: Page, *, calls, hold_days=None, hold_only=None, held=None, lang=""
 ) -> None:
-    """The landing tab, with the analytics endpoints answering per window.
+    """The Analytics tab, opened, with its endpoints answering per window.
 
     `hold_days` leaves that window's routes unanswered in `held` — the
     hold-and-release shape `test_people_pager_out_of_order_responses_resolve_correctly`
@@ -949,6 +962,8 @@ def _filtered_console(
     page.route("**/admin/api/analytics/**", analytics)
 
     page.goto(f"/admin?testing=true{lang}")
+    expect(page.locator("#admin-console")).to_be_visible()
+    page.locator("#tab-analytics").click()
     expect(page.locator("#analytics-window")).to_be_visible()
 
 
@@ -972,7 +987,7 @@ def test_the_controls_are_one_labelled_group_that_does_not_sit_in_the_results(
     calls = []
     _filtered_console(browser_page, calls=calls)
 
-    controls = browser_page.locator("#overview-analytics .admin-filters")
+    controls = browser_page.locator("#analytics-body .admin-filters")
     expect(controls).to_have_attribute("role", "group")
     expect(controls).to_have_attribute("aria-label", strings["filtersLabel"])
     expect(controls).to_have_attribute("aria-controls", "analytics-results")
@@ -1129,6 +1144,8 @@ def test_the_filter_choice_survives_the_language_toggle(browser_page: Page):
 
     calls.clear()
     browser_page.goto("/admin?testing=true&lang=ar")
+    expect(browser_page.locator("#admin-console")).to_be_visible()
+    browser_page.locator("#tab-analytics").click()
     expect(browser_page.locator("#analytics-window")).to_have_value("7")
     expect(browser_page.locator("#analytics-lang")).to_have_value("en")
 
@@ -1156,6 +1173,8 @@ def test_a_tampered_stored_filter_falls_back_to_the_defaults(browser_page: Page,
 
     calls.clear()
     browser_page.reload()
+    expect(browser_page.locator("#admin-console")).to_be_visible()
+    browser_page.locator("#tab-analytics").click()
     expect(browser_page.locator("#analytics-window")).to_have_value("30")
     expect(browser_page.locator("#analytics-lang")).to_have_value("")
 
@@ -1412,59 +1431,211 @@ def test_a_render_that_throws_lands_as_could_not_load_not_as_a_blank_region(brow
     expect(results).to_have_attribute("aria-busy", "false")
 
 
-def _abort_the_four_overview_reads(page: Page, calls: list) -> None:
-    """The landing tab with every cheap Overview read failing outright, which
-    is what makes `loadOnce` un-set its own guard — and the analytics endpoints
-    answering, so there are figures standing to be thrown away.
+# ── Its own tab (DESIGN.md) ──────────────────────────────────────────────────
+
+
+def _console_with_analytics_recorded(page: Page, calls: list, *, abort=False, lang="") -> None:
+    """The console open on its landing tab, every analytics request recorded
+    in `calls` — and answered, or aborted outright when `abort` is set. The
+    tab is deliberately NOT clicked: these tests are about when it loads.
     """
-    _route_identity(page, status=200, body=ADMIN_IDENTITY)
-    for pattern in (
-        "**/admin/api/tiers",
-        "**/admin/api/registrations",
-        "**/admin/api/audit*",
-        "**/admin/api/users?*",
-    ):
-        page.route(pattern, lambda route: route.abort())
-    page.route("**/admin/api/settings", lambda route: _json(route, SETTINGS))
+    _route_operational(page)
 
     def analytics(route):
-        calls.append(route.request.url)
         url = route.request.url
+        calls.append(url)
+        if abort:
+            route.abort()
+            return
         _json(route, _window_stats("30") if "citations" in url else {"questions": []})
 
     page.route("**/admin/api/analytics/**", analytics)
-    page.goto("/admin?testing=true")
-    expect(page.locator("#analytics-window")).to_be_visible()
+    page.goto(f"/admin?testing=true{lang}")
+    expect(page.locator("#admin-console")).to_be_visible()
 
 
-def test_a_second_overview_activation_refetches_without_rebuilding_the_lead(browser_page: Page):
-    """`loadOnce` sets `loaded = false` when all four cheap reads fail, so the
-    next `#tab-overview` click re-enters it — and `loadAnalytics()` with
-    `refetch: false` emptied `#overview-analytics` whole: figures that DID load
-    discarded, both selects rebuilt, focus dropped. The lead zone is drawn once
-    and every later entry is a refetch.
+def test_opening_the_console_on_overview_fires_no_analytics_request(browser_page: Page):
+    """Overview's contract is cheap reads only (DESIGN.md). Three aggregates
+    over saved turns used to ride along on its first activation, un-awaited,
+    for a tab the operator had not asked for.
     """
     calls = []
-    _abort_the_four_overview_reads(browser_page, calls)
-    expect(_saved_answers(browser_page)).to_have_text("3000")
+    _console_with_analytics_recorded(browser_page, calls)
 
-    # A mark on the live nodes: a rebuild replaces them, a refetch does not.
-    browser_page.evaluate(
-        """() => {
-          document.getElementById('analytics-results').dataset.mark = 'one';
-          document.getElementById('analytics-window').dataset.mark = 'one';
-        }"""
-    )
-    calls.clear()
+    # Something positive first: the landing figures did render, so the boot
+    # sequence this asserts about actually ran.
+    expect(browser_page.locator("#overview-body .admin-facts .admin-fact")).to_have_count(3)
+    browser_page.wait_for_timeout(300)
+    assert calls == [], f"Overview fired analytics requests on boot: {calls}"
+
+
+def test_the_analytics_tab_is_last_and_loads_on_first_activation_only(browser_page: Page):
+    calls = []
+    _console_with_analytics_recorded(browser_page, calls)
+
+    tab_ids = browser_page.eval_on_selector_all(".admin-tab", "els => els.map(el => el.id)")
+    assert tab_ids[-1] == "tab-analytics", tab_ids
+    expect(browser_page.locator("#panel-analytics")).to_be_hidden()
+
+    browser_page.locator("#tab-analytics").click()
+    expect(browser_page.locator("#panel-analytics")).to_be_visible()
+    expect(_saved_answers(browser_page)).to_have_text("3000")
+    assert _windows_asked(calls) == ["30", "30", "30"], calls
+
     browser_page.locator("#tab-overview").click()
+    browser_page.locator("#tab-analytics").click()
     expect(_saved_answers(browser_page)).to_have_text("3000")
+    browser_page.wait_for_timeout(300)
+    assert len(calls) == 3, f"a second activation fetched again: {calls}"
 
-    assert len(calls) == 3, f"the second activation did not refetch all three: {calls}"
-    marks = browser_page.evaluate(
-        """() => [document.getElementById('analytics-results')?.dataset.mark ?? null,
-                  document.getElementById('analytics-window')?.dataset.mark ?? null]"""
+
+def test_a_total_failure_is_retried_on_the_next_activation_and_the_lead_survives(
+    browser_page: Page,
+):
+    """`DESIGN.md`: clear the load-once flag when every request failed so the
+    next activation can retry. And the lead zone — both selects, the stamp,
+    the live region — is drawn once at init, so a retry repaints the results
+    region and nothing else: a rebuild would drop the operator's focus and
+    their chosen period with it.
+    """
+    unavailable = _admin_catalogue("en")["overview"]["unavailable"]
+    calls = []
+    _console_with_analytics_recorded(browser_page, calls, abort=True)
+
+    browser_page.locator("#tab-analytics").click()
+    results = browser_page.locator("#analytics-results")
+    expect(results.locator(".admin-empty")).to_have_text([unavailable] * 3)
+    expect(results).to_have_attribute("aria-busy", "false")
+    assert len(calls) == 3, calls
+
+    # A mark on the live nodes: a rebuild replaces them, a repaint does not.
+    browser_page.evaluate(
+        "() => { document.getElementById('analytics-window').dataset.mark = 'one'; }"
     )
-    assert marks == ["one", "one"], f"the lead zone was rebuilt: {marks}"
+
+    browser_page.locator("#tab-overview").click()
+    browser_page.locator("#tab-analytics").click()
+    browser_page.wait_for_timeout(400)
+    assert len(calls) == 6, f"the second activation did not retry all three: {calls}"
+    expect(results.locator(".admin-empty")).to_have_text([unavailable] * 3)
+    mark = browser_page.evaluate("() => document.getElementById('analytics-window')?.dataset.mark")
+    assert mark == "one", f"the lead zone was rebuilt: {mark!r}"
+
+
+def _info_triggers(page: Page):
+    return page.locator("#analytics-body .admin-info-btn")
+
+
+def test_explanations_are_popups_and_states_are_not(browser_page: Page):
+    """Standing context — where the numbers come from, how the data is handled,
+    what a scope is, how questions are grouped, why the floor exists — hides
+    behind an "i". A state never does: the small-sample line and the floor
+    notice's lead stay on the page. Toggling, Esc and focus return are the
+    browser's, and are asserted once so a regression in the wiring shows.
+    """
+    strings = _analytics_strings("en")
+    _analytics_console(
+        browser_page,
+        citations=[_citation_row(turns=9, turns_uncited=2, turns_no_retrieval=1, cited_total=9)],
+        questions=[],
+    )
+
+    triggers = _info_triggers(browser_page)
+    expect(triggers).to_have_count(4)
+    names = browser_page.eval_on_selector_all(
+        "#analytics-body .admin-info-btn", "els => els.map((el) => el.getAttribute('aria-label'))"
+    )
+    targets = browser_page.eval_on_selector_all(
+        "#analytics-body .admin-info-btn",
+        "els => els.map((el) => el.getAttribute('popovertarget'))",
+    )
+    assert len(set(names)) == 4, names
+    assert len(set(targets)) == 4, targets
+    about = _admin_catalogue("en")["analytics"]["about"]
+    assert about.replace("{topic}", strings["heading"]) in names, names
+    assert about.replace("{topic}", strings["questions"]["floorEmpty"]) in names, names
+
+    expected = [
+        f"{strings['source']} {strings['privacy']}",
+        strings["quality"]["scopeHint"],
+        strings["questions"]["grouping"],
+        strings["questions"]["floorWhy"],
+    ]
+    for target, text in zip(targets, expected, strict=True):
+        pop = browser_page.locator(f"#{target}")
+        expect(pop).to_have_class("admin-info-pop")
+        expect(pop).to_have_attribute("popover", "auto")
+        expect(pop).to_have_text(text)
+        expect(pop).to_be_hidden()
+
+    # States stay visible.
+    citation_zone = _zone(browser_page, 0)
+    expect(citation_zone.locator(".admin-form-hint")).to_have_text(
+        strings["quality"]["smallSample"]
+    )
+    expect(citation_zone.locator(".admin-form-hint")).to_be_visible()
+    lead = _zone(browser_page, 1).locator(".admin-notice strong")
+    expect(lead).to_be_visible()
+    expect(lead).to_have_text(strings["questions"]["floorEmpty"], use_inner_text=True)
+
+    # Click opens, Esc closes, focus is back on the trigger.
+    first = triggers.first
+    first_pop = browser_page.locator(f"#{targets[0]}")
+    first.click()
+    expect(first_pop).to_be_visible()
+    assert browser_page.evaluate("() => document.querySelectorAll(':popover-open').length") == 1
+    browser_page.keyboard.press("Escape")
+    expect(first_pop).to_be_hidden()
+    focused = browser_page.evaluate("() => document.activeElement.getAttribute('aria-label')")
+    assert focused == names[0], f"focus did not return to the trigger: {focused!r}"
+
+
+def test_the_popup_sits_by_its_button_inside_the_viewport_at_390px_in_arabic(browser_page: Page):
+    """Anchored, not centred: each popup opens directly under its "i" with
+    their inline-start edges aligned — in Arabic, the RIGHT edges. Then one
+    trigger is scrolled to the bottom of a phone viewport so a fallback has
+    to fire, and the popup still has to land inside the viewport.
+    """
+    browser_page.set_viewport_size({"width": 390, "height": 844})
+    _analytics_console(
+        browser_page,
+        citations=[_citation_row(turns=9, turns_uncited=2, turns_no_retrieval=1, cited_total=9)],
+        questions=[],
+        lang="&lang=ar",
+    )
+    triggers = _info_triggers(browser_page)
+    expect(triggers).to_have_count(4)
+
+    def boxes(index: int) -> tuple:
+        button = triggers.nth(index)
+        button.click()
+        pop = browser_page.locator(f"#{button.get_attribute('popovertarget')}")
+        expect(pop).to_be_visible()
+        b, p = button.bounding_box(), pop.bounding_box()
+        assert b and p, "no layout box"
+        browser_page.keyboard.press("Escape")
+        expect(pop).to_be_hidden()
+        return b, p
+
+    for i in range(4):
+        b, p = boxes(i)
+        # RTL: the inline-start edge is the physical right edge.
+        assert abs((b["x"] + b["width"]) - (p["x"] + p["width"])) <= 1, (
+            f"trigger {i}: popup right edge {p['x'] + p['width']} is not on the "
+            f"button's right edge {b['x'] + b['width']} (button={b}, popup={p})"
+        )
+        assert p["x"] >= 0 and p["x"] + p["width"] <= 390, f"trigger {i}: {p}"
+        assert p["y"] >= 0 and p["y"] + p["height"] <= 844, f"trigger {i}: {p}"
+
+    # The last trigger, pushed to the bottom edge: below it there is no room.
+    triggers.last.evaluate("(el) => el.scrollIntoView({ block: 'end' })")
+    b, p = boxes(3)
+    assert p["y"] + p["height"] <= 844 and p["y"] >= 0, (
+        f"popup left the viewport at the bottom edge (button={b}, popup={p})"
+    )
+    assert p["y"] + p["height"] <= b["y"] + 1, (
+        f"the popup did not flip above (button={b}, popup={p})"
+    )
 
 
 @pytest.mark.parametrize(

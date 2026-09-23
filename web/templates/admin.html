@@ -159,20 +159,18 @@
                     id="tab-notifications" aria-controls="panel-notifications" aria-selected="false" tabindex="-1">
                     {{ icon('bell', 15) }}<span>{{ t('page.admin.tabs.notifications') }}</span>
                 </button>
+                {# Last, on purpose: occasional and never urgent, so it costs
+                   nothing until opened (DESIGN.md). #}
+                <button class="admin-tab" role="tab" type="button"
+                    id="tab-analytics" aria-controls="panel-analytics" aria-selected="false" tabindex="-1">
+                    {{ icon('chart', 15) }}<span>{{ t('page.admin.tabs.analytics') }}</span>
+                </button>
             </nav>
 
             <section class="admin-panel" role="tabpanel" id="panel-overview"
                 aria-labelledby="tab-overview" tabindex="0">
                 <h1 class="admin-heading">{{ t('page.admin.tabs.overview') }}</h1>
                 <div id="overview-body" class="admin-panel-body"></div>
-                {# A SIBLING body, the way Settings stacks its two above, not a
-                   second tab and not more of #overview-body. The figures above
-                   are four cheap reads an operator acts on; these are
-                   aggregates over saved conversations, slower and never
-                   urgent, and renderOverview repaints its body whole — so a
-                   refetch here must not be able to take the landing figures
-                   with it (docs/admin-analytics-v1-plan.md §7.1). #}
-                <div id="overview-analytics" class="admin-panel-body"></div>
             </section>
 
             <section class="admin-panel" role="tabpanel" id="panel-settings"
@@ -239,6 +237,15 @@
                 aria-labelledby="tab-notifications" tabindex="0" hidden>
                 <h1 class="admin-heading">{{ t('page.admin.tabs.notifications') }}</h1>
                 <div id="notifications-body" class="admin-panel-body"></div>
+            </section>
+
+            {# Aggregates over saved conversations (docs/admin-analytics-v1-plan.md
+               §7). Ships empty; the lead zone is drawn at init and the results
+               are fetched on first activation. #}
+            <section class="admin-panel" role="tabpanel" id="panel-analytics"
+                aria-labelledby="tab-analytics" tabindex="0" hidden>
+                <h1 class="admin-heading">{{ t('page.admin.tabs.analytics') }}</h1>
+                <div id="analytics-body" class="admin-panel-body"></div>
             </section>
         </div>
     </main>

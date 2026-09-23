@@ -29,6 +29,7 @@ const TABS = [
   { tab: 'tab-deletions', panel: 'panel-deletions' },
   { tab: 'tab-audit', panel: 'panel-audit' },
   { tab: 'tab-notifications', panel: 'panel-notifications' },
+  { tab: 'tab-analytics', panel: 'panel-analytics' },
 ];
 
 const el = (id) => document.getElementById(id);
@@ -1361,8 +1362,10 @@ function mark(label, variant = '') {
   return span;
 }
 
-/** A zone heading and the hairline that runs out from it to the edge. */
-function section(title) {
+/** A zone heading and the hairline that runs out from it to the edge. `info`,
+    when given, is standing context for the zone, behind an "i" beside the
+    heading — see `infoPopup`. */
+function section(title, info) {
   const wrapper = document.createElement('section');
   wrapper.className = 'admin-section';
 
@@ -1379,6 +1382,7 @@ function section(title) {
   heading.textContent = title;
 
   head.appendChild(heading);
+  if (info) head.append(...infoPopup(info, title));
   wrapper.appendChild(head);
   return wrapper;
 }
@@ -1494,6 +1498,29 @@ function cardHint(text, variant = '') {
   line.className = variant ? `admin-form-hint ${variant}` : 'admin-form-hint';
   line.textContent = text;
   return line;
+}
+
+let infoSeq = 0;
+
+/** Standing context on demand: an "i" and the native popover it opens. The
+    browser owns toggling, Esc, light dismiss, focus return and the expanded
+    state. A span, so it is valid inside the floor notice's <strong> and no
+    `p` rule reaches it. The anchor is named explicitly: `popovertarget`'s
+    implicit anchor shipped later than `position-area` did. */
+function infoPopup(text, topic) {
+  const button = document.createElement('button');
+  const pop = document.createElement('span');
+  pop.id = `admin-info-${(infoSeq += 1)}`;
+  pop.className = 'admin-info-pop';
+  pop.popover = 'auto';
+  pop.textContent = text;
+  button.type = 'button';
+  button.className = 'admin-info-btn';
+  button.setAttribute('popovertarget', pop.id);
+  button.setAttribute('aria-label', I18n.t('admin.analytics.about', { topic }));
+  button.style.anchorName = pop.style.positionAnchor = `--${pop.id}`;
+  button.append(iconElement('info', 14));
+  return [button, pop];
 }
 
 /** A row of controls inside a card, on the profile form's own grid. */
@@ -2638,10 +2665,10 @@ export function setBulkSelectionState(count) {
  * things anybody did. Every figure here is a link to the tab that owns it — an
  * overview that cannot be acted on is a poster.
  *
- * The saved-conversation aggregates below are not this function's: they have
- * endpoints of their own, they link nowhere because no tab owns them, and they
- * are painted into `#overview-analytics` by `renderAnalyticsResults` so that a
- * slow `group by` can never delay the four figures here.
+ * The saved-conversation aggregates are not this function's: they have
+ * endpoints of their own and a tab of their own (`#analytics-body`, last in the
+ * tablist), fetched on first activation, so a slow `group by` can never delay
+ * the four figures here.
  *
  * Failure is per-section, not per-panel. Four requests back this and any one
  * of them can fail on its own; a panel that renders nothing because the audit
@@ -2775,9 +2802,11 @@ function overviewLink(tabId, label) {
 
 /* ── Saved conversations (docs/admin-analytics-v1-plan.md §7) ─────────────── */
 //
-// The second body of the Overview panel, below the operational figures. Nothing
-// here links anywhere: these are aggregates, no tab owns them, and V1
-// deliberately ships no way through to one reader's conversation.
+// The Analytics tab, last in the tablist (DESIGN.md, "The saved-conversation
+// figures are their own tab").
+// Nothing here links anywhere: these are aggregates, and V1 deliberately ships
+// no way through to one reader's conversation. Explanations sit behind an "i"
+// beside each zone heading; states, controls and the stamp never hide.
 
 /* Percentages are withheld below this many saved answers. At nine, one answer
    moves the figure eleven points, which is more precision than it has;
@@ -2998,7 +3027,10 @@ function breakdownTable(stats) {
  * number that is merely true does not need a mark.
  */
 function citationZone(stats) {
-  const zone = section(I18n.t('admin.analytics.quality.heading'));
+  const zone = section(
+    I18n.t('admin.analytics.quality.heading'),
+    I18n.t('admin.analytics.quality.scopeHint'),
+  );
   if (stats === null) {
     zone.append(unavailableLine());
     return zone;
@@ -3041,7 +3073,7 @@ function citationZone(stats) {
   }
 
   const table = breakdownTable(stats);
-  if (table) zone.append(table, cardHint(I18n.t('admin.analytics.quality.scopeHint')));
+  if (table) zone.append(table);
   return zone;
 }
 
@@ -3120,7 +3152,10 @@ function questionTable(rows, showAskers) {
 }
 
 function recurringZone(rows, showAskers) {
-  const zone = section(I18n.t('admin.analytics.questions.heading'));
+  const zone = section(
+    I18n.t('admin.analytics.questions.heading'),
+    I18n.t('admin.analytics.questions.grouping'),
+  );
   if (rows === null) {
     zone.append(unavailableLine());
     return zone;
@@ -3129,21 +3164,19 @@ function recurringZone(rows, showAskers) {
     /* A notice, not an empty state, and it has to LOOK unlike one: the list is
        empty because the two-account floor is working, and an operator who reads
        that as a broken query is the person who later asks for the floor to be
-       lowered. */
+       lowered. The lead is the state and stays; the reason behind it is
+       standing context, behind an "i" whose name is the lead sentence itself,
+       so this zone's two triggers do not share a name. */
     const notice = document.createElement('div');
     notice.className = 'admin-notice';
     const lead = document.createElement('strong');
     lead.textContent = I18n.t('admin.analytics.questions.floorEmpty');
-    const why = document.createElement('p');
-    why.textContent = I18n.t('admin.analytics.questions.floorWhy');
-    notice.append(lead, why);
+    lead.append(' ', ...infoPopup(I18n.t('admin.analytics.questions.floorWhy'), lead.textContent));
+    notice.append(lead);
     zone.append(notice);
     return zone;
   }
-  zone.append(
-    cardHint(I18n.t('admin.analytics.questions.grouping')),
-    questionTable(rows, showAskers),
-  );
+  zone.append(questionTable(rows, showAskers));
   return zone;
 }
 
@@ -3238,8 +3271,9 @@ function filterControls({ days, lang }) {
 }
 
 /**
- * Zone 1 and an empty, busy results region, painted before any of the three
- * requests land.
+ * Zone 1 and an empty, busy results region, painted once at init — into a
+ * hidden panel, like every other tab — before any of the three requests are
+ * made.
  *
  * No skeleton — this console has no skeleton idiom — and one `.admin-empty`
  * for the whole region rather than one per zone, because three "loading" cards
@@ -3250,16 +3284,15 @@ function filterControls({ days, lang }) {
  * while the requests already carry something else.
  */
 export function renderAnalyticsLead(filters = { days: 30, lang: '' }) {
-  const body = el('overview-analytics');
+  const body = el('analytics-body');
   if (!body) return;
   body.textContent = '';
 
-  const lead = section(I18n.t('admin.analytics.heading'));
-  lead.append(
-    cardHint(I18n.t('admin.analytics.source')),
-    cardHint(I18n.t('admin.analytics.privacy')),
-    filterControls(filters),
+  const lead = section(
+    I18n.t('admin.analytics.heading'),
+    `${I18n.t('admin.analytics.source')} ${I18n.t('admin.analytics.privacy')}`,
   );
+  lead.append(filterControls(filters));
 
   /* Empty until something has actually been counted, then rewritten in place on
      every later fetch. It lives in the lead zone beside the controls, which is
