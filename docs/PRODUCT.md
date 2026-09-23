@@ -141,6 +141,9 @@ OpenAI key or a built index.
 **Terminology:** the four corpus categories are named exactly as above.
 "Guidelines" (not "documents" or "articles") is the product's word for its sources.
 "Citation" refers to the numbered marker; "source" refers to what it resolves to.
+The word for a person also splits by surface: the reader-facing app calls them a
+"reader" (as above); the admin console calls the same person a "user", matching
+its "Users" tab — copy inside `/admin` should say "user", not "reader".
 
 **Explicitly undecided:** nothing about the corpus count may be stated as a figure
 (see Evidence on Hand).

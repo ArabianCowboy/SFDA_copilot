@@ -110,6 +110,43 @@ def test_stylesheet_uses_logical_properties(path: Path):
     )
 
 
+# ── A recoloured button variant must recolour its disabled state too ────────
+#
+# Bootstrap 5.3's `button-variant` mixin sets `--bs-btn-disabled-bg`,
+# `--bs-btn-disabled-border-color` and `--bs-btn-disabled-color` per variant.
+# `.btn-primary` set the normal/hover/active custom properties but not those
+# three, so a disabled primary button fell back to Bootstrap's default blue
+# (#0d6efd) instead of this app's --signal colour. A `--bs-btn-bg: transparent`
+# variant (e.g. `.btn-ghost`) is exempt: Bootstrap's own `.btn` base carries no
+# per-variant disabled-bg default that would leak a colour through it.
+_RULE_BLOCK = re.compile(r"([^{}]+)\{([^{}]*)\}")
+_DISABLED_PROPS = (
+    "--bs-btn-disabled-bg",
+    "--bs-btn-disabled-border-color",
+    "--bs-btn-disabled-color",
+)
+
+
+@pytest.mark.parametrize("path", css_files(), ids=lambda p: p.name)
+def test_recoloured_button_variants_set_disabled_state(path: Path):
+    """A `--bs-btn-bg` rule without its disabled trio leaks Bootstrap's #0d6efd."""
+    source = BLOCK_COMMENTS.sub(
+        lambda m: "\n" * m.group(0).count("\n"), path.read_text(encoding="utf-8")
+    )
+    failures = []
+    for selector, body in _RULE_BLOCK.findall(source):
+        bg = re.search(r"--bs-btn-bg\s*:\s*([^;]+);", body)
+        if not bg or bg.group(1).strip() == "transparent":
+            continue
+        missing = [prop for prop in _DISABLED_PROPS if prop not in body]
+        if missing:
+            failures.append((selector.strip(), missing))
+    assert not failures, "\n".join(
+        f"{path.name} — {selector} sets --bs-btn-bg but is missing {', '.join(missing)}"
+        for selector, missing in failures
+    )
+
+
 def test_report_current_violation_count(capsys):
     """Always runs — prints the burn-down number so progress is visible."""
     total = {path.name: len(scan(path)) for path in css_files()}

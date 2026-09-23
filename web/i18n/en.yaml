@@ -416,7 +416,7 @@ runtime:
       unavailable: 'Could not load this just now.'
     analytics:
       heading: 'Saved conversations'
-      source: 'Counted from conversations readers have saved. When a reader deletes a conversation, or an account is deleted, its questions leave these figures — so a number here can go down.'
+      source: 'Counted from conversations users have saved. When a user deletes a conversation, or an account is deleted, its questions leave these figures — so a number here can go down.'
       privacy: 'These lists show saved question text without account identifiers.'
       filtersLabel: 'Filter the figures below'
       window: 'Period'
@@ -441,7 +441,7 @@ runtime:
         group: 'Group'
         byLanguage: 'By question language'
         byScope: 'By search scope'
-        scopeHint: 'Search scope is the guideline category the search ran in — set by the reader, or by the sidebar question they clicked. It is not a classification of what the question was about.'
+        scopeHint: 'Search scope is the guideline category the search ran in — set by the user, or by the sidebar question they clicked. It is not a classification of what the question was about.'
         empty: 'No saved answers in this period.'
         # The "10" floor is MIN_RATE_DENOMINATOR in static/js/admin/ui.js.
         smallSample: 'Percentages appear once there are 10 saved answers. Below that, a single answer moves the figure too far for it to mean anything.'
@@ -461,13 +461,13 @@ runtime:
         uncited: 'Without a citation'
         # The "two" floor lives in supabase/migrations/20260920192411_admin_top_questions.sql.
         floorEmpty: 'No question was asked by two or more accounts in this period.'
-        floorWhy: 'A question is listed only once at least two different accounts have asked it, so that no entry can point to a single reader. With few accounts this list is often empty — that is the rule working, not a fault.'
+        floorWhy: 'A question is listed only once at least two different accounts have asked it, so that no entry can point to a single user. With few accounts this list is often empty — that is the rule working, not a fault.'
       uncitedQuestions:
         heading: 'Recurring questions answered without a citation'
         empty: 'Every recurring question in this period was answered with at least one citation.'
     registrations:
       heading: 'Registrations'
-      hint: 'Applies to the signup form immediately. Readers who are already signed in are unaffected.'
+      hint: 'Applies to the signup form immediately. Users who are already signed in are unaffected.'
       open: 'Open'
       paused: 'Paused'
       pause: 'Pause registrations'
@@ -476,7 +476,7 @@ runtime:
       # admin.people.confirmDisable/confirmDemote, neither of which has an
       # "enable"/"promote" counterpart) confirms the action that TAKES AWAY a
       # capability, never the one that restores it.
-      confirmPause: 'Pause new signups? Existing readers can still sign in — this does not stop a direct call to the authentication provider.'
+      confirmPause: 'Pause new signups? Existing users can still sign in — this does not stop a direct call to the authentication provider.'
       saving: 'Saving…'
       savedPaused: 'Registrations paused.'
       savedOpen: 'Registrations resumed.'
@@ -705,23 +705,23 @@ runtime:
       moveDestination: 'Destination tier'
       moveReason: 'Reason (optional)'
       moveTo: 'Move to {tier}'
-      moveHint: 'A reader is in one tier at a time — moving replaces their current tier. Personal allowances are kept.'
+      moveHint: 'A user is in one tier at a time — moving replaces their current tier. Personal allowances are kept.'
       moveSummary: 'Moved {moved}. Already in that tier: {unchanged}. Not found: {missing}. Personal allowances are kept.'
-      moveFailed: 'Could not move those readers.'
+      moveFailed: 'Could not move those users.'
       noProfileCannotMove: 'No profile — cannot be moved'
       tierFilterUnavailable: 'Tiers could not be loaded; filtering and moving are unavailable.'
     # docs/ARCHITECTURE.md#notification-center (reasoning in
     # docs/archive/2026-08-24_notification-center.md). The admin composer and send history.
     tiers:
-      hint: "A tier is a group of readers who share one daily allowance. Changes take effect on each reader's next question."
+      hint: "A tier is a group of users who share one daily allowance. Changes take effect on each user's next question."
       key: 'Key'
       keyHint: 'The key is permanent. Lower-case letters, digits and underscores; it is what the database and the notification composer both name.'
       label: 'Label'
       labelEn: 'Label (English)'
       labelAr: 'Label (Arabic)'
-      labelsHint: 'Both labels are stored. Each reader sees the one for their own language, and the table above shows yours.'
+      labelsHint: 'Both labels are stored. Each user sees the one for their own language, and the table above shows yours.'
       dailyLimit: 'Questions a day'
-      members: 'Readers'
+      members: 'Users'
       ordering: 'Order'
       actions: 'Actions'
       addHeading: 'Add a tier'
@@ -736,19 +736,19 @@ runtime:
       saveFailed: 'Could not save that tier.'
       deleteFailed: 'Could not delete that tier.'
       confirmDelete: 'Delete the tier "{key}"?'
-      confirmDeleteMembers: 'The tier "{key}" has {count} reader(s). Move them to another tier before deleting it.'
+      confirmDeleteMembers: 'The tier "{key}" has {count} user(s). Move them to another tier before deleting it.'
       duplicate_key: 'A tier with that key already exists.'
       no_such_tier: 'That tier no longer exists.'
-      tier_in_use: 'That tier still has readers in it.'
+      tier_in_use: 'That tier still has users in it.'
       default_tier_protected: 'The Free tier cannot be deleted — new accounts are created in it.'
       invalid_limit: 'The daily allowance must be zero or more.'
       invalid_labels: 'Both labels are required, up to 40 characters.'
       invalid_key: 'A key must start with a letter and use only lower-case letters, digits and underscores.'
       invalid_window: 'The end of the window must be in the future, and after its start.'
-      membersButton: 'Readers in {label}: {count}'
+      membersButton: 'Users in {label}: {count}'
       addUsers: 'Add users'
       addUsersTo: 'Add users to {label}'
-      invalid_member_batch: 'Choose between 1 and 200 readers to move.'
+      invalid_member_batch: 'Choose between 1 and 200 users to move.'
       actor_no_longer_administrator: 'Your administrator access changed while you were working. Reload and try again.'
     # The self-serve deletion ledger (supabase/pending/07 + /10) and the
     # console reconcile action (slice 2c). Nested under `admin` like every
