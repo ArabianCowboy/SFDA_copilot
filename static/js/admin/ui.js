@@ -3351,7 +3351,7 @@ function uncitedZone(rows, showAskers) {
 /* Value first, catalogue key second. The window values are strings because an
    `<option>`'s value is one; `handlers.js` is where the period becomes a
    number again. Three fixed strings rather than a plural engine: Arabic takes
-   أيام at 7 and يوماً at 30 and 90, and `I18n.plural` knows two forms. */
+   أيام at 7 and يومًا at 30 and 90, and `I18n.plural` knows two forms. */
 const ANALYTICS_WINDOW_OPTIONS = [
   ['7', 'windowDays7'],
   ['30', 'windowDays30'],

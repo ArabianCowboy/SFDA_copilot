@@ -882,7 +882,7 @@ class InMemoryAdminBackend:
                 },
                 "staff": {
                     "label_en": "Staff",
-                    "label_ar": "الإداريين",
+                    "label_ar": "الموظفون",
                     "daily_message_limit": 200,
                     "ordering": 10,
                 },

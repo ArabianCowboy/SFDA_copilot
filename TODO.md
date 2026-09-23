@@ -81,6 +81,7 @@ bottom of this file: [How this file works](#how-this-file-works).
 - [`pytest -m integration` collects nothing, and CLAUDE.md still says to run it](#pytest--m-integration-collects-nothing-and-claudemd-still-says-to-run-it) — diagnosed; pick a fix.
 - [No limit caps a reader's total requests across routes](#no-limit-caps-a-readers-total-requests-across-routes) — not started; needs a measured number first.
 - [Nothing pins that an explicit route limit replaces the global defaults](#nothing-pins-that-an-explicit-route-limit-replaces-the-global-defaults) — not started; one test.
+- [Arabic plural forms are ungrammatical for counts the binary `I18n.plural` helper cannot express](#arabic-plural-forms-are-ungrammatical-for-counts-the-binary-i18nplural-helper-cannot-express) — not started; known gap, already partly flagged in `ar.yaml`.
 
 ---
 
@@ -503,6 +504,42 @@ that entry closed on 2026-09-23.
 **What fixing it would disturb.** Either write one real-token check (a signed-in bearer against
 a live `/api/chat/stream`, run by hand, never in CI), or delete the marker and the `CLAUDE.md`
 line together. The second is an edit to `CLAUDE.md`, so it bumps `APP_VERSION`.
+
+### Arabic plural forms are ungrammatical for counts the binary `I18n.plural` helper cannot express
+
+**Where:** `static/js/modules/i18n.js:41` (`I18n.plural(count, oneKey, manyKey, params)`), and
+every catalogue entry built on it — `runtime.cite.sourcesMany` (`'{n} مصادر'`),
+`runtime.faq.showMoreMany`, `runtime.sessions.turns`, and similar `{count}`/`{n}` strings across
+`web/i18n/ar.yaml`.
+
+**What is wrong.** Arabic grammatical number has six forms (zero/one/two/few/many/other);
+`I18n.plural` only knows two (one/many), so every count that is not exactly 1 renders through
+the "many" string. That is silently wrong for 2 — `'2 مصادر'` where correct Arabic wants the
+dual `'مصدران'` — and, per MSA agreement rules, also reads oddly for the 3-10 ("few") and
+11-99 ("many") ranges depending on the noun, though the dual case is the one the catalogue
+already calls out. `web/i18n/ar.yaml:236-241` already carries a `NOTE for review` on exactly
+this gap for the `cite.*` block ("Two passages from two documents is a common shape for a cited
+answer, so the trigger hits the dual case often"), and `web/i18n/ar.yaml:227` accepts the same
+trade-off for `faq.showMoreMany`. `DESIGN.md:576` independently bans building a relative
+timestamp from `Intl.RelativeTimeFormat` or hand-rolled plurals for the same underlying reason
+("Arabic has six plural forms where the runtime helper knows two"), so the limitation is
+established policy for dates but not yet solved for counts.
+
+**Who it reaches.** Every Arabic-reading user, on ordinary interactions: two cited sources, two
+unread messages, two users selected in the admin console.
+
+**How it was found.** Reading the existing `NOTE for review` comments in `web/i18n/ar.yaml`
+while doing an unrelated Arabic-wording pass, and confirming `I18n.plural`'s two-form signature
+in `static/js/modules/i18n.js:40-41`.
+
+**What fixing it would disturb.** A real fix needs a third (or full six-form) branch in
+`I18n.plural`, a matching third key on every affected catalogue entry in both `en.yaml` (which
+would just repeat the "many" string) and `ar.yaml`, and a native-Arabic pass to write the dual
+(and possibly few/many) forms correctly per string — not a mechanical find-replace, since
+Arabic agreement depends on the counted noun's gender and the surrounding sentence. Every
+call site in `static/js` that invokes `I18n.plural(count, oneKey, manyKey)` would also need a
+third argument. Low priority relative to the size of the change; recorded so the known gap has
+one place a native-Arabic pass can start from instead of being rediscovered per string.
 
 ---
 
