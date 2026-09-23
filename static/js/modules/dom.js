@@ -329,7 +329,8 @@ export function hideBootstrapModal(el, modal) {
 }
 
 /* ——————————————— NOTIFICATION CENTER (broadcast notices) ——————————————— */
-/* docs/notification-center-plan.md §4. A sibling to ErrorHandler above, not
+/* docs/ARCHITECTURE.md#notification-center (reasoning in
+   docs/archive/2026-08-24_notification-center.md §4). A sibling to ErrorHandler above, not
    an extension of it: ErrorHandler owns the single #toast slot for this
    reader's OWN request failures; a broadcast is admin-authored, can stack,
    and has three distinct display shapes (toast/banner/modal) with different

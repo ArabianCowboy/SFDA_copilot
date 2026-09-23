@@ -1,10 +1,11 @@
 """New chat: end a conversation without ending the session.
 
-Decision 2 of docs/archive/2026-08-22_per-tab-deep-linking.md: "New chat" is a
+docs/ARCHITECTURE.md#the-url-is-the-pointer (Decision 2 of
+docs/archive/2026-08-22_per-tab-deep-linking.md): "New chat" is a
 client-side navigation from `/c/<id>` to `/`, not a server round trip. There
 is no `/api/conversation/reset` any more — its entire job was rotating a
 session-held `conv_id` and, on `undo`, restoring a set-aside `prev_conv_id`,
-both cookie-keyed mechanisms §5.1 and §5.4 remove. Undo is the Back button
+both cookie-keyed mechanisms removed. Undo is the Back button
 now: free, per-tab, and already understood, rather than a server-held pointer
 one browser could hold at a time. `Handlers.handleNewChat`
 (static/js/modules/handlers.js) confirms there is no remaining caller of the
@@ -284,7 +285,8 @@ def test_clearing_keeps_the_faq_rail(authenticated_page):
 
 
 def test_new_chat_navigates_to_the_root_url(authenticated_page):
-    """Decision 2 (docs/archive/2026-08-22_per-tab-deep-linking.md): "New chat"
+    """docs/ARCHITECTURE.md#the-url-is-the-pointer (Decision 2 of
+    docs/archive/2026-08-22_per-tab-deep-linking.md): "New chat"
     is a navigation from `/c/<id>` to `/`, not a server round trip."""
     send(authenticated_page)
     expect(authenticated_page).to_have_url(re.compile(r"/c/[0-9a-f-]{36}$"))

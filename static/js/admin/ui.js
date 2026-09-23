@@ -106,7 +106,8 @@ export const tabIds = () => TABS.map((entry) => entry.tab);
  * Render the registrations-pause control. Its own function, its own render
  * target (`#registrations-body`), and its own submit handler in
  * `admin/handlers.js` — a registrations toggle is not a generation setting
- * (docs/registrations-pause-plan.md §2) and must not share the settings
+ * (docs/ARCHITECTURE.md#registrations-pause; reasoning in
+ * docs/archive/2026-08-25_registrations-pause.md §2) and must not share the settings
  * form's re-render-on-model-change cycle or its single Save button.
  *
  * @param {{signup_enabled: boolean, default: boolean}} state
@@ -1816,7 +1817,8 @@ export function renderAccountDetail(account, entries, selfId = null, tiers = [])
     I18n.t('admin.account.lastSeen'),
     account.last_seen_at ? { when: account.last_seen_at } : { text: I18n.t('admin.people.never') },
   );
-  // Read-only consent record (docs/profile-refactor-plan.md Step 6): current
+  // Read-only consent record (docs/ARCHITECTURE.md#account-page-and-profile;
+  // reasoning in docs/archive/2026-08-23_profile-refactor.md Step 6): current
   // state, plus whichever of grant/withdrawal time is the current one —
   // never both, matching what the record itself actually represents.
   if (account.has_profile) {
@@ -2178,7 +2180,8 @@ export function showAccountMessage(message) {
   detail.appendChild(p);
 }
 
-/* ── Notification Center (docs/notification-center-plan.md §4) ──────────────
+/* ── Notification Center (docs/ARCHITECTURE.md#notification-center; reasoning
+   in docs/archive/2026-08-24_notification-center.md §4) ────────────────────
    Ships empty in admin.html, like every panel above except People — this
    builds the composer form and the history table entirely. Rendering only:
    no fetch, no submit handling — admin/handlers.js's initNotificationsTab
@@ -2783,7 +2786,9 @@ function overviewLink(tabId, label) {
   return row;
 }
 
-/* ── Saved conversations (docs/admin-analytics-v1-plan.md §7) ─────────────── */
+/* ── Saved conversations (docs/ARCHITECTURE.md#admin-analytics; tab placement
+   in docs/archive/2026-09-23_admin-analytics-tab.md, superseding
+   docs/archive/2026-09-20_admin-analytics-v1.md §7) ────────────────────── */
 //
 // The Analytics tab, last in the tablist (DESIGN.md, "The saved-conversation
 // figures are their own tab").

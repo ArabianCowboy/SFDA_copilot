@@ -3,7 +3,7 @@
  *
  * Identity is explicit-save and dirty-guarded; Preferences is instant-apply.
  * The two forms are deliberately not the same shape — see
- * docs/profile-refactor-plan.md §3's per-section state contract.
+ * docs/archive/2026-08-23_profile-refactor.md §3's per-section state contract.
  */
 
 import { Services } from '../modules/services.js';
@@ -75,8 +75,8 @@ export function bindIdentityForm(getUserId) {
     setIdentityDirty(isDirty(form));
   });
 
-  // Guarded dismissal (docs/profile-refactor-plan.md §3's per-section state
-  // contract): a reader who typed a correction and then closed the tab
+  // Guarded dismissal (docs/archive/2026-08-23_profile-refactor.md §3's
+  // per-section state contract): a reader who typed a correction and then closed the tab
   // should be asked, not silently lose it. Preferences carries no such
   // guard — it never has unsaved state, by design (instant-apply).
   window.addEventListener('beforeunload', (event) => {
@@ -286,8 +286,9 @@ export function bindSignOutOthers() {
 
 /**
  * Wire the marketing-consent toggle — instant-apply, like theme/language,
- * matching docs/profile-refactor-plan.md §12.3's "withdrawal must be as
- * easy as granting".
+ * matching the "withdrawal must be as easy as granting" rule
+ * (docs/ARCHITECTURE.md#account-page-and-profile; reasoning in
+ * docs/archive/2026-08-23_profile-refactor.md §12.3).
  *
  * Granting goes through `POST /account/api/consent/grant`
  * (Services.grantMarketingConsent), so the policy version is stamped
@@ -414,7 +415,8 @@ export function bindDeleteAllConversations() {
 const FROZEN_DELETION_STATES = new Set(['purging', 'auth_delete_begun', 'failed']);
 
 /**
- * Wire self-serve account deletion (docs/account-and-trust-plan.md §3-M4/M5).
+ * Wire self-serve account deletion (docs/ARCHITECTURE.md#account-deletion-and-trust;
+ * reasoning in docs/archive/2026-09-18_account-and-trust.md §3-M4/M5).
  *
  * The section opens by asking `/account/api/deletion` for the caller's own
  * status: pending shows the grace banner (deadline + cancel), a frozen state

@@ -1,6 +1,6 @@
 """Data-rights Flask routes: `GET /account/api/export`,
 `DELETE /account/api/conversations` (web/api/account.py, Step 7 of
-docs/profile-refactor-plan.md).
+docs/ARCHITECTURE.md#account-page-and-profile; reasoning in docs/archive/2026-08-23_profile-refactor.md Step 7).
 
 These test the ROUTE wiring — auth, scoping, response shape, the
 in-flight refusal — not the pagination logic itself, which

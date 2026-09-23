@@ -48,9 +48,10 @@
   background: var(--bg-surface);
   border-block-end: 1px solid var(--hairline);
   /* Shared with the sidebar's account trigger (Decision 1's transition
-     contract, docs/profile-refactor-plan.md §13). Assigned by the trigger
-     itself via inline style, not here — this file has no knowledge of which
-     copy of _sidebar.html's macro is the one actually displayed. */
+     contract, docs/archive/2026-08-23_profile-refactor.md §13). Assigned by
+     the trigger itself via inline style, not here — this file has no
+     knowledge of which copy of _sidebar.html's macro is the one actually
+     displayed. */
 }
 
 .account-brand {
@@ -184,8 +185,8 @@
 .account-standing-item dd {
   margin: 0;
   font-weight: var(--fw-medium);
-  /* Facts, not notifications — see docs/profile-refactor-plan.md §13.7:
-     "No animation on the standing line's values." Deliberately no
+  /* Facts, not notifications — see docs/archive/2026-08-23_profile-refactor.md
+     §13.7: "No animation on the standing line's values." Deliberately no
      transition property anywhere in this rule. */
 }
 
@@ -300,9 +301,10 @@
 /* Bespoke, never bare .form-check: Bootstrap's LTR build positions that
    control with physical padding-left/float, which does not mirror under
    RTL, and the shipped theme radios already carry the bug
-   (index.html:298-310) — see docs/profile-refactor-plan.md §14·A·6. Logical
-   properties only, and the whole row (input + label text) is one ≥24px
-   click target rather than a small input beside its label. */
+   (index.html:298-310) — see docs/archive/2026-08-23_profile-refactor.md
+   §14·A·6. Logical properties only, and the whole row (input + label
+   text) is one ≥24px click target rather than a small input beside its
+   label. */
 .account-choice {
   display: inline-flex;
   align-items: center;
@@ -342,7 +344,8 @@
 }
 
 /* ── Delete account ────────────────────────────────────────────────────────
-   Self-serve deletion (docs/account-and-trust-plan.md §3-M4/M5). A
+   Self-serve deletion (docs/ARCHITECTURE.md#account-deletion-and-trust;
+   reasoning in docs/archive/2026-09-18_account-and-trust.md §3-M4/M5). A
    destructive-pattern card: the danger border is the mark, matching the
    colour rule that a failure is marked in --danger. The pending banner is a
    boundary the product is enforcing, not a failure — but it is also not a

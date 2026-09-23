@@ -43,6 +43,63 @@ recording.
 
 ## [HISTORICAL] Resolved bugs
 
+### [HISTORICAL] ~~Live code cites plan sections instead of the live contract~~ — FIXED 2026-09-23
+
+**Where:** the per-tab set was repointed at
+`docs/archive/2026-08-22_per-tab-deep-linking.md` on 2026-09-12;
+`registrations-pause-plan.md`, `notification-center-plan.md` and `admin-analytics-v1-plan.md`
+(implemented 2026-09-20; its migration headers fall under the exception below) are still cited
+from `docs/`.
+Count the citing files with `git ls-files -z | xargs -0 grep -l '<path>'` rather than trusting
+any figure — every hand-written count of this in the repo has been wrong, including the ones
+written while filing this entry. Two migration headers still name the pre-archive path:
+`supabase/migrations/20260822143317_chat_session_exists.sql:3` and
+`20260822143411_chat_append_turn_allow_create.sql:3`.
+
+**What is wrong.** `CLAUDE.md` says to treat anything under `docs/archive/` as "evidence about
+the past, never as current behaviour" and to "confirm against `docs/ARCHITECTURE.md` or the
+code and cite that instead". Forty-one live comments now cite the archive for **present-tense**
+behaviour ("THE URL IS THE POINTER now (docs/archive/… §1)"), which is the prohibited form.
+The archive is also excluded from search by `/.ignore`, so those pointers aim at content the
+default search cannot reach, and the file they open says not to trust it — a circle back to
+`ARCHITECTURE.md`, which is what should have been cited. `docs/ARCHITECTURE.md:21` already
+names itself first authority and the archived plan second; citing only the second inverts that
+in 41 places.
+
+**Who it reaches.** Every contributor or agent following the reasoning behind the
+URL-as-pointer model, the registrations pause, or the Notification Center — which is most of
+the load-bearing code in this app.
+
+**How it was found.** An adversarial review of `019b8aa` (`opencode/muse-spark-1.3`, xhigh).
+That commit fixed 41 dangling citations but chose section precision over currency, and its own
+closing note conceded `ARCHITECTURE.md` "does not carry the plan's section numbers" — which is
+an argument for adding anchors, not for citing history.
+
+**What fixing it would disturb.** `docs/ARCHITECTURE.md` grows anchors where a `§X` reference
+is load-bearing (pointer §1, preflight §3.4, CSRF §3.5, deletions §5.x, headers §6.1), then
+citations become `live authority; reasoning in archive §Z` — archive-only for genuinely
+historical asides. It spans ~19 files and should not ride along with an unrelated change. Doing
+it is also what makes archiving the three remaining finished plans a `git mv` again instead of a
+rewrite, so it blocks that cleanup.
+
+**The two migration headers are a deliberate exception.** An applied migration's file is a
+point-in-time record of what ran; editing it after the fact breaks the property that the
+recorded file is the applied file. They keep the pre-archive path. Do not "fix" them.
+
+**Closed 2026-09-23.** `docs/ARCHITECTURE.md` gained the live contract these citations needed: the
+ownership preflight, request validation and headers, deletion/resume/multi-tab isolation,
+registrations pause, the Notification Center, admin analytics, the account page and profile,
+account deletion and trust, and the reader quota. Live comments, docstrings and templates now cite
+that section first and the archive only as reasoning ("`docs/ARCHITECTURE.md#<anchor>`; reasoning in
+`docs/archive/<plan>.md §X`"); a few genuinely historical asides keep an archive-only citation. The
+three finished plans were then archived with a plain `git mv`
+(`2026-08-24_notification-center.md`, `2026-08-25_registrations-pause.md`,
+`2026-09-20_admin-analytics-v1.md`). The sweep also found 53 files still citing three plans archived
+earlier under their deleted paths (`profile-refactor-plan.md`, `account-and-trust-plan.md`,
+`reader-quota-plan.md`); those were repointed the same way. Applied migration headers keep their
+old paths, as this entry required. Check: `git grep` for any `docs/<name>-plan.md` path outside
+`docs/archive/` and `supabase/migrations/` returns only live plans.
+
 ### [HISTORICAL] ~~The Arabic deletion confirmation word is the everyday word for "delete"~~ — FIXED 2026-09-19
 
 **Closed 2026-09-19, the same day it was opened.** `page.account.deletionConfirmWord` is now

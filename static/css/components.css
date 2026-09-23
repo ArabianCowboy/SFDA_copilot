@@ -1674,8 +1674,9 @@
   color: var(--fg-primary);
 }
 
-/* "New registrations are paused right now." (docs/registrations-pause-plan.md
-   §6 / §9 Step 12). Same shape as .history-notice on purpose: this is the same
+/* "New registrations are paused right now." (docs/ARCHITECTURE.md#registrations-pause;
+   copy reasoning in docs/archive/2026-08-25_registrations-pause.md §6 / §9 Step 12).
+   Same shape as .history-notice on purpose: this is the same
    kind of object, something the app is telling the reader before they act,
    not a routine status toast — and it carries an instruction the reader has
    to act on ("sign in above" if they already have an account), which is what
@@ -2861,7 +2862,8 @@
   margin-block-start: var(--space-6);
 }
 
-/* Signup consent checkboxes (docs/profile-refactor-plan.md §12.3, §12.4).
+/* Signup consent checkboxes (docs/ARCHITECTURE.md#account-page-and-profile;
+   reasoning in docs/archive/2026-08-23_profile-refactor.md §12.3, §12.4).
    Bespoke, never bare .form-check — same RTL reasoning account.css's own
    .account-choice documents: Bootstrap's LTR build positions .form-check
    with physical padding-left/float, which does not mirror. Logical
@@ -2918,7 +2920,8 @@
 }
 
 /* ===================================================================
-   Notification Center (docs/notification-center-plan.md §4)
+   Notification Center (docs/ARCHITECTURE.md#notification-center; reasoning
+   in docs/archive/2026-08-24_notification-center.md §4)
 
    Severity is spent on --danger/--warning/--confidence and a neutral ink
    tone for "info" — never --signal. --signal is rationed to retrieval and

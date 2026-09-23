@@ -178,7 +178,8 @@
                 <h1 class="admin-heading">{{ t('page.admin.tabs.settings') }}</h1>
                 {# Its own block, rendered and wired separately from
                    #settings-body below — a registrations toggle is not a
-                   generation setting (docs/registrations-pause-plan.md §2)
+                   generation setting (docs/ARCHITECTURE.md#registrations-pause;
+                   reasoning in docs/archive/2026-08-25_registrations-pause.md §2)
                    and must not ride the generation form's own Save button
                    or its re-render-on-model-change cycle. #}
                 <div id="registrations-body" class="admin-panel-body"></div>
@@ -235,7 +236,8 @@
                 <div id="audit-body" class="admin-panel-body"></div>
             </section>
 
-            {# docs/notification-center-plan.md §4. Ships empty, like every
+            {# docs/ARCHITECTURE.md#notification-center; reasoning in
+               docs/archive/2026-08-24_notification-center.md §4. Ships empty, like every
                other panel above except People — the composer form and the
                history table are both built by static/js/admin/ui.js. #}
             <section class="admin-panel" role="tabpanel" id="panel-notifications"
@@ -244,8 +246,10 @@
                 <div id="notifications-body" class="admin-panel-body"></div>
             </section>
 
-            {# Aggregates over saved conversations (docs/admin-analytics-v1-plan.md
-               §7). Ships empty; the lead zone is drawn at init and the results
+            {# Aggregates over saved conversations (docs/ARCHITECTURE.md#admin-analytics;
+               reasoning in docs/archive/2026-09-20_admin-analytics-v1.md §7,
+               placement superseded by
+               docs/archive/2026-09-23_admin-analytics-tab.md). Ships empty; the lead zone is drawn at init and the results
                are fetched on first activation. #}
             <section class="admin-panel" role="tabpanel" id="panel-analytics"
                 aria-labelledby="tab-analytics" tabindex="0" hidden>

@@ -235,7 +235,9 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
                         <!-- Signup pane -->
                         <div class="tab-pane fade" id="signup-pane" role="tabpanel" aria-labelledby="signup-tab">
                             <!-- Server-rendered from base_render_context's own
-                                 settings read (docs/registrations-pause-plan.md
+                                 settings read (docs/ARCHITECTURE.md#registrations-pause;
+                                 reasoning in
+                                 docs/archive/2026-08-25_registrations-pause.md
                                  §6) — no round trip, no flash. Replaces the form
                                  outright rather than disabling #signup-tab: a
                                  disabled tab announces "disabled" to a screen
@@ -253,7 +255,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
                                 <!-- Required by THIS FORM only — the column stays
                                      nullable, and a raw GoTrue caller can omit the
                                      metadata entirely (§14·D4 /
-                                     docs/profile-refactor-plan.md §12.2). family_name
+                                     docs/ARCHITECTURE.md#registrations-pause; reasoning in docs/archive/2026-08-23_profile-refactor.md §12.2). family_name
                                      is optional: requiring it forces a mononym
                                      reader to invent a second name. Two fields is
                                      the ceiling — the modal has no
@@ -300,8 +302,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
                                     </div>
                                 </div>
 
-                                <!-- Unticked by default (docs/profile-refactor-plan.md
-                                     §12.3): consent must be an affirmative act, not a
+                                <!-- Unticked by default (docs/ARCHITECTURE.md#account-page-and-profile; reasoning in docs/archive/2026-08-23_profile-refactor.md §12.3): consent must be an affirmative act, not a
                                      pre-checked box. Gates the age field below it —
                                      the personal question is never asked of someone
                                      who declined the purpose it serves. Bespoke
@@ -360,7 +361,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     </div>
 
     <!-- No PROFILE MODAL here any more: /account replaces it
-         (docs/profile-refactor-plan.md §5). The sidebar's profile button is
+         (docs/ARCHITECTURE.md#account-page-and-profile; reasoning in docs/archive/2026-08-23_profile-refactor.md §5). The sidebar's profile button is
          now a plain link to that page. -->
 
     <!-- ═══════════════════════════════════════════
@@ -741,7 +742,8 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 
     <!-- ═══════════════════════════════════════════
          NOTIFICATION CENTER — admin broadcasts
-         docs/notification-center-plan.md §4. Three display shells (toast
+         docs/ARCHITECTURE.md#notification-center; reasoning in
+         docs/archive/2026-08-24_notification-center.md §4. Three display shells (toast
          stack / banner / modal) plus the reader's inbox, all outside the
          sidebar macro: they render once regardless of how many times that
          macro renders (desktop aside + mobile offcanvas).

@@ -276,7 +276,8 @@ def get_registrations() -> Response | tuple[Response, int]:
     """Whether the signup form accepts new accounts, and what it reverts to.
 
     A separate endpoint from `/api/settings` rather than a field folded into
-    it — see `docs/registrations-pause-plan.md` §2 for why: this value is not
+    it — see `docs/ARCHITECTURE.md#registrations-pause` (reasoning in
+    `docs/archive/2026-08-25_registrations-pause.md` §2) for why: this value is not
     a generation setting, has no pairwise validation against a model, and
     must never trigger `apply_generation_settings`. Keeping it off that
     endpoint keeps `put_settings`'s tested response contract, and its
@@ -986,7 +987,8 @@ def patch_user(user_id: str) -> Response | tuple[Response, int]:
 
 
 # ── Tiers and the reader quota ───────────────────────────────────────────────
-# docs/reader-quota-plan.md §5. Every route here is gated by `_gate` above
+# docs/ARCHITECTURE.md#reader-quota; reasoning in
+# docs/archive/2026-09-04_reader-quota.md §5. Every route here is gated by `_gate` above
 # (bearer token, verified, is_admin) and every mutation re-validates the actor
 # INSIDE the RPC's transaction, so a demotion between the two cannot be raced.
 
@@ -1491,7 +1493,8 @@ def create_notification() -> Response | tuple[Response, int]:
 
     The Realtime push happens AFTER the RPC commits and is never allowed to
     fail this response — REST is the guaranteed-delivery path
-    (docs/notification-center-plan.md §2); Realtime only tells an
+    (docs/ARCHITECTURE.md#notification-center; reasoning in
+    docs/archive/2026-08-24_notification-center.md §2); Realtime only tells an
     already-open tab to refetch sooner than its next poll.
     """
     import uuid as _uuid

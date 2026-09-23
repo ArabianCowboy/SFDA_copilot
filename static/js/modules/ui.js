@@ -176,7 +176,7 @@ function buildNotice({ id, modifier, dismissLabel, onDismiss }) {
   return { notice, body };
 }
 
-/* The first-run completion strip (docs/profile-refactor-plan.md §12.6). */
+/* The first-run completion strip (docs/archive/2026-08-23_profile-refactor.md §12.6). */
 const PROFILE_NOTICE_ID = 'profile-notice';
 const QUOTA_NOTICE_ID = 'quota-notice';
 
@@ -892,7 +892,7 @@ export const UI = {
   /**
    * Ask, once, for the one thing missing that this codebase actually reads
    * back: `first_name` (the admin subtitle line, and /account's own
-   * monogram/heading — see docs/profile-refactor-plan.md §1). Not `age`
+   * monogram/heading — see docs/archive/2026-08-23_profile-refactor.md §1). Not `age`
    * (blank is a first-class answer, gated behind a consent that may have
    * been declined), not `marketing_consent` (re-asking for declined consent
    * is nagware), not `family_name` (optional by design), not `organization`
@@ -1798,7 +1798,8 @@ export const UI = {
   },
 
   /**
-   * Notification Center (docs/notification-center-plan.md §4). Rendering
+   * Notification Center (docs/ARCHITECTURE.md#notification-center; reasoning
+   * in docs/archive/2026-08-24_notification-center.md §4). Rendering
    * only — polling, Services calls, and the inbox's Bootstrap Modal
    * instance are owned by handlers.js/app.js, the same drawing/orchestration
    * split every other panel in this module follows.

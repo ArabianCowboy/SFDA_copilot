@@ -33,7 +33,6 @@ bottom of this file: [How this file works](#how-this-file-works).
 ## Open now
 
 - [A deletion request may leave the requesting access token usable until it expires](#a-deletion-request-may-leave-the-requesting-access-token-usable-until-it-expires) — diagnosed, unconfirmed; one bearer-token call decides it.
-- [Live code cites plan sections instead of the live contract](#live-code-cites-plan-sections-instead-of-the-live-contract) — blocks archiving three finished plans; count citations, do not trust a written figure.
 - [Leaked-password protection is disabled in Supabase Auth](#leaked-password-protection-is-disabled-in-supabase-auth) — blocked on a Pro-plan upgrade, not code.
 - [A silent truncation from a provider that omits `finish_reason` is still undetected](#a-silent-truncation-from-a-provider-that-omits-finish_reason-is-still-undetected) — diagnosed; needs `include_usage`, not a different default.
 - [An empty answer toasts "failed to send", which is the wrong thing](#an-empty-answer-toasts-failed-to-send-which-is-the-wrong-thing) — cosmetic, needs a bilingual key pair.
@@ -126,49 +125,6 @@ log_ — because gunicorn logs no request. **If** it turns out a revoked session
 authenticates, the fix is not more sign-out calls: it is `token_verification`'s cache and TTL
 posture, which is deliberately `0` as shipped, plus a decision about whether the reader-facing
 copy should promise session termination at all.
-
-### Live code cites plan sections instead of the live contract
-
-**Where:** the per-tab set was repointed at
-`docs/archive/2026-08-22_per-tab-deep-linking.md` on 2026-09-12;
-`registrations-pause-plan.md`, `notification-center-plan.md` and `admin-analytics-v1-plan.md`
-(implemented 2026-09-20; its migration headers fall under the exception below) are still cited
-from `docs/`.
-Count the citing files with `git ls-files -z | xargs -0 grep -l '<path>'` rather than trusting
-any figure — every hand-written count of this in the repo has been wrong, including the ones
-written while filing this entry. Two migration headers still name the pre-archive path:
-`supabase/migrations/20260822143317_chat_session_exists.sql:3` and
-`20260822143411_chat_append_turn_allow_create.sql:3`.
-
-**What is wrong.** `CLAUDE.md` says to treat anything under `docs/archive/` as "evidence about
-the past, never as current behaviour" and to "confirm against `docs/ARCHITECTURE.md` or the
-code and cite that instead". Forty-one live comments now cite the archive for **present-tense**
-behaviour ("THE URL IS THE POINTER now (docs/archive/… §1)"), which is the prohibited form.
-The archive is also excluded from search by `/.ignore`, so those pointers aim at content the
-default search cannot reach, and the file they open says not to trust it — a circle back to
-`ARCHITECTURE.md`, which is what should have been cited. `docs/ARCHITECTURE.md:21` already
-names itself first authority and the archived plan second; citing only the second inverts that
-in 41 places.
-
-**Who it reaches.** Every contributor or agent following the reasoning behind the
-URL-as-pointer model, the registrations pause, or the Notification Center — which is most of
-the load-bearing code in this app.
-
-**How it was found.** An adversarial review of `019b8aa` (`opencode/muse-spark-1.3`, xhigh).
-That commit fixed 41 dangling citations but chose section precision over currency, and its own
-closing note conceded `ARCHITECTURE.md` "does not carry the plan's section numbers" — which is
-an argument for adding anchors, not for citing history.
-
-**What fixing it would disturb.** `docs/ARCHITECTURE.md` grows anchors where a `§X` reference
-is load-bearing (pointer §1, preflight §3.4, CSRF §3.5, deletions §5.x, headers §6.1), then
-citations become `live authority; reasoning in archive §Z` — archive-only for genuinely
-historical asides. It spans ~19 files and should not ride along with an unrelated change. Doing
-it is also what makes archiving the three remaining finished plans a `git mv` again instead of a
-rewrite, so it blocks that cleanup.
-
-**The two migration headers are a deliberate exception.** An applied migration's file is a
-point-in-time record of what ran; editing it after the fact breaks the property that the
-recorded file is the applied file. They keep the pre-archive path. Do not "fix" them.
 
 ### A silent truncation from a provider that omits `finish_reason` is still undetected
 
@@ -354,7 +310,7 @@ the registrations-pause feature; filed here rather than as its own review.
 
 **What fixing it would disturb.** Judged not worth it today: merging the two cache slots would
 couple two caches the registrations-pause feature deliberately kept separate (§2 of
-`docs/registrations-pause-plan.md`), to remove a round trip that isn't currently measurable.
+`docs/archive/2026-08-25_registrations-pause.md`), to remove a round trip that isn't currently measurable.
 Recorded in case that changes.
 
 ### Six of the seven admin RPCs validate the actor without holding a lock
@@ -1351,8 +1307,8 @@ the sidebar populating itself.
 **Update 2026-09-20 — V1 built, controls included; uncommitted.** Both reader RPCs
 (`admin_top_questions`, `admin_citation_stats`), both `AdminBackend` methods, the two
 `GET /admin/api/analytics/*` routes, the bilingual copy, and the analytics region (now
-`#analytics-body`, its own tab since 2026-09-23) are built and tested — see `docs/admin-analytics-v1-plan.md` →
-[_Build record (2026-09-20)_](docs/admin-analytics-v1-plan.md#build-record-2026-09-20) for what
+`#analytics-body`, its own tab since 2026-09-23) are built and tested — see `docs/archive/2026-09-20_admin-analytics-v1.md` →
+[_Build record (2026-09-20)_](docs/archive/2026-09-20_admin-analytics-v1.md#historical-build-record-2026-09-20) for what
 shipped and what it corrected in the plan above. Not done, so this entry stays open: landing the
 commit, and an owner eyeball of the Arabic actually rendered in the console (reviewed as text on
 2026-09-20, not yet seen on screen). Deliberately out of V1, per the plan's commit-sequence table:
@@ -1449,7 +1405,7 @@ review; existing exposure elsewhere is not a license for more here.
 
 ### Admin broadcast & Reader Notification Center (Popups, Banners, and Inbox History)
 
-**Full implementation plan:** [`docs/notification-center-plan.md`](docs/notification-center-plan.md) — schema, RLS/RPC design, Realtime security model, backend/frontend file plan, i18n, security checklist, rollout order, and test plan. Went through direct codebase verification, a comparison against two independently-drafted alternative plans, and an adversarial OpenCode review that found and fixed 17 real defects (a schema bug that would have broken account deletion, a security gap letting a reader forge their own read receipts, a missing actor-revalidation race, and more). This entry stays here as the short version.
+**Full implementation plan:** [`docs/archive/2026-08-24_notification-center.md`](docs/archive/2026-08-24_notification-center.md) — schema, RLS/RPC design, Realtime security model, backend/frontend file plan, i18n, security checklist, rollout order, and test plan. Went through direct codebase verification, a comparison against two independently-drafted alternative plans, and an adversarial OpenCode review that found and fixed 17 real defects (a schema bug that would have broken account deletion, a security gap letting a reader forge their own read receipts, a missing actor-revalidation race, and more). This entry stays here as the short version.
 
 **Status (2026-08-24): implemented, including the Realtime hybrid leg.** Schema (6 migrations plus 2 follow-up fixes, all applied and advisor-clean), the reader and admin RPCs, `web/services/notification_store.py` and `notification_service.py`, every reader/admin route, rate limits, the full reader UI (bell/badge, toast/banner/acknowledgement-modal, session-snoozed inbox, private-channel Realtime subscribe) and admin UI (composer with audience preview, send history, deactivate/delete/resend), and bilingual i18n are all built and wired. `@supabase/supabase-js` is upgraded to `2.74.0` (from `2.39.7`, which verifiably lacked the `private` channel option this feature needs) after a full read of `auth-js`'s changelog across that span found no breaking change to this app's own fragile auth behaviors. The private-channel RLS boundary was verified directly against the live Postgres project (a session-variable simulation of two distinct readers, confirming the policy admits one and refuses the other) — a mock cannot prove that property, so it was proven where it actually lives. Coverage: 45 backend tests, 9 Playwright browser tests for the feature itself, and the full pre-existing 252-test browser suite still green against the new SDK pin. `mypy web` could not be run to verify this pass locally — it fails on an unrelated, pre-existing numpy/mypy stub incompatibility in this dev environment (reproduced identically on a clean `main`, before this feature's changes), and no tool in this session could log into a real Supabase project to exercise the upgraded auth flow end-to-end — that one check is still owed before this ships to production.
 
@@ -1801,7 +1757,7 @@ changes materially. Nobody yet — `PRIVACY_POLICY_VERSION` has moved only betwe
 (`2026-08-23-draft-1` → `2026-09-18-draft-2` on 2026-09-18), and a draft-to-draft retention edit
 is not a material change to what was consented to.
 
-**How it was found.** An adversarial review of `docs/account-and-trust-plan.md` on 2026-09-18,
+**How it was found.** An adversarial review of `docs/archive/2026-09-18_account-and-trust.md` on 2026-09-18,
 then verified against the trigger source.
 
 **What fixing it would disturb.** Three defects were found together; **two are already fixed**

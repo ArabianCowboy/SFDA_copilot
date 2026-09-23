@@ -1,16 +1,46 @@
-# Admin analytics from saved chats — V1 design and implementation plan
+---
+authority: historical
+status: superseded
+do_not_implement: true
+archived: 2026-09-23
+supersedes_note: >
+  This document is a finished plan, designed 2026-09-20 and built on 2026-09-20, then the one
+  architecture decision ("no new tab") was reversed on 2026-09-23. Analytics are now their own tab,
+  last in the tablist, with hint prose behind an "i" beside each zone heading. See
+  `archive/2026-09-23_admin-analytics-tab.md` for the reversal and the final build record. This file
+  is a record of what was decided initially and what it cost, not a specification.
+live_authority:
+  - DESIGN.md
+  - ../ARCHITECTURE.md
+  - ../../TODO.md
+  - ./2026-09-23_admin-analytics-tab.md
+---
+
+> [!CAUTION]
+> **You are reading history, not a specification — and this plan was reversed on 2026-09-23.**
+> The live rules are in `DESIGN.md` and `docs/ARCHITECTURE.md`; read those, not this. Read
+> `archive/2026-09-23_admin-analytics-tab.md` for what actually shipped. The reversal: this plan
+> decided to add an analytics **region at the bottom of Overview** with no new tab; on 2026-09-23
+> the decision was overruled. Analytics is now its own **last tab** with hint prose behind an
+> **"i"** beside zone headings. Original decision: live aggregate RPCs over `chat_messages` +
+> `chat_message_sources`, two read-only routes, two backend methods, nothing else (no table,
+> no cache, no library). That architecture held. The owner's three decisions (the minimal list,
+> the scope, the V1/V2 split) are still current. Every section below describes the tree **before**
+> the 2026-09-23 reversal. Every heading is prefixed `[HISTORICAL]`.
+
+# [HISTORICAL] Admin analytics from saved chats — V1 design and implementation plan
 
 STATUS: IMPLEMENTED 2026-09-20, all of V1 including the 7b controls; uncommitted at the time of
 writing. Synthesised from four independent planning lanes (see
-[_How this plan was made_](#how-this-plan-was-made)). The three owner decisions were taken on
-2026-09-20 and refined after a second review — see [_Decisions_](#decisions).
+[_How this plan was made_](#historical-how-this-plan-was-made)). The three owner decisions were taken on
+2026-09-20 and refined after a second review — see [_Decisions_](#historical-decisions).
 
-Scope authority: [`TODO.md` → _Admin analytics from saved chats_](../TODO.md). This plan does not
+Scope authority: [`TODO.md` → _Admin analytics from saved chats_](../../TODO.md). This plan does not
 widen that entry. It corrects it in four places, and every correction is called out as one.
 
 ---
 
-## 1. What ships
+## [HISTORICAL] 1. What ships
 
 Two read-only aggregate RPCs over `chat_messages` + `chat_message_sources`, two
 `GET /admin/api/analytics/*` routes, two `AdminBackend` methods on both backends, and an
@@ -19,14 +49,14 @@ no scheduler, no cache, no new tab, no charting library, no new frontend module 
 
 > **Reversed 2026-09-23.** "No new tab" did not hold: the region is now its own tab, last in
 > the tablist, with the hint prose behind an "i" beside each zone heading. The reasoning and the
-> build are in [`archive/2026-09-23_admin-analytics-tab.md`](archive/2026-09-23_admin-analytics-tab.md). Everything else in
+> build are in [`./2026-09-23_admin-analytics-tab.md`](./2026-09-23_admin-analytics-tab.md). Everything else in
 > this section still stands.
 
 **Out, unchanged from the TODO entry:** the answer cache, an index-version identifier, the V2
 no-name log table, the per-member conversation viewer, and all seven follow-ups. Section 9 says
 how each follow-up slots in later.
 
-## 2. Four corrections to the locked spec
+## [HISTORICAL] 2. Four corrections to the locked spec
 
 Each of these was found by reading the schema, not by disagreeing with the owner. None changes
 what V1 is for.
@@ -59,7 +89,7 @@ Two properties that follow from "no new log table" and must be _labelled_, not f
   `chat_messages_session_owner_fk … on delete cascade`, so last month's number can go down. That
   is the deletion promise working. A test pins it so nobody later "fixes" it into a log table.
 
-## 3. Architecture decision
+## [HISTORICAL] 3. Architecture decision
 
 | Option                                           | Verdict                                                                                                                                                                                                                                                                                        |
 | ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -72,9 +102,9 @@ process-local TTL cache (would be the fourth on a single-worker app, for a surfa
 visit), a per-route rate limit (a route limit _replaces_ the blueprint's 60/minute rather than
 stacking), and a statement timeout — see the trap in section 10.
 
-## 4. Data layer
+## [HISTORICAL] 4. Data layer
 
-### 4.1 `admin_top_questions`
+### [HISTORICAL] 4.1 `admin_top_questions`
 
 ```sql
 create function public.admin_top_questions(
@@ -193,7 +223,7 @@ neither call returned. Snapping `p_days` to 7 / 30 / 90 in SQL would close it.
 No timestamp is returned. `last_asked` on a rare question is a correlation handle against
 `audit_log.occurred_at` and `last_seen`; the window parameter already says "last 30 days".
 
-### 4.2 `admin_citation_stats`
+### [HISTORICAL] 4.2 `admin_citation_stats`
 
 ```sql
 create function public.admin_citation_stats(
@@ -243,7 +273,7 @@ Three grouping sets rather than the 2×5 cross product, which is noise at any pl
 `turns_uncited` and `turns_no_retrieval` are disjoint by construction; a question row's `uncited`
 is their union.
 
-### 4.3 Actor gating
+### [HISTORICAL] 4.3 Actor gating
 
 **No `p_actor_id`.** That matches every existing `admin_*` _read_ RPC — `admin_list_tiers`
 (`supabase/migrations/20260903200618_admin_tier_rpcs.sql:19-28`) and `admin_list_users` take no
@@ -257,7 +287,7 @@ _Corrected 2026-09-21 after the second review._ This paragraph first called the 
 stands in its way. What the floor in SQL actually guards is the application layer — a route bug, a
 future caller, a careless parameter — which is still the right place for it.
 
-### 4.4 Index
+### [HISTORICAL] 4.4 Index
 
 ```sql
 create index chat_messages_assistant_created_idx
@@ -276,7 +306,7 @@ proposed. A B-tree entry is capped near 2.7 kB and `MAX_CHAT_QUERY_CHARS` is 8,0
 (`web/api/app.py:356`), so one long Arabic question would make `chat_append_turn` _fail on
 insert_. It would also not serve a date-windowed `group by`.
 
-## 5. Privacy architecture
+## [HISTORICAL] 5. Privacy architecture
 
 "No identity in any response" is held by three layers that each fail visibly on their own:
 
@@ -305,7 +335,7 @@ Both of those flip if the owner overrules the floor (decision 1).
 `admin_citation_stats` returns no text, needs no threshold, and carries real numbers on day one —
 which is what keeps the feature useful while the question list is legitimately empty.
 
-## 6. Backend and routes
+## [HISTORICAL] 6. Backend and routes
 
 **`web/services/admin_store.py`** — `AdminBackend` gains:
 
@@ -353,9 +383,9 @@ GET /admin/api/analytics/citations?days=30&lang=&category=
   _after_ the allow-list shaping, so the allow-list stays the single statement of what the
   database may return.
 
-## 7. Interface
+## [HISTORICAL] 7. Interface
 
-### 7.1 Where it lives
+### [HISTORICAL] 7.1 Where it lives
 
 A **sibling `#overview-analytics.admin-panel-body`** inside `#panel-overview`, below
 `#overview-body`. The Settings panel already stacks two sibling bodies
@@ -377,7 +407,7 @@ tests). The UI lane wanted a sibling. **Sibling wins**, for three reasons:
 Analytics goes **below** the operational figures: signup state and account count are what an
 operator acts on, and at three accounts the question lists will usually be policy-empty.
 
-> **Reversed 2026-09-23** by [`archive/2026-09-23_admin-analytics-tab.md`](archive/2026-09-23_admin-analytics-tab.md). The
+> **Reversed 2026-09-23** by [`./2026-09-23_admin-analytics-tab.md`](./2026-09-23_admin-analytics-tab.md). The
 > three reasons above were all reasons not to put analytics _inside_ `renderOverview`; none was
 > a reason against a tab, and a tab satisfies all three better while restoring Overview's own
 > contract (cheap reads, every figure links to the tab that owns it). The region now lives in
@@ -386,7 +416,7 @@ operator acts on, and at three accounts the question lists will usually be polic
 > except that the hint prose in zones 1–3 moved behind an "i" beside each heading and the
 > `privacy` line joined the `source` popup.
 
-### 7.2 Zones
+### [HISTORICAL] 7.2 Zones
 
 1. **Saved conversations** — one hint (where the numbers come from, that they can shrink, that
    the lists never show who asked), the controls, a "Counted at" stamp.
@@ -410,7 +440,7 @@ operator acts on, and at three accounts the question lists will usually be polic
 Codex's one surviving decision before its quota ran out agrees with this order: citation health
 first, zero-citation questions second, popular third, rows do not click through.
 
-### 7.3 No charts, no bars
+### [HISTORICAL] 7.3 No charts, no bars
 
 `DESIGN.md:182` bans reporting a _relevance score_ as a proportion; a bar of counted things is
 outside its letter. Bars are still declined for V1: it would be the first instance of the
@@ -418,7 +448,7 @@ reserved 4px meter, at n < ~20 a bar's visual precision overclaims (the same fai
 describes), and a per-question uncited bar reads as a quality score for that question. Revisit
 with follow-up 4 (daily counts), the first genuinely chart-shaped data.
 
-### 7.4 Small-n honesty
+### [HISTORICAL] 7.4 Small-n honesty
 
 - Counts are always primary: `3 of 14`.
 - A percentage appears only when the denominator is ≥ 10 (`MIN_RATE_DENOMINATOR` in `ui.js`).
@@ -429,7 +459,7 @@ with follow-up 4 (daily counts), the first genuinely chart-shaped data.
   mark" (`DESIGN.md`, the daily-allowance colour-rule paragraph — currently `:450`). No colour
   encoding at all, so nothing is colour-only.
 
-### 7.5 States
+### [HISTORICAL] 7.5 States
 
 | State                   | Renders                                                                                                                                                                                                                            |
 | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -440,7 +470,7 @@ with follow-up 4 (daily counts), the first genuinely chart-shaped data.
 | Partial                 | Each request stands alone, exactly like the four above it.                                                                                                                                                                         |
 | Stale                   | "Counted at …" built by `exactWhen()` from parts. No polling, no visibility refetch.                                                                                                                                               |
 
-### 7.6 Question text
+### [HISTORICAL] 7.6 Question text
 
 `td dir="auto"`, `textContent` only. Up to 160 graphemes, plain. Longer, a native `<details>`
 whose `summary` is cut at the last whitespace before 160 graphemes — `Intl.Segmenter` when
@@ -449,7 +479,7 @@ shadda. Native `<details>` gives keyboard, screen-reader state and RTL marker mi
 handlers and zero classes. `dir="auto"` on the `td` deliberately lets `text-align: start` flip per
 row — the opposite of the machine-value case.
 
-### 7.7 RTL rules specific to this surface
+### [HISTORICAL] 7.7 RTL rules specific to this surface
 
 - **Latin digits everywhere**, from `String()` / `toFixed(1)`. Never `Intl.NumberFormat('ar')` or
   `toLocaleString('ar')`.
@@ -465,7 +495,7 @@ row — the opposite of the machine-value case.
 - No `<caption>` — Bootstrap's LTR build aligns captions physically.
 - The "Counted at" stamp is split on `{time}` (the `stampedSentence` pattern), not interpolated.
 
-### 7.8 Controls — staged
+### [HISTORICAL] 7.8 Controls — staged
 
 Shipped as a second frontend commit so the owner can stop after the first:
 
@@ -478,7 +508,7 @@ Shipped as a second frontend commit so the owner can stop after the first:
   the console's first URL state while tabs themselves cannot be deep-linked; `localStorage` leaks
   one operator's choice to the next on a shared machine.
 
-### 7.9 CSS — the whole change
+### [HISTORICAL] 7.9 CSS — the whole change
 
 ```css
 /* A wrapping row of labelled filters. `.admin-pager-size` cannot wrap and
@@ -508,7 +538,7 @@ Shipped as a second frontend commit so the owner can stop after the first:
 One new class, and only in the controls commit. The sibling-combinator rule also reaches
 Settings' two bodies — check Settings in both languages after.
 
-### 7.10 Copy
+### [HISTORICAL] 7.10 Copy
 
 All keys under `runtime.admin.analytics.*` — a second-level addition inside the existing `admin`
 namespace, so the eleven-name pin is untouched. Both catalogues, same commit.
@@ -543,11 +573,11 @@ Decisions that bind the wording:
 | `uncitedQuestions.heading` | Recurring questions answered without a citation                                                                                                                                                                  |
 
 The remaining keys and the Arabic for all of them are in
-[the appendix](#appendix--full-string-table). The Arabic was reviewed by the
+[the appendix](#historical-appendix--full-string-table). The Arabic was reviewed by the
 owner on 2026-09-20. It must still be verified by code point after it lands in `ar.yaml` —
 Arabic pasted through a terminal arrives reversed.
 
-## 8. Tests
+## [HISTORICAL] 8. Tests
 
 **New `web/tests/test_admin_analytics.py`**
 
@@ -594,7 +624,7 @@ this repo has shipped twice, and parity cannot see it.
 
 Every new test is run against the pre-change code first.
 
-## 9. Commit sequence
+## [HISTORICAL] 9. Commit sequence
 
 Schema before code, one concern per migration, **rename each file to what `list_migrations`
 reports after applying**. Each step is green on its own.
@@ -604,7 +634,7 @@ reports after applying**. Each step is green on its own.
 | 1   | Migration: `chat_messages_assistant_created_idx`. Header records the live row count at apply time.                                                                                                  | None. First, so it can be dropped alone.                                                                                                                                                                                                                                                                                                         |
 | 2   | Migration: `admin_top_questions`. Header: no `p_owner_id` and why; the floor is un-lowerable; `owner_id` is read and never projected.                                                               | **`supabase/README.md:125`** — RPC contract point 5 ("`p_owner_id` as the first argument") is stated unconditionally and is already violated by three `admin_*` readers. Add the sentence scoping it to reader-facing functions.                                                                                                                 |
 | 3   | Migration: `admin_citation_stats`.                                                                                                                                                                  | None.                                                                                                                                                                                                                                                                                                                                            |
-| 4   | `function_acls.test.sql` + `rpc_behaviour.test.sql` additions; record the new `PASS … — N assertions` line.                                                                                         | **`docs/ARCHITECTURE.md:518`** — the literal assertion count in the "mechanically enforced" table.                                                                                                                                                                                                                                               |
+| 4   | `function_acls.test.sql` + `rpc_behaviour.test.sql` additions; record the new `PASS … — N assertions` line.                                                                                         | **`../ARCHITECTURE.md:518`** — the literal assertion count in the "mechanically enforced" table.                                                                                                                                                                                                                                                 |
 | 5   | `admin_store.py` Protocol + both backends + allow-lists; `app.py` doubles reorder; backend-level tests.                                                                                             | None.                                                                                                                                                                                                                                                                                                                                            |
 | 6   | The two routes and their validation; gate / 400 / 422 / no-identity-over-the-wire tests.                                                                                                            | None — the routes inherit the blueprint's 60/minute, so the rate-limit table needs no row. Say so in the commit message.                                                                                                                                                                                                                         |
 | 7a  | Template sibling div, `services.js`, `ui.js`, `handlers.js`, both catalogues, the sibling-combinator CSS rule, **`ASSET_VERSION` bump**, browser tests. Fixed 30 days, both languages, no controls. | **`DESIGN.md:375-384`** says the Overview "adds no endpoint", has "four requests", and "every figure links to the tab that owns it" — all three become false. Record the deliberate departure (analytics figures link nowhere; no tab owns them). Also the comments at `static/js/admin/ui.js:2585-2591` and `static/js/admin/handlers.js:1391`. |
@@ -621,7 +651,7 @@ already have a slice to hang a rate on. (4) daily counts: a fourth grouping set 
 `p_category` and the service parameter already exist; add a third control. (3), (5), (7) belong
 to the viewer and are untouched.
 
-## 10. Risks
+## [HISTORICAL] 10. Risks
 
 | Risk                                                                                                                                                                                                                                                                                                     | Resolution                                                                                                                                                                                                                             |
 | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -633,7 +663,7 @@ to the viewer and are untouched.
 | Suspected existing RTL defect: `[dir="rtl"] select.admin-input` (`static/css/admin.css`) puts the chevron on the physical left but pads `inline-start`, which in RTL is the right. The new selects inherit it.                                                                                           | **Reasoned, not observed.** Probe it in the 390px Arabic test. If real, fix separately with a failing-first test.                                                                                                                      |
 | `th scope="row"` takes the UA bold weight; no console table uses row headers today.                                                                                                                                                                                                                      | Check in both scripts; if too heavy, one declaration on `.admin-table tbody th`.                                                                                                                                                       |
 
-## Decisions
+## [HISTORICAL] Decisions
 
 Taken by the owner on 2026-09-20, then put to an adversarial read-only review (OpenCode,
 `muse-spark-1.3`) alongside the orchestrator's own reading. All three stand; each was refined.
@@ -684,7 +714,7 @@ Defaults: 30 days, 20 rows, percentages from n ≥ 10, periods of 7 / 30 / 90 da
 
 ---
 
-## How this plan was made
+## [HISTORICAL] How this plan was made
 
 Four lanes ran in parallel on 2026-09-20. None edited the repository; `git status` was clean
 after each.
@@ -739,7 +769,7 @@ by the orchestrator**, so they are leads, not citations:
 The research lane's PDPL claims (k-anonymity expectations, mandatory operator access logging) are
 **not** relied on anywhere in this plan. Legal review is parked by the owner per the TODO entry.
 
-## What is not verified
+## [HISTORICAL] What is not verified
 
 - No `EXPLAIN` has been run on either function at volume — clamped `p_days` / `p_limit` bound
   today's queries, but nobody has measured a real plan.
@@ -757,7 +787,7 @@ The research lane's PDPL claims (k-anonymity expectations, mandatory operator ac
   `test_a_select_keeps_its_chevron_clearance_on_the_chevron_side_in_arabic`, red against the
   old rule (`12.0 > 48.0`).
 
-## Build record (2026-09-20)
+## [HISTORICAL] Build record (2026-09-20)
 
 All of V1 was built today, 7b included. `web/tests/test_admin_analytics_browser.py` holds 31
 tests: 21 for the region, 8 for the controls, 2 found in review.
@@ -797,14 +827,14 @@ under `runtime.admin.analytics` in both catalogues; the `#overview-analytics` re
 24 — the pre-existing 24 were not re-run today). _Corrected 2026-09-21: `grep -c "n := n + 1"
 supabase/tests/rpc_behaviour.test.sql` now reads 45, not 43 — two more assertions landed in this
 file after this record was written (another lane's normalisation addition; not this session's
-doing). The file total is 45 as of today, not 43, and `docs/ARCHITECTURE.md`'s running total is
+doing). The file total is 45 as of today, not 43, and `../ARCHITECTURE.md`'s running total is
 corrected to match — see that document._ Four falsification runs each went red at the intended
 assertion: floor lowered → B2; bucket held at 4 → C1; window clamp removed → D1; U+00A0 dropped
 from the space class → A1. The Python `normalize_question` and the live Postgres expression agree
 on all 21 pairs of `NORMALISATION_FIXTURE`. Security advisors: no new finding.
-`docs/ARCHITECTURE.md`'s assertion total was updated 175 → 196. _Corrected 2026-09-21: with
+`../ARCHITECTURE.md`'s assertion total was updated 175 → 196. _Corrected 2026-09-21: with
 `rpc_behaviour.test.sql` measured live at 45 assertions rather than 43 (see above), the arithmetic
-is 175 + 2 + 21 = 198, not 196; `docs/ARCHITECTURE.md` now reads 198._
+is 175 + 2 + 21 = 198, not 196; `../ARCHITECTURE.md` now reads 198._
 
 **Corrections found during the build** — each is a correction to the text above, not a silent
 edit of it:
@@ -863,7 +893,7 @@ end-anchored `search_path` check is one `if` block further down than recorded. `
 was also wrong (the two sibling `.admin-panel-body` divs are at `:186-187`); `admin.html` is not
 being edited today, so that one is a plain fix, not a symbol substitution.
 
-## Adversarial review of the build (2026-09-20)
+## [HISTORICAL] Adversarial review of the build (2026-09-20)
 
 OpenCode, `muse-spark-1.3`, variant `max`, read-only `plan` agent; `git status` and the diff
 hash were identical before and after. Thirteen findings and two simplifications, no blocker.
@@ -894,7 +924,7 @@ question text, identity in any response, a NULL `client_request_id` escaping the
 compatibility, question text in logs, gating and rate limits, catalogue parity, and the abort /
 sequence-token interleavings.
 
-## Second adversarial check (2026-09-21)
+## [HISTORICAL] Second adversarial check (2026-09-21)
 
 Codex, `gpt-6-astra`, effort `medium`, read-only sandbox, one run; tree and diff hash unchanged.
 Quota was the constraint, so the brief inlined the two functions, the double, the routes and the
@@ -918,7 +948,7 @@ Excluding `role = 'admin'` owners from the distinct count closes it for a single
 (not for one who also holds a reader account — the residual already accepted), at the cost of a
 join to `profiles` and a function redeploy.
 
-## Third review (2026-09-21)
+## [HISTORICAL] Third review (2026-09-21)
 
 A reviewer the owner ran separately, ten angles, fifteen findings and a list of runners-up, all
 with the gates green — so everything in it was latent, cross-engine or documentary. It is the
@@ -950,7 +980,7 @@ now "These lists show saved question text without account identifiers." — what
 does, not what an attacker cannot infer. **Its Arabic is an orchestrator draft and has not been
 through the owner's reviewer**, unlike the other 43 strings.
 
-## Appendix — full string table
+## [HISTORICAL] Appendix — full string table
 
 All keys are relative to `runtime.admin.analytics`. Reused rather than duplicated:
 `admin.overview.unavailable`, `admin.people.of`. **The Arabic column was reviewed by the owner with a

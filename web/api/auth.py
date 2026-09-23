@@ -130,7 +130,9 @@ SIGNUP_METADATA_KEYS = (
 # the purge below cannot drift from whatever else reads this list.
 #
 # NEITHER KEY IS WRITTEN BY EITHER CHAT ROUTE ANY MORE
-# (docs/archive/2026-08-22_per-tab-deep-linking.md §5.1, §5.4): the URL is the
+# (docs/ARCHITECTURE.md#deletion-resume-and-multi-tab-isolation and
+# #the-url-is-the-pointer; reasoning in
+# docs/archive/2026-08-22_per-tab-deep-linking.md §5.1, §5.4): the URL is the
 # pointer now, not a cookie, and `ConversationStore` is keyed
 # `(owner_id, conversation_id)` — a second reader on the same browser cannot
 # reach the first reader's RAM window merely by signing in, because nothing
@@ -226,7 +228,8 @@ def signup() -> Any:
     Gated before anything else touches the provider: an operator-paused
     instance must never construct a Supabase client for this request, let
     alone spend a network call on it. See
-    ``docs/registrations-pause-plan.md`` for the full contract, including why
+    ``docs/ARCHITECTURE.md#registrations-pause`` (reasoning in
+    ``docs/archive/2026-08-25_registrations-pause.md``) for the full contract, including why
     the gate reads three-valued (``True``/``False``/``None``) and answers a
     ``503`` rather than a ``403`` when it cannot tell which.
 
@@ -277,7 +280,8 @@ def signup() -> Any:
         # pause can land in that window. This does not close the window
         # entirely — the read here and the send below are still two steps,
         # not one atomic one, and closing it fully would need the BEFORE
-        # INSERT trigger `docs/registrations-pause-plan.md` §4 explicitly
+        # INSERT trigger docs/ARCHITECTURE.md#registrations-pause (reasoning in
+        # docs/archive/2026-08-25_registrations-pause.md §4) explicitly
         # rejects (it would also block admin-created accounts). It narrows
         # the window from "the whole view" to "one network round trip",
         # which is the practical amount of narrowing available without that
@@ -361,7 +365,8 @@ def _signup_error_response(gotrue_code: str | None, message: str) -> tuple[str, 
     Reads GoTrue's OWN code first — an enum member, not prose, so it survives
     a wording change upstream — and falls back to English-substring matching
     on ``message`` only when ``gotrue_code`` is ``None`` or one this table
-    does not recognise yet. See §7 of ``docs/registrations-pause-plan.md``
+    does not recognise yet. See ``docs/ARCHITECTURE.md#registrations-pause``
+    (reasoning in §7 of ``docs/archive/2026-08-25_registrations-pause.md``)
     for the table this mirrors.
     """
     if gotrue_code and gotrue_code in _GOTRUE_CODE_MAP:

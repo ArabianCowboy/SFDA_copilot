@@ -77,7 +77,8 @@ _REFUSAL_CODES = {
     # Raised by admin_update_profile when the row moved under the operator's
     # feet. Not a failure — a refusal to overwrite somebody else's edit.
     "AD005": "profile_changed_since_loaded",
-    # The reader-quota family (docs/reader-quota-plan.md §1.5/§1.6). Mapped here
+    # The reader-quota family (docs/ARCHITECTURE.md#reader-quota; reasoning in
+    # docs/archive/2026-09-04_reader-quota.md §1.5, §1.6). Mapped here
     # so the console meets a machine code it can translate, never a raw 23514 or
     # 23503 surfacing as a 500.
     "TQ001": "duplicate_key",
@@ -399,7 +400,8 @@ def normalize_question(text: str) -> str:
     """The grouping key for a saved question. One function, two callers.
 
     Identical semantics to the inline expression in `admin_top_questions`
-    (docs/admin-analytics-v1-plan.md §4.1): delete the zero-width and direction
+    (docs/ARCHITECTURE.md#admin-analytics; reasoning in
+    docs/archive/2026-09-20_admin-analytics-v1.md §4.1): delete the zero-width and direction
     marks, lower, collapse every space kind to one space, trim, then strip one
     trailing run of sentence-enders. `btrim` in the SQL strips U+0020 only,
     so this strips U+0020 only: a bare `.strip()` also eats U+0085 and
@@ -1300,7 +1302,9 @@ class InMemoryAdminBackend:
             "specialization": row.get("specialization"),
             "last_seen_at": row.get("last_seen_at"),
             "updated_at": row.get("updated_at", row["created_at"]),
-            # Read-only consent record (docs/profile-refactor-plan.md Step 6
+            # Read-only consent record (docs/ARCHITECTURE.md#account-deletion-and-trust
+            # and docs/ARCHITECTURE.md#account-page-and-profile; reasoning in
+            # docs/archive/2026-08-23_profile-refactor.md, Step 6
             # checklist item "admin visibility ... of the consent record").
             # Mirrors admin_get_user's own field set exactly; false/None
             # defaults for a seeded row that never set them, matching a real

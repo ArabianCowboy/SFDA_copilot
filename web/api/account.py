@@ -9,7 +9,8 @@ cannot carry an ``Authorization`` header — Supabase's session lives in
 ``localStorage``. So ``GET /account`` renders chrome and translated strings
 only; nothing account-specific renders until the JS has asked
 ``/api/identity`` with a token in hand and read the reader's own profile
-directly from Supabase (Decision 8 of docs/profile-refactor-plan.md: reads
+directly from Supabase (docs/ARCHITECTURE.md#account-page-and-profile;
+reasoning in docs/archive/2026-08-23_profile-refactor.md, Decision 8): reads
 and preference writes stay on the browser->PostgREST path under RLS).
 
 **Any future ``/api/account/*`` route accepts a bearer header and nothing
@@ -140,7 +141,8 @@ def export() -> Response | tuple[Response, int]:
     consistent with the console's.
 
     Scoped by `owner_id` from `g.identity` (set by `_gate`, above), never by
-    anything the caller supplies (docs/profile-refactor-plan.md §4: "scoped
+    anything the caller supplies (docs/ARCHITECTURE.md#account-page-and-profile;
+    reasoning in docs/archive/2026-08-23_profile-refactor.md §4: "scoped
     by owner_id = auth.uid(), never by a client-supplied id"). Rate-limited
     2/10min, keyed per reader rather than per IP — wired in `app.py`
     alongside the blueprint registration, because the limiter's own
@@ -208,8 +210,9 @@ def export() -> Response | tuple[Response, int]:
 def delete_all_conversations() -> Response | tuple[Response, int]:
     """Delete every owned conversation. `/account/api/conversations` — see
     `export`'s docstring for the path convention. Named distinctly from
-    account deletion (Spec 4 of docs/profile-refactor-plan.md, not built
-    here) — this clears chat history; the account, its profile row and its
+    account deletion (docs/ARCHITECTURE.md#account-deletion-and-trust;
+    reasoning in docs/archive/2026-08-23_profile-refactor.md, Spec 4, superseded)
+    — this clears chat history; the account, its profile row and its
     auth identity are untouched.
 
     Refused outright while ANY of the owner's conversations is mid-generation
@@ -219,7 +222,8 @@ def delete_all_conversations() -> Response | tuple[Response, int]:
     resurrect the row it lands on via `on conflict (id) do nothing`.
 
     Deliberately NOT refused for an owner with a live deletion saga
-    (docs/account-and-trust-plan.md §3-M4): the saga is going to purge these
+    (docs/ARCHITECTURE.md#account-deletion-and-trust; reasoning in
+    docs/archive/2026-09-18_account-and-trust.md §3-M4): the saga is going to purge these
     very transcripts at grace expiry anyway, so refusing their early removal
     protects nothing and strips the one agency — besides export and cancel —
     a reader still has during grace. The saga's own purge is unaffected by
@@ -259,7 +263,9 @@ def consent_grant() -> Response | tuple[Response, int]:
 
     `/account/api/consent/grant` — the path convention is `export`'s
     (`/account/api/*`, not `/api/account/*`). The grant half of the consent
-    carve-out (docs/account-and-trust-plan.md §3, decision D5): withdrawing
+    carve-out (docs/ARCHITECTURE.md#account-page-and-profile and
+    docs/ARCHITECTURE.md#account-deletion-and-trust; reasoning in
+    docs/archive/2026-09-18_account-and-trust.md §3, D5): withdrawing
     stays browser-direct through `update_own_marketing_consent` so it keeps
     working while disabled, but granting is Flask-mediated so the version is
     stamped server-side and a disabled account never reaches it.
@@ -322,7 +328,8 @@ def consent_grant() -> Response | tuple[Response, int]:
     return jsonify(ok=True)
 
 
-# ── Self-serve account deletion (docs/account-and-trust-plan.md §3-M4/M5) ──
+# ── Self-serve account deletion (docs/ARCHITECTURE.md#account-deletion-and-trust;
+# reasoning in docs/archive/2026-09-18_account-and-trust.md §3-M4/M5) ──
 
 _DL_CODE = re.compile(r"\bDL00[1-7]\b")
 

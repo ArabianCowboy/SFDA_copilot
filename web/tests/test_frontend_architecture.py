@@ -78,7 +78,7 @@ def test_notification_polling_backoff_contracts():
 def test_account_flow_uses_the_i18n_catalogue_not_literals():
     """The profile-editing surface this guarded moved from the #profileModal
     (handlers.js/ui.js) to static/js/account/ when the modal was retired
-    (docs/profile-refactor-plan.md §5) — the file changed, the discipline it
+    (docs/ARCHITECTURE.md#account-page-and-profile; reasoning in docs/archive/2026-08-23_profile-refactor.md §5) — the file changed, the discipline it
     pins did not: every reader-facing string on the account page draws from
     `runtime.profile.account.*`, none of it hardcoded English, which the
     catalogue-parity test alone cannot catch (both languages can carry a key
@@ -236,8 +236,8 @@ def test_arabic_catalogue_covers_every_runtime_key():
 def test_analytics_scope_labels_match_page_categories():
     """runtime.admin.analytics.scope duplicates page.categories on purpose
     (page.* never reaches the browser, so the console cannot read it there —
-    docs/admin-analytics-v1-plan.md section 7.10), and a pytest is the thing
-    that is supposed to catch the two drifting apart. Checked in both
+    reasoning in docs/archive/2026-09-23_admin-analytics-tab.md §7.10), and a pytest
+    is the thing that is supposed to catch the two drifting apart. Checked in both
     languages, since a translator could update one catalogue's category label
     and miss the analytics copy sitting right beside it.
     """

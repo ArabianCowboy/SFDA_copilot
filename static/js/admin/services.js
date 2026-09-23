@@ -173,7 +173,8 @@ export function createAdminServices(getToken) {
     },
 
     /**
-     * Notification Center (docs/notification-center-plan.md). Dry run: how
+     * Notification Center (docs/ARCHITECTURE.md#notification-center; full
+     * design in docs/archive/2026-08-24_notification-center.md). Dry run: how
      * many accounts one targeting choice would currently reach. Persists
      * nothing — the composer calls this on every field change.
      */
@@ -189,7 +190,8 @@ export function createAdminServices(getToken) {
     createNotification: (payload) => request('notifications', { method: 'POST', body: payload }),
 
     /** Offset/limit, matching users()/audit() above — only the reader-facing
-     * inbox uses cursor pagination (docs/notification-center-plan.md §3). */
+     * inbox uses cursor pagination (docs/ARCHITECTURE.md#notification-center;
+     * reasoning in docs/archive/2026-08-24_notification-center.md §3). */
     notificationHistory: ({ limit = 20, offset = 0, status = 'all' } = {}) =>
       request(`notifications/history?limit=${limit}&offset=${offset}&status=${status}`),
 
@@ -204,7 +206,8 @@ export function createAdminServices(getToken) {
     purgeNotification: (id) =>
       request(`notifications/${encodeURIComponent(id)}/purge`, { method: 'POST' }),
 
-    /* Tiers and the reader quota (docs/reader-quota-plan.md §5). */
+    /* Tiers and the reader quota (docs/ARCHITECTURE.md#reader-quota;
+       reasoning in docs/archive/2026-09-04_reader-quota.md §5). */
 
     tiers: () => request('tiers'),
 
@@ -232,7 +235,8 @@ export function createAdminServices(getToken) {
       }),
 
     /* Read-only aggregates over saved conversations
-       (docs/admin-analytics-v1-plan.md §6). Both take `signal`, like `users()`
+       (docs/ARCHITECTURE.md#admin-analytics; reasoning in
+       docs/archive/2026-09-20_admin-analytics-v1.md §6). Both take `signal`, like `users()`
        and `deletions()` above: the period and language controls abort the
        window an operator has just left rather than racing it.
 

@@ -6,8 +6,9 @@
  * modules are reused: theme, language, i18n, the Supabase transport.
  *
  * Identity and Preferences read and write straight from the browser to
- * Supabase, under RLS (Decision 8 of docs/profile-refactor-plan.md) — there
- * is no Flask API for them. `/api/identity` is called once, only for the
+ * Supabase, under RLS (docs/ARCHITECTURE.md#account-page-and-profile;
+ * reasoning in docs/archive/2026-08-23_profile-refactor.md Decision 8) —
+ * there is no Flask API for them. `/api/identity` is called once, only for the
  * standing line's role/tier/since/conversation-count/standing, which cannot
  * come from `profiles` at all (see that route's own docstring).
  */
@@ -76,7 +77,7 @@ const Account = {
       }
 
       // Fresh read on open, never a cached snapshot from elsewhere on the
-      // site (docs/profile-refactor-plan.md §0.3-H) — this page has no
+      // site (docs/archive/2026-08-23_profile-refactor.md §0.3-H) — this page has no
       // shared AppState to be stale against in the first place, but the
       // principle is the same: what is shown here is what is true now.
       const [profile, identity] = await Promise.all([

@@ -13,7 +13,8 @@ Why not Flask-Limiter
 Its storage is ``memory://``, which does not survive a deploy — fine for a burst
 limit, useless for a daily allowance. This is a durable row and one atomic
 ``insert … on conflict … where used < limit returning`` inside a
-``security definer`` RPC. See ``docs/reader-quota-plan.md`` §2.
+``security definer`` RPC. See ``docs/ARCHITECTURE.md#reader-quota``;
+reasoning in ``docs/archive/2026-09-04_reader-quota.md`` §2.
 
 Failure posture, and the one place it is NOT fail-open
 ------------------------------------------------------

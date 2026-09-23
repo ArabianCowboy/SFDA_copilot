@@ -145,8 +145,9 @@ export function bindConsoleEvents() {
  * interaction away. Re-read after a save, because the save just added to it.
  */
 /**
- * Notification Center composer + history (docs/notification-center-plan.md
- * §4). One init function, matching initPeopleTab/initSettingsTab's own
+ * Notification Center composer + history (docs/ARCHITECTURE.md#notification-center;
+ * reasoning in docs/archive/2026-08-24_notification-center.md §4). One init
+ * function, matching initPeopleTab/initSettingsTab's own
  * shape: closes over the panel's own request state (the preview debounce,
  * the history offset, the row cache resend needs) rather than leaking it
  * onto module scope, which multiple tabs would then have to coordinate.
@@ -591,7 +592,8 @@ export async function initNotificationsTab(services) {
         );
       }
     } else if (resendBtn) {
-      // Not a new endpoint (docs/notification-center-plan.md §3): prefill
+      // Not a new endpoint (docs/ARCHITECTURE.md#notification-center; reasoning
+      // in docs/archive/2026-08-24_notification-center.md §3): prefill
       // the composer from the source row, mark it a resend, and let the
       // ordinary submit path send it with a fresh idempotency key.
       const id = resendBtn.dataset.notifResend;

@@ -1,7 +1,8 @@
 """Signup now asks for a name, and sends it to GoTrue as user metadata for
-`handle_new_user` to read (docs/profile-refactor-plan.md §12.2, Step 4).
+`handle_new_user` to read (docs/ARCHITECTURE.md#registrations-pause; reasoning in docs/archive/2026-08-23_profile-refactor.md §12.2, Step 4).
 
-Registrations-pause migration (docs/registrations-pause-plan.md §9 Step 6):
+Registrations-pause migration (docs/ARCHITECTURE.md#registrations-pause;
+Step 6 of docs/archive/2026-08-25_registrations-pause.md §9):
 `Services.signup` no longer calls the browser-side Supabase double directly —
 it POSTs to our own `/auth/signup`, which is the only place an operator's
 pause can actually be enforced. The live test server's `get_supabase()`
@@ -131,7 +132,7 @@ def test_explicit_signup_fields_survive_a_colliding_metadata_key(
 
 
 def test_terms_acceptance_is_required_by_the_form(browser_page: Page, signup_capture):
-    """A separate, required tick (docs/profile-refactor-plan.md §12.4) —
+    """A separate, required tick (docs/ARCHITECTURE.md#account-page-and-profile; reasoning in docs/archive/2026-08-23_profile-refactor.md §12.4) —
     never bundled with marketing consent, which stays optional."""
     browser_page.goto("/")
     browser_page.locator("#auth-button-main").click()

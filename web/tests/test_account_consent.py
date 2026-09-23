@@ -1,5 +1,5 @@
 """Marketing consent on /account: instant-apply toggle, withdrawal as easy
-as granting (docs/profile-refactor-plan.md §12.3, Step 6).
+as granting (docs/ARCHITECTURE.md#account-page-and-profile; reasoning in docs/archive/2026-08-23_profile-refactor.md §12.3).
 
 Granting goes through `POST /account/api/consent/grant`, which stamps the
 policy version server-side — the browser sends no version at all. Withdrawing

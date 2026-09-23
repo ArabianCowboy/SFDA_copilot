@@ -303,7 +303,8 @@ ICONS: dict[str, str] = {
     ),
     # An open lid, so the glyph reads as "discard" rather than as a closed box.
     # The Notification Center's bell (sidebar) and inbox header
-    # (docs/notification-center-plan.md). bootstrap-icons' own bi-bell path.
+    # (docs/ARCHITECTURE.md#notification-center; reasoning in
+    # docs/archive/2026-08-24_notification-center.md). bootstrap-icons' own bi-bell path.
     "bell": (
         '<path d="M8 16a2 2 0 0 0 2-2H6a2 2 0 0 0 2 2M8 1.918l-.797.161A4 4 '
         "0 0 0 4 6c0 .628-.134 2.197-.459 3.742-.16.767-.376 1.566-.663 "

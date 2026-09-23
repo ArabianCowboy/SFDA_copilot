@@ -1,4 +1,4 @@
-STATUS: CURRENT AUTHORITY — the live system contract. Last verified against code 2026-08-28.
+STATUS: CURRENT AUTHORITY — the live system contract. Last verified against code 2026-09-23.
 
 # Architecture
 
@@ -16,15 +16,21 @@ always for.
 
 When two documents disagree, this is the order. It is short on purpose.
 
-| Subject                                          | Authority                                                                                                                              |
-| ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
-| Conversations, chat, persistence                 | This file. Then `docs/archive/2026-08-22_per-tab-deep-linking.md`, then `2026-08-20_chat-persistence.md`, then `TODO.md`. Newest wins. |
-| Copy, product claims, terminology                | `docs/PRODUCT.md`                                                                                                                      |
-| Design, tokens, RTL presentation                 | `DESIGN.md`                                                                                                                            |
-| Database, migrations, RLS                        | `supabase/README.md` — it sits beside the migrations, which is where you are when you need it                                          |
-| Deployment, DNS, mail, anything outside the repo | `docs/OPERATIONS.md`                                                                                                                   |
-| A document's index vs. its own body              | The body.                                                                                                                              |
-| **Anything vs. a passing test**                  | **The test.** It is the only artifact here that cannot silently drift.                                                                 |
+| Subject                                          | Authority                                                                                                                                                                                                  |
+| ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Conversations, chat, persistence                 | This file. Then `docs/archive/2026-08-22_per-tab-deep-linking.md`, then `2026-08-20_chat-persistence.md`, then `TODO.md`. Newest wins.                                                                     |
+| Registrations pause                              | This file (see _Registrations pause_). Then `docs/archive/2026-08-25_registrations-pause.md`, then `TODO.md`.                                                                                              |
+| Notification Center                              | This file (see _Notification Center_). Then `docs/archive/2026-08-24_notification-center.md` (and `2026-08-29_notification-mark-read-500.md` for the mark-read fix), then `TODO.md`.                       |
+| Admin analytics                                  | This file (see _Admin analytics_). Then `docs/archive/2026-09-20_admin-analytics-v1.md` for the RPC/data layer and `docs/archive/2026-09-23_admin-analytics-tab.md` for console placement, then `TODO.md`. |
+| Account page, profile, data rights               | This file (see _Account page and profile_). Then `docs/archive/2026-08-23_profile-refactor.md`, then `TODO.md`.                                                                                            |
+| Account deletion, disabled accounts, consent     | This file (see _Account deletion and trust_). Then `docs/archive/2026-09-18_account-and-trust.md`, then `TODO.md`.                                                                                         |
+| The daily reader quota                           | This file (see _Reader quota_). Then `docs/archive/2026-09-04_reader-quota.md`, then `TODO.md`.                                                                                                            |
+| Copy, product claims, terminology                | `docs/PRODUCT.md`                                                                                                                                                                                          |
+| Design, tokens, RTL presentation                 | `DESIGN.md`                                                                                                                                                                                                |
+| Database, migrations, RLS                        | `supabase/README.md` — it sits beside the migrations, which is where you are when you need it                                                                                                              |
+| Deployment, DNS, mail, anything outside the repo | `docs/OPERATIONS.md`                                                                                                                                                                                       |
+| A document's index vs. its own body              | The body.                                                                                                                                                                                                  |
+| **Anything vs. a passing test**                  | **The test.** It is the only artifact here that cannot silently drift.                                                                                                                                     |
 
 Every document in this repository opens with a `STATUS:` line and a date. A file
 without one is not finished. A file whose date is old is a file to check before you
@@ -95,6 +101,56 @@ a 400 turns a client bug into a failed question. Ids are normalised with
 
 Keep the uuid **v4**. Do not "upgrade" to v7: it encodes the creation millisecond into
 a pasted URL.
+
+### Ownership preflight
+
+On a request that names an **existing** conversation (`allow_create: false` — the shape a
+`/c/<id>` deep link produces on turn 2 onward), the streaming route calls
+`_preflight_conversation(persistence, owner_id, conversation_id)` (`web/api/app.py`) before
+retrieval and before any SSE frame, inside the `_InFlightGenerations` hold already taken for
+that `(owner_id, conversation_id)` pair. It calls `ConversationStore.session_exists` (the
+persistence protocol declared in `web/services/chat_store.py`); on `False` it releases the hold
+and returns a plain `404 {"error": "Unknown conversation.", "code": "not_found"}` before any
+retrieval or LLM call — pinned by `test_deep_link_contract.py`'s assertion that the search/LLM
+double's `call_count` stays `0`. On a persistence outage the check **fails open** (treats the
+conversation as existing), by explicit design: refusing a legitimate question because an
+existence check could not be reached is judged worse than the resurrection risk this guards
+against, which `chat_append_turn`'s own `p_allow_create` still refuses at the database
+regardless.
+Reasoning: docs/archive/2026-08-22_per-tab-deep-linking.md §3.4.
+
+### Request validation and response headers
+
+There is still no CSRF token or Origin check anywhere in this app — see _Authentication and the
+blueprint gate_ below. Two narrower fixes live near where an older citation calls this
+"CSRF-shaped": `_validate_chat_request` (`web/api/app.py`) parses the body with
+`request.get_json(silent=True)`, not `force=True`, so a cross-site `enctype="text/plain"`
+auto-submitting form cannot inject a body regardless of `Content-Type`; and the route it used to
+share that vector with, `POST /api/chat/sessions/<id>/select`, is deleted outright rather than
+merely secured (see the next section). `Talisman(...)` is configured with
+`session_cookie_samesite="Lax"` and `referrer_policy="strict-origin-when-cross-origin"` passed
+explicitly, rather than left to the library's default, so an upgrade cannot silently change
+either. `GET /c/<uuid:conversation_id>` sets `X-Robots-Tag: noindex, nofollow` on its own
+response — `/` does not — because it is the only page whose path carries a conversation id.
+Reasoning: docs/archive/2026-08-22_per-tab-deep-linking.md §3.5, §6.1.
+
+### Deletion, resume, and multi-tab isolation
+
+Selecting or resuming a conversation is client-side navigation, not a server call:
+`POST /api/chat/sessions/<id>/select` and `POST /api/conversation/reset` are both deleted, and
+`session["conv_id"]`/`prev_conv_id` no longer exist. "New chat" (`Handlers.handleNewChat`) is a
+pure navigation from `/c/<id>` to `/`, with Back as the only undo. `/` is always a new, empty
+conversation — there is no "resume my last session" fallback (`CHAT_RESUME_LATEST_SESSION` is
+retired); `GET /api/chat/history` requires an explicit `?c=<uuid>` and has no cookie fallback, so
+a bare `/` renders an empty transcript rather than resuming anything. `GET /api/chat/sessions`
+paginates by cursor (`next_cursor: {updated_at, id}`), not offset. Two tabs are independent by
+construction — each holds its own URL and its own `(owner_id, conversation_id)`-keyed server
+state (`ConversationStore`, `_InFlightGenerations`); duplicating a tab is a second view of the
+same conversation, not a collision, and a `409 generation_in_flight` is scoped to one
+conversation, never shared across two different ones open in the same browser. Pinned by
+`test_multi_tab_conversations.py` (two Playwright pages sharing one browser context).
+Reasoning: docs/archive/2026-08-22_per-tab-deep-linking.md §5.1, §5.2, §5.5 (Decision 1a: `/` is
+always new, never a resume), §7.2.
 
 ---
 
@@ -352,9 +408,10 @@ forwarded the caller's traffic to GoTrue from this host's single address,
 blinding GoTrue's own per-IP `/token` limiter to the attacker's real
 address. `POST /auth/signup` used to
 be the same shape and was dead code in production as a result — nothing
-called it — until the registrations-pause work
-(`docs/registrations-pause-plan.md`) moved `Services.signup` onto it, which
-is the only way an operator's pause can actually be enforced. `POST
+called it — until the registrations-pause work (see _Registrations pause_
+below; reasoning in `docs/archive/2026-08-25_registrations-pause.md`) moved
+`Services.signup` onto it, which is the only way an operator's pause can
+actually be enforced. `POST
 /auth/recover` and `POST /auth/logout` were already server-mediated before
 that, for reasons specific to each (recovery: PKCE, see
 `web/services/account_recovery.py`'s module docstring). So today: **signup,
@@ -493,6 +550,226 @@ console; the calendar day is `Asia/Riyadh`. Schema and design:
 
 ---
 
+## Registrations pause
+
+An operator can close signup without a deploy. `app_settings.settings` carries a boolean
+`signup_enabled`, read through `SettingsService.signup_enabled()` (three-valued: `True`/`False`/
+`None` on a load failure) and written through `SettingsService.set_signup_enabled()` under the
+same `admin_write_settings` RPC and audit action (`settings.update`) the generation settings
+already use — no separate migration or action string. `POST /auth/signup`
+(`web/api/auth.py`) gates before calling GoTrue and again immediately before the provider call,
+to narrow the race window: `None` answers `503 auth_unavailable`, `False` answers
+`403 signup_disabled`. Every page render passes `signup_paused` into the template
+(`base_render_context`); `index.html` swaps in a `role="status"` notice and hides the form,
+while the signup tab stays selectable with a small "(paused)" indicator. The pause is
+enforceable only because `Services.signup` now posts to this server route instead of calling
+Supabase directly from the browser — the same move that gave signup its own rate limit
+(`signup_bp`, separate from the deleted `/auth/login` proxy; see _Authentication and the
+blueprint gate_). The pause has **no database-level enforcement** and does not block a direct
+GoTrue call. The operator control is `GET`/`PUT /admin/api/registrations` (`web/api/admin.py`),
+rendered as its own zone in the console's Settings panel with a permanent note about that
+bypass. The `auth.users` `AFTER INSERT` trigger `handle_new_user` is unrelated to the pause — it
+normalises signup metadata and, being `AFTER INSERT`, cannot roll back account creation, so it
+was deliberately never used to hard-block signup.
+Reasoning: docs/archive/2026-08-25_registrations-pause.md §2, §4, §5, §6, §7, §9.
+
+---
+
+## Notification Center
+
+An admin composes a broadcast (`admin.py`'s `create_notification`, calling
+`admin_create_notification`), which inserts one `notifications` row, a
+`notification_recipients` snapshot for the targeted role/tier/user set, and an audit row in one
+transaction, idempotent on `client_request_id`. A reader's inbox is fetched over REST —
+`GET /api/notifications/active` and `/history`, `POST /api/notifications/mark-read` and
+`/mark-all-read` — never over Realtime. **REST is the only source of truth for content; the
+private per-user Realtime channel carries only `{notification_id, revision}` and exists solely
+to make an already-open tab refetch sooner than its next poll**, so an intercepted broadcast
+discloses nothing. Three independent display shells render outside the (twice-rendered) sidebar
+macro, per the collision noted in _Rules that collide_ #6: a corner toast stack, a single-slot
+`aria-live="polite"` banner, and a focus-trapped modal whose only way to mark `acknowledged` is
+its own button (Escape/backdrop-click just session-snoozes it). Only the reader-facing inbox
+history uses cursor pagination (`cursor_created_at`/`cursor_id`); the admin console's own
+notification history stays offset/limit, matching its other list RPCs. A shipped defect
+(mark-read `500`: the response builder collided a duplicate `notification_id` key pulled in from
+`**row`) is fixed, and is now cited defensively in `admin.py`'s profile-update response building
+as the reason to build response dicts explicitly rather than by merging an RPC row's own keys.
+Reasoning: docs/archive/2026-08-24_notification-center.md §2, §3, §4, §7, §8; the mark-read
+defect and fix are recorded in docs/archive/2026-08-29_notification-mark-read-500.md.
+
+---
+
+## Admin analytics
+
+Two `service_role`-only, `security definer` RPCs answer "what are readers asking, and is the
+app citing anything" over `chat_messages`/`chat_message_sources`, gated like every other
+`admin_*` reader by the console's blueprint `_gate()` rather than an owner argument (see
+_Rules that collide_ #17): `admin_top_questions` groups saved user turns by a normalised
+question text and returns ask counts, an uncited count, and an asker count bucketed below 5
+distinct accounts; `admin_citation_stats` returns per-scope counts only, never percentages, of
+turns, uncited turns, turns with no retrieval at all, and cited/retrieved totals. The
+normalisation (`admin_store.py`'s `normalize_question`, stripping zero-width marks, space runs
+and trailing punctuation) exists to collapse near-duplicate phrasings for counting, not for
+privacy — the privacy line is the SQL projection naming no identity column, a Python column
+allow-list, and the minimum-asker floor. On the console this renders in its own last tab
+(`#panel-analytics`/`#analytics-body`), not the sibling-of-Overview placement the original plan
+shipped with — that placement, and the explanations behind an "i" popup, were superseded by a
+later, separate change; see `DESIGN.md` and `docs/archive/2026-09-23_admin-analytics-tab.md` for
+the current tab contract. `supabase/tests/function_acls.test.sql` and `rpc_behaviour.test.sql`
+are what actually prove the ACL and the grouping/count logic — the latter is the only place
+either is proven off a real Postgres run rather than a Python double, because Postgres's `\s`
+diverges from Python's.
+Reasoning: docs/archive/2026-09-20_admin-analytics-v1.md §4, §4.1, §5, §6, §7 (tab placement
+superseded by docs/archive/2026-09-23_admin-analytics-tab.md).
+
+---
+
+## Account page and profile
+
+`account_bp` (`web/api/account.py`) mounts at `/account` and follows the console's own
+two-part split: **the page is not gated; the data is.** `GET /account` (`page`) renders
+chrome and translated strings only — a document navigation carries no `Authorization`
+header, since the Supabase session lives in `localStorage` — and every `/account/api/*`
+route is refused by `_gate` (a `before_request` hook) unless the caller presents a bearer
+token that `_authenticate_request` accepts; `_gate` deliberately reads only the explicit
+`Authorization` header (`_bearer_token`), never the cookie or Flask-session fallback
+`_get_token_from_request` allows, for the same CSRF reasoning as the console's own gate.
+The reader's identity and profile fields are **not** Flask-mediated: they are read and
+written straight from the browser to PostgREST under RLS on `profiles` (see
+_Two table-access patterns_), and `preferences` specifically is written only through the
+`update_own_preferences(jsonb)` **merge** RPC — never a whole-row upsert (rule #8 above).
+
+Two data-rights routes live on this blueprint. `GET /account/api/export` streams every
+session the caller owns as NDJSON (`export_all_sessions`, `web/services/chat_store.py`),
+scoped to `owner_id` from `g.identity` and never from the request; a backend outage before
+the stream starts is a `503`, and one that fails partway through appends a trailing
+`{"error": "history_unavailable"}` line rather than truncating silently. `DELETE
+/account/api/conversations` (`delete_all_conversations`) deletes chat history only — the
+profile row and auth identity are untouched — and is refused with `409
+generation_in_flight` while any owned conversation is mid-generation
+(`_generations().is_live_for_owner`), but is **not** refused for an owner with a live
+deletion saga (see _Account deletion and trust_): the saga purges the same rows at grace
+expiry regardless, so blocking early removal would only take away agency during the grace
+window.
+
+`POST /account/api/consent/grant` (`consent_grant`) is the one profile mutation this
+blueprint makes server-side rather than browser-direct: it stamps `PRIVACY_POLICY_VERSION`
+(the single source in `web/api/app.py`) and calls `grant_marketing_consent`, so a client
+cannot backdate or forge the version it consented under. Withdrawal is the opposite shape
+by design — `update_own_marketing_consent` stays browser-direct so it keeps working even
+while an account is disabled or a deletion is pending (see _Account deletion and trust_).
+A grant attempted during a live deletion saga is refused `409 deletion_pending` (saga error
+`DL007`), surfaced through `_saga_error_code`.
+Reasoning: docs/archive/2026-08-23_profile-refactor.md Decision 8, §4, §5, Step 6, Step 7.
+
+---
+
+## Account deletion and trust
+
+Self-serve account deletion is a saga, gated end to end by one deploy switch —
+`server.account_deletion_self_serve_enabled` in `web/config.yaml`, read at request time as
+`_deletion_self_serve_enabled()` — because the code ships before the saga schema and the
+reconcile timer are both live; while it is off, all three routes below answer `404` (not
+`503`, so the feature reads as not-yet-shipped rather than transiently down).
+
+`POST /account/api/deletion` (`deletion_request`, `web/api/account.py`) requires two
+things before it calls the `account_deletion_request` RPC: a durable step-up lockout check
+(`_step_up_is_locked_out`, checked **before** any provider call, so a locked-out caller
+produces no GoTrue round trip at all) and the caller's **current password**, verified
+server-side by `_verify_current_password` through a real
+`supabase.auth.sign_in_with_password` call — a bearer token alone is never enough, because
+on a shared machine the token is the ordinary case. A wrong password is recorded by
+`_record_step_up_failure` (fails open on a transport fault: this is a rate limit, not the
+authorization boundary) and answers `401 step_up_failed` or, once tripped,
+`429 step_up_locked_out`. The RPC itself refuses an administrator (`DL003`) and a
+double-request on an already-deleted account (`DL004`); this route surfaces those, it does
+not re-implement them. On success it calls `sign_out_all` with the **requesting session's
+own JWT**, global scope — never `revoke_sessions` and never a GoTrue ban, both of which
+would either lock the real owner out of the cancel path or require a password rotation to
+undo. `POST /account/api/deletion/cancel` (`deletion_cancel`) needs no step-up (cancelling
+destroys nothing) and is reachable by a pending reader with no gate change, since `_gate`
+refuses only `is_disabled` and the saga never sets that column; it is refused `409` once
+past the purge boundary (`DL005`). `GET /account/api/deletion` (`deletion_status`) reads
+the `account_deletions` ledger row directly, filtered by equality on `g.identity`'s
+`owner_id` only — there is no status RPC in the saga contract and no request-supplied id,
+so another account's row is unreachable through this route.
+
+Post-grace steps (purge transcripts, re-purge, begin the auth delete, delete the GoTrue
+user, record the outcome, complete) run through one driver, `reconcile_one`
+(`scripts/reconcile_account_deletions.py`), invoked two ways against the same
+implementation: a systemd one-shot timer (`deploy/`) and the admin console's own
+`deletion_reconciler` seam in `web/api/app.py` — never a daemon thread, because the
+production unit recycles the worker every 1,000 requests (`--max-requests 1000`), which
+would strand a saga step mid-flight with nobody left to reconcile it. Each step is
+lease-claimed so two drivers cannot run the same step twice; an ambiguous outcome (the
+transport failed but the provider call may have already committed) is resolved by calling
+`user_exists()` — if GoTrue no longer has the user, the step is treated as succeeded
+(`not_found`) regardless of what the transport reported. The driver never calls
+`revoke_sessions` or sets a ban during reconcile, and never logs the reader's email, IP or
+user agent — only the saga's DL-codes and the ledger's uuid.
+
+**Disabled accounts, and the one thing they can still do.** `is_active_account()` gates
+both the `profiles` `UPDATE` policy (`20260919013800_freeze_profiles_update_policy.sql`)
+and `update_own_preferences`
+(`20260919013813_gate_update_own_preferences.sql`), so a disabled or pending-deletion
+account cannot edit its own profile or preferences. The single carve-out is
+`update_own_marketing_consent` (withdrawal only, migration
+`20260918232554_update_own_marketing_consent.sql`), which deliberately never calls
+`is_active_account()`: an account that is disabled, or mid-grace on a deletion it later
+cancels, must always be able to withdraw consent. `grant_marketing_consent` is the
+opposite of that carve-out (see _Account page and profile_) — it is reachable while
+disabled (that is a decision, not an oversight: disabling a reader for policy reasons
+should not itself stop a legitimate marketing opt-in) but refused during a live deletion
+saga. `supabase/tests/disabled_consent.test.sql` and `account_deletion.test.sql` are what
+prove this against real Postgres rather than the in-memory doubles.
+Reasoning: docs/archive/2026-09-18_account-and-trust.md §3 (decisions D1, D2, D3, D5,
+D6b), §3-M4/M5, §5.
+
+---
+
+## Reader quota
+
+The three quota tables (`tiers`, `reader_quota_overrides`, `usage_daily`) are Flask-mediated
+with no grants at all, not even to `service_role` — see _Two table-access patterns_ for the
+privilege shape. `QuotaBackend`'s real implementation
+(`web/services/quota_store.py`) exposes exactly three reader-path operations — `claim`,
+`release`, `status` — each an atomic `insert … on conflict … where used < limit returning`
+inside a `security definer` RPC, chosen over Flask-Limiter specifically because
+`memory://` storage does not survive a deploy and a daily allowance must. The day boundary
+is the reader's own day in `Asia/Riyadh` (`QUOTA_TIMEZONE`), not UTC, so the allowance
+resets when their day does; the Python constant is a mirror the SQL owns the real
+arithmetic for and must agree with. A `QuotaClaim` carries its own `day` rather than
+recomputing it, so a claim made just before midnight refunds the day it charged if
+`release` runs just after.
+
+Failure has two different postures on purpose. An ordinary transport fault makes `claim`
+return `None` and the caller streams the answer **uncounted** — an allowance is not a
+credential, so a blip must not take chat down. A **configuration-shaped** fault — a
+missing function or grant, a stale PostgREST schema cache after a deploy
+(`PGRST202`/`PGRST203`/`PGRST301`, `42883`, `42501`) — raises `QuotaUnavailable` instead and
+the route answers `503`, because failing open on that class of fault would turn a broken
+deploy into unmetered access for every reader indefinitely. `ClaimFailureTolerance` sits
+between those two postures: it tracks failures **process-globally** (one worker, one
+counter) and only forces a fail-closed `503` after five consecutive failures or 120 seconds
+from the first one, closing the gap the 2026-09-07 incident found, where an unclassified
+failure type was silently streamed uncounted with no budget at all. `get_reader_quota`
+(see _Two table-access patterns_) is what `/api/identity` calls for `status`; it returns
+counts and tier labels but deliberately never the operator's `reason` or `set_by` for an
+override.
+
+Tier CRUD and per-reader overrides are administrative, not reader-path, and live on
+`AdminBackend` (`web/services/admin_store.py`: `list_tiers`, `create_tier`, `update_tier`,
+`delete_tier`, `set_reader_quota`) rather than on `QuotaBackend` — one protocol owning tier
+management is the point, to keep the reader path and the admin path from drifting apart.
+`web/api/admin.py`'s `/admin/api/tiers` routes are gated like every other console route
+(bearer, verified, `is_admin`) and every mutation re-validates the actor **inside** the
+RPC's own transaction, so a demotion racing a tier edit cannot slip through. Refusals
+surface as machine codes (`TQ001`–`TQ008`, `_REFUSAL_CODES` in `admin_store.py`) rather than
+a raw `23514`/`23503`, so the console can translate them instead of rendering a `500`.
+Reasoning: docs/archive/2026-09-04_reader-quota.md §1.5, §1.6, §2, §5, §6.
+
+---
+
 ## What is mechanically enforced
 
 There is now a lint step — `ruff`, `eslint`/`prettier` and `markdownlint-cli2`, wired
@@ -504,17 +781,17 @@ The one thing neither the linter nor pytest can reach is the database, because e
 Python test mocks the Supabase client. `supabase/tests/*.test.sql` covers that gap and is
 run by hand — see the last row of this table.
 
-| Where                           | What it enforces                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `test_css_contract.py`          | 16 banned physical CSS properties across every `static/css/*.css`. Escape hatch: a trailing `/* physical-ok: <reason> */`. `width`/`height` are tracked but not gated.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| `test_frontend_architecture.py` | `static/js/modules/services.js` and `static/js/admin/services.js` import no view or state module and name neither `ErrorHandler` nor `DOMCache`; handlers own every user-facing failure; the console never imports the chat shell (5 forbidden names × 4 files); auth and account flows read the catalogue instead of literals, with the old literals banned by name so a revert fails loudly; 12 English strings frozen verbatim; Arabic covers every key under **both** `runtime` and `page`.                                                                                                                                                                                                                                                                                                                                               |
-| `test_composer.py`              | Zero icon-webfont markup; more than 10 inline SVGs actually rendered; **every** module URL carries the current `ASSET_VERSION`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| `test_deep_link_contract.py`    | No LLM call before the ownership check (`call_count == 0`); foreign ≡ nonexistent, byte-identical; no `Set-Cookie` on `/c/<id>`; uppercase id 301s to canonical; `X-Robots-Tag`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| `test_rtl.py`                   | Direction resolution and language selection; `page.*` never reaches the browser.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| `test_admin_page.py`            | The closed 11-key `runtime.*` top-level list; the console catalogue never ships to the landing page.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| `test_source_panel.py`          | A real bounding box for a passage at 1600px — the shrink-to-fit flex bug that once resolved the source deck to zero by zero.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| `test_admin_actor_gate.py`      | Settings write, profile update, user flags and notification create each refuse an absent, unknown, non-administrator or disabled actor, in the in-memory doubles that previously asserted the opposite. Deactivate, delete and purge share the same gate and are **not** separately covered here; `supabase/tests/function_acls.test.sql` is what checks all seven still call it.                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| `supabase/tests/*.test.sql`     | **Not in CI, and not runnable from it** — CI has no database. 198 assertions on grants, column privileges, both default-ACL layers, function ACLs, `search_path`, reader-to-reader RLS isolation, and — in `rpc_behaviour.test.sql` — what the hardened RPCs actually do when called. Paste into `execute_sql` before and after any migration touching a grant, a policy or a role. This is the only thing in the repository that can fail because of a privilege. _Verified 2026-09-21 by `grep -c "n := n + 1" supabase/tests/rpc_behaviour.test.sql` (45, not the 43 an earlier same-day record assumed); the other five files were not re-measured today, so this total inherits whatever staleness they already carried against `docs/admin-analytics-v1-plan.md`'s build record — see that document's Build Record for the arithmetic._ |
+| Where                           | What it enforces                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `test_css_contract.py`          | 16 banned physical CSS properties across every `static/css/*.css`. Escape hatch: a trailing `/* physical-ok: <reason> */`. `width`/`height` are tracked but not gated.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `test_frontend_architecture.py` | `static/js/modules/services.js` and `static/js/admin/services.js` import no view or state module and name neither `ErrorHandler` nor `DOMCache`; handlers own every user-facing failure; the console never imports the chat shell (5 forbidden names × 4 files); auth and account flows read the catalogue instead of literals, with the old literals banned by name so a revert fails loudly; 12 English strings frozen verbatim; Arabic covers every key under **both** `runtime` and `page`.                                                                                                                                                                                                                                                                                                                                                             |
+| `test_composer.py`              | Zero icon-webfont markup; more than 10 inline SVGs actually rendered; **every** module URL carries the current `ASSET_VERSION`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `test_deep_link_contract.py`    | No LLM call before the ownership check (`call_count == 0`); foreign ≡ nonexistent, byte-identical; no `Set-Cookie` on `/c/<id>`; uppercase id 301s to canonical; `X-Robots-Tag`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `test_rtl.py`                   | Direction resolution and language selection; `page.*` never reaches the browser.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `test_admin_page.py`            | The closed 11-key `runtime.*` top-level list; the console catalogue never ships to the landing page.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `test_source_panel.py`          | A real bounding box for a passage at 1600px — the shrink-to-fit flex bug that once resolved the source deck to zero by zero.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `test_admin_actor_gate.py`      | Settings write, profile update, user flags and notification create each refuse an absent, unknown, non-administrator or disabled actor, in the in-memory doubles that previously asserted the opposite. Deactivate, delete and purge share the same gate and are **not** separately covered here; `supabase/tests/function_acls.test.sql` is what checks all seven still call it.                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `supabase/tests/*.test.sql`     | **Not in CI, and not runnable from it** — CI has no database. 198 assertions on grants, column privileges, both default-ACL layers, function ACLs, `search_path`, reader-to-reader RLS isolation, and — in `rpc_behaviour.test.sql` — what the hardened RPCs actually do when called. Paste into `execute_sql` before and after any migration touching a grant, a policy or a role. This is the only thing in the repository that can fail because of a privilege. _Verified 2026-09-21 by `grep -c "n := n + 1" supabase/tests/rpc_behaviour.test.sql` (45, not the 43 an earlier same-day record assumed); the other five files were not re-measured today, so this total inherits whatever staleness they already carried against `docs/archive/2026-09-20_admin-analytics-v1.md`'s build record — see that document's Build Record for the arithmetic._ |
 
 CI runs two jobs: `-m "not browser and not integration"` with `--cov=web` but **no
 coverage threshold**, and `-m browser --browser chromium`. Note that

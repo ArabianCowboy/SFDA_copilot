@@ -1,4 +1,4 @@
-"""Self-serve account deletion, web surface (slice 2b of docs/account-and-trust-plan.md).
+"""Self-serve account deletion, web surface (slice 2b of docs/ARCHITECTURE.md#account-deletion-and-trust; reasoning in docs/archive/2026-09-18_account-and-trust.md slice 2b).
 
 Each test below fails against today's code, for the reason its own comment
 gives: the routes did not exist (404), the step-up check did not exist, the

@@ -464,7 +464,8 @@ class SettingsService:
         decision, and ``None`` means "could not determine" — the two must
         stay distinguishable because a caller answers them as a ``403`` and a
         ``503`` respectively, which mean opposite things to a reader.
-        ``docs/registrations-pause-plan.md`` §5 is the argument for this
+        ``docs/ARCHITECTURE.md#registrations-pause`` (reasoning in
+        ``docs/archive/2026-08-25_registrations-pause.md`` §5) is the argument for this
         split over the two-valued fail-open/fail-closed alternatives.
 
         Publish-on-write, not TTL expiry, is what makes a console toggle

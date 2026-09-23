@@ -4,10 +4,11 @@ The tab is the last one, and `#analytics-body` is its panel body: a lead zone
 holding the period and language selects, the refresh button, the "counted at"
 stamp and a polite live region, above `#analytics-results` — three zones that
 each render `null` as "could not load" and `[]` as "nothing yet", and each fail
-on their own (docs/admin-analytics-v1-plan.md §7.2-§7.7; the placement is
-DESIGN.md). Every selector here scopes past the lead
-zone rather than assuming it holds nothing but the controls, because a results
-repaint must never touch it.
+on their own (DESIGN.md's "The saved-conversation figures are their own tab" and
+docs/ARCHITECTURE.md#admin-analytics; placement superseded in
+docs/archive/2026-09-23_admin-analytics-tab.md). Every selector here scopes past
+the lead zone rather than assuming it holds nothing but the controls, because a
+results repaint must never touch it.
 
 Two console helpers, because one cannot express both jobs. `_analytics_console`
 serves canned payloads to the three requests and is what most tests want; it

@@ -246,12 +246,13 @@ export function createClient() {
       };
       return { data: state.profile.preferences, error: null };
     },
-    /* Notification Center (docs/notification-center-plan.md §2/§8). A
+    /* Notification Center (docs/ARCHITECTURE.md#notification-center;
+       reasoning in docs/archive/2026-08-24_notification-center.md §2, §8). A
        structural stub — no message arrives through it on its own. The plan
        is explicit that private-channel AUTHORIZATION cannot be proven by a
        mock (that property is proven server-side, against the real RLS
-       policy — see docs/notification-center-plan.md's own "verified
-       directly against the live project" note); this exists so
+       policy — see docs/archive/2026-08-24_notification-center.md's own
+       "verified directly against the live project" note); this exists so
        services.js's subscribe/unsubscribe code path runs without throwing
        during every sign-in a browser test does, and so a test that wants
        to can drive it explicitly:
@@ -515,7 +516,8 @@ def chat_history(messages=(), *, conversation_id="c0ffee00-0000-4000-8000-000000
     """A `GET /api/chat/history` body.
 
     No `resumed` field — the fallback it described is deleted
-    (docs/archive/2026-08-22_per-tab-deep-linking.md §5.5, Decision 1a).
+    (docs/ARCHITECTURE.md#deletion-resume-and-multi-tab-isolation;
+    reasoning in docs/archive/2026-08-22_per-tab-deep-linking.md §5.5, Decision 1a).
 
     The transcript is drawn from this endpoint on every sign-in since step 6, so
     a test that does not route it gets whatever the live test server holds —
@@ -600,7 +602,8 @@ def chat_sessions(sessions=(), *, next_cursor=None):
     """A `GET /api/chat/sessions` body.
 
     No `active` field — the client knows its own current conversation from
-    its own URL now (§5.3 of docs/archive/2026-08-22_per-tab-deep-linking.md).
+    its own URL now (docs/ARCHITECTURE.md#the-url-is-the-pointer; reasoning in
+    docs/archive/2026-08-22_per-tab-deep-linking.md §4.1).
 
     Empty by default, which matters for every test that is NOT about the
     sidebar: the tab defaults to Chats when the list comes back with rows and to

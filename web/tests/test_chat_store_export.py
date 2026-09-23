@@ -1,5 +1,5 @@
 """Data-rights export and bulk deletion: the persistence-layer generator and
-RPC double (docs/profile-refactor-plan.md Step 7).
+RPC double (docs/ARCHITECTURE.md#account-page-and-profile; reasoning in docs/archive/2026-08-23_profile-refactor.md Step 7).
 
 `export_all_sessions`/`_export_session_messages` (web/services/chat_store.py)
 must not silently inherit either UI bound they walk past — `list_sessions`'

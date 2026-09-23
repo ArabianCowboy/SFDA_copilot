@@ -186,7 +186,8 @@ const App = {
       logError(error, 'settleTranscript.loadSessions'),
     );
 
-    // Notification Center (docs/notification-center-plan.md). Started here
+    // Notification Center (docs/ARCHITECTURE.md#notification-center; full
+    // design in docs/archive/2026-08-24_notification-center.md). Started here
     // rather than from the auth-state listener directly: `settleTranscript`
     // is the one place "a reader is now signed in" is already decided,
     // including the testing-mode bypass (handleTestingModeInit calls this

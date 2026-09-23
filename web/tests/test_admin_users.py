@@ -432,7 +432,7 @@ def test_an_account_detail_shows_identity_standing_and_profile(client):
 
 
 def test_account_detail_carries_the_consent_record(client):
-    """docs/profile-refactor-plan.md Step 6 checklist item: admin visibility
+    """(docs/ARCHITECTURE.md#account-page-and-profile; reasoning in docs/archive/2026-08-23_profile-refactor.md Step 6) checklist item: admin visibility
     of the consent record. Read-only — no route here writes any of these
     fields; the guard trigger refuses that regardless of what a route sent."""
     account = client.get("/admin/api/users/test-user-id", headers=ADMIN).get_json()["user"]

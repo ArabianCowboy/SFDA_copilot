@@ -61,7 +61,8 @@ server:
   # from — so a reload, a language toggle and a different device all show the
   # conversation the model remembers, with its citations openable rather than
   # neutralised. There is no "resume my last conversation" fallback any more:
-  # the URL is the pointer (docs/archive/2026-08-22_per-tab-deep-linking.md
+  # the URL is the pointer (docs/ARCHITECTURE.md#the-url-is-the-pointer;
+  # reasoning in docs/archive/2026-08-22_per-tab-deep-linking.md
   # §1), and the gap that fallback's cookie could not close on its own — a
   # reset followed immediately by a sign-out — closes as a side effect of
   # having no cookie left to look up (§2 Decision 1).
@@ -111,7 +112,8 @@ server:
   # retention wording.
   account_deletion_self_serve_enabled: true
 
-  # The durable daily message allowance (docs/reader-quota-plan.md).
+  # The durable daily message allowance (docs/ARCHITECTURE.md#reader-quota;
+  # reasoning in docs/archive/2026-09-04_reader-quota.md).
   #
   # This number is the SEED for BOTH shipped tiers ('free' and 'staff') and the
   # last-resort fallback for an account with no profile row whose 'free' tier is
@@ -159,12 +161,14 @@ server:
     # 30/hour — a caller must not be able to exhaust that in one minute.
     recover_api: "5 per minute"
     # Signup, server-mediated as of the registrations-pause work
-    # (docs/registrations-pause-plan.md). Same reasoning as recover_api: an
+    # (docs/ARCHITECTURE.md#registrations-pause; reasoning in
+    # docs/archive/2026-08-25_registrations-pause.md). Same reasoning as recover_api: an
     # unauthenticated endpoint that sends mail, sitting in front of GoTrue's
     # own project-wide ceiling rather than replacing it.
     signup_api: "5 per minute"
     # Full account export (GET /account/api/export). Low, per the security
-    # pass's adopted limits (docs/profile-refactor-plan.md §4): it streams
+    # pass's adopted limits (docs/ARCHITECTURE.md#account-page-and-profile;
+    # reasoning in docs/archive/2026-08-23_profile-refactor.md §4): it streams
     # every stored message a reader has, an exhaustive per-session read far
     # heavier than any other route on this surface. Keyed per reader, not per
     # IP (web/api/app.py's _account_rate_key) — an office behind one NAT must
@@ -186,7 +190,8 @@ server:
     # the other two routes on this surface. (Withdrawal needs no limit: it
     # is a direct browser->Postgres RPC with no Flask route in front of it.)
     account_consent_grant_api: "30 per hour"
-    # Self-serve account deletion (docs/account-and-trust-plan.md §3-M4/M5).
+    # Self-serve account deletion (docs/ARCHITECTURE.md#account-deletion-and-trust;
+    # reasoning in docs/archive/2026-09-18_account-and-trust.md §3-M4/M5).
     # The request and the cancel share one TIGHT limit: both mutate the saga,
     # and the request's own step-up check (a server-side password verification)
     # runs under it too, so a stolen token gets three password guesses an
@@ -199,7 +204,8 @@ server:
     # above — polling the driver is systemd's job, not the browser's, so this
     # only needs to cover ordinary page visits, never a poll loop.
     account_deletion_status_api: "30 per hour"
-    # Notification Center (docs/notification-center-plan.md). The three
+    # Notification Center (docs/ARCHITECTURE.md#notification-center; reasoning in
+    # docs/archive/2026-08-24_notification-center.md). The three
     # reader-facing limits mirror history_api/sessions_api's own reasoning:
     # each REPLACES the per_day/per_hour/per_minute defaults so ordinary
     # polling and inbox browsing cannot spend the shared office-NAT budget.
@@ -231,7 +237,8 @@ server:
   # entry is additionally capped at the token's own `exp`, so this can shorten
   # a credential's life and never extend it.
   #
-  # See docs/archive/2026-08-27_token-verification-cache.md §1 for the trade this represents, and
+  # See docs/ARCHITECTURE.md#authentication-and-the-blueprint-gate (reasoning in
+  # docs/archive/2026-08-27_token-verification-cache.md §1) for the trade this represents, and
   # §1.4 for why 0 — not a positive number — is the shipped default.
   auth_token_cache:
     # 0 = OFF, and the shipped default. Single-flight still collapses
@@ -246,7 +253,8 @@ server:
   allowed_origins:
     - https://sfda-copilot.aifoudahub.com
 
-# Notification Center (docs/notification-center-plan.md). Deploy-time default
+# Notification Center (docs/ARCHITECTURE.md#notification-center; reasoning in
+# docs/archive/2026-08-24_notification-center.md). Deploy-time default
 # for the "Purge eligible" bulk convenience action's retention window — how
 # many days a notification sits Deleted before that action includes it.
 # Admin-overridable at runtime (web/services/notification_store.py's

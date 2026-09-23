@@ -1,6 +1,6 @@
 """Password change (via reauthenticate()/updateUser(), never a
 current-password field — GoTrue has none) and "Sign out everywhere else"
-(docs/profile-refactor-plan.md §14·B·7, ·9, ·10, Step 5)."""
+(docs/archive/2026-08-23_profile-refactor.md §14·B·7, ·9, ·10, Step 5)."""
 
 from __future__ import annotations
 

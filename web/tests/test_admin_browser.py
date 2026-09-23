@@ -152,7 +152,8 @@ SETTINGS = {
 
 
 # The registrations block loads unconditionally alongside settings
-# (docs/registrations-pause-plan.md §9 Step 12) — routed here by default so
+# (docs/ARCHITECTURE.md#registrations-pause; Step 12 of
+# docs/archive/2026-08-25_registrations-pause.md §9) — routed here by default so
 # every existing `_admin_console`-based test keeps seeing a real answer
 # instead of the load-failure toast this endpoint would otherwise produce on
 # every admin page open.
@@ -277,7 +278,8 @@ def test_a_changed_setting_is_marked_as_changed(browser_page: Page):
 
 
 def test_an_operator_can_pause_and_resume_registrations(browser_page: Page):
-    """docs/registrations-pause-plan.md §9 Step 12's own proof: click, expect
+    """docs/ARCHITECTURE.md#registrations-pause (Step 12 of
+    docs/archive/2026-08-25_registrations-pause.md §9): click, expect
     the pill to flip, reload, expect it to persist."""
     state = {"signup_enabled": True, "default": True}
 

@@ -225,8 +225,9 @@ when the answer matters.
 
 # Registrations pause: what it covers, and what needs the dashboard
 
-**Status:** built 2026-08-25. See `docs/registrations-pause-plan.md` for the full
-design; this section is the part of it that lives outside the repository.
+**Status:** built 2026-08-25. See `docs/ARCHITECTURE.md#registrations-pause` for the full
+design (history in `docs/archive/2026-08-25_registrations-pause.md`); this section is the
+part of it that lives outside the repository.
 
 The console's **Registrations** control (`/admin` → Settings → Registrations)
 refuses `POST /auth/signup` — the route the signup form actually calls — with a
@@ -271,9 +272,9 @@ GoTrue call — specifically to shrink this window, but a request that is
 already past the second check when a pause lands can still complete: nothing
 in this application makes "check the flag" and "create the account" one
 atomic step. Closing that fully would need a database-level guard (a `BEFORE
-INSERT` trigger on `auth.users`), which `docs/registrations-pause-plan.md` §4
-explicitly rejects — it would also block admin-created accounts and any
-provider-internal flow. In practice the window is one HTTP round trip to
+INSERT` trigger on `auth.users`), which `docs/ARCHITECTURE.md#registrations-pause`
+explicitly rejects (reasoning in `docs/archive/2026-08-25_registrations-pause.md`
+§4) — it would also block admin-created accounts and any provider-internal flow. In practice the window is one HTTP round trip to
 GoTrue, and a pause used during an active incident should be treated as
 "effective within about a request's length," not instantaneous for requests
 already in flight.
@@ -283,7 +284,8 @@ was cached from an earlier successful read, that value is served however
 stale — a pause must survive a Supabase blip without silently reopening
 signups. Only a process that has _never_ successfully read the flag (a cold
 start during an outage) answers `503 {"error": "auth_unavailable"}` rather than
-guessing. See §5 of `docs/registrations-pause-plan.md` for the full argument.
+guessing. See `docs/ARCHITECTURE.md#registrations-pause` for the full argument
+(reasoning in `docs/archive/2026-08-25_registrations-pause.md` §5).
 
 **Confirm email must stay enabled** (Authentication → Emails → Confirm email).
 Signup is server-mediated: with Confirm email **on**, GoTrue returns a user and

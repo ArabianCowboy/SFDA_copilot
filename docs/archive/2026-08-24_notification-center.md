@@ -1,23 +1,34 @@
-STATUS: IMPLEMENTED. Written 2026-08-23; built 2026-08-24.
+---
+authority: historical
+status: superseded
+do_not_implement: true
+archived: 2026-09-23
+supersedes_note: >
+  This document is a finished plan, built and shipped on 2026-08-24 in one commit.
+  It decided on a hybrid Realtime + REST delivery mechanism with per-user private channels,
+  content-free push payloads, and service-role REST publish, as specified in this repo's patterns
+  for the single-worker deployment. It is a record of what was decided and what it cost,
+  not a specification.
+live_authority:
+  - DESIGN.md
+  - ../ARCHITECTURE.md
+  - ../../TODO.md
+---
 
-# Admin Broadcast & Reader Notification Center
+> [!CAUTION]
+> **You are reading history, not a specification.** The live rules this plan produced are in
+> `DESIGN.md` and `docs/ARCHITECTURE.md`; read those, not this. Final position: notifications
+> use a **hybrid delivery** (Realtime for active sessions, REST for offline/new); a **per-user
+> private channel** per reader; **content-free** push payloads; **service-role REST** publish;
+> **no persistent server-side connection**; readers may **mark read, dismiss, or acknowledge**
+> depending on type; an **inbox** shows unread count and history; **operators can pause/resume
+> globally** and can **target by all/role/tier/user**. Every section below describes the tree
+> **before** the build. The Realtime authorization was verified directly against the live project
+> (2026-08-24). Every heading is prefixed `[HISTORICAL]`.
 
-> **Do not archive this file without budgeting for the citation rewrite.** Live code,
-> templates, stylesheets and tests cite it by section, so archiving it is that rewrite, not
-> a `git mv`. Count them before you estimate, and do not trust a figure written here or
-> anywhere else — run `git ls-files -z | xargs -0 grep -l 'docs/notification-center-plan.md'`. Editor search is
-> not a substitute: it honours `/.ignore`, which excludes `docs/archive/`, and `--include`
-> filters silently skip `.sql`, `.html` and `.css`. Both mistakes were made while writing
-> this note, which is why it no longer states a number. See `TODO.md`'s _Live code cites
-> plan sections instead of the live contract_ for the decision that has to come first.
+# [HISTORICAL] Admin Broadcast & Reader Notification Center
 
-**Source:** `TODO.md` → [Admin broadcast & Reader Notification Center](../TODO.md#admin-broadcast--reader-notification-center-popups-banners-and-inbox-history) — see that entry's own status line for the current one-paragraph summary.
-
-**Implementation note (2026-08-24):** every section below shipped as designed, including the SDK upgrade §7 Step 4a treats as mandatory-not-conditional — `@supabase/supabase-js` is now pinned at `2.74.0` (up from `2.39.7`; `realtime-js@2.74.0` carries the `private` channel option this plan's own research proved `2.9.3` lacked entirely). That upgrade was preceded by a full read of `auth-js`'s changelog across the whole version span (no breaking change found to the `onAuthStateChange`/session-storage/PKCE behavior this app's own code depends on), and followed by the full non-browser and browser suites passing, including the auth/recovery-adjacent tests — but **not** by a login against a real Supabase project, which no tool available in that session could do. Treat the auth flow as diligently reviewed, not as production-verified, until it has been exercised against a live project once.
-
-**Realtime authorization, verified directly against the live project (2026-08-24)**, exactly as §8 says a browser mock cannot: `realtime.messages` has `relrowsecurity = true`, `notify_own_channel_select` is its only policy (`to authenticated`, `SELECT` only — no `INSERT` policy exists for any non-service role, so a reader genuinely cannot publish), and a session-variable simulation of two distinct readers (`request.jwt.claims`/`realtime.topic` GUCs, the same ones PostgREST/Realtime actually set per connection) confirmed the policy admits reader A onto `notify:user:<A>` and refuses `notify:user:<B>`. `anon` holds the same table-level grants as `authenticated` but matches zero policies, so it is denied entirely by construction, not by an extra rule.
-
-## Context
+## [HISTORICAL] Context
 
 Operators today have no way to reach readers directly — no maintenance warning, no regulatory-alert push, no feature announcement. TODO.md scopes this as a full feature: three popup styles (toast/banner/modal), a reader inbox (bell + unread badge + history), and an admin composer with targeting (all/role/tier/user) and engagement metrics. This plan turns that scope entry into a buildable design, grounded in this repo's actual patterns rather than generic notification-system advice.
 
@@ -27,7 +38,7 @@ This plan went through three passes: an initial draft grounded in direct codebas
 
 ---
 
-## Adversarial review round (OpenCode, `gpt-5.6-sol`, read-only)
+## [HISTORICAL] Adversarial review round (OpenCode, `gpt-5.6-sol`, read-only)
 
 Dispatched via `/opencode-delegate` against the prior draft of this plan. 17 confirmed defects, 6 suggestions. The two most load-bearing factual claims were independently re-verified before accepting anything:
 
@@ -36,7 +47,7 @@ Dispatched via `/opencode-delegate` against the prior draft of this plan. 17 con
 
 Every other fix in this section came from the reviewer and was accepted on its own merits (each is a verifiable defect against a real rule in this codebase, not a stylistic preference) or reworked where the reviewer's fix and the plan's original goal both had a valid point.
 
-### Confirmed defects, and how each is fixed below
+### [HISTORICAL] Confirmed defects, and how each is fixed below
 
 1. **Composite primary key can't hold `ON DELETE SET NULL`.** `primary key (notification_id, user_id)` makes `user_id` implicitly `NOT NULL` in Postgres — the anonymize-on-delete design from the previous round would make account deletion _fail_ against a referenced row, not anonymize it. **Fix:** surrogate `id` primary key on both `notification_recipients` and `user_notification_reads`, with a `unique(notification_id, user_id)` constraint instead (§1).
 2. **`notifications.target_user_id` wasn't covered by the anonymization story at all**, and the plan's own CHECK constraint requires it to be non-null forever for `target_kind='user'` rows — anonymizing it would violate the plan's own schema. **Fix:** explicit decision, stated rather than left as a silent gap — `target_user_id` is **not** anonymized; it's treated as an administrative targeting instruction (who the admin chose), the same category as `audit_log`'s intentionally-retained before/after values, not reader-subject data. Documented as a considered asymmetry, not an oversight (§1).
@@ -59,7 +70,7 @@ Every other fix in this section came from the reviewer and was accepted on its o
     - `mypy` is correctly excluded from pre-commit per `CLAUDE.md`, but the plan's Verification section hadn't listed `mypy web` as its own separate check — added explicitly (§Verification).
 17. **The Playwright test plan assumed Realtime/channel coverage the existing browser-test mock doesn't have** — `conftest.py`'s `SUPABASE_BROWSER_MOCK` has no `channel`/broadcast/private-auth simulation. **Fix:** UI-level Playwright tests scope to the REST path only (which the mock supports); private-channel authorization gets its own separate, non-browser-mock integration test — a mock can't prove reader A is denied reader B's topic (§8).
 
-### Suggestions adopted
+### [HISTORICAL] Suggestions adopted
 
 - **Async banner arrival never steals keyboard focus** — live-region semantics (`aria-live="polite"`) for the banner/toast; forced focus is reserved for the acknowledgment modal alone, where it belongs (§4).
 - **A session-level modal snooze**, so Escape/backdrop-dismiss doesn't recreate a practical trap: without it, a reader who dismisses stays on the page and the next poll or reconnect could reopen the same modal immediately. (The poll was a fixed interval when this was written; it now backs off on failure — see `docs/supabase-key-incident-fix-plan.md` P7 — so the gap is 45s while healthy and up to 10 minutes during an outage. The snooze is what makes that range irrelevant to the reader.) Client-side (`sessionStorage`) suppression for that specific notification for the rest of the browser session; still unacknowledged server-side, still resurfaces on the next real session (§4).
@@ -68,7 +79,7 @@ Every other fix in this section came from the reviewer and was accepted on its o
 
 ---
 
-## Research this plan is built on
+## [HISTORICAL] Research this plan is built on
 
 - **Codebase** (3 parallel Explore passes, verified against source, plus direct reads of `audit_log.sql`, `DESIGN.md`'s Notices section and One Drawer Rule, and `test_admin_page.py`'s pinned namespace list): frontend layering, admin console tab/route/RPC patterns, auth/rate-limit/identity-cache internals, confirmation this app is single-worker with no prior Realtime/websocket usage.
 - **Supabase Realtime docs (ctx7)**: public channels skip RLS/authorization entirely; private channels enforce it via a policy on `realtime.messages` gated by `realtime.topic()`.
@@ -78,9 +89,9 @@ Every other fix in this section came from the reviewer and was accepted on its o
 
 ---
 
-## 1. Database schema
+## [HISTORICAL] 1. Database schema
 
-### `public.notifications`
+### [HISTORICAL] `public.notifications`
 
 ```sql
 create table if not exists public.notifications (
@@ -163,7 +174,7 @@ alter table public.notifications enable row level security;
 revoke all on public.notifications from anon, authenticated;
 ```
 
-### `public.notification_recipients` (snapshot join table — see decision below)
+### [HISTORICAL] `public.notification_recipients` (snapshot join table — see decision below)
 
 ```sql
 create table if not exists public.notification_recipients (
@@ -196,7 +207,7 @@ revoke all on public.notification_recipients from anon, authenticated;
 
 _(Snapshotting explicitly excludes disabled accounts — `admin_create_notification` filters `profiles.is_disabled = false` when populating this table for a `role`/`tier`/`user` send, same as the existing `target_user_disabled` refusal for the `user` case.)_
 
-### `public.user_notification_reads`
+### [HISTORICAL] `public.user_notification_reads`
 
 ```sql
 create table if not exists public.user_notification_reads (
@@ -224,7 +235,7 @@ _(Vocabulary used throughout this plan and in admin analytics copy: targeted →
 
 **Why all three tables are zero-policy rather than reader-facing RLS**, despite the codebase's own `is_active_account_gates_chat_rls.sql` idiom for reader-owned tables: that idiom applies specifically when the _browser_ reaches a table directly. TODO.md pins every reader notification path (`GET /active`, `GET /history`, `POST /mark-read`) as a Flask route. There is no direct-from-browser access to gate, so mixing two access models for one feature would add a policy that constrains nothing real.
 
-### RPCs — 8 functions, two distinct argument shapes (corrected from the prior draft's overclaim of "7, all `p_owner_id`")
+### [HISTORICAL] RPCs — 8 functions, two distinct argument shapes (corrected from the prior draft's overclaim of "7, all `p_owner_id`")
 
 **Reader-facing (4), ownership-filtering shape** — first argument is `p_user_id`, filtered inside the function, following the spirit of this repo's `p_owner_id` convention for reader-owned data:
 
@@ -237,7 +248,7 @@ _(Vocabulary used throughout this plan and in admin analytics copy: targeted →
 
 _(Deactivate and delete stay two separate functions rather than one with a mode flag — cleaner audit action strings, independently revokable later.)_
 
-### Snapshot vs. dynamic audience — split decision, refined
+### [HISTORICAL] Snapshot vs. dynamic audience — split decision, refined
 
 - **`role`/`tier`/`user` targets → snapshot** into `notification_recipients` at send time (excluding disabled accounts). Accepted cost: a role/tier broadcast never retroactively reaches someone promoted into that role/tier after send.
 - **`all` targets → delivery stays dynamic**, so a maintenance banner still reaches someone who signs up while the window is open.
@@ -245,7 +256,7 @@ _(Deactivate and delete stay two separate functions rather than one with a mode 
 
 ---
 
-## 2. Realtime security design
+## [HISTORICAL] 2. Realtime security design
 
 **Mechanism (verified against current Supabase Realtime docs via ctx7):** Realtime Authorization is an RLS policy on `realtime.messages`, gated by `realtime.topic()`. A client channel must be created with `{ config: { private: true } }` to be subject to it at all — a public channel skips authorization entirely.
 
@@ -285,9 +296,9 @@ using (
 
 ---
 
-## 3. Backend
+## [HISTORICAL] 3. Backend
 
-### Reader — new `web/services/notification_service.py`, wired in `web/api/app.py`
+### [HISTORICAL] Reader — new `web/services/notification_service.py`, wired in `web/api/app.py`
 
 | Method | Path                               | Auth             | Notes                                                                                                                                                                                                         |
 | ------ | ---------------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -306,7 +317,7 @@ notifications_history_api: '20 per minute'
 notifications_mark_api: '60 per minute'
 ```
 
-### Admin — `web/api/admin.py` + `web/services/admin_store.py`
+### [HISTORICAL] Admin — `web/api/admin.py` + `web/services/admin_store.py`
 
 | Method | Path                                        | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | ------ | ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -332,9 +343,9 @@ notification_broadcast_limit = limiter.shared_limit(
 
 ---
 
-## 4. Frontend
+## [HISTORICAL] 4. Frontend
 
-### Reader surface
+### [HISTORICAL] Reader surface
 
 - **`static/js/modules/services.js`** (transport only): `Services.notifications.{fetchActive, fetchHistory(cursor), markRead, markAllRead}`; Realtime channel lifecycle — `subscribeToNotifications(userId, onMessage)` / `unsubscribeFromNotifications()`, exponential backoff on disconnect, torn down on Page Visibility hidden or sign-out.
 - **`static/js/modules/dom.js`**: new `BroadcastNotice` object, sibling to `ErrorHandler`, not built on the single-slot `#toast`. Three shells: `#broadcast-toast-stack` (corner, stacking, per-item countdown), `#broadcast-banner` (single-slot, `aria-live="polite"` — **never steals keyboard focus on arrival**, per adversarial review's accessibility suggestion; forced focus is reserved for the modal alone), `#broadcast-modal` (reuses the existing auth/profile modal's focus-trap/backdrop utility — Escape and backdrop-click _do_ close it, they just don't call `mark-read` with `acknowledged`; only the explicit **Acknowledge** button does). **Session-level snooze**: once dismissed via Escape/backdrop-click, that specific notification is suppressed client-side (`sessionStorage`) for the rest of the browser session, so the next poll/reconnect doesn't immediately reopen it — it stays unacknowledged server-side and resurfaces on the next real session.
@@ -344,18 +355,18 @@ notification_broadcast_limit = limiter.shared_limit(
 - **`web/utils/icons.py`**: add `"bell"` to `ICONS` + `RUNTIME_ICON_NAMES`.
 - **`web/api/app.py`**: bump `ASSET_VERSION` in the same commit as any CSS/JS touch.
 
-### Admin surface
+### [HISTORICAL] Admin surface
 
 - **`static/js/admin/services.js`**: `audiencePreview`, `createNotification`, `notificationHistory`, `deactivateNotification`, `deleteNotification`.
 - **`static/js/admin/ui.js`**: add `{tab:'tab-notifications', panel:'panel-notifications'}` to `TABS`; `renderNotificationHistory` mirrors `renderAudit`.
 - **`static/js/admin/handlers.js`**: composer calls `audience-preview` on every targeting-field change; validates bilingual fields client-side _and_ relies on the server-side 400/422 as the real gate; deactivate/delete require confirmation; resend prefills the composer with a fresh idempotency key.
 - **`web/templates/admin.html`**: new tab + panel, composer form, history table — ships **empty**. The four bilingual composer fields (`title_en/ar`, `body_en/ar`) and every rendered notification body carry `dir="auto"` for mixed-script safety.
 
-### Design direction
+### [HISTORICAL] Design direction
 
 This is a **regulatory dispatch**, not a generic app notification — the admin composer reads like drafting a dispatch (paired EN/AR folios, a compact operational strip for type/severity/audience/expiry, a review step showing the actual dispatch with live audience count before it goes out), never a blind "Send" on an irreversible action. The signature element: the admin history table renders timestamps in this app's existing mono face alongside semantic status labels (targeted/served/read/dismissed/acknowledged, per the vocabulary in §1) rather than color-only dots. Entirely inside DESIGN.md's existing Warm Instrument vocabulary — the inline-start pill mark, the same rule weights, the same tokens.
 
-### Motion, and the Top-10 creative reference list
+### [HISTORICAL] Motion, and the Top-10 creative reference list
 
 DESIGN.md ground rules applied: 200-300ms entrance/exit; slide via `inset-inline-start/end` only; stagger multi-element exit newest-first with a capped total delay; `prefers-reduced-motion` makes the countdown/slide discrete, not removed; severity maps to existing semantic tokens.
 
@@ -374,7 +385,7 @@ Ten concrete patterns synthesized from current design research — pick per type
 
 ---
 
-## 5. i18n
+## [HISTORICAL] 5. i18n
 
 **Verified directly against `web/tests/test_admin_page.py:228-246`**: the pinned `runtime.*` top-level set is exactly `{chat, stage, robot, auth, profile, faq, theme, cite, lang, admin, sessions}` (11 names). `runtime.notifications.*` as a new top-level namespace would fail this test.
 
@@ -402,7 +413,7 @@ Plus `page.admin.notifications` for the server-rendered tab label. Write English
 
 ---
 
-## 6. Security checklist
+## [HISTORICAL] 6. Security checklist
 
 1. **XSS in admin-authored body.** `title_*`/`body_*` render via `textContent` only, plain text, no markdown/HTML interpretation in v1.
 2. **Server-side targeting enforcement.** Every reader RPC takes `p_user_id`/`p_role`/`p_tier` from `g.identity`, never from query/body.
@@ -423,7 +434,7 @@ Plus `page.admin.notifications` for the server-rendered tab label. Write English
 
 ---
 
-## 7. Rollout order
+## [HISTORICAL] 7. Rollout order
 
 1. **Schema** — one concern per migration file: (a) `notifications`; (b) `notification_recipients` + `user_notification_reads` (surrogate keys, anonymize-on-delete FKs); (c) `admin_create_notification` (with actor revalidation, idempotency, target_count) + `admin_list_notification_history`; (d) `admin_deactivate_notification` + `admin_delete_notification` (both actor-revalidating, both Realtime-invalidating); (e) the four reader-facing RPCs (`notifications_mark_read` with eligibility+action checks); (f) the `realtime.messages` authorization policy. Apply via `apply_migration`, then `list_tables`/`list_migrations`/`get_advisors` (security + performance), log expected `rls_enabled_no_policy` findings, rename files to match `list_migrations`.
 2. **Reader backend** — `notification_service.py`, routes + rate limits (cursor pagination for history), `ASSET_VERSION` bump.
@@ -436,11 +447,11 @@ Plus `page.admin.notifications` for the server-rendered tab label. Write English
 6. **Reader UI** — bell/badge, inbox-as-modal, three renderers, `BroadcastCoordinator`, session-level modal snooze.
 7. **i18n** — interleaved with 5-6, English and Arabic together per key.
 8. **Hardening + tests** (§8), plus manual Arabic/RTL, `prefers-reduced-motion`, and `get_advisors` passes.
-9. **Documentation closure.** Move the TODO.md entry to `docs/archive/TODO-resolved.md`; re-check `docs/ARCHITECTURE.md`, `DESIGN.md`, `docs/PRODUCT.md` for anything this feature makes stale and fix in the same commit.
+9. **Documentation closure.** Move the TODO.md entry to `docs/archive/TODO-resolved.md`; re-check `../ARCHITECTURE.md`, `DESIGN.md`, `../PRODUCT.md` for anything this feature makes stale and fix in the same commit.
 
 ---
 
-## 8. Test coverage plan
+## [HISTORICAL] 8. Test coverage plan
 
 - **`test_frontend_architecture.py`** — re-verify services.js layering after adding Realtime subscribe code; add a sibling to the "handlers own user-facing failures" test for the notification-fetch failure path.
 - **`test_css_contract.py`** — logical properties, no new test needed.
@@ -453,7 +464,7 @@ Plus `page.admin.notifications` for the server-rendered tab label. Write English
 
 ---
 
-## Verification
+## [HISTORICAL] Verification
 
 1. `python -m pytest -m "not browser and not integration"` stays green through each backend/schema step.
 2. `python -m pytest web/tests/test_admin_notifications.py web/tests/test_notifications_api.py` pass in isolation.

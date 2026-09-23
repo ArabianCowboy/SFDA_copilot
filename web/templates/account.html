@@ -7,7 +7,7 @@
    header, so the page is not the gate.
 
    Only Identity and Preferences ship in this pass (Step 3 of the build
-   order in docs/profile-refactor-plan.md §17). Security, Your data and
+   order in docs/archive/2026-08-23_profile-refactor.md §17). Security, Your data and
    Delete account are Steps 5-7 and are not rendered as placeholders here —
    an empty stub inviting a click that does nothing is worse than the
    section not existing yet. #}<!DOCTYPE html>
@@ -74,7 +74,7 @@
 
     <script type="importmap">{{ module_import_map | tojson }}</script>
 
-    <!-- Cross-document view transitions (docs/profile-refactor-plan.md §13).
+    <!-- Cross-document view transitions (docs/archive/2026-08-23_profile-refactor.md §13).
          Unsupported browsers get exactly today's behaviour — a normal
          navigation is the fallback, not a degraded experience. -->
     <style>
@@ -304,13 +304,14 @@
 
             <!-- ═══ Your data ═══
                  Export and bulk deletion of CONVERSATIONS only. Full account
-                 deletion is a separate, not-yet-built feature (Spec 4 of
-                 docs/profile-refactor-plan.md) — this section is careful not
-                 to promise it. -->
+                 deletion is a separate flow
+                 (docs/ARCHITECTURE.md#account-deletion-and-trust; originally
+                 Spec 4 of docs/archive/2026-08-23_profile-refactor.md) — this
+                 section does not cover it. -->
             <section class="account-section" aria-labelledby="data-heading">
                 <h2 class="account-section-heading" id="data-heading">{{ t('page.account.dataHeading') }}</h2>
 
-                <!-- Consent (docs/profile-refactor-plan.md §12.3, Step 6).
+                <!-- Consent (docs/ARCHITECTURE.md#account-page-and-profile; reasoning in docs/archive/2026-08-23_profile-refactor.md §12.3, Step 6).
                      Withdrawal is exactly this same toggle, and is never
                      rate-limited: it is a direct browser->Postgres write
                      under RLS, same path the rest of this card uses, and no
@@ -357,7 +358,7 @@
             </section>
 
             <!-- ═══ Delete account ═══
-                 Self-serve deletion (docs/account-and-trust-plan.md §3-M4/M5).
+                 Self-serve deletion (docs/ARCHITECTURE.md#account-deletion-and-trust; reasoning in docs/archive/2026-09-18_account-and-trust.md §3-M4/M5).
                  A destructive-pattern card stating truthfully what goes and
                  what stays; the request needs the typed confirmation word AND
                  the current password (step-up — anyone holding a signed-in

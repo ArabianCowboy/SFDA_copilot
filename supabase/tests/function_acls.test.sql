@@ -56,10 +56,11 @@ declare
   -- auth.users at all. See 20260828001543.
   granted_to_nobody text[] := array['admin_actor_email'];
 
-  -- The two read-only analytics aggregates (docs/admin-analytics-v1-plan.md
-  -- §4). They are listed here for two checks the whole-schema sweeps above
-  -- cannot make — that they exist at all, and that neither one's RESULT names
-  -- an identity column. They deliberately do NOT belong in the mutating list
+  -- The two read-only analytics aggregates (docs/ARCHITECTURE.md#admin-analytics;
+  -- see docs/archive/2026-09-20_admin-analytics-v1.md §4 for RPC definitions).
+  -- They are listed here for two checks the whole-schema sweeps above cannot
+  -- make — that they exist at all, and that neither one's RESULT names an
+  -- identity column. They deliberately do NOT belong in the mutating list
   -- at assertion 8: they mutate nothing, take no actor, and are gated by
   -- Flask's _gate() before_request, exactly like admin_list_tiers.
   analytics_readers text[] := array['admin_top_questions','admin_citation_stats'];
@@ -229,11 +230,11 @@ begin
       'call it and fail without it', bad;
   end if;
 
-  -- 10. The first of the three privacy layers in
-  --     docs/admin-analytics-v1-plan.md §5: the SQL PROJECTION itself names no
-  --     identity. Read off the live catalogue rather than the migration text,
-  --     so a later `drop function` + `create` that adds an owner, session or
-  --     message column to either result fails HERE — before the Python
+  -- 10. The first of the three privacy layers in docs/ARCHITECTURE.md#admin-analytics
+  --     (docs/archive/2026-09-20_admin-analytics-v1.md §5): the SQL PROJECTION
+  --     itself names no identity. Read off the live catalogue rather than the
+  --     migration text, so a later `drop function` + `create` that adds an owner,
+  --     session or message column to either result fails HERE — before the Python
   --     allow-list and the raw-body route test, each of which is meant to fail
   --     on its own.
   --

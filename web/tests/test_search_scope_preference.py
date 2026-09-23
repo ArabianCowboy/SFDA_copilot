@@ -1,5 +1,5 @@
 """The composer's category dropdown remembers the reader's last-used search
-scope per device (docs/profile-refactor-plan.md §12.5) — not an account
+scope per device (docs/archive/2026-08-23_profile-refactor.md §12.5) — not an account
 field, so it carries no late-arrival hazard and needs no identity guard.
 Default stays 'all': the safe direction on an unset or unrecognised value is
 always the widest scope.

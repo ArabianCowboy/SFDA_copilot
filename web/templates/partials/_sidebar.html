@@ -113,7 +113,7 @@
 <div class="sidebar-account">
   <span id="user-status{{ suffix }}" class="auth-status-text">{{ t('runtime.auth.checkingStatus') }}</span>
   <div class="auth-status-actions">
-    {# Notification Center bell (docs/notification-center-plan.md). Hidden
+    {# Notification Center bell (docs/ARCHITECTURE.md#notification-center). Hidden
        until signed-in, same visibility rule as profile-button below —
        auth-view.js's userSelectors toggles both together. #}
     <button id="notifications-bell-button{{ suffix }}" class="btn btn-sm btn-ghost d-none notifications-bell-btn" type="button"
@@ -127,7 +127,7 @@
        rendered elements — a closed offcanvas is visibility:hidden, which
        still counts. Assigning it safely needs a media-query-scoped rule,
        not an inline style on a shared partial. Deferred; see
-       docs/profile-refactor-plan.md §13's own trap note. #}
+       docs/archive/2026-08-23_profile-refactor.md §13's own trap note. #}
     <a id="profile-button{{ suffix }}" class="btn btn-sm btn-ghost d-none"
        href="{{ url_for('account.page') }}">
       {{ icon('user-circle', 14) }} {{ t('page.profile.button') }}

@@ -96,7 +96,8 @@ export const NOTIFICATIONS_POLL_BASE_DELAY_MS = 45000;
 export const NOTIFICATIONS_POLL_MAX_DELAY_MS = 600000; // 10 minutes ceiling
 export const NOTIFICATIONS_POLL_JITTER_RATIO = 0.1; // ±10% randomize window to prevent thundering herd
 
-/* Notification Center (docs/notification-center-plan.md §2/§4). Bumped on
+/* Notification Center (docs/ARCHITECTURE.md#notification-center; reasoning
+   in docs/archive/2026-08-24_notification-center.md §2/§4). Bumped on
    every start/stop of the poll — a sign-out, a sign-in, or the tab leaving
    or regaining visibility. An in-flight /active fetch stamps the value it
    started under, so a response that resolves after the reader signed out
@@ -165,8 +166,9 @@ export const Handlers = {
     );
 
     // The age field reveals only when marketing consent is ticked
-    // (docs/profile-refactor-plan.md §12.3) — a CSS grid-row transition
-    // (components.css), toggled by one class here.
+    // (docs/ARCHITECTURE.md#account-page-and-profile; reasoning in
+    // docs/archive/2026-08-23_profile-refactor.md §12.3) — a CSS grid-row
+    // transition (components.css), toggled by one class here.
     document.getElementById('signup-marketing-consent')?.addEventListener('change', (e) => {
       document.getElementById('signup-age-reveal')?.classList.toggle('is-open', e.target.checked);
       // Unticking clears any age already typed, so a reader who reconsiders
@@ -222,7 +224,8 @@ export const Handlers = {
     });
 
     // No click binding for PROFILE_BTN/PROFILE_BTN_OFFCANVAS: it is a plain
-    // <a href="/account"> now (docs/profile-refactor-plan.md §5) — the
+    // <a href="/account"> now (docs/ARCHITECTURE.md#account-page-and-profile;
+    // reasoning in docs/archive/2026-08-23_profile-refactor.md §5) — the
     // browser navigates on its own. auth-view.js still shows/hides it by
     // sign-in state, same as every other account-scoped control.
 
@@ -311,7 +314,8 @@ export const Handlers = {
         // null via nullif(), so sending "" here is harmless either way.
         const firstName = form.querySelector('#signup-first-name')?.value?.trim();
         const familyName = form.querySelector('#signup-family-name')?.value?.trim();
-        // Marketing consent gates age (docs/profile-refactor-plan.md §12.3):
+        // Marketing consent gates age (docs/ARCHITECTURE.md#account-page-and-profile;
+        // reasoning in docs/archive/2026-08-23_profile-refactor.md §12.3):
         // an unticked box means age is never sent at all, not sent-and-
         // ignored — handle_new_user coerces it to null regardless, but not
         // sending it is the honest client-side mirror of that rule.
@@ -546,7 +550,8 @@ export const Handlers = {
   /**
    * End the conversation without ending the session.
    *
-   * DECISION 2 (docs/archive/2026-08-22_per-tab-deep-linking.md): "New chat"
+   * Per docs/ARCHITECTURE.md#the-url-is-the-pointer (reasoning: DECISION 2,
+   * docs/archive/2026-08-22_per-tab-deep-linking.md): "New chat"
    * is a navigation from `/c/<id>` to `/`, and undo is the Back button —
    * free, per-tab, already understood. There is no server call here any
    * more, and that is not an omission: a client-supplied conversation id has
@@ -1206,7 +1211,8 @@ export const Handlers = {
   },
 
   /**
-   * Notification Center (docs/notification-center-plan.md §2/§4). The full
+   * Notification Center (docs/ARCHITECTURE.md#notification-center; reasoning
+   * in docs/archive/2026-08-24_notification-center.md §2/§4). The full
    * hybrid delivery: a poll floor (REST is the guaranteed-delivery path,
    * regardless of Realtime's own health) plus a private per-user Realtime
    * channel that reconciles immediately on every message AND on every

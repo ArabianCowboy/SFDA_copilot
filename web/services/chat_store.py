@@ -371,7 +371,8 @@ class ChatBackend(Protocol):
         depth against resurrecting a deleted conversation, not an authorization
         control: the real refusal is Flask's preflight against
         ``session_exists`` before any generation happens
-        (docs/archive/2026-08-22_per-tab-deep-linking.md §3.4).
+        (docs/ARCHITECTURE.md#ownership-preflight; reasoning in
+        docs/archive/2026-08-22_per-tab-deep-linking.md §3.4).
         """
         ...
 
@@ -425,7 +426,8 @@ class ChatBackend(Protocol):
     def delete_all_sessions(self, owner_id: str) -> list[str]:
         """Delete every owned session and their messages. Returns their ids.
 
-        Bulk conversation deletion (docs/profile-refactor-plan.md Step 7),
+        Bulk conversation deletion (docs/ARCHITECTURE.md#account-page-and-profile;
+        reasoning in docs/archive/2026-08-23_profile-refactor.md, Step 7),
         named distinctly from account deletion — this clears history, not
         the account. The ids let the caller clear its own per-conversation
         `ConversationStore` windows (the same reason `delete_session`'s own

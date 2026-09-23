@@ -27,7 +27,8 @@ export const AppState = {
     sidebarOwner: null,
     sidebarTabSettled: false,
 
-    // ── Notification Center (docs/notification-center-plan.md) ──────────
+    // ── Notification Center (docs/ARCHITECTURE.md#notification-center;
+    // full design in docs/archive/2026-08-24_notification-center.md) ──────
     // The timeout id for the active-notifications poll, so it can be torn
     // down on sign-out and on the tab going hidden, and re-established on
     // sign-in / the tab becoming visible again — the same reasoning

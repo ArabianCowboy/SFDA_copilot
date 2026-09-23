@@ -1,5 +1,5 @@
 """Consent grant route and server-stamped signup version (slice 1 of
-docs/account-and-trust-plan.md, decisions D5/D6b).
+docs/ARCHITECTURE.md#account-deletion-and-trust; reasoning in docs/archive/2026-09-18_account-and-trust.md D5, D6b).
 
 The browser used to send `marketing_consent_policy_version` itself — from the
 account toggle and from signup — and the trigger validated only its shape, so

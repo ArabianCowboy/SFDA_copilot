@@ -262,9 +262,10 @@ def test_a_second_reader_cannot_load_the_first_readers_session(app, client):
     """The assertion isolation now actually rests on.
 
     There is no cookie rotation to lean on any more — it never was the
-    guarantee, only a convenience
-    (docs/archive/2026-08-22_per-tab-deep-linking.md §1). What keeps one reader's regulatory questions out of another's
-    is the owner filter inside the RPC, and nothing above this line tests it.
+    guarantee, only a convenience (docs/ARCHITECTURE.md#the-url-is-the-pointer;
+    reasoning in docs/archive/2026-08-22_per-tab-deep-linking.md §1). What keeps one
+    reader's regulatory questions out of another's is the owner filter inside the RPC,
+    and nothing above this line tests it.
     """
     response = drain(client.post("/api/chat/stream", json={"query": "first"}, headers=AUTH))
     conversation_id = conversation_of_stream(response)
@@ -276,7 +277,8 @@ def test_a_second_reader_cannot_load_the_first_readers_session(app, client):
 
 # NO MORE "resume" TESTS HERE. `_resolve_conversation_id`'s resume branch and
 # `CHAT_RESUME_LATEST_SESSION` are deleted
-# (docs/archive/2026-08-22_per-tab-deep-linking.md §5.5, Decision 1a): `/` is
+# (docs/ARCHITECTURE.md#deletion-resume-and-multi-tab-isolation;
+# reasoning in docs/archive/2026-08-22_per-tab-deep-linking.md §5.5, Decision 1a): `/` is
 # always a new conversation, and there is no cookie-held "most recent
 # session" for a returning reader — or a stranger on their browser — to pick
 # up. What replaces it, a client-supplied id under the wrong owner being

@@ -49,7 +49,8 @@ declare
   -- all rather than merely writing the same-looking value again.
   tx_now timestamptz;
 
-  -- ── The analytics aggregates (docs/admin-analytics-v1-plan.md §4) ────────
+  -- ── The analytics aggregates (docs/ARCHITECTURE.md#admin-analytics;
+  -- see docs/archive/2026-09-20_admin-analytics-v1.md §4) ────────
   -- FIVE SYNTHETIC OWNERS, not the three real profiles above, because the
   -- asker bucket opens at five distinct accounts and this project has three.
   -- That is legitimate here and nowhere else: chat_sessions.owner_id carries
@@ -426,7 +427,7 @@ begin
 
   -- ── The analytics aggregates: normalisation, the asker floor, the two
   --    citation failures, and retroactivity
-  --    (docs/admin-analytics-v1-plan.md §4, and §2's second property) ─────────
+  --    (docs/ARCHITECTURE.md#admin-analytics; docs/archive/2026-09-20_admin-analytics-v1.md §4 and §2) ─────────
   --
   -- THIS IS THE ONLY PLACE EITHER IS PROVEN OFF A PYTHON DOUBLE. The Flask
   -- suite aggregates over an in-memory backend, so it can only ever agree with
@@ -458,7 +459,7 @@ begin
   if to_regprocedure('public.admin_top_questions(integer,text,text,integer,integer,text)') is null
      or to_regprocedure('public.admin_citation_stats(integer,text,text)') is null then
     raise exception 'FAIL rpc_behaviour — the analytics aggregates do not exist; apply the '
-      'three docs/admin-analytics-v1-plan.md §4 migrations before running this file';
+      'three docs/archive/2026-09-20_admin-analytics-v1.md §4 migrations before running this file';
   end if;
 
   -- Five phrasings of one English question, across TWO accounts: owners[1]

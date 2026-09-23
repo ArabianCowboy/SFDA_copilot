@@ -1,7 +1,6 @@
 -- A disabled account can withdraw marketing consent but can do nothing else.
 -- ===========================================================================
--- Slice 1 of docs/account-and-trust-plan.md (decision D5: `disabled` freezes
--- everything in `public` EXCEPT marketing-consent withdrawal).
+-- Slice 1: disabled accounts freeze except consent withdrawal (docs/ARCHITECTURE.md#account-deletion-and-trust; reasoning in docs/archive/2026-09-18_account-and-trust.md D5).
 --
 -- PENDING-STATE ASSERTIONS: these pass only AFTER supabase/pending/01-05 are
 -- applied. Against today's database every one of (a)-(d) fails, each for the

@@ -376,7 +376,7 @@ SUPPORTED_FAQ_LANGS = ("en", "ar")
 # that mixes a fresh template with a stale module is worse than a stale page —
 # post-icon-migration it would render an <i class="bi"> with no icon font behind
 # it, or print a glyph NAME as text. MODULE_IMPORT_MAP below closes that.
-ASSET_VERSION = "warm92"
+ASSET_VERSION = "warm93"
 
 # Product release, rendered in the landing footer. The single source — do not
 # hand-type this value into a JS docstring or any other comment; that duplication
@@ -385,7 +385,8 @@ ASSET_VERSION = "warm92"
 APP_VERSION = "0.7.4 (Beta)"
 
 # The privacy policy's own version, recorded on every consent grant
-# (docs/profile-refactor-plan.md §16·3, Spec 3) so a consent record stays
+# (docs/ARCHITECTURE.md#account-page-and-profile; reasoning in
+# docs/archive/2026-08-23_profile-refactor.md §16·3, Spec 3) so a consent record stays
 # attributable to the actual text it was given under. One constant, read by
 # the signup form, the /account consent toggle and /privacy itself, so the
 # three cannot drift the way three separately-typed literals would.
@@ -1585,7 +1586,8 @@ class _InFlightGenerations:
     def is_live_for_owner(self, owner_id: str | None) -> bool:
         """Is ANY of this owner's conversations mid-generation?
 
-        Bulk conversation deletion (docs/profile-refactor-plan.md Step 7)
+        Bulk conversation deletion (docs/ARCHITECTURE.md#account-page-and-profile;
+        reasoning in docs/archive/2026-08-23_profile-refactor.md, Step 7)
         cannot name the one conversation to refuse the way the single-delete
         route does — it deletes every session in one RPC round trip, so there
         is no per-id check to run first. Refusing the whole bulk delete while
@@ -1699,7 +1701,8 @@ def _persist_turn(
             title=title,
             # Defence in depth only — the real refusal already ran in
             # `_preflight_conversation`, before generation. See its docstring
-            # and docs/archive/2026-08-22_per-tab-deep-linking.md §3.4.
+            # and docs/ARCHITECTURE.md#ownership-preflight (reasoning in
+            # docs/archive/2026-08-22_per-tab-deep-linking.md §3.4).
             allow_create=allow_create,
         )
     except PersistenceUnavailable as exc:
@@ -1766,7 +1769,8 @@ def _preflight_conversation(
     write the turn into the in-RAM prompt window unconditionally, and only
     THEN fail to persist — leaving the reader a complete answer for a
     conversation that no longer exists.
-    See docs/archive/2026-08-22_per-tab-deep-linking.md §3.4.
+    See docs/ARCHITECTURE.md#ownership-preflight (reasoning in
+    docs/archive/2026-08-22_per-tab-deep-linking.md §3.4).
 
     An outage answers True — fails open, the same posture `_durable_owner`
     takes: refusing a legitimate question because the existence check itself
@@ -1904,9 +1908,10 @@ def _configure_app(app: Flask, testing: bool, enforce_rate_limits: bool = False)
         # Applied 2026-08-20: supabase/migrations/20260820131914_chat_session_
         # persistence.sql is live (`list_migrations` confirms it), so
         # config.yaml now defaults this on. Turns are recorded and hydrated
-        # from the URL the client names
-        # (docs/archive/2026-08-22_per-tab-deep-linking.md) — there is no separate "resume my last
-        # conversation" fallback any more; see §1 and §5.5 for why the
+        # from the URL the client names (docs/ARCHITECTURE.md#the-url-is-the-pointer
+        # and #deletion-resume-and-multi-tab-isolation) — there is no separate
+        # "resume my last conversation" fallback any more; reasoning in
+        # docs/archive/2026-08-22_per-tab-deep-linking.md §1 and §5.5 for why the
         # cookie-keyed pointer this used to gate is gone rather than merely
         # turned off.
         #
@@ -2052,8 +2057,8 @@ def _init_extensions(app: Flask, testing: bool) -> Limiter:
         # therefore silently inherited rather than stated — pinned explicitly
         # so a future flask-talisman upgrade, or a config refactor that drops
         # this call's defaults, cannot regress either one without the change
-        # being visible here. See
-        # docs/archive/2026-08-22_per-tab-deep-linking.md §6.1 and §3.5.
+        # being visible here. See docs/ARCHITECTURE.md#request-validation-and-response-headers
+        # (reasoning in docs/archive/2026-08-22_per-tab-deep-linking.md §6.1 and §3.5).
         referrer_policy="strict-origin-when-cross-origin",
         session_cookie_samesite="Lax",
     )
@@ -2624,7 +2629,8 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
         lambda: config.get("server", "rate_limit", {}).get("recover_api", "5 per minute"),
     )(recover_bp)
     # Signup, server-mediated as of the registrations-pause work
-    # (docs/registrations-pause-plan.md) — it used to live on `auth_bp` and
+    # (docs/ARCHITECTURE.md#registrations-pause; reasoning in
+    # docs/archive/2026-08-25_registrations-pause.md) — it used to live on `auth_bp` and
     # inherit no limit at all. Same reasoning as recover_api above: it is an
     # unauthenticated endpoint that sends mail, sitting in front of GoTrue's
     # own project-wide ceiling rather than replacing it.
@@ -2749,7 +2755,8 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
             key_func=_rate_key,
         )(app.view_functions["account.consent_grant"]),
     )
-    # Self-serve deletion (docs/account-and-trust-plan.md §3-M4/M5). The two
+    # Self-serve deletion (docs/ARCHITECTURE.md#account-deletion-and-trust;
+    # reasoning in docs/archive/2026-09-18_account-and-trust.md §3-M4/M5). The two
     # mutations share the tight limit; status carries its own looser one (see
     # config.yaml for both values and their reasoning). Like the three above,
     # each REPLACES the blueprint's 60/minute (override_defaults=True) and is
@@ -2920,7 +2927,8 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
 
         Its `page.policy.version` string is the value the signup form and
         `handle_new_user` record as `marketing_consent_policy_version`
-        (docs/profile-refactor-plan.md §16·3, Spec 3). Bump it whenever the
+        (docs/ARCHITECTURE.md#account-page-and-profile; reasoning in
+        docs/archive/2026-08-23_profile-refactor.md §16·3, Spec 3). Bump it whenever the
         policy's substance changes, so an old consent record stays
         attributable to the text it was actually given under.
 
@@ -2945,7 +2953,8 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
         """A conversation's URL. Renders exactly what `/` renders.
 
         Three properties, each a decision — see
-        docs/archive/2026-08-22_per-tab-deep-linking.md §3.1 for the full
+        docs/ARCHITECTURE.md#ownership-preflight (reasoning in
+        docs/archive/2026-08-22_per-tab-deep-linking.md §3.1) for the full
         argument, verified against this app's actual CSRF/oracle posture in
         the security review:
 
@@ -3141,8 +3150,8 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
         # cookie. The client always sends `Content-Type: application/json`
         # (services.js), so nothing legitimate depends on `force=True`; a
         # text/plain form cannot forge a real JSON content type past
-        # `silent=True` alone. See
-        # docs/archive/2026-08-22_per-tab-deep-linking.md §3.5.
+        # `silent=True` alone. See docs/ARCHITECTURE.md#request-validation-and-response-headers
+        # (reasoning in docs/archive/2026-08-22_per-tab-deep-linking.md §3.5).
         body = request.get_json(silent=True) or {}
         query = (body.get("query") or "").strip()
         category = (body.get("category") or "all").lower()
@@ -3222,8 +3231,9 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
     def handle_chat_history() -> Response | tuple[Response, int]:
         """One conversation's durable rows, named by `?c=<uuid>`.
 
-        THE URL IS THE POINTER (§1 of
-        docs/archive/2026-08-22_per-tab-deep-linking.md). `?c=` absent means
+        THE URL IS THE POINTER (docs/ARCHITECTURE.md#the-url-is-the-pointer;
+        reasoning in docs/archive/2026-08-22_per-tab-deep-linking.md §1).
+        `?c=` absent means
         `/` — a new conversation, Decision 1(a) — and this route answers an
         empty transcript without touching the backend at all: there is
         nothing to look up, and no session state to read or write either way.
@@ -3427,7 +3437,8 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
         )
 
     # NO /select ROUTE. Its entire job was moving the cookie that named the
-    # current conversation (docs/archive/2026-08-22_per-tab-deep-linking.md
+    # current conversation (docs/ARCHITECTURE.md#deletion-resume-and-multi-tab-isolation;
+    # reasoning in docs/archive/2026-08-22_per-tab-deep-linking.md
     # §5.2) — with no cookie, selecting a conversation is navigating to its
     # URL, which the client does directly. Deleting it also closes a live CSRF
     # hole incidentally: it parsed no body at all, so any cross-site
@@ -3544,7 +3555,8 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
 
     # ── Notification Center (reader) ────────────────────────────────────────
     #
-    # docs/notification-center-plan.md. REST here is the guaranteed-delivery
+    # docs/ARCHITECTURE.md#notification-center (reasoning in
+    # docs/archive/2026-08-24_notification-center.md). REST here is the guaranteed-delivery
     # path; a Realtime push (web/services/notification_service.py) only ever
     # tells an open tab "go call one of these again" — it carries no content
     # of its own. Every response is private, no-store: these are one
@@ -3794,7 +3806,8 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
             # create it". Refused HERE — before retrieval, before a token is
             # generated, before any response frame — rather than discovered after
             # the answer has already streamed. See `_preflight_conversation` and
-            # docs/archive/2026-08-22_per-tab-deep-linking.md §3.4.
+            # docs/ARCHITECTURE.md#ownership-preflight (reasoning in
+            # docs/archive/2026-08-22_per-tab-deep-linking.md §3.4).
             if not allow_create and not _preflight_conversation(
                 persistence, owner_id, conversation_id
             ):
@@ -4370,7 +4383,8 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
     # that named the current conversation and, on `undo`, restore a set-aside
     # one — both cookie-keyed mechanisms §5.1 and §5.4 remove. Under
     # URL-as-truth, "New chat" is a client-side navigation from `/c/<id>` to
-    # `/` (Decision 2 of docs/archive/2026-08-22_per-tab-deep-linking.md) with
+    # `/` (docs/ARCHITECTURE.md#the-url-is-the-pointer; reasoning in Decision 2
+    # of docs/archive/2026-08-22_per-tab-deep-linking.md) with
     # nothing for a server round trip to do, and undo is the Back button —
     # free, per-tab, already understood — rather than a server-held
     # `prev_conv_id`. `Handlers.handleNewChat` (static/js/modules/handlers.js)

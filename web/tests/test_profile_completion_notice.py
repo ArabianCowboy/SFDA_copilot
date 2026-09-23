@@ -1,5 +1,5 @@
 """The first-run completion strip: queued behind the history notice rather
-than suppressed by it (docs/profile-refactor-plan.md §12.6), shown only for
+than suppressed by it (docs/archive/2026-08-23_profile-refactor.md §12.6), shown only for
 a blank `first_name`, and reachable at all only after a profile read
 resolves — the exact identity-guarded callback TODO.md's "A late profile
 read has no identity guard" entry once named as missing it.

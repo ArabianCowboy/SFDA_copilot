@@ -211,8 +211,9 @@ def test_a_rate_limited_signup_is_not_shown_in_raw_english(browser_page: Page):
     reader had exceeded a limit rather than the service being busy — and because
     GoTrue rolls the account back when a send fails, they get no account and no
     email either. Signup is server-mediated now
-    (docs/registrations-pause-plan.md); `/auth/signup` maps this GoTrue text to
-    the `email_unavailable` machine code, and `formatAuthError`'s code branch is
+    (docs/ARCHITECTURE.md#registrations-pause; reasoning in
+    docs/archive/2026-08-25_registrations-pause.md). `/auth/signup` maps this GoTrue
+    text to the `email_unavailable` machine code, and `formatAuthError`'s code branch is
     what this test actually exercises.
     """
     browser_page.goto("/")
@@ -229,7 +230,7 @@ def test_a_rate_limited_signup_is_not_shown_in_raw_english(browser_page: Page):
     browser_page.locator("#signup-first-name").fill("New")
     browser_page.locator("#signup-email").fill("new@example.com")
     browser_page.locator("#signup-password").fill("ValidPass1")
-    # Required since Step 6 (docs/profile-refactor-plan.md §12.4) — without
+    # Required since Step 6 (docs/ARCHITECTURE.md#account-page-and-profile; reasoning in docs/archive/2026-08-23_profile-refactor.md §12.4) — without
     # it the form fails native validation before ever reaching the route, and
     # the mocked 429 this test exists to exercise never fires.
     browser_page.locator("#signup-terms").check()

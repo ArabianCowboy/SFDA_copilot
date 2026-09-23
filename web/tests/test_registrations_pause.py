@@ -1,4 +1,5 @@
-"""Registrations pause — docs/registrations-pause-plan.md.
+"""Registrations pause — docs/ARCHITECTURE.md#registrations-pause (reasoning in
+docs/archive/2026-08-25_registrations-pause.md).
 
 Three layers, each with its own tests: the `SettingsService` key family that
 stores and caches the flag; the `/auth/signup` gate that reads it before any
@@ -116,7 +117,8 @@ def test_a_generation_save_invalidates_the_flag_cache(service):
     """`update()` rewrites the WHOLE row, including whatever `signup_enabled`
     already held — a write to the flag's storage even though the patch never
     named it. Missing this invalidation is the one bug this design cannot
-    afford (docs/registrations-pause-plan.md §9 Step 8)."""
+    afford (docs/ARCHITECTURE.md#registrations-pause; Step 8 of
+    docs/archive/2026-08-25_registrations-pause.md §9)."""
     service.set_signup_enabled(False, actor=ACTOR)
     assert service.signup_enabled() is False
 
@@ -298,7 +300,8 @@ def test_a_paused_instance_refuses_signup(app, client):
     assert response.status_code == 403
     assert response.get_json() == {"error": "signup_disabled"}
     # The status alone does not prove the gate ran BEFORE provider work — the
-    # actual requirement (docs/registrations-pause-plan.md §9 Step 9).
+    # actual requirement (docs/ARCHITECTURE.md#registrations-pause; Step 9 of
+    # docs/archive/2026-08-25_registrations-pause.md §9).
     mock_get_supabase.assert_not_called()
 
 

@@ -16,7 +16,8 @@ const FRAME_SEPARATOR = /\r?\n\r?\n/;
    notification during initialize() while `onAuthStateChange` separately
    emits INITIAL_SESSION straight to each subscriber once initializePromise
    settles), and re-confirmed on upgrade to 2.74.0 (2026-08-24, see
-   docs/notification-center-plan.md §2/§7 step 4a: auth-js's own changelog
+   docs/ARCHITECTURE.md#notification-center; reasoning in
+   docs/archive/2026-08-24_notification-center.md §2/§7 step 4a: auth-js's own changelog
    between those versions documents no change to this ordering, and this
    dedup does not depend on which event causes the double-fire — only on the
    fact that concurrent calls can happen). Without it, two independent,
@@ -491,7 +492,9 @@ export const Services = {
   },
 
   // NO `resetConversation`. `/api/conversation/reset` is deleted server-side
-  // (docs/archive/2026-08-22_per-tab-deep-linking.md §5.1, §5.4) — "New chat"
+  // (docs/ARCHITECTURE.md#deletion-resume-and-multi-tab-isolation and
+  // #the-url-is-the-pointer; reasoning in
+  // docs/archive/2026-08-22_per-tab-deep-linking.md §5.1, §5.4) — "New chat"
   // is a client-side navigation to `/` now (Decision 2), with no server round
   // trip at all. See `Handlers.handleNewChat`.
 
@@ -656,7 +659,8 @@ export const Services = {
   },
 
   /**
-   * One conversation's durable rows, named by the URL (Decision 4 of
+   * One conversation's durable rows, named by the URL
+   * (docs/ARCHITECTURE.md#the-url-is-the-pointer; reasoning: Decision 4 of
    * docs/archive/2026-08-22_per-tab-deep-linking.md).
    *
    * `conversationId` is `Route.current()` — the caller never calls this with
@@ -788,7 +792,8 @@ export const Services = {
   },
 
   // NO `selectSession`. `/api/chat/sessions/<id>/select` is deleted
-  // server-side (docs/archive/2026-08-22_per-tab-deep-linking.md §5.2) — its
+  // server-side (docs/ARCHITECTURE.md#deletion-resume-and-multi-tab-isolation;
+  // reasoning in docs/archive/2026-08-22_per-tab-deep-linking.md §5.2) — its
   // entire job was repointing a cookie that no longer exists. Selecting a
   // conversation is navigating to its `/c/<id>` URL now (`Route.go`), and
   // the sidebar re-reads `/api/chat/history?c=<id>` directly.
@@ -852,7 +857,8 @@ export const Services = {
   },
 
   /**
-   * Self-serve account deletion (docs/account-and-trust-plan.md §3-M4/M5).
+   * Self-serve account deletion (docs/ARCHITECTURE.md#account-deletion-and-trust;
+   * reasoning in docs/archive/2026-09-18_account-and-trust.md §3-M4/M5).
    *
    * The request carries the reader's CURRENT password (verified server-side
    * as step-up — a bearer token alone must not delete an account) and the
@@ -951,7 +957,8 @@ export const Services = {
   },
 
   /**
-   * Notification Center (docs/notification-center-plan.md). Reader-facing
+   * Notification Center (docs/ARCHITECTURE.md#notification-center; full
+   * design in docs/archive/2026-08-24_notification-center.md). Reader-facing
    * only — the admin composer/history calls live in static/js/admin/services.js,
    * a separate module tree with its own import map (test_frontend_architecture.py).
    *
@@ -1000,7 +1007,8 @@ export const Services = {
      *
      * Requires @supabase/supabase-js >= 2.74.0 (realtime-js's `private`
      * channel option; verified absent below that — see this module's own
-     * import comment and docs/notification-center-plan.md §2/§7 step 4a).
+     * import comment and docs/ARCHITECTURE.md#notification-center; reasoning
+     * in docs/archive/2026-08-24_notification-center.md §2/§7 step 4a).
      *
      * `onMessage(payload)` fires on every broadcast; `onStatusChange(status)`
      * fires on every `.subscribe()` status transition, INCLUDING the first

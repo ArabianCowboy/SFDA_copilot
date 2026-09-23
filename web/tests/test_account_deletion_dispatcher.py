@@ -1,6 +1,6 @@
 """The deletion half of the auth-admin seam: delete, global sign-out, exists.
 
-Slice 2a of docs/account-and-trust-plan.md. Each test fails against today's
+Slice 2a of docs/ARCHITECTURE.md#account-deletion-and-trust; reasoning in docs/archive/2026-09-18_account-and-trust.md slice 2a. Each test fails against today's
 code — ``SupabaseAuthAdminDispatcher`` and ``InMemoryAuthAdminDispatcher``
 have no ``delete_user`` / ``sign_out_all`` / ``user_exists`` until this
 slice, so every one of these raises ``AttributeError`` before it.

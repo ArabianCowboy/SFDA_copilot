@@ -102,9 +102,11 @@ export const CONFIG = {
     SEND_BTN: '#send-button',
     CATEGORY_SELECT: '#query-category',
     // No PROFILE_MODAL/PROFILE_FORM/PROFILE_ERROR: the modal is retired
-    // (docs/profile-refactor-plan.md §5) — /account replaces it. PROFILE_BTN
-    // stays: it is now a plain <a href="/account">, still shown/hidden by
-    // sign-in state the same way every other account-scoped control is.
+    // (docs/ARCHITECTURE.md#account-page-and-profile; reasoning in
+    // docs/archive/2026-08-23_profile-refactor.md §5) — /account replaces
+    // it. PROFILE_BTN stays: it is now a plain <a href="/account">, still
+    // shown/hidden by sign-in state the same way every other
+    // account-scoped control is.
     PROFILE_BTN: '#profile-button',
     PROFILE_BTN_OFFCANVAS: '#profile-button-offcanvas',
     ACCOUNT_DISABLED_NOTICE: '#account-disabled-notice',
@@ -125,7 +127,8 @@ export const CONFIG = {
     RESET_BACK: '#reset-back-to-login',
     LOGIN_PANE_FORM: '#login-form',
 
-    // ── Notification Center (docs/notification-center-plan.md) ──────────
+    // ── Notification Center (docs/ARCHITECTURE.md#notification-center;
+    // full design in docs/archive/2026-08-24_notification-center.md) ──────
     // Bell + badge follow the same two-copy pattern as AUTH_BTN/PROFILE_BTN
     // above: the sidebar macro renders once as the desktop aside and once
     // inside the mobile offcanvas, so every reader-facing control there has

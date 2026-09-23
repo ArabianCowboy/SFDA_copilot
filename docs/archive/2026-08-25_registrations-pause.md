@@ -1,23 +1,34 @@
-STATUS: BUILT 2026-08-25, against `66a9f88`. Design record — the corrections
+---
+authority: historical
+status: superseded
+do_not_implement: true
+archived: 2026-09-23
+supersedes_note: >
+  This document is a design record built and shipped on 2026-08-25. It decided to let an operator
+  pause new signups with a toggle in the admin console, gating the GoTrue sign_up() call. Three
+  real bugs were found post-build and fixed the same day. It is a record of what was decided
+  and what it cost, not a specification.
+live_authority:
+  - DESIGN.md
+  - ../ARCHITECTURE.md
+  - ../../TODO.md
+---
+
+> [!CAUTION]
+> **You are reading history, not a specification.** The live rules this plan produced are in
+> `DESIGN.md` and `docs/ARCHITECTURE.md`; read those, not this. Final position: the admin console
+> has a **Registrations** tab (last in tablist) with a **pause/resume toggle** and a **bypass
+> note**. **Paused** stops the signup route with `403 signup_disabled` and the console shows the
+> state with a **pill icon** and an **unread dot** on the tab. The reader-facing notice uses
+> this project's **notice vocabulary** (`.signup-paused-notice`). The first three post-build bugs
+> (a TOCTOU race, an invalidation bug, and an unguarded type) were fixed on 2026-08-25. Every
+> section below describes the tree **before** the build. Every heading is prefixed `[HISTORICAL]`.
+
 noted inline below (`Proves it` lines that turned out infeasible, or shapes
 the implementation refined) are kept rather than silently edited away; the
 TODO.md entry this plan closed carries the short summary of what shipped.
 
-# Registrations Pause
-
-> **Do not archive this file without budgeting for the citation rewrite.** Live code,
-> templates, stylesheets and tests cite it by section, so archiving it is that rewrite, not
-> a `git mv`. Count them before you estimate, and do not trust a figure written here or
-> anywhere else — run `git ls-files -z | xargs -0 grep -l 'docs/registrations-pause-plan.md'`. Editor search is
-> not a substitute: it honours `/.ignore`, which excludes `docs/archive/`, and `--include`
-> filters silently skip `.sql`, `.html` and `.css`. Both mistakes were made while writing
-> this note, which is why it no longer states a number. See `TODO.md`'s _Live code cites
-> plan sections instead of the live contract_ for the decision that has to come first.
-
-**Source:** `TODO.md` → [Registrations pause — let an operator pause new signups](../TODO.md#registrations-pause--let-an-operator-pause-new-signups).
-
-**Read the correction in §1 before anything else.** The filed entry's central premise is
-wrong, and building it as written produces an operator control that pauses nothing.
+# [HISTORICAL] Registrations Pause
 
 This plan went through four independent passes: a direct code read in this session, a
 research pass on Antigravity (`gemini-3.7-flash-high`), an architecture pass on OpenCode
@@ -146,7 +157,7 @@ real repository access) was tried next instead of a second attempt at the same d
 
 ---
 
-## 1. The correction: the route being gated is not the route the product uses
+## [HISTORICAL] 1. The correction: the route being gated is not the route the product uses
 
 `POST /auth/signup` at `web/api/auth.py:90` is **dead in production**. The browser never
 calls it. Its only caller is `web/tests/test_auth_routes.py:182`. (It was two: `web/tests/test_auth.py:19`
@@ -169,7 +180,7 @@ TODO entry's claims against the actual code. Everything checks out"_ and then de
 bypass as an attacker's option rather than as the product's own transport.
 
 `POST /auth/login` is browser-direct too (`services.js:355`). Only `/auth/recover` and
-`/auth/logout` actually pass through Flask. `docs/ARCHITECTURE.md`'s "Authentication and the
+`/auth/logout` actually pass through Flask. `../ARCHITECTURE.md`'s "Authentication and the
 blueprint gate" section (line 247) never says this, and its rate-limit table (line 270)
 lists `POST /auth/recover` and no other auth route — consistent with the rest being unused,
 but never written down. §9 Step 16 closes that gap.
@@ -180,17 +191,17 @@ as one commit — a half-moved signup path is a broken signup path. Steps 7–13
 Steps 14–16 are documentation and ship with whichever commit made them true.
 
 `login` deliberately stays browser-direct: nothing gates it, so moving it is cost without a
-property. That reasoning belongs in `docs/ARCHITECTURE.md`, not only here.
+property. That reasoning belongs in `../ARCHITECTURE.md`, not only here.
 
 ---
 
-## 2. The trap: "extend `SettingsService`" is right, and has a wrong reading either side
+## [HISTORICAL] 2. The trap: "extend `SettingsService`" is right, and has a wrong reading either side
 
 TODO.md says _"extend `SettingsService` with a non-generation key set + bool validation and
 30–60s TTL with immediate invalidate on `PUT`."_ That is the right answer. Both obvious
 readings of it are wrong, and the repo contains a live example of the second.
 
-### Wrong reading A — widen `GENERATION_KEYS`
+### [HISTORICAL] Wrong reading A — widen `GENERATION_KEYS`
 
 `update()`'s unknown-key check is `set(patch) - set(GENERATION_KEYS)`
 (`web/services/settings_service.py:348`), so `PUT {"signup_enabled": false}` is a
@@ -212,7 +223,7 @@ aesthetic:
   It does not crash (the constructor reads named keys), which is what makes it easy to ship
   by accident.
 
-### Wrong reading B — copy the non-generation setting the repo already has
+### [HISTORICAL] Wrong reading B — copy the non-generation setting the repo already has
 
 `web/services/notification_store.py:761` states the pattern verbatim: a non-generation
 setting in the same `app_settings.settings` JSONB _"without touching the generation-specific
@@ -229,7 +240,7 @@ this flag needs:
   (`settings_service.py:363`), so a generation save concurrent with a retention change is a
   lost update. **That bug is live today.** Do not add a second instance of it.
 
-### The shape to build
+### [HISTORICAL] The shape to build
 
 A **parallel key family inside `SettingsService`**: `NON_GENERATION_KEYS` beside
 `GENERATION_KEYS`, its own validator, its own cache slot and TTL, its own accessors —
@@ -245,7 +256,7 @@ Detail in §9 Step 8.
 
 ---
 
-## 3. Decisions, and what settles each
+## [HISTORICAL] 3. Decisions, and what settles each
 
 | Question                               | Decision                                                                                  | What settles it                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | -------------------------------------- | ----------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -262,19 +273,19 @@ Detail in §9 Step 8.
 
 ---
 
-## 4. Storage alternatives, priced
+## [HISTORICAL] 4. Storage alternatives, priced
 
-| Option                                                               | Cost                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | Verdict                                                               |
-| -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------- |
-| **JSONB key** `app_settings.settings.signup_enabled`                 | None. The row, the RPC, the audit path and the read path all exist.                                                                                                                                                                                                                                                                                                                                                                                                      | **Chosen**                                                            |
-| **Dedicated column** on `app_settings`                               | A migration; widening `get_settings`'s `select("settings")` at `admin_store.py:282`; a new signature for `admin_write_settings`, so the audit RPC changes too; then the mandatory rename-after-apply ritual (collision #2). Buys Postgres-level typing for a value already validated in Python and re-validated on read.                                                                                                                                                 | Rejected                                                              |
-| **A distinct audit action** e.g. `registrations.pause`               | The action string is hardcoded inside the RPC body (`20260814032139_audit_log.sql:117`), so a new name means a new or replaced RPC — a migration, the rename ritual, and a new entry in the console's action map at `admin/ui.js:764` or the audit tab renders a raw string. Buys a marginally better audit line for a change whose `before`/`after` diff already names `signup_enabled` unambiguously.                                                                  | Rejected                                                              |
-| **A separate settings table**                                        | Everything above, plus a second single-row table — which `20260814022601_app_settings.sql:31` explicitly designed against: "a second row would be a silent fork of the instance's configuration."                                                                                                                                                                                                                                                                        | Rejected                                                              |
-| **`BEFORE INSERT` trigger on `auth.users`** that raises while paused | The only option that actually closes the anon-key hole from inside the repo, and it is feasible — the project already owns an `AFTER INSERT` trigger on that table. But it would also block admin-created accounts and any provider-internal flow, and collision #1 in `docs/ARCHITECTURE.md` records that a raise in that position rolls back account creation entirely. A pause that can strand a provider-internal write is a worse failure than the one it prevents. | Rejected — reconsider only if the provider toggle proves insufficient |
+| Option                                                               | Cost                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | Verdict                                                               |
+| -------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| **JSONB key** `app_settings.settings.signup_enabled`                 | None. The row, the RPC, the audit path and the read path all exist.                                                                                                                                                                                                                                                                                                                                                                                                    | **Chosen**                                                            |
+| **Dedicated column** on `app_settings`                               | A migration; widening `get_settings`'s `select("settings")` at `admin_store.py:282`; a new signature for `admin_write_settings`, so the audit RPC changes too; then the mandatory rename-after-apply ritual (collision #2). Buys Postgres-level typing for a value already validated in Python and re-validated on read.                                                                                                                                               | Rejected                                                              |
+| **A distinct audit action** e.g. `registrations.pause`               | The action string is hardcoded inside the RPC body (`20260814032139_audit_log.sql:117`), so a new name means a new or replaced RPC — a migration, the rename ritual, and a new entry in the console's action map at `admin/ui.js:764` or the audit tab renders a raw string. Buys a marginally better audit line for a change whose `before`/`after` diff already names `signup_enabled` unambiguously.                                                                | Rejected                                                              |
+| **A separate settings table**                                        | Everything above, plus a second single-row table — which `20260814022601_app_settings.sql:31` explicitly designed against: "a second row would be a silent fork of the instance's configuration."                                                                                                                                                                                                                                                                      | Rejected                                                              |
+| **`BEFORE INSERT` trigger on `auth.users`** that raises while paused | The only option that actually closes the anon-key hole from inside the repo, and it is feasible — the project already owns an `AFTER INSERT` trigger on that table. But it would also block admin-created accounts and any provider-internal flow, and collision #1 in `../ARCHITECTURE.md` records that a raise in that position rolls back account creation entirely. A pause that can strand a provider-internal write is a worse failure than the one it prevents. | Rejected — reconsider only if the provider toggle proves insufficient |
 
 ---
 
-## 5. The contested call: what a signup does when the flag cannot be read
+## [HISTORICAL] 5. The contested call: what a signup does when the flag cannot be read
 
 Four passes, four answers. The reasoning is set out rather than asserted.
 
@@ -301,7 +312,7 @@ a cold restart during a Supabase blip silently closes signups on an instance nob
 with the console still reporting _Open_, because the console reads the same unreadable
 store.
 
-That is a failure this repo has already ruled on. `docs/ARCHITECTURE.md:254`: **"An outage is
+That is a failure this repo has already ruled on. `../ARCHITECTURE.md:254`: **"An outage is
 not a refusal."** The identity path implements exactly this three-way split, keeping
 `_is_upstream_outage()` and `_is_auth_refusal()` separate so a `503` is never a `401`.
 
@@ -317,7 +328,7 @@ fails. Every other outage is covered by the stale value.
 
 ---
 
-## 6. Reader-facing behaviour
+## [HISTORICAL] 6. Reader-facing behaviour
 
 Two states, and they are not the same problem.
 
@@ -343,7 +354,7 @@ and `handleAuthFormSubmit`'s catch (`handlers.js:266`) surfaces it. This is why 
 path is not optional: a server-rendered proactive state is always potentially stale, by
 exactly the age of the open tab.
 
-### Alternative considered
+### [HISTORICAL] Alternative considered
 
 OpenCode proposed a public `GET /auth/signup/status` with `signupEnabled` in `AppState` and
 an optimistic initial `true`. It has one real advantage — a modal already open can update
@@ -357,7 +368,7 @@ reader who loads the page six times a minute gets a 429 for reading a boolean.
 
 ---
 
-## 7. Machine codes, not sentences
+## [HISTORICAL] 7. Machine codes, not sentences
 
 The route today translates GoTrue errors into English prose — `"This email is already
 registered"` at `auth.py:143`. That is a second reader-facing string path the app does not
@@ -386,11 +397,11 @@ Deleting it would regress every login error to untranslated English.
 
 ---
 
-## 8. i18n
+## [HISTORICAL] 8. i18n
 
 Nest under `runtime.auth`, `runtime.admin` and `page.auth` — all three exist. **No new
 top-level `runtime.*` namespace:** `web/tests/test_admin_page.py:228` asserts
-`set(config) <= {…eleven…}`, and `docs/ARCHITECTURE.md:331` lists this as collision #3.
+`set(config) <= {…eleven…}`, and `../ARCHITECTURE.md:331` lists this as collision #3.
 
 Do **not** nest the console strings under `runtime.admin.settings.*`. That panel's heading
 is literally `"Generation"` (`en.yaml`), and a registrations switch inside it is a category
@@ -416,14 +427,14 @@ error. Use `runtime.admin.registrations.*`.
 | `runtime.admin.registrations.saveFailed`  | Could not save the registrations setting.                                                                            | تعذّر حفظ إعداد التسجيل.                                                                        |
 | `runtime.admin.registrations.bypassNote`  | This pauses the signup form. It does not stop a direct call to the authentication provider — see docs/OPERATIONS.md. | هذا يوقف نموذج التسجيل فقط، ولا يمنع الاتصال المباشر بمزوّد المصادقة — راجع docs/OPERATIONS.md. |
 
-Copy is checked against `docs/PRODUCT.md`'s voice rule — "direct and professional,
+Copy is checked against `../PRODUCT.md`'s voice rule — "direct and professional,
 occasionally warm… the regulatory content stays sober." No "kill-switch", no "service down".
 
 ---
 
-## 9. Implementation sequence
+## [HISTORICAL] 9. Implementation sequence
 
-### Commit A — make the gate load-bearing (steps 1–6)
+### [HISTORICAL] Commit A — make the gate load-bearing (steps 1–6)
 
 **Step 1 — Give signup its own rate-limited blueprint.**
 `web/api/auth.py:23` (beside `recover_bp`) · `web/api/app.py:1859` (beside its registration)
@@ -558,7 +569,7 @@ browser_page.route("**/auth/signup", capture)
 
 Confirm each rewritten test fails against the pre-migration client before believing it.
 
-### Commit B — the pause (steps 7–13)
+### [HISTORICAL] Commit B — the pause (steps 7–13)
 
 **Step 7 — Declare the deployed default.** `web/config.yaml:9`, in the `server:` block:
 
@@ -675,7 +686,7 @@ with `actor_from_request(g.identity)`, maps a validation failure to
 `503 {"error": "storage_unavailable"}`.
 Nothing needs adding for authorisation: `_gate` (`admin.py:99`) is a `before_request`
 covering the whole blueprint and `_UNGATED_ENDPOINTS` (`admin.py:58`) is `{"admin.console"}`
-only. Do not add a route decorator gate — `docs/ARCHITECTURE.md:259`: "A decorator can be
+only. Do not add a route decorator gate — `../ARCHITECTURE.md:259`: "A decorator can be
 forgotten on route nine, and that failure is silent."
 _Proves it:_ `::test_the_toggle_requires_a_bearer_header`,
 `::test_a_reader_cannot_toggle_registrations`, `::test_the_toggle_writes_an_audit_row`
@@ -709,7 +720,7 @@ click, expect the pill to flip, reload, expect it to persist.
 _Proves it:_ the existing `test_frontend_architecture.py:182`, which flattens both `runtime`
 and `page` and fails on any English key with no Arabic sibling.
 
-### Documentation (steps 14–16)
+### [HISTORICAL] Documentation (steps 14–16)
 
 **Step 14 — Bump `ASSET_VERSION`.** `web/api/app.py:248`. Both commits touch JS, so both
 bump it. The durable instruction is _bump it_; do not copy a value out of this document.
@@ -748,7 +759,7 @@ Also record the failure posture (§5) and that propagation is immediate on a sin
 (§3), so nobody later builds TTL machinery this deployment does not need.
 
 **Step 16 — Correct the architecture record and close the entry.**
-`docs/ARCHITECTURE.md:247, 270` — state which auth calls are browser-direct (§1) and add
+`../ARCHITECTURE.md:247, 270` — state which auth calls are browser-direct (§1) and add
 `POST /auth/signup` to the rate-limit table.
 Then follow `TODO.md:907` exactly: (1) add a **dated closing note to the entry itself**,
 saying what shipped and — because the original diagnosis was wrong — saying so rather than
@@ -759,7 +770,7 @@ still true.
 
 ---
 
-## 10. Rollout and rollback
+## [HISTORICAL] 10. Rollout and rollback
 
 |     | Step                                                                    | Verify                                                                                                                                                                            |
 | --- | ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -783,14 +794,14 @@ still true.
 
 ---
 
-## 11. What must not ship
+## [HISTORICAL] 11. What must not ship
 
 - **No RLS policy on `app_settings`.** The migration says so in capitals: "RLS on, ZERO
   POLICIES, DELIBERATELY… Do not 'fix' this by adding a policy." The advisor's
   `rls_enabled_no_policy` INFO is the intent.
 - **No RLS write policy on the chat tables.** Unchanged by this work; stated because the
   entry touches settings storage and the two are easy to conflate.
-- **No browser-direct read of the flag.** `docs/ARCHITECTURE.md:235`: `profiles` is the one
+- **No browser-direct read of the flag.** `../ARCHITECTURE.md:235`: `profiles` is the one
   browser-direct table, and `app_settings` has `revoke all … from anon, authenticated`.
 - **No new top-level `runtime.*` namespace.**
 - **No bundler, no runtime `node_modules`.** `node_modules/` stays lint-tooling only.
@@ -813,7 +824,7 @@ still true.
 
 ---
 
-## 12. Gates
+## [HISTORICAL] 12. Gates
 
 ```bash
 python -m pytest -m "not browser and not integration"
@@ -829,7 +840,7 @@ auth path — and is worth landing and observing before commit B.
 
 ---
 
-## 13. Deliberately not decided here
+## [HISTORICAL] 13. Deliberately not decided here
 
 1. **Do accounts created before the pause still confirm their email?** Yes, under this design
    — confirmation is a GoTrue link exchange that never touches `/auth/signup`. Flagged
@@ -845,5 +856,5 @@ auth path — and is worth landing and observing before commit B.
 4. **Should pausing broadcast a notification to other administrators?** The machinery exists
    (`notification_service`, the admin broadcast in `f9a9aa2`). Worth a `TODO.md` entry if a
    second operator ever exists.
-5. **Should `login` move to Flask?** No, and the reason belongs in `docs/ARCHITECTURE.md`:
+5. **Should `login` move to Flask?** No, and the reason belongs in `../ARCHITECTURE.md`:
    nothing gates it, so moving it is cost without a property.

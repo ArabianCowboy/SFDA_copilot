@@ -1,13 +1,14 @@
 """The `/c/<id>` deep-linking contract: the server half.
 
-docs/archive/2026-08-22_per-tab-deep-linking.md §3. Client-side navigation
-(route.js, the history.state lifecycle, the multi-tab proof) is tested in
+docs/ARCHITECTURE.md#ownership-preflight. Client-side navigation (route.js,
+the history.state lifecycle, the multi-tab proof) is tested in
 `test_multi_tab_conversations.py` — this file is the request/response
 contract a browser is not required to prove: a client-supplied
 `conversation_id` is honoured and touches no cookie, an absent or malformed
-one mints a fresh one and touches no cookie either (§8 step 6 removed the
-cookie fallback), a stale or foreign id is refused before a token is
-generated, and the new `GET /c/<uuid>` route is what §3.1 says it is.
+one mints a fresh one and touches no cookie either (reasoning in
+docs/archive/2026-08-22_per-tab-deep-linking.md §3.1), a stale or foreign id
+is refused before a token is generated, and the new `GET /c/<uuid>` route is
+what that section describes.
 """
 
 from __future__ import annotations
@@ -136,9 +137,10 @@ def test_a_client_supplied_conversation_id_writes_no_cookie(client, ask):
 
 @pytest.mark.parametrize("ask", [ask_stream, ask_blocking])
 def test_an_absent_conversation_id_starts_a_new_conversation(client, ask):
-    """§8 step 6: the cookie fallback is gone. ABSENT is no longer a signal
+    """The cookie fallback is gone. ABSENT is no longer a signal
     that only a cookie could resolve — `/` is always a new conversation
-    (Decision 1a of docs/archive/2026-08-22_per-tab-deep-linking.md) — so it is
+    (docs/ARCHITECTURE.md#deletion-resume-and-multi-tab-isolation; Decision 1a of
+    docs/archive/2026-08-22_per-tab-deep-linking.md §5.5) — so it is
     minted right here, exactly like a malformed value, and touches no
     session state either."""
     response = ask(client)

@@ -19,7 +19,7 @@ import { iconMarkup } from './icons.js';
  * stays 'all': on an unset, unreadable or unrecognised value the safe
  * direction is the widest scope — a failed read must never silently narrow
  * which corpus a regulatory question is answered from. See
- * docs/profile-refactor-plan.md §12.5.
+ * docs/archive/2026-08-23_profile-refactor.md §12.5.
  */
 const SEARCH_SCOPE_KEY = 'sfda-search-scope';
 

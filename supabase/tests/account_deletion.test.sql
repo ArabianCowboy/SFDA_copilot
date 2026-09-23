@@ -1,6 +1,6 @@
 -- The self-serve deletion saga, exercised for real and rolled back.
 -- ===========================================================================
--- Slice 2a of docs/account-and-trust-plan.md (decisions D1, D2, D3).
+-- Slice 2a of the deletion saga (docs/ARCHITECTURE.md#account-deletion-and-trust; reasoning in docs/archive/2026-09-18_account-and-trust.md D1, D2, D3).
 --
 -- PENDING-STATE ASSERTIONS: these pass only AFTER supabase/pending/06-12 are
 -- applied. Against today's database the FIRST saga reference fails with

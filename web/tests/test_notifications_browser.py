@@ -1,8 +1,9 @@
 """The Notification Center in a real browser: reader push shapes, the inbox,
 and the admin composer + history.
 
-docs/notification-center-plan.md §8: scoped to REST and to the Realtime
-*wiring* only, matching `browser_page`'s own mocking philosophy
+docs/ARCHITECTURE.md#notification-center (reasoning in
+docs/archive/2026-08-24_notification-center.md §8): scoped to REST and to the
+Realtime *wiring* only, matching `browser_page`'s own mocking philosophy
 (`test_admin_browser.py` mocks every `/admin/api/*` response rather than
 exercising the live server, precisely so one browser test's state cannot
 leak into the next via the session-scoped in-memory backend). Private-channel
@@ -10,7 +11,7 @@ AUTHORIZATION is not, and cannot be, covered here — `conftest.py`'s Supabase
 double's `channel()` is a structural stub with no real RLS behind it, so it
 can prove "a message triggers a refetch" but never "reader A is denied
 reader B's topic". That property is proven server-side: directly against the
-live project's RLS policy (see docs/notification-center-plan.md's own
+live project's RLS policy (see docs/archive/2026-08-24_notification-center.md's own
 "verified directly" note) and via
 web/tests/test_notifications_api.py's targeting-isolation tests, which cover
 the same recipient-eligibility logic the REST path and the Realtime

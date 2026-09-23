@@ -1,9 +1,10 @@
 """Two tabs, one browser context: the collision this feature exists to remove.
 
-docs/archive/2026-08-22_per-tab-deep-linking.md §7.2. Two Playwright `Page`s in
+docs/ARCHITECTURE.md#deletion-resume-and-multi-tab-isolation (reasoning in
+docs/archive/2026-08-22_per-tab-deep-linking.md §7.2). Two Playwright `Page`s in
 one `BrowserContext` — cookies and `localStorage` shared, same signed-in
 reader, while `sessionStorage` and the DOM are per-page — is a REAL second
-tab. §7.1 built the fixture-level plumbing this file depends on:
+tab. The fixture-level plumbing this file depends on:
 `context.route(...)` mocks (conftest.py's `browser_page`) and a Supabase
 double that persists its session in real `localStorage` rather than a
 page-scoped object, so a second page opened in the context comes back already

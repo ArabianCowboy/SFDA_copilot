@@ -1,6 +1,6 @@
 """/privacy — سياسة الاستخدام والخصوصية / Usage and Privacy Policy.
 
-Public, ungated (docs/profile-refactor-plan.md §12.4, Step 6). Content is a
+Public, ungated (docs/ARCHITECTURE.md#account-page-and-profile; reasoning in docs/archive/2026-08-23_profile-refactor.md §12.4). Content is a
 DRAFT — these tests pin structure and the draft disclosure, not the exact
 prose, which is expected to change once reviewed."""
 

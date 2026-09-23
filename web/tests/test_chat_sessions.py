@@ -1,6 +1,7 @@
 """The conversation sidebar: listing, titling, renaming, deleting.
 
-Step 8, revised for docs/archive/2026-08-22_per-tab-deep-linking.md. Everything
+Step 8, revised for docs/ARCHITECTURE.md#deletion-resume-and-multi-tab-isolation
+(reasoning in docs/archive/2026-08-22_per-tab-deep-linking.md). Everything
 here is a claim about behaviour that cannot be read off the code, and most of
 it exists because an adversarial review found the failure first. The ones
 worth naming up front:
@@ -90,10 +91,10 @@ def backend(app) -> InMemoryChatBackend:
 
 def ask(client, query="What are the requirements?", headers=AUTH, **body):
     """One turn. With no `conversation_id`, this is what a real "New chat"
-    looks like now (Decision 2 of docs/archive/2026-08-22_per-tab-deep-linking.md):
-    a fresh, unrelated conversation — there is no cookie left to continue an
-    old one implicitly, so continuing one is always an explicit
-    `conversation_id=` passed by the caller.
+    looks like now (docs/ARCHITECTURE.md#the-url-is-the-pointer; Decision 2 of
+    docs/archive/2026-08-22_per-tab-deep-linking.md): a fresh, unrelated conversation —
+    there is no cookie left to continue an old one implicitly, so continuing one is always
+    an explicit `conversation_id=` passed by the caller.
     """
     body.setdefault("query", query)
     response = client.post("/api/chat/stream", json=body, headers=headers)
@@ -223,7 +224,8 @@ def test_the_list_carries_title_time_and_length(client):
     assert row["updated_at"]
     assert "active" not in body, (
         "the client knows its own current conversation from its own URL now "
-        "(§5.3 of docs/archive/2026-08-22_per-tab-deep-linking.md) — a "
+        "(docs/ARCHITECTURE.md#the-url-is-the-pointer; reasoning in "
+        "docs/archive/2026-08-22_per-tab-deep-linking.md §4.1) — a "
         "cookie-derived answer here would be wrong for every tab but one"
     )
 
@@ -334,7 +336,8 @@ def test_the_list_is_never_cached(client):
 
 # ── There is no /select route ────────────────────────────────────────────────
 #
-# docs/archive/2026-08-22_per-tab-deep-linking.md §5.2: its entire job was
+# docs/ARCHITECTURE.md#deletion-resume-and-multi-tab-isolation (reasoning in
+# docs/archive/2026-08-22_per-tab-deep-linking.md §5.2): its entire job was
 # moving a cookie that no longer exists. Selecting a conversation is
 # navigating to its `/c/<id>` URL now, client-side, with no server round trip.
 # Deleting it also closed a live CSRF hole incidentally — it parsed no body at
@@ -451,10 +454,10 @@ def test_deleting_removes_the_conversation_and_its_messages(client, backend):
 
 
 def test_the_delete_response_names_only_the_deleted_id(client):
-    """No `conversation_id` in the body any more (§5.1, §5.2 of
-    docs/archive/2026-08-22_per-tab-deep-linking.md) — there is no cookie left
+    """No `conversation_id` in the body any more (docs/ARCHITECTURE.md#deletion-resume-and-multi-tab-isolation;
+    reasoning in docs/archive/2026-08-22_per-tab-deep-linking.md §5.1, §5.2) — there is no cookie left
     to rotate, and no replacement to mint. Moving off the deleted
-    conversation's URL, if the client was on it, is the client's job (§4.4)."""
+    conversation's URL, if the client was on it, is the client's job."""
     response = ask(client, "Doomed")
     session_id = conversation_of(response)
 
@@ -652,8 +655,8 @@ def test_every_session_route_requires_authentication(client):
 
 
 def test_a_new_chat_still_leaves_the_conversation_behind_it_in_the_sidebar(client):
-    """ "New chat" is a client-side navigation now (Decision 2 of
-    docs/archive/2026-08-22_per-tab-deep-linking.md) with no server round trip
+    """ "New chat" is a client-side navigation now (docs/ARCHITECTURE.md#the-url-is-the-pointer;
+    Decision 2 of docs/archive/2026-08-22_per-tab-deep-linking.md) with no server round trip
     at all — asking a second, unrelated question is the whole of it, and the
     first conversation must still be exactly where it was."""
     ask(client, "The conversation being left")

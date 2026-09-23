@@ -1,5 +1,5 @@
 """The reconcile driver's ambiguous-outcome rule (slice 2b of
-docs/account-and-trust-plan.md §5).
+docs/ARCHITECTURE.md#account-deletion-and-trust; reasoning in docs/archive/2026-09-18_account-and-trust.md §5).
 
 Every test fails against today's code — the driver module does not exist, so
 the import itself raises ImportError. The provider boundary is the real

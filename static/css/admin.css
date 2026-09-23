@@ -1428,7 +1428,8 @@ select.admin-input {
   overflow-x: auto;
 }
 
-/* ── Notification Center (docs/notification-center-plan.md §4) ──────────── */
+/* ── Notification Center (docs/ARCHITECTURE.md#notification-center; reasoning
+   in docs/archive/2026-08-24_notification-center.md §4) ─────────────────── */
 
 .admin-textarea {
   resize: vertical;
