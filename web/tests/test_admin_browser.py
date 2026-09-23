@@ -2205,7 +2205,7 @@ def test_the_tier_form_still_edits_both_labels(browser_page: Page):
 
 # ── Tier membership: People is the one selection surface ────────────────────
 # docs/ARCHITECTURE.md#reader-quota. The Tiers tab has two entry points into People
-# (Readers count -> filtered list, "Add readers" -> preset destination); the
+# (Readers count -> filtered list, "Add users" -> preset destination); the
 # actual selecting and moving happens on People, never in a second card.
 
 
@@ -2251,7 +2251,7 @@ def test_the_readers_button_by_keyboard_lands_on_filtered_people(browser_page: P
 
 
 def test_add_readers_presets_the_destination_and_focuses_search(browser_page: Page):
-    """ "Add readers" is additive, not a filter: All tiers stay visible, the
+    """ "Add users" is additive, not a filter: All tiers stay visible, the
     bulk destination is preset, and focus goes to search rather than the
     filter."""
     _open_people(browser_page)
@@ -2593,6 +2593,34 @@ def test_move_button_label_follows_the_selected_destination(browser_page: Page):
     select.select_option("free")
     free_label = select.locator("option[value='free']").text_content()
     expect(browser_page.locator("#people-bulk-move")).to_contain_text(free_label)
+
+
+def test_bulk_move_button_disabled_state_uses_the_site_signal_color(browser_page: Page):
+    """Bootstrap 5.3's button-variant mixin sets its own --bs-btn-disabled-*
+    vars; our .btn-primary override has to remap those too, or the disabled
+    Move button (0 selected, at rest) renders Bootstrap blue instead of the
+    site teal."""
+    _open_people(browser_page)
+
+    move = browser_page.locator("#people-bulk-move")
+    expect(move).to_be_disabled()
+
+    resolve_var = (
+        "(prop) => {"
+        "  const probe = document.createElement('div');"
+        "  probe.style.backgroundColor = `var(${prop})`;"
+        "  document.body.appendChild(probe);"
+        "  const value = getComputedStyle(probe).backgroundColor;"
+        "  probe.remove();"
+        "  return value;"
+        "}"
+    )
+    signal = browser_page.evaluate(resolve_var, "--signal")
+
+    background = move.evaluate("(el) => getComputedStyle(el).backgroundColor")
+    border = move.evaluate("(el) => getComputedStyle(el).borderColor")
+    assert background == signal, f"expected the signal teal {signal}, got {background}"
+    assert border == signal, f"expected the signal teal {signal}, got {border}"
 
 
 def test_a_tier_catalogue_that_never_answers_does_not_hold_the_user_list(

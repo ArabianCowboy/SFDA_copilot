@@ -17,6 +17,9 @@
   --bs-btn-hover-color: var(--fg-on-signal);
   --bs-btn-active-bg: var(--signal-hover);
   --bs-btn-active-border-color: var(--signal-hover);
+  --bs-btn-disabled-bg: var(--signal);
+  --bs-btn-disabled-border-color: var(--signal);
+  --bs-btn-disabled-color: var(--fg-on-signal);
   font-weight: var(--fw-medium);
 }
 

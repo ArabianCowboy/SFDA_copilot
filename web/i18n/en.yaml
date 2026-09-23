@@ -746,8 +746,8 @@ runtime:
       invalid_key: 'A key must start with a letter and use only lower-case letters, digits and underscores.'
       invalid_window: 'The end of the window must be in the future, and after its start.'
       membersButton: 'Readers in {label}: {count}'
-      addReaders: 'Add readers'
-      addReadersTo: 'Add readers to {label}'
+      addUsers: 'Add users'
+      addUsersTo: 'Add users to {label}'
       invalid_member_batch: 'Choose between 1 and 200 readers to move.'
       actor_no_longer_administrator: 'Your administrator access changed while you were working. Reload and try again.'
     # The self-serve deletion ledger (supabase/pending/07 + /10) and the

@@ -86,10 +86,14 @@ TABS = {
             ("settings.hint", "settings.heading"),
         ),
     ),
-    "people": ((".admin-account-open",), ()),
+    "people": (
+        (".admin-account-open",),
+        (("people.moveHint", "page.admin.tabs.people"),),
+    ),
     "account": (
         ("#account-no-password-hint",),
         (
+            ("people.moveHint", "page.admin.tabs.people"),
             ("account.profileHint", "account.profileHeading"),
             ("account.quotaHint", "account.quotaHeading"),
         ),
@@ -119,9 +123,10 @@ TABS = {
 KEPT = {
     "overview": (),
     "settings": (("registrations.bypassHeading", "registrations.bypassNote"), "settings.notLive"),
-    # A consequence read before the Move click (DESIGN.md: never hides). Added
-    # with bulk tier membership, 2026-09-23.
-    "people": ("people.moveHint",),
+    # Moved behind the Users panel "i" 2026-09-24 — a Move is reversible (move
+    # back) and audited, and keeps personal allowances, so it is not a
+    # destructive click that must stay read on the page.
+    "people": (),
     "account": (
         "account.overrideHint",
         "account.overrideWindowHint",
@@ -249,7 +254,7 @@ def test_each_trigger_names_its_topic_and_owns_the_popup_beside_it(browser_page:
         assert f["inside"] is None, f"trigger inside <{f['inside']}>: {f}"
 
 
-def test_the_console_has_twelve_triggers_and_no_two_share_a_name(browser_page: Page):
+def test_the_console_has_thirteen_triggers_and_no_two_share_a_name(browser_page: Page):
     _console(browser_page)
     for tab in TABS:
         _open(browser_page, tab)
@@ -257,7 +262,12 @@ def test_the_console_has_twelve_triggers_and_no_two_share_a_name(browser_page: P
     labels = browser_page.locator("#admin-console .admin-info-btn").evaluate_all(
         "els => els.map((el) => el.getAttribute('aria-label'))"
     )
-    assert len(labels) == sum(len(triggers) for _, triggers in TABS.values()) == 12, labels
+    # "people" and "account" are the same panel, so `people.moveHint`'s trigger
+    # is the SAME DOM element under both — summing `TABS` counts that one
+    # trigger twice (14), but the console-wide locator above sees it once: 13
+    # distinct triggers.
+    assert sum(len(triggers) for _, triggers in TABS.values()) == 14, labels
+    assert len(labels) == 13, labels
     assert len(set(labels)) == len(labels), labels
 
 
@@ -405,7 +415,7 @@ def test_a_popup_at_the_bottom_edge_flips_above_its_button(browser_page: Page):
     browser_page.set_viewport_size({"width": 390, "height": 844})
     _console(browser_page, lang="ar")
     buttons = _open(browser_page, "account").locator(".admin-info-btn")
-    expect(buttons).to_have_count(2)
+    expect(buttons).to_have_count(3)
     button = buttons.last  # Allowance: low on a long page, so it CAN reach the edge.
 
     button.evaluate("(el) => el.scrollIntoView({ block: 'end' })")
@@ -427,7 +437,7 @@ def test_a_repaint_or_a_second_reveal_adds_no_second_panel_trigger(browser_page:
     _console(browser_page)
     panel = _open(browser_page, "tiers")
     rows = browser_page.locator("#admin-console .admin-heading-row")
-    expect(rows).to_have_count(3)
+    expect(rows).to_have_count(4)
 
     # Two repaints: Edit redraws the body in place, Save reloads it.
     panel.locator("tr[data-tier-key='staff'] [data-tier-action='edit']").click()
@@ -452,7 +462,7 @@ def test_a_repaint_or_a_second_reveal_adds_no_second_panel_trigger(browser_page:
     )
     assert fetches == 1, f"ui.js was fetched {fetches} times: a second module instance"
 
-    for index in range(3):
+    for index in range(4):
         expect(rows.nth(index).locator(".admin-info-btn")).to_have_count(1)
         expect(rows.nth(index).locator(".admin-info-pop")).to_have_count(1)
     expect(panel.locator(".admin-info-btn")).to_have_count(2)

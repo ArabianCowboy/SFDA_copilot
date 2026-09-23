@@ -414,7 +414,11 @@ Arabic question mark is "؟", so a Latin "?" in an RTL console reads as a bug, w
 symmetric. The trigger's accessible name is `admin.about` — `About {topic}`, with the heading or
 notice lead as the topic — so a screen reader tells triggers apart by what they explain. It is console-only: the `info` icon
 is in `ADMIN_RUNTIME_ICON_NAMES` alone and `runtime.admin` never reaches a reader page. Promoting it
-takes the five steps in the archived rollout plan's §3.3.
+takes the five steps in the archived rollout plan's §3.3. On 2026-09-24 the People bulk Move
+tip ("moving replaces their current tier; personal allowances are kept") was reclassified as
+standing context and moved behind the Users panel's "i": a Move is reversible (move the reader
+back), audited, and keeps personal allowances, so unlike a destructive click it is not a
+consequence that must stay read before the operator acts.
 
 **A fulfilled request is not a usable one.** `[CORRECTNESS]` `request()` in
 `static/js/admin/services.js` returns `null` for a 200 whose body will not parse — its own

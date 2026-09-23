@@ -567,7 +567,8 @@ select.admin-input {
 
 /* Always shown, "0 selected" with Move disabled at rest, so the first tick
    does not push the table down. The hint takes a line of its own under the
-   controls. */
+   controls, but only appears when the tier catalogue fails to load — the
+   Move tip itself lives behind the panel's "i" instead. */
 .admin-people-bulk {
   display: flex;
   flex-wrap: wrap;

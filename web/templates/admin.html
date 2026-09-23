@@ -188,7 +188,9 @@
 
             <section class="admin-panel" role="tabpanel" id="panel-people"
                 aria-labelledby="tab-people" tabindex="0" hidden>
-                <h1 class="admin-heading">{{ t('page.admin.tabs.people') }}</h1>
+                <div class="admin-heading-row" data-info="admin.people.moveHint">
+                    <h1 class="admin-heading">{{ t('page.admin.tabs.people') }}</h1>
+                </div>
                 {# Two mutually exclusive children, not a fifth tab. An account
                    has no meaning without one being selected, and the tablist's
                    roving-tabindex model assumes every tab is always reachable

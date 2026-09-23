@@ -588,13 +588,13 @@ function fillTierOptions(select, tiers, chosen) {
 }
 
 /* The toolbar's half of the catalogue. `undefined` is "not arrived yet" and
-   `null` is "could not be read": only the second replaces the hint. */
+   `null` is "could not be read": only the second shows the hint. What a Move
+   does is standing context, behind the panel's "i". */
 function fillPeopleBulkTiers(select, hint, tiers, destination) {
   fillTierOptions(select, tiers, destination);
   select.disabled = !tiers?.length;
-  hint.textContent = I18n.t(
-    tiers === null ? 'admin.people.tierFilterUnavailable' : 'admin.people.moveHint',
-  );
+  hint.textContent = tiers === null ? I18n.t('admin.people.tierFilterUnavailable') : '';
+  hint.hidden = tiers !== null;
 }
 
 /**
@@ -623,10 +623,12 @@ export function populatePeopleTiers(tiers, { filter = '', destination = '' } = {
  * clears the selection it acts on, too — and it leaves with the list when an
  * account is opened. Always shown, reading "0 selected" with Move disabled at
  * rest: a toolbar that appeared on the first tick pushed the table down under
- * the cursor (DESIGN.md, reserve a revealed control's space at rest), and it
- * carries the catalogue-failure hint, which must be readable before anything
- * is ticked. The destination is the handler's, passed back in, so a choice
- * survives paging, filtering and the Tiers tab's "Add readers" preset.
+ * the cursor (DESIGN.md, reserve a revealed control's space at rest). What a
+ * Move does now lives behind the panel's "i" (standing context); the hint
+ * beside the toolbar carries only the catalogue-failure state, and stays
+ * hidden while the catalogue reads fine. The destination is the handler's,
+ * passed back in, so a choice survives paging, filtering and the Tiers tab's
+ * "Add users" preset.
  */
 function peopleBulkToolbar(tiers, destination) {
   const toolbar = document.createElement('div');
@@ -3639,9 +3641,9 @@ export function renderTiers(tiers, { editingKey = null } = {}) {
       return button;
     };
 
-    const add = rowAction('add', 'admin.tiers.addReaders');
+    const add = rowAction('add', 'admin.tiers.addUsers');
     add.dataset.tierKey = tier.key;
-    add.setAttribute('aria-label', I18n.t('admin.tiers.addReadersTo', { label }));
+    add.setAttribute('aria-label', I18n.t('admin.tiers.addUsersTo', { label }));
     group.append(add, rowAction('edit', 'admin.tiers.edit'));
 
     if (tier.key !== 'free') {

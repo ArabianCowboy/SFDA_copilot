@@ -598,8 +598,8 @@ runtime:
       invalid_key: 'يجب أن يبدأ المعرّف بحرف وأن يحتوي على حروف إنجليزية صغيرة وأرقام وشرطات سفلية فقط.'
       invalid_window: 'يجب أن تكون نهاية المدة في المستقبل وبعد بدايتها.'
       membersButton: 'القرّاء في {label}: {count}'
-      addReaders: 'إضافة قرّاء'
-      addReadersTo: 'إضافة قرّاء إلى {label}'
+      addUsers: 'إضافة مستخدمين'
+      addUsersTo: 'إضافة مستخدمين إلى {label}'
       invalid_member_batch: 'اختر بين 1 و200 قارئ للنقل.'
       actor_no_longer_administrator: 'تغيّرت صلاحيتك أثناء العمل. أعد التحميل ثم حاول مجدداً.'
     deletions:
