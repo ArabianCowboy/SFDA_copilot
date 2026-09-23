@@ -33,7 +33,7 @@ bottom of this file: [How this file works](#how-this-file-works).
 ## Open now
 
 - [A deletion request may leave the requesting access token usable until it expires](#a-deletion-request-may-leave-the-requesting-access-token-usable-until-it-expires) — diagnosed, unconfirmed; one bearer-token call decides it.
-- [Live code cites plan sections instead of the live contract](#live-code-cites-plan-sections-instead-of-the-live-contract) — blocks archiving two finished plans; count citations, do not trust a written figure.
+- [Live code cites plan sections instead of the live contract](#live-code-cites-plan-sections-instead-of-the-live-contract) — blocks archiving three finished plans; count citations, do not trust a written figure.
 - [Leaked-password protection is disabled in Supabase Auth](#leaked-password-protection-is-disabled-in-supabase-auth) — blocked on a Pro-plan upgrade, not code.
 - [`POST /auth/login` is a 410 tombstone pending deletion](#post-authlogin-is-a-410-tombstone-pending-deletion) — tombstone shipped; the bare deletion is still owed next release.
 - [A silent truncation from a provider that omits `finish_reason` is still undetected](#a-silent-truncation-from-a-provider-that-omits-finish_reason-is-still-undetected) — diagnosed; needs `include_usage`, not a different default.
@@ -77,6 +77,8 @@ bottom of this file: [How this file works](#how-this-file-works).
 - [One Realtime socket per reader, not one per visible tab](#one-realtime-socket-per-reader-not-one-per-visible-tab) — not started; costs nothing measurable yet, written down because the cost is the interesting half.
 
 - [Confirm on the live site that chat streaming arrives token by token](#confirm-on-the-live-site-that-chat-streaming-arrives-token-by-token) — post-restart verification; circumstantial log evidence says yes, owed by a human.
+- [The console's "i" popups have been heard through VoiceOver only, not NVDA or JAWS](#the-consoles-i-popups-have-been-heard-through-voiceover-only-not-nvda-or-jaws) — not started; a manual screen-reader check, owed by a human.
+- [Seven console strings are in both catalogues but never rendered](#seven-console-strings-are-in-both-catalogues-but-never-rendered) — diagnosed 2026-09-23; re-trace each key, then delete.
 
 ---
 
@@ -126,7 +128,9 @@ copy should promise session termination at all.
 
 **Where:** the per-tab set was repointed at
 `docs/archive/2026-08-22_per-tab-deep-linking.md` on 2026-09-12;
-`registrations-pause-plan.md` and `notification-center-plan.md` are still cited from `docs/`.
+`registrations-pause-plan.md`, `notification-center-plan.md` and `admin-analytics-v1-plan.md`
+(implemented 2026-09-20; its migration headers fall under the exception below) are still cited
+from `docs/`.
 Count the citing files with `git ls-files -z | xargs -0 grep -l '<path>'` rather than trusting
 any figure — every hand-written count of this in the repo has been wrong, including the ones
 written while filing this entry. Two migration headers still name the pre-archive path:
@@ -156,7 +160,7 @@ an argument for adding anchors, not for citing history.
 is load-bearing (pointer §1, preflight §3.4, CSRF §3.5, deletions §5.x, headers §6.1), then
 citations become `live authority; reasoning in archive §Z` — archive-only for genuinely
 historical asides. It spans ~19 files and should not ride along with an unrelated change. Doing
-it is also what makes archiving the two remaining finished plans a `git mv` again instead of a
+it is also what makes archiving the three remaining finished plans a `git mv` again instead of a
 rewrite, so it blocks that cleanup.
 
 **The two migration headers are a deliberate exception.** An applied migration's file is a
@@ -2176,6 +2180,61 @@ multi-context browser tests — `test_multi_tab_conversations.py` is the pattern
 are the slowest and most contention-prone tests in the suite, which is the subject of its
 own entry above. Worth doing when someone can show the duplicate polling costs something;
 not before.
+
+---
+
+### The console's "i" popups have been heard through VoiceOver only, not NVDA or JAWS
+
+**Where:** `infoPopup` in `static/js/admin/ui.js`, and every "i" it builds across the admin
+console. The rollout and its accessibility contract are in
+`docs/archive/2026-09-23_info-popup-rollout.md` §5.2.
+
+**What is wrong.** Nothing known; only one screen reader has been asked. With VoiceOver on
+macOS, opening an "i" reads the popup text aloud right after "expanded", because the popover
+sits directly after its button in the DOM (verified 2026-09-23, archived in
+`docs/archive/TODO-resolved.md`). NVDA with Firefox and JAWS with Chrome have not been checked,
+and the browser suite cannot check them: it can read the accessibility tree, not what a screen
+reader says.
+
+**Who it reaches.** An operator using NVDA or JAWS, on any console tab with an "i". Nobody has
+reported a problem.
+
+**How it was found.** The rollout plan (§5.2), which took the Analytics tab's triggers to the
+rest of the console on the strength of that VoiceOver-only check.
+
+**What fixing it would disturb.** The check costs no code: in both pairings, open a zone
+heading's "i", a panel heading's and the floor notice's, and listen for the text after
+"expanded". If either reader does not announce it, the fix is one `aria-describedby` on the
+trigger in `infoPopup`, one browser-suite assertion and an `ASSET_VERSION` bump. **Do not add
+it before the check says so:** VoiceOver already reads the text, and `aria-describedby` would
+make it announce the text twice.
+
+---
+
+### Seven console strings are in both catalogues but never rendered
+
+**Where:** `runtime.admin` in `web/i18n/en.yaml` and `ar.yaml`: `audit.heading`,
+`notifications.heading`, `notifications.composer.reviewHeading` and `.resendFrom`,
+`signedInAs`, `roleLabel`, and `settings.reasoningNotSupported`.
+
+**What is wrong.** Nothing draws them. Checked 2026-09-23: no `I18n.t` literal in `static/js/`
+names them, and none of the template-built keys (`admin.audit.${key}`, `admin.${key}` and the
+rest) can produce them. The parity test still makes each one a translation obligation in two
+languages, and anyone reading the catalogue takes them for live copy. The info-popup rollout had
+to trace every one before it could classify the strings around it.
+
+**Who it reaches.** No reader and no operator. It reaches contributors and translators.
+
+**How it was found.** The info-popup rollout's inventory
+(`docs/archive/2026-09-23_info-popup-rollout.md` §4.1). It was re-checked by grep for literal
+and template-built keys when that plan was archived.
+
+**What fixing it would disturb.** Deleting 7 keys from each catalogue, in its own commit rather
+than alongside a feature. Re-trace each key first, because planned work may want one:
+`reviewHeading` and `resendFrom` read like an unbuilt review step in the composer. No test names
+any of them. **`account.absentHeading` is not one of the seven.** It is drawn only while
+`absentEntries` in `renderAccountDetail` is non-empty, which it is not today, but that block is
+kept on purpose (see its comment in `static/js/admin/ui.js`).
 
 ---
 

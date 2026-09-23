@@ -382,6 +382,9 @@ runtime:
   # the runtime slice is inlined as window.__I18N — and this block ships to
   # /admin alone, never to the anonymous landing page.
   admin:
+    # The accessible name of an "i" trigger; {topic} is the zone heading or
+    # the notice lead it explains.
+    about: 'About {topic}'
     accessDenied: 'This console is for administrators.'
     accessCheckFailed: 'Could not confirm your access. Reload to try again.'
     # Distinct from signedOut. The server could not reach the sign-in service,
@@ -407,9 +410,6 @@ runtime:
       unavailable: 'Could not load this just now.'
     analytics:
       heading: 'Saved conversations'
-      # The accessible name of an "i" trigger; {topic} is the zone heading or
-      # the notice lead it explains.
-      about: 'About {topic}'
       source: 'Counted from conversations readers have saved. When a reader deletes a conversation, or an account is deleted, its questions leave these figures — so a number here can go down.'
       privacy: 'These lists show saved question text without account identifiers.'
       filtersLabel: 'Filter the figures below'
@@ -657,7 +657,6 @@ runtime:
       noProfileMark: 'No profile'
       brokenBody: 'It exists in authentication but has no profile row, so its role and access cannot be read or changed. It was most likely created before the signup trigger was repaired.'
     people:
-      hint: 'Accounts on this instance. Disabling chat access stops new questions; a conversation already streaming finishes, and the person can still sign in.'
       empty: 'No accounts found.'
       loadFailed: 'Could not load accounts.'
       search: 'Search by email'
@@ -678,7 +677,7 @@ runtime:
       disable: 'Disable chat access'
       enable: 'Restore chat access'
       reasonPrompt: 'Why is chat access being disabled? This is recorded.'
-      confirmDisable: 'Disable chat access for {email}?'
+      confirmDisable: 'Disable chat access for {email}? That stops new questions; a conversation already streaming finishes, and the person can still sign in.'
       confirmDemote: 'Remove administrator access from {email}?'
       changed: 'Account updated.'
       changeFailed: 'Could not update the account.'
@@ -695,6 +694,7 @@ runtime:
       pageSize: 'Rows per page'
     # docs/notification-center-plan.md. The admin composer and send history.
     tiers:
+      hint: "A tier is a group of readers who share one daily allowance. Changes take effect on each reader's next question."
       key: 'Key'
       keyHint: 'The key is permanent. Lower-case letters, digits and underscores; it is what the database and the notification composer both name.'
       label: 'Label'
@@ -752,7 +752,6 @@ runtime:
       deletion_terminal: 'That deletion is already finished — nothing left to drive.'
     notifications:
       heading: 'Notifications'
-      hint: 'Send a message to targeted readers as a toast, banner, or blocking modal.'
       composer:
         heading: 'New notification'
         typeLabel: 'Type'
@@ -1134,7 +1133,6 @@ page:
   # the browser (test_rtl.py asserts it), so anything JS must draw belongs
   # under runtime.admin instead.
   admin:
-    tiersHint: "A tier is a group of readers who share one daily allowance. Changes take effect on each reader's next question."
     title: 'Administration · SFDA Copilot'
     consoleLabel: 'Administration'
     skipToContent: 'Skip to console'

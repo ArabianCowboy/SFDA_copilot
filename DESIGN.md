@@ -393,18 +393,28 @@ nothing until opened; the lead zone (controls, stamp, live region) is drawn once
 only `#analytics-results` is ever repainted, so a focused `<select>` is never rebuilt
 (`docs/archive/2026-09-23_admin-analytics-tab.md`).
 
-**Standing context may hide; a state may not.** `[CORRECTNESS]` Where the numbers come from,
-how the data is handled, what a term means — that is standing context, and it goes behind an
-"i" (`infoPopup` in `static/js/admin/ui.js`: a native `popover`, anchored under its trigger,
-flipping to stay in the viewport, centred by the UA where anchor positioning is missing). What
-never hides: "could not load", "nothing yet", the small-sample line, the floor notice's lead
-sentence, control labels and the stamp — anything that changes what the operator does next. The
-trigger sits directly after a zone heading (or a notice's lead), never in a table cell and never
-one per tile: the tile labels were written to be self-describing, and an icon beside every label
-is the most common way this pattern goes wrong. It is an "i", not a "?": the Arabic question mark
-is "؟", so a Latin "?" in an RTL console reads as a bug, while "i" is symmetric. The trigger's
-accessible name is `About {topic}`, with the heading as the topic, so two triggers in one zone
-never share a name.
+**Standing context may hide; a state may not.** `[CORRECTNESS]` This holds on every console
+tab, not only Analytics, where it started. Where the data comes from, what a term means, how a
+figure is counted, why a rule exists — that is standing context, and it goes behind an "i"
+(`infoPopup` in `static/js/admin/ui.js`: a native `popover`, anchored under its trigger,
+flipping to stay in the viewport with a `--space-4` gutter and at least 12rem wide, centred by
+the UA where anchor positioning is missing). A
+string hides only if it is standing context, the operator would act the same without reading
+it, it is not a privacy, consent or independence disclosure, and there is a heading or notice
+lead to hang the "i" on; copy that only repeats what the UI already shows is deleted instead,
+because an "i" still costs a click and a tab stop. What never hides: "could not load", "nothing
+yet", the small-sample line, the floor notice's lead sentence, field requirements, a consequence
+read before a destructive click, control labels and the stamp — anything that changes what the
+operator does next. The trigger sits directly after a zone heading (`section(title, info)`) or a
+notice's lead, never in a table cell and never one per tile: the tile labels were written to be
+self-describing, and an icon beside every label is the most common way this pattern goes wrong.
+A panel's own "i" (`panelInfo`) sits beside its `h1`, in `.admin-heading-row`, never inside it:
+a button inside a heading joins the heading's accessible name. It is an "i", not a "?": the
+Arabic question mark is "؟", so a Latin "?" in an RTL console reads as a bug, while "i" is
+symmetric. The trigger's accessible name is `admin.about` — `About {topic}`, with the heading or
+notice lead as the topic — so a screen reader tells triggers apart by what they explain. It is console-only: the `info` icon
+is in `ADMIN_RUNTIME_ICON_NAMES` alone and `runtime.admin` never reaches a reader page. Promoting it
+takes the five steps in the archived rollout plan's §3.3.
 
 **A fulfilled request is not a usable one.** `[CORRECTNESS]` `request()` in
 `static/js/admin/services.js` returns `null` for a 200 whose body will not parse — its own

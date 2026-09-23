@@ -168,6 +168,19 @@
   margin-block: 0 var(--space-4);
 }
 
+/* A panel h1 with its "i" beside it (`panelInfo`). The row takes the h1's
+   bottom margin so the button centres on the heading, not on its margin. */
+.admin-heading-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-block-end: var(--space-4);
+}
+
+.admin-heading-row > .admin-heading {
+  margin-block-end: 0;
+}
+
 .admin-panel-body {
   display: flex;
   flex-direction: column;
@@ -1390,10 +1403,16 @@ select.admin-input {
 
 /* Without anchor positioning the UA centres the popover in the viewport,
    which is still correct. */
+/* The inline-end margin is the viewport gutter: without it a popup whose "i"
+   sits mid-row shrank to the edge (x=0 at 390px). The minimum width turns a
+   100px-wide column into a flip to the button's other side, and `flip-inline`
+   carries the margin across with it. */
 @supports (position-area: block-end) {
   .admin-info-pop {
     inset: auto;
-    margin: var(--space-1) 0;
+    min-inline-size: min(12rem, calc(100vw - 2 * var(--space-4)));
+    margin-block: var(--space-1);
+    margin-inline: 0 var(--space-4);
     position-area: block-end span-inline-end;
     position-try-fallbacks:
       flip-block,

@@ -74,6 +74,7 @@ export function revealConsole(identity) {
       body.appendChild(empty);
     }
   });
+  console_.querySelectorAll('.admin-heading-row').forEach(panelInfo);
 }
 
 /** Select one tab, updating both ARIA state and roving tabindex. */
@@ -121,14 +122,9 @@ export function renderRegistrations({ signup_enabled: enabled, default: deployed
      signup form and nothing else — read as though it described the whole
      Settings tab. Naming the zone attributes it without touching the copy,
      and it is the shape the account page already uses for the same problem. */
-  const zone = section(I18n.t('admin.registrations.heading'));
+  const zone = section(I18n.t('admin.registrations.heading'), I18n.t('admin.registrations.hint'));
   const card = document.createElement('div');
   card.className = 'admin-card admin-editor-card is-measured';
-
-  const hint = document.createElement('p');
-  hint.className = 'admin-form-hint';
-  hint.textContent = I18n.t('admin.registrations.hint');
-  card.appendChild(hint);
 
   // Above the toggle, not below it as small print: an operator deciding
   // whether to click is exactly the person who needs to read this FIRST —
@@ -298,7 +294,7 @@ export function renderSettings({
   if (!body) return;
   body.textContent = '';
 
-  const zone = section(I18n.t('admin.settings.heading'));
+  const zone = section(I18n.t('admin.settings.heading'), I18n.t('admin.settings.hint'));
 
   const form = document.createElement('form');
   form.id = 'settings-form';
@@ -310,11 +306,6 @@ export function renderSettings({
      and four values two-across inside a bordered card are separated already. */
   form.className = 'admin-card admin-editor-card is-measured';
   form.noValidate = true;
-
-  const hint = document.createElement('p');
-  hint.className = 'admin-form-hint';
-  hint.textContent = I18n.t('admin.settings.hint');
-  form.appendChild(hint);
 
   // Said here, where the model is chosen, when the model being chosen is not
   // the model answering. This form otherwise describes the stored settings and
@@ -788,11 +779,6 @@ export function renderUsers({
   if (!body) return;
   body.textContent = '';
 
-  const hint = document.createElement('p');
-  hint.className = 'admin-form-hint';
-  hint.textContent = I18n.t('admin.people.hint');
-  body.appendChild(hint);
-
   if (!users.length) {
     const empty = document.createElement('p');
     empty.className = 'admin-empty';
@@ -1004,11 +990,6 @@ export function renderAudit(entries, { append = false } = {}) {
   if (!append) {
     body.textContent = '';
 
-    const hint = document.createElement('p');
-    hint.className = 'admin-form-hint';
-    hint.textContent = I18n.t('admin.audit.hint');
-    body.appendChild(hint);
-
     if (!entries.length) {
       const empty = document.createElement('p');
       empty.className = 'admin-empty';
@@ -1089,11 +1070,6 @@ export function renderDeletions(rows) {
   const body = el('deletions-body');
   if (!body) return;
   body.textContent = '';
-
-  const hint = document.createElement('p');
-  hint.className = 'admin-form-hint';
-  hint.textContent = I18n.t('admin.deletions.hint');
-  body.appendChild(hint);
 
   if (!rows || !rows.length) {
     const empty = document.createElement('p');
@@ -1506,7 +1482,10 @@ let infoSeq = 0;
     browser owns toggling, Esc, light dismiss, focus return and the expanded
     state. A span, so it is valid inside the floor notice's <strong> and no
     `p` rule reaches it. The anchor is named explicitly: `popovertarget`'s
-    implicit anchor shipped later than `position-area` did. */
+    implicit anchor shipped later than `position-area` did.
+    @param {string} text the standing context, plain text
+    @param {string} topic the visible text of what it explains
+    @returns {[HTMLButtonElement, HTMLSpanElement]} */
 function infoPopup(text, topic) {
   const button = document.createElement('button');
   const pop = document.createElement('span');
@@ -1517,10 +1496,19 @@ function infoPopup(text, topic) {
   button.type = 'button';
   button.className = 'admin-info-btn';
   button.setAttribute('popovertarget', pop.id);
-  button.setAttribute('aria-label', I18n.t('admin.analytics.about', { topic }));
+  button.setAttribute('aria-label', I18n.t('admin.about', { topic }));
   button.style.anchorName = pop.style.positionAnchor = `--${pop.id}`;
   button.append(iconElement('info', 14));
   return [button, pop];
+}
+
+/** A panel's standing context, beside its server-rendered h1 — never inside
+    it, where the button would join the heading's accessible name. Drawn once
+    at reveal; repaints clear only the panel body, and the guard makes a second
+    reveal a no-op. */
+function panelInfo(row) {
+  if (row.querySelector('.admin-info-btn')) return;
+  row.append(...infoPopup(I18n.t(row.dataset.info), row.querySelector('h1').textContent));
 }
 
 /** A row of controls inside a card, on the profile form's own grid. */
@@ -1531,12 +1519,11 @@ function cardRow(...fields) {
   return row;
 }
 
-/** The Save bar every editor card ends with: one primary action, one note. */
-function cardActions(save, note = null) {
+/** The Save bar every editor card ends with: one primary action. */
+function cardActions(save) {
   const actions = document.createElement('div');
   actions.className = 'admin-profile-actions';
   actions.append(save);
-  if (note) actions.append(note);
   return actions;
 }
 
@@ -1674,7 +1661,7 @@ function quotaForm(account, tiers) {
   save.className = 'btn btn-primary btn-sm';
   save.id = 'account-quota-save';
   save.textContent = I18n.t('admin.account.saveQuota');
-  form.append(cardActions(save, cardHint(I18n.t('admin.account.quotaHint'))));
+  form.append(cardActions(save));
   return form;
 }
 
@@ -1862,7 +1849,10 @@ export function renderAccountDetail(account, entries, selfId = null, tiers = [])
 
   /* ── Zone 2: profile, editable ───────────────────────────────────────────── */
   if (account.has_profile) {
-    const profileSection = section(I18n.t('admin.account.profileHeading'));
+    const profileSection = section(
+      I18n.t('admin.account.profileHeading'),
+      I18n.t('admin.account.profileHint'),
+    );
     profileSection.appendChild(profileForm(account));
     detail.appendChild(profileSection);
   }
@@ -1872,7 +1862,10 @@ export function renderAccountDetail(account, entries, selfId = null, tiers = [])
      operator edits, not an action taken against them. Hidden without a profile,
      which the RPC refuses anyway (AD003). */
   if (account.has_profile) {
-    const quotaSection = section(I18n.t('admin.account.quotaHeading'));
+    const quotaSection = section(
+      I18n.t('admin.account.quotaHeading'),
+      I18n.t('admin.account.quotaHint'),
+    );
     quotaSection.appendChild(quotaForm(account, tiers));
     detail.appendChild(quotaSection);
   }
@@ -2064,11 +2057,6 @@ function profileForm(account) {
   save.textContent = I18n.t('admin.account.saveProfile');
   actions.appendChild(save);
 
-  const note = document.createElement('p');
-  note.className = 'admin-form-hint';
-  note.textContent = I18n.t('admin.account.profileHint');
-  actions.appendChild(note);
-
   form.appendChild(actions);
   return form;
 }
@@ -2244,11 +2232,6 @@ function buildComposerForm() {
      sent", and only one of them said so. */
   form.className = 'admin-card admin-editor-card is-measured';
   form.noValidate = true;
-
-  const hint = document.createElement('p');
-  hint.className = 'admin-form-hint';
-  hint.textContent = I18n.t('admin.notifications.hint');
-  form.appendChild(hint);
 
   const error = document.createElement('p');
   error.className = 'admin-form-hint is-warning';
@@ -3499,7 +3482,10 @@ export function renderTiers(tiers, { editingKey = null } = {}) {
   // cascade through profiles.tier and every notification targeting it, and the
   // console deliberately offers no rename.
   const editing = (tiers || []).find((t) => t.key === editingKey) || null;
-  const zone = section(I18n.t(editing ? 'admin.tiers.editHeading' : 'admin.tiers.addHeading'));
+  const zone = section(
+    I18n.t(editing ? 'admin.tiers.editHeading' : 'admin.tiers.addHeading'),
+    I18n.t('admin.tiers.labelsHint'),
+  );
 
   const form = document.createElement('form');
   form.className = 'admin-card admin-editor-card is-measured';
@@ -3528,11 +3514,7 @@ export function renderTiers(tiers, { editingKey = null } = {}) {
 
     controls.push(cardField(`tier-${name}`, I18n.t(`admin.tiers.${labelKey}`), input));
   }
-  form.append(
-    cardRow(...controls),
-    cardHint(I18n.t('admin.tiers.labelsHint')),
-    cardHint(I18n.t('admin.tiers.keyHint')),
-  );
+  form.append(cardRow(...controls), cardHint(I18n.t('admin.tiers.keyHint')));
 
   const save = document.createElement('button');
   save.type = 'submit';

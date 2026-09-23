@@ -213,20 +213,25 @@
                and the inline create/edit form. #}
             <section class="admin-panel" role="tabpanel" id="panel-tiers"
                 aria-labelledby="tab-tiers" tabindex="0" hidden>
-                <h1 class="admin-heading">{{ t('page.admin.tabs.tiers') }}</h1>
-                <p class="admin-form-hint">{{ t('page.admin.tiersHint') }}</p>
+                <div class="admin-heading-row" data-info="admin.tiers.hint">
+                    <h1 class="admin-heading">{{ t('page.admin.tabs.tiers') }}</h1>
+                </div>
                 <div id="tiers-body" class="admin-panel-body"></div>
             </section>
 
             <section class="admin-panel" role="tabpanel" id="panel-deletions"
                 aria-labelledby="tab-deletions" tabindex="0" hidden>
-                <h1 class="admin-heading">{{ t('page.admin.tabs.deletions') }}</h1>
+                <div class="admin-heading-row" data-info="admin.deletions.hint">
+                    <h1 class="admin-heading">{{ t('page.admin.tabs.deletions') }}</h1>
+                </div>
                 <div id="deletions-body" class="admin-panel-body"></div>
             </section>
 
             <section class="admin-panel" role="tabpanel" id="panel-audit"
                 aria-labelledby="tab-audit" tabindex="0" hidden>
-                <h1 class="admin-heading">{{ t('page.admin.tabs.audit') }}</h1>
+                <div class="admin-heading-row" data-info="admin.audit.hint">
+                    <h1 class="admin-heading">{{ t('page.admin.tabs.audit') }}</h1>
+                </div>
                 <div id="audit-body" class="admin-panel-body"></div>
             </section>
 

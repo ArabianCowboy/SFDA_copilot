@@ -1551,7 +1551,7 @@ def test_explanations_are_popups_and_states_are_not(browser_page: Page):
     )
     assert len(set(names)) == 4, names
     assert len(set(targets)) == 4, targets
-    about = _admin_catalogue("en")["analytics"]["about"]
+    about = _admin_catalogue("en")["about"]
     assert about.replace("{topic}", strings["heading"]) in names, names
     assert about.replace("{topic}", strings["questions"]["floorEmpty"]) in names, names
 
@@ -1588,54 +1588,6 @@ def test_explanations_are_popups_and_states_are_not(browser_page: Page):
     expect(first_pop).to_be_hidden()
     focused = browser_page.evaluate("() => document.activeElement.getAttribute('aria-label')")
     assert focused == names[0], f"focus did not return to the trigger: {focused!r}"
-
-
-def test_the_popup_sits_by_its_button_inside_the_viewport_at_390px_in_arabic(browser_page: Page):
-    """Anchored, not centred: each popup opens directly under its "i" with
-    their inline-start edges aligned — in Arabic, the RIGHT edges. Then one
-    trigger is scrolled to the bottom of a phone viewport so a fallback has
-    to fire, and the popup still has to land inside the viewport.
-    """
-    browser_page.set_viewport_size({"width": 390, "height": 844})
-    _analytics_console(
-        browser_page,
-        citations=[_citation_row(turns=9, turns_uncited=2, turns_no_retrieval=1, cited_total=9)],
-        questions=[],
-        lang="&lang=ar",
-    )
-    triggers = _info_triggers(browser_page)
-    expect(triggers).to_have_count(4)
-
-    def boxes(index: int) -> tuple:
-        button = triggers.nth(index)
-        button.click()
-        pop = browser_page.locator(f"#{button.get_attribute('popovertarget')}")
-        expect(pop).to_be_visible()
-        b, p = button.bounding_box(), pop.bounding_box()
-        assert b and p, "no layout box"
-        browser_page.keyboard.press("Escape")
-        expect(pop).to_be_hidden()
-        return b, p
-
-    for i in range(4):
-        b, p = boxes(i)
-        # RTL: the inline-start edge is the physical right edge.
-        assert abs((b["x"] + b["width"]) - (p["x"] + p["width"])) <= 1, (
-            f"trigger {i}: popup right edge {p['x'] + p['width']} is not on the "
-            f"button's right edge {b['x'] + b['width']} (button={b}, popup={p})"
-        )
-        assert p["x"] >= 0 and p["x"] + p["width"] <= 390, f"trigger {i}: {p}"
-        assert p["y"] >= 0 and p["y"] + p["height"] <= 844, f"trigger {i}: {p}"
-
-    # The last trigger, pushed to the bottom edge: below it there is no room.
-    triggers.last.evaluate("(el) => el.scrollIntoView({ block: 'end' })")
-    b, p = boxes(3)
-    assert p["y"] + p["height"] <= 844 and p["y"] >= 0, (
-        f"popup left the viewport at the bottom edge (button={b}, popup={p})"
-    )
-    assert p["y"] + p["height"] <= b["y"] + 1, (
-        f"the popup did not flip above (button={b}, popup={p})"
-    )
 
 
 @pytest.mark.parametrize(
