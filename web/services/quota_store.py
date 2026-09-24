@@ -308,7 +308,7 @@ class InMemoryQuotaBackend:
                 },
                 "staff": {
                     "label_en": "Staff",
-                    "label_ar": "الموظفون",
+                    "label_ar": "الإداريين",
                     "daily_message_limit": 200,
                     "ordering": 10,
                 },

@@ -164,7 +164,7 @@ runtime:
       roleAdmin: 'مسؤول'
       roleUser: 'قارئ'
       tierFree: 'مجاني'
-      tierStaff: 'الموظفون'
+      tierStaff: 'الإداريين'
       quotaToday: '{used} من {limit} سؤالًا اليوم'
       quotaResets: 'يُعاد الفتح {resets_at}'
       quotaUntil: '{limit} سؤالًا يوميًا حتى {date}'
