@@ -501,6 +501,8 @@ def test_analytics_numbers_stay_latin_and_carry_no_bidi_marks_in_arabic(browser_
         questions=[_question_row("ما هي المدة؟", asks=6, uncited=1, askers=None)],
         lang="&lang=ar",
     )
+    # Every zone must have drawn, or the scan checks only the ones that won.
+    expect(_zone(browser_page, 2).locator("table")).to_be_visible()
 
     machine_texts = browser_page.eval_on_selector_all(
         "#analytics-body .admin-cell-machine", "els => els.map(e => e.textContent)"
@@ -811,6 +813,9 @@ def test_the_analytics_region_does_not_overflow_at_390px_in_arabic(browser_page:
         uncited=[_question_row("ما هي مدة الترخيص؟", asks=5, uncited=1, askers=None)],
         lang="&lang=ar",
     )
+    # The helper returns once the panel is visible, with the three requests
+    # possibly still in flight; measure only after the last zone has drawn.
+    expect(_zone(browser_page, 2).locator("table")).to_be_visible()
 
     overflows = browser_page.evaluate(
         "() => document.documentElement.scrollWidth > document.documentElement.clientWidth"
