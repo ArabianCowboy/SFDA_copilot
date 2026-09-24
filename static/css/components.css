@@ -1930,6 +1930,17 @@
   gap: var(--space-3);
   padding-block: var(--space-1);
 }
+.source-diag-scores {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
+  font-size: var(--fs-100);
+  color: var(--fg-muted);
+}
+.source-diag-pair {
+  display: inline-flex;
+  gap: var(--space-2);
+}
 
 /* ——————————————— The shelf ———————————————
    The rail read as a shelf seen edge-on: one spine per cited document, one tab

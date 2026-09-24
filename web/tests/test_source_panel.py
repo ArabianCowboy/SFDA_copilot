@@ -17,7 +17,9 @@ The passages now live in a panel — the rail at >=1200px, a bottom sheet below
 """
 
 import re
+from pathlib import Path
 
+import yaml
 from playwright.sync_api import Page, expect
 
 from .conftest import (
@@ -31,6 +33,7 @@ from .conftest import (
 
 WIDE = {"width": 1600, "height": 900}
 NARROW = {"width": 900, "height": 800}
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def _ask(page: Page, text: str = "What must the PSSF contain?") -> None:
@@ -1040,6 +1043,47 @@ def test_the_panel_renders_in_arabic_rtl(sourced_page: Page):
 
     # Page numbers stay LTR-isolated so bidi cannot reorder them inside Arabic.
     expect(sourced_page.locator("#source-panel .tab-page").first).to_have_attribute("dir", "ltr")
+
+
+def test_ranking_figures_read_right_to_left_in_arabic(sourced_page: Page):
+    """Each figure follows its own label in reading order. The row used to be
+    one `dir="ltr"` run, which laid the three Arabic labels out left-to-right:
+    a reader starting at the right met the keyword figure first, with its
+    number on the far side of its label."""
+    sourced_page.set_viewport_size(WIDE)
+    sourced_page.evaluate("() => localStorage.setItem('lang', 'ar')")
+    sourced_page.goto("/?testing=true&lang=ar")
+    _ask(sourced_page, "ما الذي يجب أن يتضمنه الملف؟")
+    sourced_page.locator(".source-trigger").click()
+    sourced_page.locator(".source-diag-toggle").click()
+    row = sourced_page.locator(".source-diag-row").first
+    expect(row).to_be_visible()
+
+    catalogue = yaml.safe_load((REPO_ROOT / "web/i18n/ar.yaml").read_text(encoding="utf-8"))
+    cite = catalogue["runtime"]["cite"]
+    labels = [cite[k] for k in ("combinedMatch", "semanticMatch", "keywordMatch")]
+    boxes = row.evaluate(
+        """(row, labels) => {
+          const rectOf = (needle) => {
+            const walk = document.createTreeWalker(row, NodeFilter.SHOW_TEXT);
+            for (let n = walk.nextNode(); n; n = walk.nextNode()) {
+              const at = n.data.indexOf(needle);
+              if (at < 0) continue;
+              const range = document.createRange();
+              range.setStart(n, at);
+              range.setEnd(n, at + needle.length);
+              const r = range.getBoundingClientRect();
+              return { left: r.left, right: r.right };
+            }
+            return null;
+          };
+          return labels.map(rectOf);
+        }""",
+        labels,
+    )
+    assert all(boxes), f"a label is missing from the row: {boxes}"
+    rights = [b["right"] for b in boxes]
+    assert rights == sorted(rights, reverse=True), f"labels not in RTL order: {boxes}"
 
 
 def test_a_marker_free_answer_renders_no_control_in_arabic_either(uncited_page: Page):

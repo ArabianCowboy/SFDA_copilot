@@ -624,13 +624,23 @@ export const SourcePanel = {
 
     for (const source of sources) {
       const row = DOMCache.createElement('div', 'source-diag-row');
-      row.innerHTML =
-        `<span class="source-index">${source.index}</span>` +
-        `<span class="source-diag-score" dir="ltr"></span>`;
-      row.querySelector('.source-diag-score').textContent =
-        `${I18n.t('cite.combinedMatch')} ${fmt(source.score)}   ` +
-        `${I18n.t('cite.semanticMatch')} ${fmt(source.semantic_score)}   ` +
-        `${I18n.t('cite.keywordMatch')} ${fmt(source.lexical_score)}`;
+      row.innerHTML = `<span class="source-index">${source.index}</span>`;
+      // One pair per figure, laid out in the page's direction: only the number
+      // is LTR. A single dir="ltr" run put the Arabic labels in English order.
+      const scores = DOMCache.createElement('span', 'source-diag-scores');
+      for (const [key, value] of [
+        ['cite.combinedMatch', source.score],
+        ['cite.semanticMatch', source.semantic_score],
+        ['cite.keywordMatch', source.lexical_score],
+      ]) {
+        const pair = DOMCache.createElement('span', 'source-diag-pair');
+        const figure = DOMCache.createElement('span', 'source-diag-score');
+        figure.dir = 'ltr';
+        figure.textContent = fmt(value);
+        pair.append(I18n.t(key), figure);
+        scores.appendChild(pair);
+      }
+      row.appendChild(scores);
       list.appendChild(row);
     }
 
