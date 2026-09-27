@@ -416,7 +416,7 @@ def test_a_reasoning_model_sends_neither_max_tokens_nor_temperature(monkeypatch)
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
     from web.services.openai_app import OpenAIHandler
 
-    kwargs = OpenAIHandler({"model": "gpt-5.6-luna"})._request_kwargs(4096, 0.3)
+    kwargs = OpenAIHandler({"model": "gpt-6-luna"})._request_kwargs(4096, 0.3)
 
     assert "max_tokens" not in kwargs
     assert kwargs["max_completion_tokens"] == 4096
@@ -440,8 +440,8 @@ def test_reasoning_effort_is_only_sent_when_chosen(monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
     from web.services.openai_app import OpenAIHandler
 
-    unset = OpenAIHandler({"model": "gpt-5.6-luna"})._request_kwargs(100, 0.1)
-    chosen = OpenAIHandler({"model": "gpt-5.6-luna", "reasoning_effort": "none"})._request_kwargs(
+    unset = OpenAIHandler({"model": "gpt-6-luna"})._request_kwargs(100, 0.1)
+    chosen = OpenAIHandler({"model": "gpt-6-luna", "reasoning_effort": "none"})._request_kwargs(
         100, 0.1
     )
 
@@ -452,7 +452,7 @@ def test_reasoning_effort_is_only_sent_when_chosen(monkeypatch):
 def test_an_effort_level_the_model_does_not_offer_is_refused(service):
     """The levels differ per model — Luna has `none`, Nano's floor is `minimal`.
     A shared list would offer a value the API then rejects."""
-    errors = service.update({"model": "gpt-5.6-luna", "reasoning_effort": "minimal"}, actor=ACTOR)
+    errors = service.update({"model": "gpt-6-luna", "reasoning_effort": "minimal"}, actor=ACTOR)
     assert [e.code for e in errors] == ["not_allowed"]
     assert "none" in errors[0].limit
 
@@ -467,7 +467,7 @@ def test_switching_away_from_a_reasoning_model_catches_the_stale_effort(service)
     effort was fine for the old model and is meaningless to the new one."""
     assert (
         service.update(
-            {"model": "gpt-5.6-luna", "reasoning_effort": "high", "max_tokens": 4096},
+            {"model": "gpt-6-luna", "reasoning_effort": "high", "max_tokens": 4096},
             actor=ACTOR,
         )
         == []
