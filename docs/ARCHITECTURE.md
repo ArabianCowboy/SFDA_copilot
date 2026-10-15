@@ -495,20 +495,27 @@ Flask-Limiter, `memory://` storage, keyed on the remote address unless noted.
 from `g.identity` and falls back to the IP only where no identity is present — which
 every route below marked that way makes unreachable, because each sits behind a gate.
 
-| Scope                                               | Limit                                   |
-| --------------------------------------------------- | --------------------------------------- |
-| Global default                                      | 200/day, 50/hour, 10/minute             |
-| Chat (`/api/chat` and `/api/chat/stream`, shared)   | 15/minute, **keyed per account**        |
-| `GET /api/chat/history`                             | 30/minute                               |
-| `/api/chat/sessions` (list, select, rename, delete) | 60/minute                               |
-| `POST /auth/recover`                                | 5/minute                                |
-| `POST /auth/signup`                                 | 5/minute                                |
-| `GET /account/api/export`                           | 2 per 10 minutes, **keyed per account** |
-| `DELETE /account/api/conversations`                 | 10/hour, **keyed per account**          |
-| `POST /account/api/consent/grant`                   | 30/hour, **keyed per account**          |
-| `admin_bp` (whole blueprint)                        | 60/minute                               |
-| `admin.revoke_sessions`, `admin.change_email`       | 10/minute                               |
-| `admin.create_notification`                         | 10/hour, **keyed per account**          |
+| Scope                                                | Limit                                   |
+| ---------------------------------------------------- | --------------------------------------- |
+| Global default                                       | 200/day, 50/hour, 10/minute             |
+| Chat (`/api/chat` and `/api/chat/stream`, shared)    | 15/minute, **keyed per account**        |
+| `GET /api/chat/history`                              | 30/minute                               |
+| `/api/chat/sessions` (list, select, rename, delete)  | 60/minute                               |
+| `GET /api/notifications/active`                      | 30/minute                               |
+| `GET /api/notifications/history`                     | 20/minute                               |
+| `POST /api/notifications/mark-read`, `mark-all-read` | 60/minute each                          |
+| `POST /auth/recover`                                 | 5/minute                                |
+| `POST /auth/signup`                                  | 5/minute                                |
+| `account_bp` (whole blueprint)                       | 60/minute                               |
+| `GET /account/api/export`                            | 2 per 10 minutes, **keyed per account** |
+| `DELETE /account/api/conversations`                  | 10/hour, **keyed per account**          |
+| `POST /account/api/consent/grant`                    | 30/hour, **keyed per account**          |
+| `POST /account/api/deletion`, `…/deletion/cancel`    | 3/hour each, **keyed per account**      |
+| `GET /account/api/deletion`                          | 30/hour, **keyed per account**          |
+| `admin_bp` (whole blueprint)                         | 60/minute                               |
+| `admin.revoke_sessions`, `admin.change_email`        | 10/minute                               |
+| `admin.reconcile_deletion`                           | 10/hour, **keyed per account**          |
+| `admin.create_notification`                          | 10/hour, **keyed per account**          |
 
 **Five of those route limits were registered but never enforced** until 2026-09-03 —
 `account.export`, `account.delete_all_conversations`, `admin.revoke_sessions`,

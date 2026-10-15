@@ -32,6 +32,9 @@ env/
 .vscode/
 .idea/
 /.claude/
+# Per-machine Claude Code instructions (this checkout's environment). Never
+# committed: a "you are on development" file must not reach the VPS by git pull.
+/CLAUDE.local.md
 *.swp
 *.swo
 *~

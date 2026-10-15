@@ -5,5 +5,5 @@
 # Do NOT also put --workers in the systemd ExecStart: command-line settings are
 # applied last (gunicorn/app/base.py:189) and silently win, which is how this
 # drifted to 2 for months unreviewed.
-workers = 1  # MUST be 1 — see _MULTI_WORKER_COST in web/api/app.py:370
+workers = 1  # MUST be 1 — see _MULTI_WORKER_COST in web/api/app.py
 raw_env = [f"SFDA_CONFIG_WORKERS={workers}"]

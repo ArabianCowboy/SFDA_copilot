@@ -56,7 +56,7 @@ bottom of this file: [How this file works](#how-this-file-works).
 - [Admin broadcast & Reader Notification Center](#admin-broadcast--reader-notification-center-popups-banners-and-inbox-history) — implemented 2026-08-24; live login/session smoke-tested against production 2026-08-29 (by hand), which also surfaced and closed a real `mark-read` 500 the same day ([fix write-up](docs/archive/2026-08-29_notification-mark-read-500.md)); still owes a live Realtime-push check; the sign-out teardown shipped 2026-09-11 and the reauthenticate path needs none; the `mypy web` caveat closed 2026-09-08.
 - [Marketing consent has no re-prompt path](#marketing-consent-has-no-re-prompt-path-and-the-trigger-cannot-record-a-re-affirmation) — deferred by decision 2026-09-18; due when the policy next changes materially.
 - [The privacy policy (/privacy) is a draft, not reviewed legal text](#the-privacy-policy-privacy-is-a-draft-not-reviewed-legal-text) — consent shipped against this draft; deletion copy corrected it to `-draft-2` on 2026-09-18, and the legal review of the text is still owed.
-- [Account deletion (Spec 4)](#account-deletion-spec-4--blocked-on-a-product-decision-not-on-engineering) — decision closed 2026-09-18 (yes, 30-day grace); built and **fourteen of fifteen migrations applied 2026-09-19**, code deployed, reconcile timer running. Held only on the feature switch, and on one real deletion before `13`. See `supabase/pending/README.md`.
+- [Account deletion (Spec 4)](#account-deletion-spec-4--live-since-2026-09-19-but-no-deletion-has-ever-completed) — switched on 2026-09-19; request and cancel verified live, but the post-grace purge and delete have never run against production.
 - [Gunicorn writes no access log](#gunicorn-writes-no-access-log-so-served-fine-and-never-asked-look-identical) — found 2026-09-19 when it made a deploy check ambiguous; decide it WITH the entry below, not before.
 - [A conversation id now reaches the access log](#a-conversation-id-now-reaches-the-access-log) — a verification task, possibly already fine; unverified either way.
 - [Six of the seven admin RPCs validate the actor without holding a lock](#six-of-the-seven-admin-rpcs-validate-the-actor-without-holding-a-lock) — a check-then-act window; pre-existing, not introduced by the actor gate.
@@ -897,11 +897,12 @@ something that is not code.** Superseded by the full design in
   `<blueprint-prefix>/api/<thing>` convention rather than the plan's §4
   shorthand of `/api/account/*`.
 
-**Still open — two items, each blocked on a decision or a document, not on
-engineering.** Each has its own entry below rather than living only here:
+**Still open — two items.** Each has its own entry below rather than living only here:
 
-- Bilingual GoTrue email templates — see _Security email is English-only_.
-- Account deletion (Step 7) — see _Account deletion (Spec 4)_.
+- Bilingual GoTrue email templates — see _Security email is English-only_. Blocked in the
+  Supabase dashboard, not on engineering.
+- Account deletion (Step 7) — see _Account deletion (Spec 4)_. Decided 2026-09-18 and live
+  since 2026-09-19; what remains is proving the post-grace half against production.
 
 **Consent (Step 6) shipped 2026-08-23**, unblocked by publishing `/privacy` as an
 openly-labelled draft rather than by waiting for reviewed text. The review that is
@@ -1598,55 +1599,53 @@ silently reinterpret consent nobody actually gave to the new text.
 
 ---
 
-### Account deletion (Spec 4) — blocked on a product decision, not on engineering
+### Account deletion (Spec 4) — live since 2026-09-19, but no deletion has ever completed
 
-**Update 2026-09-18 — the decision is closed and the whole feature is built. Nothing is
-applied.** The product owner decided: **yes**, with a **30-day grace window**, matching
-`docs/data-policy-decisions.md` §1. Self-serve deletion is refused for `role='admin'`.
+**Update 2026-10-15: shipped and switched on; the destructive half has never run for real.**
+Until 2026-09-18 this entry was titled _blocked on a product decision, not on engineering_:
+nobody had said whether a reader may delete their own account at all. The product owner then
+decided **yes**, with a **30-day grace window**, refused for administrators
+(`docs/data-policy-decisions.md` §1). Fourteen migrations were applied, the reconcile timer
+installed and the switch turned on, all on 2026-09-19 (`3558e04`). The fifteenth, `13`, was
+deleted rather than applied (`aebc945`; see _`chat_sessions.owner_id` still has no foreign
+key_). The apply order, and the backup gate it skipped, are in
+`docs/archive/2026-09-19_account-and-trust-apply-runbook.md`. The design rules that survived
+review (`deletion_pending` is never `is_disabled`, sessions end by global sign-out, the ledger
+holds UUIDs and timestamps only) are in
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md#account-deletion-and-trust).
 
-Built and gate-green (1166 tests, mypy/ruff/eslint/markdownlint clean): thirteen migrations in
-`supabase/pending/`, three GoTrue dispatcher methods, the request/cancel/status routes with
-server-verified step-up re-authentication, the reader-facing card and pending banner in both
-languages, and a systemd one-shot reconcile driver in `deploy/`.
+**Where:** the post-grace half of the saga, `reconcile_one` in
+`scripts/reconcile_account_deletions.py`. It is driven by
+`deploy/sfda-copilot-deletion-reconcile.timer` and by the console's reconcile action.
 
-**Three design corrections worth keeping**, each found by review and verified in code:
+**What is wrong.** Only request and cancel have run against production: the 2026-09-19 round
+trip (request, `pending` with `grace_until` at +30 days, cancel, `cancelled`), checked in the
+database. The steps after the grace window (purge the transcripts, begin the auth delete,
+delete the GoTrue user, complete) have run only against the in-memory doubles. On 2026-10-15
+`public.account_deletions` held one row, that cancelled test. Nothing is pending, so nothing
+will exercise the path until someone requests a deletion and waits thirty days, while
+`/privacy` already promises the outcome.
 
-- `deletion_pending` is **its own state**, never `is_disabled`. `_authenticate_request`
-  refuses a disabled account (`web/api/app.py:932-933`), so conflating them would have made
-  the cancel path unreachable — the grace window would have been storage, not recovery.
-- **Sessions are revoked with `auth.admin.sign_out(jwt, scope="global")`**, never
-  `revoke_sessions` (which revokes by rotating the password to a value nobody learns,
-  `web/services/auth_admin.py:153-156`) and never a GoTrue ban (which kills token refresh).
-  Either would lock the reader out of the cancel path. Global sign-out kills a thief's session
-  while the owner signs back in with the password they still know.
-- The saga's own rows carry **UUIDs and timestamps only**. The ordinary audit pattern stores
-  `actor_email`, `request_ip` and `user_agent` in an append-only table, which would have
-  preserved the deleted person's email and IP forever.
+**Who it reaches.** The first reader who requests deletion and does not cancel, thirty days
+after they ask. A step that fails makes the timer run exit 1, and that unit alerts nobody
+(`docs/OPERATIONS.md`, _The two timers beside it_).
 
-**Still open:** applying the batch, in the order and against the gates in
-`supabase/pending/README.md` — which includes a confirmed backup schedule and one restore
-rehearsal before the destructive DDL, and installing the reconcile timer, without which
-"deletion in progress" is a promise nothing drives. Arabic review of every new string. No SQL
-in this batch has ever run against a real database.
+**How it was found.** Re-reading this entry on 2026-10-15 against `3558e04`, `aebc945` and the
+live ledger. Its body still said "Nothing is applied" four weeks after the switch went on.
 
-**Where:** `docs/archive/2026-08-23_profile-refactor.md` §16·4 has the full design (Migration A — FK-action
-fixes on `profiles.disabled_by`/`app_settings.updated_by`, verified live and ready to apply —
-then Migration B — a durable `account_deletions` saga table with retry/backoff, since a database
-transaction cannot include the outbound GoTrue admin-delete call). §17's Step 7 entry is marked
-`[ ]`, explicitly not started.
+**What fixing it would disturb.** No code, if the path works. Take one throwaway account
+through to completion: request, let the grace window run out, then confirm in the database
+that its ledger row is `completed`, its transcripts are gone, the GoTrue user no longer exists,
+and the orphan check reports zero. Started today, the earliest proof is 2026-11-14. Close this
+entry when that passes.
 
-**Why it's blocked.** §10's open question — "is reader self-deletion permitted at all, given the
-audit log?" — was never closed. P2 of the plan assumes yes; the "Still open" list at §17 still
-lists it as undecided. Export and bulk conversation deletion (same Step 7) do not depend on this
-answer and shipped 2026-08-23; account deletion does, and building a background saga that calls
-GoTrue's admin delete API on a schedule, against real accounts, on an assumption rather than a
-decision is the kind of hard-to-reverse action this file exists to flag rather than quietly do.
-
-**What's needed to unblock:** an explicit yes/no on self-deletion from whoever owns that call,
-given the audit-log retention question it raises. Once decided, the two migrations in §16·4 are
-already written and only need re-verification against the live schema before applying.
-
-- Hybrid delivery: Supabase Realtime broadcast for active sessions + REST DB query on page load for offline/new sessions.
+**Also outstanding, each with its own entry:** _A deletion request may leave the requesting
+access token usable until it expires_; _`chat_sessions.owner_id` still has no foreign key_;
+_Run the database assertions somewhere other than by hand_ (`account_deletion.test.sql` has
+not run against production); _Confirm the backup schedule, and rehearse a restore once_.
+**Unconfirmed:** the 2026-09-18 list asked for an Arabic review of every new string. Two
+deletion fixes landed 2026-09-19 (`ca3ba1d`, `e9f3e2a`) and a native-speaker pass on
+2026-09-24 (`fd7848a`), but nothing records that the pass covered every deletion string.
 
 ---
 
@@ -1952,8 +1951,9 @@ UPDATE policy, and the same gate added to `update_own_preferences`.
 the precise hole the carve-out exists to close. "Frozen" is therefore true of this schema and
 not of the provider: a disabled reader can still change their own GoTrue email or password.
 
-**Still open:** applying the batch (`supabase/pending/README.md`), and the consent re-prompt
-comparator, which is deferred — see its own note under the privacy-policy entry.
+**Still open:** the consent re-prompt comparator, which is deferred — see its own note under
+the privacy-policy entry. The other item that stood here, applying the batch, was done on
+2026-09-19 (`docs/archive/2026-09-19_account-and-trust-apply-runbook.md`).
 
 **Where:** The three RLS policies on `public.profiles`; `web/api/app.py`'s
 `if identity.is_disabled:` refusal; `docs/PRODUCT.md`, which does not say.

@@ -52,7 +52,8 @@ four the first answer was the confident one and the second was the correct one.
 > [!NOTE]
 > **DECIDED AND BUILT, 2026-09-18.** The operator confirmed the 30-day grace window on
 > account deletion recommended below, and it is implemented — see `TODO.md`'s
-> _Account deletion (Spec 4)_ entry and the apply runbook at `supabase/pending/README.md`.
+> _Account deletion (Spec 4)_ entry and the apply runbook, archived at
+> `docs/archive/2026-09-19_account-and-trust-apply-runbook.md`.
 > One mechanism detail this section did not anticipate: sessions are revoked at request time
 > with `auth.admin.sign_out(jwt, scope="global")`, never by password rotation and never by a
 > GoTrue ban, because either would lock the reader out of the cancel path that makes a grace

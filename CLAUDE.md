@@ -146,8 +146,12 @@ cite that instead. Several of those files describe mechanisms that no longer exi
 
 Every live document opens with a `STATUS:` line saying which kind it is; every archived one
 carries `authority: historical` frontmatter and `[HISTORICAL]` on every heading.
-There is deliberately **no per-directory `CLAUDE.md`** anywhere in this repo: one
-auto-loaded file, and every other rule lives in the document that owns it.
+There is deliberately **no per-directory `CLAUDE.md`** anywhere in this repo: one committed
+auto-loaded file, and every other rule lives in the document that owns it. A checkout may also
+carry a git-ignored `CLAUDE.local.md` holding facts about that one machine (which machine it
+is, what its `.env` points at), never a rule. A rule that holds on every checkout goes here or
+in the document that owns it. Finding no `CLAUDE.local.md` tells you nothing about which
+machine you are on.
 
 ---
 

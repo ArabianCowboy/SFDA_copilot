@@ -1,5 +1,5 @@
 STATUS: CURRENT AUTHORITY — how to set up, run, test and deploy this project.
-Last verified against code 2026-08-23.
+Last verified against code 2026-10-15.
 
 # SFDA Copilot
 
@@ -38,13 +38,15 @@ endorsed by, or operated by the Saudi Food and Drug Authority.
 
 ### Prerequisites
 
-- **Python 3.12** — the version CI tests against (`.github/workflows/tests.yml`)
+- **Python 3.10** — what production runs and what CI tests against
+  (`.github/workflows/tests.yml`); newer works locally, but code must stay 3.10-compatible
 - A **Supabase** project
 - An **OpenAI** API key (optional for local work — see the demo mode below)
+- **Node.js** for linting only — `npm install` once, so the pre-commit hooks can run
 
-**There is no Node.js requirement and no frontend build step.** `package.json` exists only
-so `npm audit` covers the four libraries the browser loads from a CDN. There is no `build`
-script; do not look for one.
+**There is no frontend build step.** The browser loads its four libraries from a CDN;
+`package.json` lists them so `npm audit` covers them, and its `devDependencies` are lint
+tooling that is never served. There is no `build` script; do not look for one.
 
 ### Install and run
 
@@ -89,11 +91,10 @@ Answers stream over Server-Sent Events, which imposes two requirements. Both are
 in full in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 **One worker.** The in-RAM FAISS index and the sentence-transformers model require it, and
-the prompt-window cache and in-flight-generation lock are process-local:
-
-```bash
-gunicorn --workers 1 --threads 8 --timeout 300 "web.api.app:create_app()"
-```
+the prompt-window cache and in-flight-generation lock are process-local. The count lives in
+[`gunicorn.conf.py`](gunicorn.conf.py) (`workers = 1`), not on the command line — a
+`--workers` flag would silently override it. The production launch line is committed at
+[`deploy/sfda-copilot.service`](deploy/sfda-copilot.service); read that, not a snippet.
 
 The app logs a warning at startup under gunicorn if it is launched with more than one worker —
 checking the command line (`--workers`/`-w`), `GUNICORN_CMD_ARGS`, `gunicorn.conf.py` (via
@@ -132,15 +133,21 @@ sfda-copilot/
 ├── DESIGN.md               # the design system: tokens, components, the RTL contract
 ├── TODO.md                 # open bugs and planned work, each with the cost of fixing it
 ├── requirements.txt        # runtime dependencies
-├── requirements-dev.txt    # test tooling
-├── package.json            # npm audit surface only — no bundler, no node_modules
-├── pytest.ini              # the only Python tool config; there is no linter configured
+├── requirements-dev.txt    # test and lint tooling: pytest, playwright, ruff, mypy, pre-commit
+├── pyproject.toml          # ruff and mypy config, both pinned to Python 3.10
+├── pytest.ini              # test paths and the browser / integration markers
+├── package.json            # CDN libraries for npm audit, plus eslint / prettier / markdownlint
+├── .pre-commit-config.yaml # ruff, eslint, prettier and markdownlint on every commit
+├── gunicorn.conf.py        # workers = 1 — the one gunicorn setting kept under review
 ├── faq.yaml                # FAQ categories and starter questions
 ├── .env.example            # the required environment variables
+├── deploy/                 # systemd units as they run on the VPS: the app and two timers
 ├── docs/
 │   ├── ARCHITECTURE.md     # the live system contract, and which document wins
 │   ├── PRODUCT.md          # what the product is for, and the rules copy is judged against
-│   ├── OPERATIONS.md       # state this repo cannot hold: DNS, SMTP, dashboard config
+│   ├── OPERATIONS.md       # state this repo cannot hold: DNS, SMTP, dashboard, the VPS
+│   ├── data-policy-decisions.md
+│   ├── supabase-key-incident-fix-plan.md
 │   ├── citation-eval-judge-protocol.md
 │   └── archive/            # finished plans, frozen — history, not instructions
 ├── static/
@@ -150,7 +157,7 @@ sfda-copilot/
 │       ├── account.js      # /account entry point
 │       ├── admin.js        # /admin entry point
 │       ├── privacy.js      # /privacy entry point
-│       ├── modules/        # shared reader layer (18 modules)
+│       ├── modules/        # shared reader layer
 │       ├── account/        # ui, handlers
 │       └── admin/          # services, ui, handlers
 ├── web/
@@ -158,17 +165,17 @@ sfda-copilot/
 │   ├── api/
 │   │   ├── app.py          # app factory, auth middleware, chat/SSE routes
 │   │   ├── auth.py         # signup / login / logout / recovery
-│   │   ├── account.py      # /account page, export, bulk conversation deletion
-│   │   └── admin.py        # console: people, account detail, audit, settings
+│   │   ├── account.py      # /account page, export, bulk conversation and account deletion
+│   │   └── admin.py        # console: overview, settings, people, tiers, audit, notifications
 │   ├── services/           # search, LLM, citations, chat store, admin store, audit, eval
 │   ├── utils/              # config, i18n, icons, Supabase and embedding clients
 │   ├── i18n/               # en.yaml / ar.yaml — both must stay in step
 │   ├── templates/          # index, account, admin, privacy + partials/_sidebar.html
-│   └── tests/              # 40+ files; the only place project rules are mechanically enforced
+│   └── tests/              # where the project's own rules are mechanically enforced
 ├── supabase/
 │   ├── README.md           # migration rules, the RPC contract, current schema shape
 │   └── migrations/         # one .sql per applied migration + 0000_baseline.md
-├── scripts/                # eval_citations.py, eval_retrieval.py, smoke_real.py
+├── scripts/                # evals and smoke check, plus the two timer jobs in deploy/
 └── data/                   # the guideline corpus, one directory per category
 ```
 
@@ -197,15 +204,20 @@ python -m pytest -m "not browser and not integration"
 # browser suite — pytest starts an ephemeral Flask server from web/tests/conftest.py
 python -m pytest -m browser --browser chromium
 
-# tests needing generated artifacts or external services
+# tests needing generated artifacts or external services — selects nothing today (see TODO.md)
 python -m pytest -m integration
 
 # coverage
 python -m pytest -m "not browser and not integration" --cov=web
 ```
 
-**This project has no linter.** No ruff, no eslint, no pre-commit. Every enforced rule is a
-pytest assertion, and they are listed with their thresholds in
+**Lint and format run on every commit** through `pre-commit`: ruff for Python, eslint and
+prettier for `static/js/`, markdownlint for every `.md` file. Run `npm install` and
+`pre-commit install` once. `mypy web` is not a hook — it gates CI's `lint` job, so run it
+yourself before pushing. The individual commands are in [`CLAUDE.md`](CLAUDE.md#commands).
+
+The linters catch style and types, not this project's own rules. Those are pytest
+assertions, listed with their thresholds in
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md#what-is-mechanically-enforced). The ones most
 likely to catch you:
 
@@ -254,13 +266,15 @@ ARCHIVE_SESSION_SALT=                     # leave unset — see below
 
 Also read, all optional:
 
-| Variable                | Effect                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `SUPABASE_SECRET_KEY`   | The service-role credential behind **every privileged read and write** — conversation history, notifications, the daily allowance, and the `/admin` console — not the console alone. Absent, all of those degrade and every reader resolves as a non-administrator, which is a safe and supported way to deploy. **Present but wrong is not safe**: nothing validates it, so a key belonging to another project fails every call at request time (see `docs/supabase-key-incident-fix-plan.md`). Read first; legacy fallback: `SUPABASE_SERVICE_ROLE_KEY`. |
-| `DEBUG`, `LOG_LEVEL`    | Defaults `false`, `INFO`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| `WEB_CONCURRENCY`       | Must be `1`; the app warns under gunicorn if set to >1 — as it does for `--workers`/`-w` on the command line, `GUNICORN_CMD_ARGS`, or `gunicorn.conf.py`                                                                                                                                                                                                                                                                                                                                                                                                   |
-| `FLASK_TESTING`         | Enables the mock-service demo path                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| `SUPABASE_AUTH_TIMEOUT` | Seconds; default 5                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| Variable                    | Effect                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SUPABASE_SECRET_KEY`       | The service-role credential behind **every privileged read and write** — conversation history, notifications, the daily allowance, and the `/admin` console — not the console alone. Absent, all of those degrade and every reader resolves as a non-administrator, which is a safe and supported way to deploy. **Present but wrong is not safe**: nothing validates it, so a key belonging to another project fails every call at request time (see `docs/supabase-key-incident-fix-plan.md`). Read first; legacy fallback: `SUPABASE_SERVICE_ROLE_KEY`. |
+| `DEBUG`, `LOG_LEVEL`        | Defaults `false`, `INFO`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `LOG_LEVEL_<MODULE>`        | Per-logger level for `SEARCH_ENGINE`, `CONFIG_LOADER`, `OPENAI_CLIENT` and `LOCAL_EMBEDDING_CLIENT`; each defaults to `DEBUG`                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `WEB_CONCURRENCY`           | Must be `1`; the app warns under gunicorn if set to >1 — as it does for `--workers`/`-w` on the command line, `GUNICORN_CMD_ARGS`, or `gunicorn.conf.py`                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `FLASK_TESTING`             | Enables the mock-service demo path                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `SUPABASE_AUTH_TIMEOUT`     | Seconds; default 5                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `SUPABASE_REALTIME_TIMEOUT` | Seconds for a notification broadcast to Realtime; default 3                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 
 **The archive salts are deliberately unset.** Setting either turns on the training archive,
 and `web/config.yaml`'s `archive_disclosed` guard logs a loud startup error if they are set
@@ -301,20 +315,22 @@ is not finished; a file with an old date is one to check before you trust it.
 `DESIGN.md` and `TODO.md` stay at the root — the design tooling reads `DESIGN.md` from
 there, and `TODO.md` is the most actively edited file in the project.
 
-| Document                                                                     | What it covers                                                                                                                                                                                 |
-| ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [CLAUDE.md](CLAUDE.md)                                                       | The working agreement: where the rules live, the ones you will trip over, and how to write a `TODO.md` entry or archive a finished plan                                                        |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)                                 | The live system contract: the URL-as-pointer model, single worker, no bundler, the two database access patterns, what is mechanically enforced — **and which document wins when two disagree** |
-| [DESIGN.md](DESIGN.md)                                                       | The design system. Every rule tagged `[GATE]`, `[CORRECTNESS]` or `[TASTE]`                                                                                                                    |
-| [docs/PRODUCT.md](docs/PRODUCT.md)                                           | What the product is for, its terminology, and the brand commitments copy is held to                                                                                                            |
-| [supabase/README.md](supabase/README.md)                                     | Migration rules, the RPC contract, and the current shape of `public`                                                                                                                           |
-| [docs/OPERATIONS.md](docs/OPERATIONS.md)                                     | State this repository cannot hold — DNS, SMTP, dashboard configuration                                                                                                                         |
-| [docs/citation-eval-judge-protocol.md](docs/citation-eval-judge-protocol.md) | The human-judge protocol gating a second model provider                                                                                                                                        |
-| [TODO.md](TODO.md)                                                           | Open bugs and planned work, each with the cost of fixing it                                                                                                                                    |
-| [docs/archive/README.md](docs/archive/README.md)                             | Index of finished plans and resolved TODO entries — what each decided and what it reversed. **History, not instructions**                                                                      |
+| Document                                                                         | What it covers                                                                                                                                                                                 |
+| -------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [CLAUDE.md](CLAUDE.md)                                                           | The working agreement: where the rules live, the ones you will trip over, and how to write a `TODO.md` entry or archive a finished plan                                                        |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)                                     | The live system contract: the URL-as-pointer model, single worker, no bundler, the two database access patterns, what is mechanically enforced — **and which document wins when two disagree** |
+| [DESIGN.md](DESIGN.md)                                                           | The design system. Every rule tagged `[GATE]`, `[CORRECTNESS]` or `[TASTE]`                                                                                                                    |
+| [docs/PRODUCT.md](docs/PRODUCT.md)                                               | What the product is for, its terminology, and the brand commitments copy is held to                                                                                                            |
+| [supabase/README.md](supabase/README.md)                                         | Migration rules, the RPC contract, and the current shape of `public`                                                                                                                           |
+| [docs/OPERATIONS.md](docs/OPERATIONS.md)                                         | State this repository cannot hold — DNS, SMTP, dashboard configuration, how the VPS launches the app — and the key-failure runbook                                                             |
+| [docs/data-policy-decisions.md](docs/data-policy-decisions.md)                   | Four operator decisions — retention, what "disabled" means, `chatbot_settings`, `last_seen_at` — and their reasoning                                                                           |
+| [docs/supabase-key-incident-fix-plan.md](docs/supabase-key-incident-fix-plan.md) | The 2026-09-07 secret-key incident: root cause, recovery, and the follow-ups still open                                                                                                        |
+| [docs/citation-eval-judge-protocol.md](docs/citation-eval-judge-protocol.md)     | The human-judge protocol gating a second model provider                                                                                                                                        |
+| [TODO.md](TODO.md)                                                               | Open bugs and planned work, each with the cost of fixing it                                                                                                                                    |
+| [docs/archive/README.md](docs/archive/README.md)                                 | Index of finished plans and resolved TODO entries — what each decided and what it reversed. **History, not instructions**                                                                      |
 
 **Before your first migration or your first RTL component**, read
-[_Rules that collide_](docs/ARCHITECTURE.md#rules-that-collide) — sixteen places where two
+[_Rules that collide_](docs/ARCHITECTURE.md#rules-that-collide) — the places where two
 individually correct rules meet badly, each of which has cost someone a session.
 
 ---
@@ -322,11 +338,11 @@ individually correct rules meet badly, each of which has cost someone a session.
 ## Contributing
 
 **Start with [`CLAUDE.md`](CLAUDE.md)** — the working agreement: which document is
-authoritative for what, and the eight rules newcomers trip over. It is written for AI
+authoritative for what, and the rules newcomers trip over. It is written for AI
 agents and human contributors alike.
 
-Branch, make the change, add tests for it, and make sure `python -m pytest` is as green as
-you found it.
+Branch, make the change, add tests for it, and make sure `python -m pytest`,
+`pre-commit run --all-files` and `mypy web` are as green as you found them.
 
 **Fix the documentation your change makes wrong, in the same commit.** Specifically:
 

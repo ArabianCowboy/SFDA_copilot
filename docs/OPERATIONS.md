@@ -632,12 +632,13 @@ Why each of the load-bearing arguments:
 
 **Two things this line does not say, both deliberate for now:**
 
-- **No `--timeout`,** so gunicorn's 30-second default applies where `ARCHITECTURE.md`'s
-  example writes `--timeout 300`. On the `gthread` worker this is not the hazard it looks
-  like: the worker's accept loop calls `notify()` about once a second no matter how long a
-  request thread runs (`gunicorn/workers/gthread.py`, its `run` loop), so a long SSE answer
-  does not starve the arbiter's heartbeat and is not killed. Adding `--timeout 300` would
-  match the documented line and cost nothing; it is not urgent.
+- **No `--timeout`,** so gunicorn's 30-second default applies. (`ARCHITECTURE.md` and the
+  README once showed `--timeout 300`; both now point at the committed unit instead.) On the
+  `gthread` worker this is not the hazard it looks like: the worker's accept loop calls
+  `notify()` about once a second no matter how long a request thread runs
+  (`gunicorn/workers/gthread.py`, its `run` loop), so a long SSE answer does not starve the
+  arbiter's heartbeat and is not killed. Adding `--timeout 300` would cost nothing; it is not
+  urgent.
 - **`--max-requests 1000`** recycles the single worker roughly every thousand requests. The
   replacement forks from the preloaded master and the listen backlog covers the gap, but the
   retiring worker only waits `graceful_timeout` (30 seconds by default) for work in flight,
@@ -658,6 +659,32 @@ freshly forked worker reads as ~8 MB private until copy-on-write pages diverge.
   from `CLAUDE.md` runs the wrong interpreter on the box, and vice versa.
 - There is **no `.service.d/` drop-in directory**. When triaging a setting that does not match
   this file, that rules out an override rather than leaving it as an open question.
+
+## The two timers beside it
+
+`deploy/` also commits two one-shot jobs, each a `.service` plus a `.timer`, running as the
+same user from the same virtualenv and `.env` as the app:
+
+| Timer                                   | Runs                                                                                                         | When                                         |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------ | -------------------------------------------- |
+| `sfda-copilot-deletion-reconcile.timer` | `scripts.reconcile_account_deletions` — drives post-grace account-deletion saga steps                        | every 15 minutes; first run 5 min after boot |
+| `sfda-copilot-orphan-check.timer`       | `scripts.check_transcript_orphans --quiet` — read-only; exit 1 on an orphaned transcript, 2 if it cannot run | daily, up to 30 minutes randomised           |
+
+`TODO.md` records both as installed and running on 2026-09-19; this file has not re-checked
+the box since. The same discipline as the main unit applies — the committed copies are
+references, and agreeing with the live ones is a check that prints nothing when it passes:
+
+```bash
+for u in sfda-copilot-deletion-reconcile sfda-copilot-orphan-check; do
+  diff /etc/systemd/system/$u.service deploy/$u.service
+  diff /etc/systemd/system/$u.timer deploy/$u.timer
+done
+systemctl list-timers 'sfda-copilot-*'
+```
+
+**Neither unit alerts anyone.** There is no `OnFailure=`, so an orphan hit or a broken
+reconcile shows up only as a failed unit — `systemctl --failed`, or
+`journalctl -u sfda-copilot-orphan-check` — until someone looks.
 
 ## nginx: what the proxy actually sets
 
