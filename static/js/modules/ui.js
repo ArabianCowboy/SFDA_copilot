@@ -4,7 +4,7 @@
  */
 
 import { marked } from 'https://cdn.jsdelivr.net/npm/marked@12.0.2/+esm';
-import DOMPurify from 'https://cdn.jsdelivr.net/npm/dompurify@3.4.13/+esm';
+import DOMPurify from 'https://cdn.jsdelivr.net/npm/dompurify@3.4.16/+esm';
 
 import { CONFIG, prefersReducedMotion } from './config.js';
 import { DOMCache, logError } from './dom.js';

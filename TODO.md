@@ -82,6 +82,7 @@ bottom of this file: [How this file works](#how-this-file-works).
 - [No limit caps a reader's total requests across routes](#no-limit-caps-a-readers-total-requests-across-routes) — not started; needs a measured number first.
 - [Nothing pins that an explicit route limit replaces the global defaults](#nothing-pins-that-an-explicit-route-limit-replaces-the-global-defaults) — not started; one test.
 - [Arabic plural forms are ungrammatical for counts the binary `I18n.plural` helper cannot express](#arabic-plural-forms-are-ungrammatical-for-counts-the-binary-i18nplural-helper-cannot-express) — not started; known gap, already partly flagged in `ar.yaml`.
+- [Two lint-tooling advisories have no patched release](#two-lint-tooling-advisories-have-no-patched-release) — accepted 2026-10-21; dev-only, recheck when markdownlint-cli2 next releases.
 
 ---
 
@@ -540,6 +541,27 @@ Arabic agreement depends on the counted noun's gender and the surrounding senten
 call site in `static/js` that invokes `I18n.plural(count, oneKey, manyKey)` would also need a
 third argument. Low priority relative to the size of the change; recorded so the known gap has
 one place a native-Arabic pass can start from instead of being rediscovered per string.
+
+### Two lint-tooling advisories have no patched release
+
+**Where:** `package-lock.json`, under `markdownlint-cli2@0.24.0`. `braces@3.0.3` arrives via
+`micromatch`, and `katex@0.16.47` via `markdownlint` → `micromark-extension-math`. Dependabot
+alert #29 (katex) is open; `npm audit` also reports GHSA-vfj7-8cjw-p6xm (braces).
+
+**What is wrong.** braces' stack-exhaustion advisory covers every published version, and katex's
+fix (0.18.2) sits outside the `^0.16.0` range `micromark-extension-math` declares. `npm audit
+fix --force` proposes a markdownlint-cli2 _downgrade_ for both, which reopens the advisories
+the 2026-10-21 bump to 0.24.0 closed.
+
+**Who it reaches.** Nobody at runtime. Both parse this repo's own Markdown and glob patterns on
+a developer machine or in CI; nothing in `node_modules` is served.
+
+**How it was found.** The 2026-10-21 Dependabot triage (`gh api …/dependabot/alerts`) and
+`npm audit` after the markdownlint-cli2 bump.
+
+**What fixing it would disturb.** Nothing until upstream ships: then a lockfile refresh. Forcing
+katex 0.18.2 through an `overrides` entry is possible but unverified against
+`micromark-extension-math`, and markdownlint does not render math, so it buys nothing.
 
 ---
 
