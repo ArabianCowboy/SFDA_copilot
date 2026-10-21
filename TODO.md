@@ -78,7 +78,7 @@ bottom of this file: [How this file works](#how-this-file-works).
 - [The console's "i" popups have been heard through VoiceOver only, not NVDA or JAWS](#the-consoles-i-popups-have-been-heard-through-voiceover-only-not-nvda-or-jaws) — not started; a manual screen-reader check, owed by a human.
 - [Seven console strings are in both catalogues but never rendered](#seven-console-strings-are-in-both-catalogues-but-never-rendered) — diagnosed 2026-09-23; re-trace each key, then delete.
 - [Debug mode accepts credentialed requests from any origin](#debug-mode-accepts-credentialed-requests-from-any-origin) — diagnosed, unfixed; small.
-- [`pytest -m integration` collects nothing, and CLAUDE.md still says to run it](#pytest--m-integration-collects-nothing-and-claudemd-still-says-to-run-it) — diagnosed; pick a fix.
+- [`pytest -m integration` collects nothing, and CLAUDE.md still says to run it](#pytest--m-integration-collects-nothing-and-claudemd-still-says-to-run-it) — half fixed 2026-10-21: the marker selects the live-artefact test again; the real-token check is still missing.
 - [No limit caps a reader's total requests across routes](#no-limit-caps-a-readers-total-requests-across-routes) — not started; needs a measured number first.
 - [Nothing pins that an explicit route limit replaces the global defaults](#nothing-pins-that-an-explicit-route-limit-replaces-the-global-defaults) — not started; one test.
 - [Arabic plural forms are ungrammatical for counts the binary `I18n.plural` helper cannot express](#arabic-plural-forms-are-ungrammatical-for-counts-the-binary-i18nplural-helper-cannot-express) — not started; known gap, already partly flagged in `ar.yaml`.
@@ -505,6 +505,12 @@ that entry closed on 2026-09-23.
 **What fixing it would disturb.** Either write one real-token check (a signed-in bearer against
 a live `/api/chat/stream`, run by hand, never in CI), or delete the marker and the `CLAUDE.md`
 line together. The second is an edit to `CLAUDE.md`, so it bumps `APP_VERSION`.
+
+**Update 2026-10-21.** The marker has a user again: `web/tests/test_live_artifacts.py` loads the
+active search build through `SearchEngine` and searches it, written for the Python 3.14 move
+because no other test loads the real corpus. So the `CLAUDE.md` instruction now runs something
+and deleting the marker is off the table. The real-token check is still the missing half:
+nothing authenticates a real bearer against `/api/chat/stream`.
 
 ### Arabic plural forms are ungrammatical for counts the binary `I18n.plural` helper cannot express
 

@@ -686,6 +686,42 @@ systemctl list-timers 'sfda-copilot-*'
 reconcile shows up only as a failed unit — `systemctl --failed`, or
 `journalctl -u sfda-copilot-orphan-check` — until someone looks.
 
+## Dependency lock
+
+Added 2026-10-21. `requirements.txt` floats almost every package, so **two installs of the same
+commit on different days were different programs**: the gunicorn 23.0.0 vs 26.0.0 split above is
+one example, and a fresh install under Python 3.14 pulls pandas 3 where 3.10 pulled pandas 2.
+[`requirements.lock`](../requirements.lock) fixes that. Every package is pinned and hashed,
+resolved for the VPS (CPython 3.14, x86_64 Linux) whatever machine generated it, with torch's
+CPU-only build. The PyPI Linux torch wheel would pull in the CUDA runtime packages for a box
+with no GPU.
+
+- **Production and CI install the lock:** `pip install --require-hashes -r requirements.lock`.
+  `requirements.txt` stays the hand-edited list of what the app needs; the lock is generated
+  from it.
+- **Developer machines keep `pip install -r requirements-dev.txt`.** The lock is
+  Linux-specific (`torch==…+cpu` has no macOS wheel), so it cannot constrain a Mac install.
+  A dev venv can therefore drift from the lock; CI, which installs the lock, is the check.
+- **Regenerate the lock, never hand-edit it:** run `python scripts/lock_requirements.py`
+  (needs `uv`). A plain run keeps every existing pin and resolves only what changed in
+  `requirements.txt`. `--upgrade-package <name>` moves one package deliberately, and
+  `--upgrade` moves everything. Review the diff, then run the suite on 3.14 before committing.
+- **Before trusting a new lock on the box,** a wheels-only dry run proves every pin has a
+  Linux wheel and every hash matches:
+
+  ```bash
+  pip download --require-hashes --no-deps --only-binary=:all: -r requirements.lock -d /tmp/lockcheck
+  ```
+
+  The first lock needed exactly this: `pyiceberg==0.11.1` (via `storage3`) ships only an
+  sdist, and a Mac compiles it silently where the VPS might not. It is locked at 0.12.0,
+  which has cp314 wheels.
+
+- **The lock does not check the corpus.** That is
+  [`web/tests/test_live_artifacts.py`](../web/tests/test_live_artifacts.py), an
+  `integration`-marked test that loads the active build through `SearchEngine` and searches
+  it. Run it in any new venv before pointing the service at that venv.
+
 ## nginx: what the proxy actually sets
 
 Read 2026-09-12 from `/etc/nginx/sites-enabled/sfda-copilot` (a symlink into

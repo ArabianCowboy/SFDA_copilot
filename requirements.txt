@@ -3,7 +3,11 @@ flask
 Flask-Limiter
 Flask-Talisman
 Flask-Cors
-gunicorn
+# Pinned, not floating: gunicorn owns --preload, the worker fork and the
+# worker-count precedence that web/api/app.py's _configured_worker_count()
+# defends, and an unpinned rebuild once jumped it 23.0.0 -> 26.0.0 unreviewed.
+# 26.0.0 is the version the suite and the 3.14 smoke boot ran on; bump deliberately.
+gunicorn==26.0.0
 Werkzeug
 
 # Environment Variables
