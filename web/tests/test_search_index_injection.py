@@ -226,6 +226,26 @@ def test_local_embedding_client_not_cached_falls_back_to_online():
         assert client.model is mock_model
 
 
+def test_local_embedding_client_falls_back_when_the_cache_miss_arrives_wrapped():
+    """The shape the real stack raises: sentence-transformers 5.5 on
+    huggingface-hub 1.17 wraps the cache miss in a bare OSError ("We couldn't
+    connect to 'https://huggingface.co' ... couldn't find them in the cached
+    files"), with LocalEntryNotFoundError only in the cause chain. Catching the
+    class alone missed it, so an uncached model never downloaded."""
+    wrapped = OSError("couldn't find them in the cached files")
+    wrapped.__cause__ = LocalEntryNotFoundError("Model not found in cache")
+    with patch("web.utils.local_embedding_client.SentenceTransformer") as mock_st:
+        mock_model = MagicMock()
+        mock_model.get_embedding_dimension.return_value = 768
+        mock_st.side_effect = [wrapped, mock_model]
+
+        client = LocalEmbeddingClient()
+
+        assert mock_st.call_count == 2
+        assert mock_st.call_args_list[1] == ((client.model_name,), {})
+        assert client.model is mock_model
+
+
 def test_local_embedding_client_corrupted_cache_does_not_silently_retry_online():
     with patch("web.utils.local_embedding_client.SentenceTransformer") as mock_st:
         mock_st.side_effect = OSError("Corrupted checkpoint or disk error")

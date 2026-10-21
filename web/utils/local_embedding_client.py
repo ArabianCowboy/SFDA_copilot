@@ -9,6 +9,24 @@ from web.utils.config_loader import config as config_loader_module
 logger = logging.getLogger(__name__)
 
 
+def is_cache_miss(exc: BaseException) -> bool:
+    """True if a ``local_files_only=True`` load failed because the model isn't cached.
+
+    huggingface-hub raises ``LocalEntryNotFoundError`` for that, but newer
+    transformers/sentence-transformers wrap it in a plain ``OSError`` on the way
+    up, so catching the class alone stopped matching and the download fallback
+    silently never ran. Walk the cause chain instead of trusting the outer type.
+    """
+    seen: set[int] = set()
+    current: BaseException | None = exc
+    while current is not None and id(current) not in seen:
+        if isinstance(current, LocalEntryNotFoundError):
+            return True
+        seen.add(id(current))
+        current = current.__cause__ or current.__context__
+    return False
+
+
 class LocalEmbeddingClient:
     """
     Client for local sentence-transformers embeddings.
@@ -27,7 +45,9 @@ class LocalEmbeddingClient:
         try:
             try:
                 self.model = SentenceTransformer(self.model_name, local_files_only=True)
-            except LocalEntryNotFoundError:
+            except OSError as exc:
+                if not is_cache_miss(exc):
+                    raise
                 logger.info(
                     "Model '%s' not cached locally; downloading for the first time.",
                     self.model_name,

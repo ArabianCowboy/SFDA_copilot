@@ -54,7 +54,7 @@ class _LazyHHEM:
     """Loads the real HHEM model on first call, never at import time.
 
     Mirrors ``local_embedding_client.py``'s ``local_files_only=True`` ->
-    ``LocalEntryNotFoundError`` -> fallback-download pattern: try the cached
+    cache miss (``is_cache_miss``) -> fallback-download pattern: try the cached
     copy first, and only reach the network when it's genuinely missing.
     """
 
@@ -70,8 +70,9 @@ class _LazyHHEM:
 
     @staticmethod
     def _load():
-        from huggingface_hub.utils import LocalEntryNotFoundError
         from transformers import AutoModelForSequenceClassification
+
+        from web.utils.local_embedding_client import is_cache_miss
 
         logger.info(
             "Loading %s (first use — a ~600MB download if not already cached).", HHEM_MODEL_ID
@@ -82,7 +83,9 @@ class _LazyHHEM:
                 trust_remote_code=True,
                 local_files_only=True,
             )
-        except LocalEntryNotFoundError:
+        except OSError as exc:
+            if not is_cache_miss(exc):
+                raise
             logger.warning("%s is not cached locally; downloading now.", HHEM_MODEL_ID)
             return AutoModelForSequenceClassification.from_pretrained(
                 HHEM_MODEL_ID,
