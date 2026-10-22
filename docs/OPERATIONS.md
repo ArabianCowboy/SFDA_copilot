@@ -923,8 +923,19 @@ After about a week without a rollback (so not before 2026-10-29):
     **0.75 GB**. The 1.4 GB baseline above was taken after 71 requests, and a fresh worker
     reads low until copy-on-write pages diverge. Re-measure under traffic before calling
     this a saving.
-  - **Not yet recorded:** a streamed answer through the live `/api/chat/stream` in English
-    and in Arabic. It needs a signed-in reader. Fill this in when it has been done.
+  - **Live chat, by hand.** The operator tested it in the browser, signed in, from about
+    12:59 UTC. nginx logged:
+    - 7 `POST /api/chat/stream` → 200, including Arabic questions (the log shows them
+      translated, searched and answered).
+    - `/api/chat/sessions` and `/api/notifications/active` → 200.
+    - Two `/admin` notification sends → 201.
+    - No 5xx responses.
+
+    The one `ERROR` logged was `ARCHIVE_OWNER_SALT/ARCHIVE_SESSION_SALT is not set`. That is
+    expected: README.md says to leave both salts unset on purpose. It first appeared now only
+    because this was the process's first chat turn, since the code logs it once per process,
+    on the first turn, and the old process served no chat turns in the journal's window
+    (back to 2026-10-17).
 - **New, not a regression.** faiss-cpu 1.14.2 ships one generic `_swigfaiss.abi3.so`, and
   its loader logs that the AVX2 and AVX-512 modules are missing. 1.12.0 shipped both
   variants, and this CPU has AVX2. The cost has not been measured; at this corpus size it is
