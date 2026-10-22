@@ -33,7 +33,7 @@ import os
 import threading
 import uuid
 from dataclasses import asdict, dataclass, field, replace
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from itertools import pairwise
 from typing import Any, Protocol
 
@@ -42,8 +42,6 @@ from web.utils.supabase_client import get_supabase_admin
 
 logger = logging.getLogger(__name__)
 
-# datetime.UTC is Python 3.11+; the VPS production floor is 3.10.
-UTC = timezone.utc
 
 # The same bound the People pager clamps to (web/api/admin.py). Shared rather
 # than re-picked so two paginated surfaces cannot disagree about what "too much"
@@ -164,7 +162,7 @@ def canonical_uuid(value: Any) -> str | None:
         return None
     try:
         return str(uuid.UUID(str(value)))
-    except (ValueError, AttributeError, TypeError):
+    except ValueError, AttributeError, TypeError:
         return None
 
 
@@ -270,7 +268,7 @@ def clamp_load_limit(value: Any) -> int:
     """Bound a hydration window to what the transcript surface can carry."""
     try:
         limit = int(value)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return DEFAULT_LOAD_LIMIT
     return max(MIN_LOAD_LIMIT, min(limit, MAX_LOAD_LIMIT))
 
@@ -279,7 +277,7 @@ def clamp_list_limit(value: Any) -> int:
     """Bound a sidebar page."""
     try:
         limit = int(value)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return DEFAULT_LIST_LIMIT
     return max(MIN_LIST_LIMIT, min(limit, MAX_LIST_LIMIT))
 

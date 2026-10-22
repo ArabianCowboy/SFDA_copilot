@@ -21,7 +21,7 @@ recipient list both share.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from urllib.parse import parse_qs, urlparse
 
 import pytest
@@ -1274,7 +1274,7 @@ def test_purge_eligible_only_purges_rows_past_the_retention_window(browser_page:
     in an end-to-end test. This test instead proves the general direction
     with a wide margin on both sides.
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     old_row = _bulk_row(1, deleted=True)
     old_row["deleted_at"] = (now - timedelta(days=100)).isoformat()
     recent_row = _bulk_row(2, deleted=True)

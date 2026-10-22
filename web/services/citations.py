@@ -67,7 +67,7 @@ def _to_float(value: Any) -> float | None:
         return None
     try:
         result = float(value)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
     return None if math.isnan(result) or math.isinf(result) else round(result, 4)
 
@@ -77,7 +77,7 @@ def _to_int(value: Any) -> int | None:
         return None
     try:
         result = float(value)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
     if math.isnan(result) or math.isinf(result):
         return None
@@ -90,7 +90,7 @@ def _to_str(value: Any, fallback: str = "") -> str:
     try:
         if isinstance(value, float) and math.isnan(value):
             return fallback
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         pass
     text = str(value).strip()
     return text or fallback

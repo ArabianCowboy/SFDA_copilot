@@ -28,7 +28,7 @@ import hashlib
 import json
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Protocol
 
 from web.services.admin_store import AdminActionRefused, _require_uuid
@@ -36,8 +36,6 @@ from web.utils.supabase_client import get_supabase_admin
 
 logger = logging.getLogger(__name__)
 
-# datetime.UTC is Python 3.11+; the VPS production floor is 3.10.
-UTC = timezone.utc
 
 # Postgres SQLSTATEs raised by the notification RPCs, mapped to the codes the
 # console and the reader surface have strings for. Own namespace (AN0xx for

@@ -6,14 +6,13 @@ STATUS: CURRENT AUTHORITY — working agreement for agents and new contributors.
 Last verified against code 2026-10-21.
 
 SFDA Copilot: a bilingual (EN/AR, RTL) Flask + Supabase + LLM app that answers questions
-from the official SFDA guideline corpus and cites its sources. **Production is moving from
-Python 3.10 to 3.14, and the code floor is still 3.10 until the move is verified.** CI and the
-hash-pinned `requirements.lock` already run 3.14, but the VPS's old 3.10 venv is the rollback
-target, so every commit must still run on 3.10 — `ruff`'s `target-version` and `mypy`'s
-`python_version` stay pinned to 3.10 in `pyproject.toml` for exactly that reason, and move to
-3.14 only after the switch (`docs/OPERATIONS.md`, _Moving production to Python 3.14_).
-Production and CI install `requirements.lock`; regenerate it with
-`scripts/lock_requirements.py`, never by hand. No bundler, no runtime `node_modules` — the
+from the official SFDA guideline corpus and cites its sources. **Python 3.14 is the real
+floor** — the VPS production server, CI and the hash-pinned `requirements.lock` all run it
+(moved from 3.10; `docs/OPERATIONS.md`, _Moving production to Python 3.14_). `ruff`'s
+`target-version` and `mypy`'s `python_version` are pinned to it in `pyproject.toml`; move
+them only when production's interpreter moves, never to "match" a local one. Production and
+CI install `requirements.lock`; regenerate it with `scripts/lock_requirements.py`, never by
+hand. No bundler, no runtime `node_modules` — the
 frontend is still plain JS loaded from CDNs — but `node_modules/` now exists as local/CI-only
 dev tooling; see _Linting and formatting_ below.
 

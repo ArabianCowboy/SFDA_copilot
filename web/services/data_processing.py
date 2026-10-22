@@ -28,12 +28,9 @@ import logging
 import os
 import re
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
-
-# datetime.UTC is Python 3.11+; the VPS production floor is 3.10.
-UTC = timezone.utc
 
 # Must be set before PyTorch/sentence-transformers loads to prevent
 # segfault during interpreter shutdown on macOS arm64 (Python 3.14+).

@@ -4,14 +4,11 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from threading import Thread
 
 import pytest
 from werkzeug.serving import make_server
-
-# datetime.UTC is Python 3.11+; the VPS production floor is 3.10.
-UTC = timezone.utc
 
 SUPABASE_BROWSER_MOCK = """
 // The mock previously kept its session in a page-scoped object alone, so a

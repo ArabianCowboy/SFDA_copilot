@@ -436,9 +436,9 @@ def _age_session(chat, session_id, days):
     offers no override — as `chat_append_turn` does, which is why the SQL test
     backdates with a direct UPDATE too."""
     from dataclasses import replace
-    from datetime import datetime, timedelta, timezone
+    from datetime import UTC, datetime, timedelta
 
-    then = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    then = (datetime.now(UTC) - timedelta(days=days)).isoformat()
     with chat._lock:
         chat._messages[session_id] = [
             replace(message, created_at=then) for message in chat._messages[session_id]

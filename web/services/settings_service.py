@@ -148,7 +148,7 @@ def _in_range(value: Any, low: float, high: float) -> bool:
         return low <= value <= high
     try:
         as_float = float(value)
-    except (OverflowError, ValueError, TypeError):
+    except OverflowError, ValueError, TypeError:
         return False
     return math.isfinite(as_float) and low <= as_float <= high
 

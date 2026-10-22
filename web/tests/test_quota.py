@@ -11,7 +11,7 @@ they disagree the database is right.
 from __future__ import annotations
 
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -93,8 +93,8 @@ def test_an_expired_override_is_invisible(backend):
     backend.tiers["free"]["daily_message_limit"] = 7
     backend.overrides["u1"] = {
         "daily_message_limit": 50,
-        "starts_at": datetime.now(timezone.utc) - timedelta(days=9),
-        "expires_at": datetime.now(timezone.utc) - timedelta(days=1),
+        "starts_at": datetime.now(UTC) - timedelta(days=9),
+        "expires_at": datetime.now(UTC) - timedelta(days=1),
     }
     assert backend.claim("u1", 999).limit == 7
     # And it does not advertise an expiry the reader could act on.
@@ -105,7 +105,7 @@ def test_a_scheduled_override_is_not_in_force_yet(backend):
     backend.tiers["free"]["daily_message_limit"] = 7
     backend.overrides["u1"] = {
         "daily_message_limit": 50,
-        "starts_at": datetime.now(timezone.utc) + timedelta(days=1),
+        "starts_at": datetime.now(UTC) + timedelta(days=1),
     }
     assert backend.claim("u1", 999).limit == 7
 
@@ -113,7 +113,7 @@ def test_a_scheduled_override_is_not_in_force_yet(backend):
 def test_an_override_expiring_between_two_claims_needs_no_sweep(backend):
     """Expiry-on-read: no scheduler, no job, no restart."""
     backend.tiers["free"]["daily_message_limit"] = 7
-    expiry = datetime.now(timezone.utc) + timedelta(hours=1)
+    expiry = datetime.now(UTC) + timedelta(hours=1)
     backend.overrides["u1"] = {"daily_message_limit": 50, "expires_at": expiry}
     assert backend.claim("u1", 999).limit == 50
     backend._now = lambda: expiry + timedelta(seconds=1)
@@ -197,24 +197,24 @@ def test_the_day_rolls_over_at_riyadh_midnight_not_utc(backend):
     either side of it fall on different days; two either side of UTC midnight
     do not.
     """
-    backend._now = lambda: datetime(2026, 9, 4, 20, 59, tzinfo=timezone.utc)
+    backend._now = lambda: datetime(2026, 9, 4, 20, 59, tzinfo=UTC)
     before = backend.claim("u1", 200).day
-    backend._now = lambda: datetime(2026, 9, 4, 21, 1, tzinfo=timezone.utc)
+    backend._now = lambda: datetime(2026, 9, 4, 21, 1, tzinfo=UTC)
     after = backend.claim("u1", 200).day
     assert before != after, "the allowance must reset at Riyadh midnight"
 
-    backend._now = lambda: datetime(2026, 9, 6, 23, 30, tzinfo=timezone.utc)
+    backend._now = lambda: datetime(2026, 9, 6, 23, 30, tzinfo=UTC)
     late = backend.claim("u1", 200).day
-    backend._now = lambda: datetime(2026, 9, 7, 0, 30, tzinfo=timezone.utc)
+    backend._now = lambda: datetime(2026, 9, 7, 0, 30, tzinfo=UTC)
     assert backend.claim("u1", 200).day == late, "UTC midnight must NOT roll the day"
 
 
 def test_a_fresh_day_restores_the_whole_allowance(backend):
     backend.tiers["free"]["daily_message_limit"] = 1
-    backend._now = lambda: datetime(2026, 9, 4, 12, 0, tzinfo=timezone.utc)
+    backend._now = lambda: datetime(2026, 9, 4, 12, 0, tzinfo=UTC)
     backend.claim("u1", 200)
     assert backend.claim("u1", 200).allowed is False
-    backend._now = lambda: datetime(2026, 9, 5, 12, 0, tzinfo=timezone.utc)
+    backend._now = lambda: datetime(2026, 9, 5, 12, 0, tzinfo=UTC)
     assert backend.claim("u1", 200).allowed is True
 
 

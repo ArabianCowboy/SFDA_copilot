@@ -382,7 +382,7 @@ ASSET_VERSION = "warm100"
 # hand-type this value into a JS docstring or any other comment; that duplication
 # is exactly what let static/js/app.js and admin.js drift out of step before both
 # were cleaned up. See CLAUDE.md rule 9 for when a commit must bump this.
-APP_VERSION = "0.10.0 (Beta)"
+APP_VERSION = "0.10.1 (Beta)"
 
 # The privacy policy's own version, recorded on every consent grant
 # (docs/ARCHITECTURE.md#account-page-and-profile; reasoning in
@@ -455,7 +455,7 @@ def _as_count(value: str | None) -> str | None:
     """Canonical decimal, or None. `01` must read as one worker, not two."""
     try:
         return str(int(value))  # type: ignore[arg-type]
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
 
 
@@ -810,7 +810,7 @@ def _decode_jwt_payload(token: str) -> dict[str, Any] | None:
     padded = parts[1] + "=" * (-len(parts[1]) % 4)
     try:
         payload = json.loads(base64.urlsafe_b64decode(padded))
-    except (ValueError, TypeError, UnicodeDecodeError, RecursionError):
+    except ValueError, TypeError, UnicodeDecodeError, RecursionError:
         return None
     return payload if isinstance(payload, dict) else None
 
@@ -1197,7 +1197,7 @@ def _quota_exhausted_response(claim: QuotaClaim) -> tuple[Response, int]:
         resets = datetime.fromisoformat(claim.resets_at)
         delta = (resets - datetime.now(resets.tzinfo)).total_seconds()
         retry_after = max(1, math.ceil(delta))
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         logger.warning("Unparseable resets_at %r; defaulting Retry-After.", claim.resets_at)
     payload = {"error": "quota_exhausted", "tier": claim.tier_key, **claim.as_frame()}
     response = jsonify(payload)
@@ -3699,7 +3699,7 @@ def _register_routes(app: Flask, limiter: Limiter) -> None:
 
         try:
             uuid.UUID(notification_id)
-        except (ValueError, AttributeError, TypeError):
+        except ValueError, AttributeError, TypeError:
             return jsonify(error="no_such_notification"), 404
 
         from web.services.admin_store import AdminActionRefused

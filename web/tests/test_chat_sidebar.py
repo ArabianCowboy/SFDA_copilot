@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from playwright.sync_api import Page, expect
@@ -37,9 +37,6 @@ from web.tests.conftest import (
     stored_answer,
     stored_session,
 )
-
-# datetime.UTC is Python 3.11+; the VPS production floor is 3.10.
-UTC = timezone.utc
 
 pytestmark = pytest.mark.browser
 

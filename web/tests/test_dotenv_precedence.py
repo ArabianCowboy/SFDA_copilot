@@ -38,7 +38,7 @@ def _load_dotenv_calls():
     for path in _python_files():
         try:
             tree = ast.parse(path.read_text(encoding="utf-8"))
-        except (SyntaxError, UnicodeDecodeError):  # pragma: no cover - not ours to police
+        except SyntaxError, UnicodeDecodeError:  # pragma: no cover - not ours to police
             continue
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call):

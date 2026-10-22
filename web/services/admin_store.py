@@ -23,7 +23,7 @@ import logging
 import re
 import uuid
 from dataclasses import replace
-from datetime import timezone
+from datetime import UTC
 from typing import Protocol
 
 from web.services.identity_cache import IdentityFlags
@@ -31,9 +31,6 @@ from web.utils.postgrest_errors import describe_api_error
 from web.utils.supabase_client import get_supabase_admin
 
 logger = logging.getLogger(__name__)
-
-# datetime.UTC is Python 3.11+; the VPS production floor is 3.10.
-UTC = timezone.utc
 
 
 class AdminActionRefused(Exception):
@@ -60,7 +57,7 @@ def _is_uuid(value) -> bool:
     """
     try:
         return str(uuid.UUID(str(value))) == str(value).lower()
-    except (ValueError, AttributeError, TypeError):
+    except ValueError, AttributeError, TypeError:
         return False
 
 
@@ -675,7 +672,7 @@ class SupabaseAdminBackend:
     def get_deletion_saga(self, user_id: str) -> dict | None:
         try:
             uuid.UUID(str(user_id))
-        except (ValueError, AttributeError, TypeError):
+        except ValueError, AttributeError, TypeError:
             return None
 
         response = (

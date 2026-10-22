@@ -2,12 +2,11 @@
 # package, so there is deliberately no [build-system]/[project] section here.
 
 [tool.ruff]
-# py310, deliberately, while production moves to 3.14. CI and requirements.lock
-# already run 3.14, but until the VPS switch is verified its old 3.10 venv is
-# the rollback target, so every commit must still run on 3.10. This moves to
-# py314 in one commit with the code that needs it, after the switch
-# (docs/OPERATIONS.md, "Moving production to Python 3.14").
-target-version = "py310"
+# py314: the VPS production server runs Python 3.14 (switched from 3.10.12;
+# docs/OPERATIONS.md, "Moving production to Python 3.14"), and so do CI and
+# requirements.lock. It is the floor every commit must run on; move it only
+# when production's interpreter moves, never to "match" a local one.
+target-version = "py314"
 line-length = 100
 extend-exclude = [
     "data",
@@ -57,7 +56,7 @@ indent-style = "space"
 line-ending = "auto"
 
 [tool.mypy]
-python_version = "3.10" # rollback floor — see [tool.ruff]'s target-version comment
+python_version = "3.14" # production floor — see [tool.ruff]'s target-version comment
 ignore_missing_imports = true
 exclude = [
     "data/",

@@ -369,7 +369,7 @@ def users() -> Response | tuple[Response, int]:
     """Accounts, newest first, with their standing."""
     try:
         limit, offset = _parse_pagination_params(request)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return jsonify({"error": "invalid_pagination"}), 400
 
     # Optional, and refused before the RPC like every other tier key here.
@@ -1262,7 +1262,7 @@ def audit() -> Response | tuple[Response, int]:
 
     try:
         limit, offset = _parse_pagination_params(request)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return jsonify({"error": "invalid_pagination"}), 400
 
     # Optional filter, so the account detail view can show one account's history
@@ -1311,7 +1311,7 @@ def list_deletions() -> Response | tuple[Response, int]:
     """
     try:
         limit, offset = _parse_pagination_params(request)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return jsonify({"error": "invalid_pagination"}), 400
 
     backend = current_app.config["admin_backend"]()
@@ -1614,7 +1614,7 @@ def create_notification() -> Response | tuple[Response, int]:
             return jsonify({"error": "invalid_payload"}), 400
         try:
             _uuid.UUID(resend_of)
-        except (ValueError, AttributeError, TypeError):
+        except ValueError, AttributeError, TypeError:
             return jsonify({"error": "invalid_payload"}), 400
 
     client_request_id = payload.get("client_request_id")
@@ -1622,7 +1622,7 @@ def create_notification() -> Response | tuple[Response, int]:
         return jsonify({"error": "invalid_payload"}), 400
     try:
         _uuid.UUID(client_request_id)
-    except (ValueError, AttributeError, TypeError):
+    except ValueError, AttributeError, TypeError:
         return jsonify({"error": "invalid_payload"}), 400
 
     backend = _notification_backend()
@@ -1681,7 +1681,7 @@ def notification_history() -> Response | tuple[Response, int]:
     list_audit) — only the reader-facing history uses cursor pagination."""
     try:
         limit, offset = _parse_pagination_params(request)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return jsonify({"error": "invalid_pagination"}), 400
 
     status = request.args.get("status") or "all"
@@ -1988,7 +1988,7 @@ def analytics_questions() -> Response | tuple[Response, int]:
     """Recurring questions in the window. What was asked, never who asked it."""
     try:
         days, limit = _parse_analytics_window(days=30, limit=20)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return jsonify({"error": "invalid_window"}), 400
 
     filters, error = _analytics_filters()
@@ -2015,7 +2015,7 @@ def analytics_citations() -> Response | tuple[Response, int]:
     """Citation counts for the window: one total, then by language and scope."""
     try:
         (days,) = _parse_analytics_window(days=30)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return jsonify({"error": "invalid_window"}), 400
 
     filters, error = _analytics_filters()

@@ -33,7 +33,7 @@ import logging
 import threading
 import time
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 from typing import Any, Protocol
 
 from web.utils.supabase_client import get_supabase_admin
@@ -320,7 +320,7 @@ class InMemoryQuotaBackend:
         self.fault_count = 0
         # Seam for rollover tests. Returns an aware datetime; tests replace it
         # rather than sleeping.
-        self._now = lambda: datetime.now(timezone.utc)
+        self._now = lambda: datetime.now(UTC)
 
     # -- the same four legs the RPC resolves, in the same order ----------------
     def _today(self) -> str:
@@ -347,11 +347,11 @@ class InMemoryQuotaBackend:
         try:
             text = str(value).replace("Z", "+00:00")
             parsed = datetime.fromisoformat(text)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             logger.warning("quota: unparseable override window %r; treating as absent", value)
             return None
         # A naive stamp is read as UTC rather than compared against an aware one.
-        return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+        return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
 
     def _override_in_force(self, user_id: str) -> dict[str, Any] | None:
         row = self.overrides.get(user_id)

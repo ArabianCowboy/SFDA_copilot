@@ -44,7 +44,7 @@ from __future__ import annotations
 import logging
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -279,7 +279,7 @@ def _due_rows(db: Any) -> list[dict]:
     # exposes ``in_`` but no negated form, and ``neq`` twice is the same AND.
     # The timestamp is computed here, not as SQL ``now()`` — PostgREST would
     # compare against the literal string otherwise.
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     response = (
         db.table("account_deletions")
         .select("user_id,state")

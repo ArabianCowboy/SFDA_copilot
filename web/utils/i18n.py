@@ -111,7 +111,7 @@ def make_translator(catalog: dict[str, Any]) -> Callable[..., str]:
             return node
         try:
             return node.format(**params)
-        except (KeyError, IndexError):
+        except KeyError, IndexError:
             logger.warning("Unresolved placeholder in i18n key: %s", key)
             return node
 

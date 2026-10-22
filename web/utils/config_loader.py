@@ -15,7 +15,7 @@ Usage:
 import logging
 import os
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import yaml
 from dotenv import load_dotenv
@@ -45,10 +45,10 @@ class ConfigLoader:
     - Environment variables: Secrets (API keys, database URLs)
     """
 
-    _instance: Optional["ConfigLoader"] = None
+    _instance: ConfigLoader | None = None
     _initialized: bool
 
-    def __new__(cls) -> "ConfigLoader":
+    def __new__(cls) -> ConfigLoader:
         """Singleton pattern - only one config instance."""
         if cls._instance is None:
             cls._instance = super().__new__(cls)

@@ -36,15 +36,12 @@ import os
 import pickle
 import re
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import faiss
 import pandas as pd
-
-# datetime.UTC is Python 3.11+; the VPS production floor is 3.10.
-UTC = timezone.utc
 
 logger = logging.getLogger(__name__)
 

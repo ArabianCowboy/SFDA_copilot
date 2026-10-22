@@ -28,7 +28,7 @@ import json
 import logging
 import re
 from collections.abc import Callable, Sequence
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any, cast
 
 from flask import (
@@ -47,9 +47,6 @@ from flask import (
 from web.services.chat_store import PersistenceUnavailable, export_all_sessions
 from web.services.conversation_store import ConversationStore
 from web.utils.supabase_client import get_supabase_admin
-
-# datetime.UTC is Python 3.11+; the VPS production floor is 3.10.
-UTC = timezone.utc
 
 logger = logging.getLogger(__name__)
 

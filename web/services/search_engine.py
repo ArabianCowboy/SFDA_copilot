@@ -399,7 +399,7 @@ class SearchEngine:
 
         try:
             self._index.load()
-        except (DataLoadError, SearchEngineError):
+        except DataLoadError, SearchEngineError:
             logger.exception("Search index initialization failed")
             return False
 
