@@ -7,6 +7,6 @@ Type=oneshot
 User=www-data
 Group=www-data
 WorkingDirectory=/var/www/sfda-copilot
-Environment=PATH=/var/www/sfda-copilot/venv/bin
+Environment=PATH=/var/www/sfda-copilot/venv-3.14/bin
 EnvironmentFile=/var/www/sfda-copilot/.env
-ExecStart=/var/www/sfda-copilot/venv/bin/python -m scripts.check_transcript_orphans --quiet
+ExecStart=/var/www/sfda-copilot/venv-3.14/bin/python -m scripts.check_transcript_orphans --quiet

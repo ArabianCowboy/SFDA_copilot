@@ -607,9 +607,12 @@ Key facts from this service definition:
   changed (a `pip install` is needed) and whether `supabase/migrations/` gained anything
   (schema goes before code). Smoke-booting the new code as a second gunicorn on a spare
   loopback port before restarting the live one turns the restart into a known quantity.
-- **Gunicorn version divergence:** Production runs gunicorn **23.0.0**; the development tree
-  runs **26.0.0** (due to unpinned `requirements.txt`). Cwd config discovery and `raw_env`
-  injection before `--preload` were verified empirically on 23.0.0.
+- **Gunicorn version divergence:** Production's 3.10 venv runs gunicorn **23.0.0**; the
+  development tree runs **26.0.0** (due to the then-unpinned `requirements.txt`). Cwd config
+  discovery and `raw_env` injection before `--preload` were verified empirically on 23.0.0.
+  `requirements.txt` now pins **26.0.0**, and the 3.14 venv installs it from the lock, so
+  the runbook's spare-port smoke boot is the first run of 26.0.0 on this box and needs to
+  re-check both.
 
 **How the worker count got here, 2026-09-12.** The unit carried `--workers 1` directly until
 this date, and had carried `--workers 2` for months before that without anyone noticing,
@@ -655,8 +658,11 @@ freshly forked worker reads as ~8 MB private until copy-on-write pages diverge.
 
 **Two operational details that look like trivia until they cost an hour:**
 
-- The production virtualenv is `venv/`, while this repository's is `.venv/`. A command copied
-  from `CLAUDE.md` runs the wrong interpreter on the box, and vice versa.
+- The production virtualenv is `venv-3.14/` once the 3.14 runbook below has run, and was
+  `venv/` (Python 3.10) before it; this repository's is `.venv/`. A command copied from
+  `CLAUDE.md` runs the wrong interpreter on the box, and vice versa. The committed units
+  already name `venv-3.14/`, so until the switch they deliberately disagree with the live
+  ones.
 - There is **no `.service.d/` drop-in directory**. When triaging a setting that does not match
   this file, that rules out an override rather than leaving it as an open question.
 
@@ -721,6 +727,98 @@ with no GPU.
   [`web/tests/test_live_artifacts.py`](../web/tests/test_live_artifacts.py), an
   `integration`-marked test that loads the active build through `SearchEngine` and searches
   it. Run it in any new venv before pointing the service at that venv.
+
+## Moving production to Python 3.14
+
+Written 2026-10-21, before the switch; **not yet run**. Python 3.14 is installed on the VPS
+and the app still serves from `venv/` (3.10). The evidence behind this order is in the
+commits on `chore/python-3.14`:
+
+- The unit suite passes on 3.14.
+- The lock's 112 Linux wheels download and hash-check.
+- The real artifacts load on 3.14 without a rebuild.
+- CI on 3.14 Linux is the browser suite's check. Locally (macOS) 441 of 446 passed. The 5
+  failures drive a native `<select>` with arrow keys, and they fail identically on the
+  unchanged pre-move code on that machine.
+
+**Two deploys, not one.** The first deploy carries no code that stops running on 3.10, so
+`venv/` remains a working rollback. The 3.14-only modernisation (`datetime.UTC`, PEP 758
+`except A, B:`, ruff and mypy moved to 3.14) is on `refactor/py314-modernize` and merges
+only after step 7 passes and `venv/` has been retired. Merge it earlier and rolling back
+also needs a code revert.
+
+1. **Check the interpreter.** All three must pass before anything else:
+
+   ```bash
+   python3.14 -VV          # 3.14.5 or later: 3.14.0-3.14.4 shipped the GC that was reverted
+   python3.14 -c "import sysconfig; print(sysconfig.get_config_var('Py_GIL_DISABLED'))"   # 0 or None
+   ldd --version | head -1 # glibc 2.28 or later, for the torch, numpy and scipy wheels
+   ```
+
+   `Py_GIL_DISABLED=1` means the free-threaded build. Do not use it: faiss-cpu's wheels are
+   GIL builds, and this IO-bound, 8-thread app gains nothing from free threading.
+
+2. **Record the rollback state:** `venv/bin/pip freeze > ~/venv-3.10.freeze.txt`. Do not touch
+   `venv/` from here on.
+3. **Pull and build beside it.** Follow the usual deploy checks above (gap size, then
+   `chown -R www-data:www-data`), then:
+
+   ```bash
+   cd /var/www/sfda-copilot
+   python3.14 -m venv venv-3.14
+   venv-3.14/bin/python -m pip install --upgrade pip
+   venv-3.14/bin/python -m pip install --require-hashes --only-binary=:all: -r requirements.lock
+   venv-3.14/bin/python -m pip check
+   ```
+
+4. **Load the real corpus in the new venv.** This runs the same load and validation `--preload`
+   will run, and the first run downloads the embedding model if this user has not cached it:
+
+   ```bash
+   venv-3.14/bin/python -m pip install pytest
+   venv-3.14/bin/python -m pytest web/tests/test_live_artifacts.py -m integration
+   ```
+
+   A skip means there is no `active_build.txt`, which the live service would also refuse to
+   start on. Stop and resolve that first.
+
+5. **Smoke-boot on a spare port** while the live service keeps serving:
+
+   ```bash
+   venv-3.14/bin/gunicorn --bind 127.0.0.1:5002 --threads 8 --preload \
+     --chdir /var/www/sfda-copilot 'web.api.app:create_app()'
+   ```
+
+   Expect one master and one worker, no single-worker warning in the log, and a 200 from:
+
+   ```bash
+   curl -sI http://127.0.0.1:5002/
+   ```
+
+   Stop the spare gunicorn. Then run `venv-3.14/bin/python scripts/smoke_real.py` for one
+   real answer through search and the model, in-process (it costs one OpenAI call).
+
+6. **Switch:** copy the three committed `.service` files over `/etc/systemd/system/`, then
+   `systemctl daemon-reload && systemctl restart sfda-copilot`, and run both `diff` checks above.
+   They must print nothing.
+7. **Verify:**
+   - `systemctl show sfda-copilot -p NRestarts` reads 0.
+   - HTTPS returns 200 through nginx.
+   - A streamed answer arrives in English and in Arabic.
+   - PSS is close to the baseline above. Re-measure it, because torch is now the CPU-only
+     build.
+   - `systemctl list-timers 'sfda-copilot-*'` shows both timers, and their next run logs
+     from `venv-3.14`.
+8. **Rollback**, if any of these happen: a 5xx on `/api/chat/stream`, the single-worker
+   warning, `NRestarts` above 0, empty retrieval, or PSS well over baseline.
+   - Restore the three units to `venv/` (`git show HEAD~1:deploy/<unit>` or the previous
+     commit's copies).
+   - Run `daemon-reload` and `restart`.
+   - Nothing needs rebuilding.
+   - Record what failed in `TODO.md` before trying again.
+
+After about a week without a rollback, delete `venv/`, record the switch date and the
+measured PSS here, and merge `refactor/py314-modernize`.
 
 ## nginx: what the proxy actually sets
 
