@@ -607,12 +607,20 @@ Key facts from this service definition:
   changed (a `pip install` is needed) and whether `supabase/migrations/` gained anything
   (schema goes before code). Smoke-booting the new code as a second gunicorn on a spare
   loopback port before restarting the live one turns the restart into a known quantity.
-- **Gunicorn version divergence:** Production's 3.10 venv runs gunicorn **23.0.0**; the
-  development tree runs **26.0.0** (due to the then-unpinned `requirements.txt`). Cwd config
-  discovery and `raw_env` injection before `--preload` were verified empirically on 23.0.0.
-  `requirements.txt` now pins **26.0.0**, and the 3.14 venv installs it from the lock, so
-  the runbook's spare-port smoke boot is the first run of 26.0.0 on this box and needs to
-  re-check both.
+- **Gunicorn version:** production has run **26.0.0** from the lock since the 3.14 switch
+  on 2026-10-22. Before that, `venv/` ran **23.0.0**, a leftover of the then-unpinned
+  `requirements.txt`. Cwd config discovery and `raw_env` injection before `--preload` were
+  first verified on 23.0.0, then **re-verified on 26.0.0 on the box on 2026-10-22**. Run
+  from the repo root, `--print-config` reported `raw_env = ['SFDA_CONFIG_WORKERS=1']`, and
+  the live process was one master plus one worker.
+- **26.0.0 adds a control socket, which `gunicorn.conf.py` disables.** gunicorn 25.1+ opens
+  a Unix socket at `$XDG_RUNTIME_DIR/gunicorn.ctl`, or `$HOME/.gunicorn/gunicorn.ctl` when
+  that variable is unset. Its `gunicornc` client can change the worker count at runtime,
+  which is a second route around the single-worker setting. On this box it also fails:
+  www-data's `$HOME` is the root-owned `/var/www`, so every boot logged
+  `Control server error: [Errno 13] Permission denied: '/var/www/.gunicorn'`.
+  `control_socket_disable = True` removes both problems. gunicorn 23.0.0 ignores the unknown name
+  (`gunicorn/app/base.py:139-141`), so the rollback venv still reads the file.
 
 **How the worker count got here, 2026-09-12.** The unit carried `--workers 1` directly until
 this date, and had carried `--workers 2` for months before that without anyone noticing,
@@ -658,11 +666,23 @@ freshly forked worker reads as ~8 MB private until copy-on-write pages diverge.
 
 **Two operational details that look like trivia until they cost an hour:**
 
-- The production virtualenv is `venv-3.14/` once the 3.14 runbook below has run, and was
-  `venv/` (Python 3.10) before it; this repository's is `.venv/`. A command copied from
-  `CLAUDE.md` runs the wrong interpreter on the box, and vice versa. The committed units
-  already name `venv-3.14/`, so until the switch they deliberately disagree with the live
-  ones.
+- The production virtualenv is `venv-3.14/`, since 2026-10-22. `venv/` is kept beside it
+  as the rollback until it is retired. A developer checkout uses `.venv/`. A command copied
+  from `CLAUDE.md` therefore runs the wrong interpreter on the box, and vice versa.
+- **Neither production interpreter comes from apt.** Both live in `/opt/uv-python/` and were
+  installed by uv from python-build-standalone:
+  - `cpython-3.14.9-linux-x86_64-gnu` for `venv-3.14/`.
+  - `cpython-3.12.15-linux-x86_64-gnu` for `venv/`.
+
+  **`venv/` is Python 3.12.15, not 3.10.** These docs said 3.10 until 2026-10-22. 3.10.12
+  was true until 2026-10-09. On that date the box moved to Ubuntu 26.04.1, which ships no
+  3.10, and `venv/` was rebuilt by uv 0.12.24. Nothing written here recorded the change, so
+  read `venv/pyvenv.cfg` rather than this sentence when it matters. uv is at
+  `/root/.local/bin/uv`. Installing a Python with it also puts a `python3.14` shim in
+  `/root/.local/bin`. That shim shadows apt's `/usr/bin/python3.14` for root, so a bare
+  `python3.14` in a root shell is the uv build. The systemd units use absolute paths and are
+  unaffected.
+
 - There is **no `.service.d/` drop-in directory**. When triaging a setting that does not match
   this file, that rules out an override rather than leaving it as an open question.
 
@@ -730,9 +750,15 @@ with no GPU.
 
 ## Moving production to Python 3.14
 
-Written 2026-10-21, before the switch; **not yet run**. Python 3.14 is installed on the VPS
-and the app still serves from `venv/` (3.10). The evidence behind this order is in the
-commits on `chore/python-3.14`:
+Written 2026-10-21. **Run 2026-10-22: switched at 12:15 UTC, no rollback.** The results are
+in [the run record](#run-record-2026-10-22) at the end of this section. Three things in the
+first draft were wrong for this box, and the steps below now carry the corrections:
+
+- The interpreter came from uv, because apt's Python failed step 1.
+- `venv/` was Python 3.12.15, not 3.10, and it has no pip.
+- The new venv has to be built as www-data.
+
+The evidence behind this order is in the commits on `chore/python-3.14`:
 
 - The unit suite passes on 3.14.
 - The lock's 112 Linux wheels download and hash-check.
@@ -741,51 +767,74 @@ commits on `chore/python-3.14`:
   failures drive a native `<select>` with arrow keys, and they fail identically on the
   unchanged pre-move code on that machine.
 
-**Two deploys, not one.** The first deploy carries no code that stops running on 3.10, so
-`venv/` remains a working rollback. The 3.14-only modernisation (`datetime.UTC`, PEP 758
+**Two deploys, not one.** The first deploy carries no code that stops running on the rollback
+venv's 3.12.15, so `venv/` remains a working rollback. The code floor is held at 3.10, which
+covers 3.12. The 3.14-only modernisation (`datetime.UTC`, PEP 758
 `except A, B:`, ruff and mypy moved to 3.14) is on `refactor/py314-modernize` and merges
 only after step 7 passes and `venv/` has been retired. Merge it earlier and rolling back
 also needs a code revert.
 
-1. **Check the interpreter.** All three must pass before anything else:
+1. **Get and check the interpreter.** apt cannot supply it: Ubuntu 26.04.1's `python3.14` is
+   3.14.4 (`3.14.4-1ubuntu0.2`, the newest in `resolute-updates`), which fails the first
+   check. Install it with uv into `/opt/uv-python/`, the same way `venv/`'s interpreter was
+   installed. The other apps on the box are not affected:
 
    ```bash
-   python3.14 -VV          # 3.14.5 or later: 3.14.0-3.14.4 shipped the GC that was reverted
-   python3.14 -c "import sysconfig; print(sysconfig.get_config_var('Py_GIL_DISABLED'))"   # 0 or None
+   UV_PYTHON_INSTALL_DIR=/opt/uv-python uv python install 3.14.9
+   PY=/opt/uv-python/cpython-3.14.9-linux-x86_64-gnu/bin/python3.14
+   ```
+
+   All three checks must pass before anything else:
+
+   ```bash
+   $PY -VV                 # 3.14.5 or later: 3.14.0-3.14.4 shipped the GC that was reverted
+   $PY -c "import sysconfig; print(sysconfig.get_config_var('Py_GIL_DISABLED'))"   # 0 or None
    ldd --version | head -1 # glibc 2.28 or later, for the torch, numpy and scipy wheels
    ```
 
    `Py_GIL_DISABLED=1` means the free-threaded build. Do not use it: faiss-cpu's wheels are
    GIL builds, and this IO-bound, 8-thread app gains nothing from free threading.
 
-2. **Record the rollback state:** `venv/bin/pip freeze > ~/venv-3.10.freeze.txt`. Do not touch
-   `venv/` from here on.
+2. **Record the rollback state.** uv built `venv/`, so it has no `pip`. Freeze it through uv
+   instead:
+
+   ```bash
+   uv pip freeze --python venv/bin/python > ~/venv-3.12.freeze.txt
+   ```
+
+   Do not touch `venv/` from here on.
+
 3. **Pull and build beside it.** Follow the usual deploy checks above (gap size, then
-   `chown -R www-data:www-data`), then:
+   `chown -R www-data:www-data`). Then build **as www-data**, so the venv belongs to the
+   service user from the start rather than needing another `chown`:
 
    ```bash
    cd /var/www/sfda-copilot
-   python3.14 -m venv venv-3.14
-   venv-3.14/bin/python -m pip install --upgrade pip
-   venv-3.14/bin/python -m pip install --require-hashes --only-binary=:all: -r requirements.lock
-   venv-3.14/bin/python -m pip check
+   sudo -u www-data "$PY" -m venv venv-3.14
+   sudo -u www-data venv-3.14/bin/python -m pip install --upgrade pip
+   sudo -u www-data venv-3.14/bin/python -m pip install --require-hashes --only-binary=:all: -r requirements.lock
+   sudo -u www-data venv-3.14/bin/python -m pip check
    ```
 
 4. **Load the real corpus in the new venv.** This runs the same load and validation `--preload`
-   will run, and the first run downloads the embedding model if this user has not cached it:
+   will run. Run it as www-data with `-H`, so a model download lands in the service's cache
+   (`/var/www/.cache/huggingface`) and not root's:
 
    ```bash
-   venv-3.14/bin/python -m pip install pytest
-   venv-3.14/bin/python -m pytest web/tests/test_live_artifacts.py -m integration
+   sudo -u www-data -H venv-3.14/bin/python -m pip install pytest
+   sudo -u www-data -H venv-3.14/bin/python -m pytest web/tests/test_live_artifacts.py -m integration
    ```
 
    A skip means there is no `active_build.txt`, which the live service would also refuse to
    start on. Stop and resolve that first.
 
-5. **Smoke-boot on a spare port** while the live service keeps serving:
+5. **Smoke-boot on a spare port** while the live service keeps serving. Launch it **from the
+   repo root**: config-file discovery follows the launch cwd, not `--chdir`, as described
+   above.
 
    ```bash
-   venv-3.14/bin/gunicorn --bind 127.0.0.1:5002 --threads 8 --preload \
+   cd /var/www/sfda-copilot
+   sudo -u www-data -H venv-3.14/bin/gunicorn --bind 127.0.0.1:5002 --threads 8 --preload \
      --chdir /var/www/sfda-copilot 'web.api.app:create_app()'
    ```
 
@@ -795,12 +844,32 @@ also needs a code revert.
    curl -sI http://127.0.0.1:5002/
    ```
 
-   Stop the spare gunicorn. Then run `venv-3.14/bin/python scripts/smoke_real.py` for one
-   real answer through search and the model, in-process (it costs one OpenAI call).
+   The master also has a third child of about 14 MB, `multiprocessing.resource_tracker`,
+   started by a library during preload. It is not a worker. Read the child's command line
+   before counting it as one. To stop the spare gunicorn, `TERM` the **master**'s PID (the
+   one in `Listening at: … (<pid>)`), not the `sudo` wrapper.
 
-6. **Switch:** copy the three committed `.service` files over `/etc/systemd/system/`, then
-   `systemctl daemon-reload && systemctl restart sfda-copilot`, and run both `diff` checks above.
-   They must print nothing.
+   Then run `sudo -u www-data -H venv-3.14/bin/python scripts/smoke_real.py` for one real
+   answer through search and the model, in-process. It costs one OpenAI call, and it claims
+   and releases one unit of a real account's daily allowance.
+
+   **Then prove the rollback against the code you just pulled.** Boot `venv/bin/gunicorn` the
+   same way on port 5002 and get a 200. The live process still holds the pre-pull code, so
+   its being healthy says nothing about whether `venv/` can run the new code. A rollback, or
+   any crash and restart before the switch, runs exactly that combination.
+
+6. **Switch:** back up the live units:
+
+   ```bash
+   B=/root/sfda-copilot-units.bak-$(date -u +%Y%m%d-%H%M%S) && mkdir -p "$B"
+   cp -p /etc/systemd/system/sfda-copilot* "$B/"
+   ```
+
+   Then copy the three committed `.service` files over
+   `/etc/systemd/system/` and run
+   `systemctl daemon-reload && systemctl restart sfda-copilot`. Run both `diff` checks above;
+   they must print nothing.
+
 7. **Verify:**
    - `systemctl show sfda-copilot -p NRestarts` reads 0.
    - HTTPS returns 200 through nginx.
@@ -811,14 +880,58 @@ also needs a code revert.
      from `venv-3.14`.
 8. **Rollback**, if any of these happen: a 5xx on `/api/chat/stream`, the single-worker
    warning, `NRestarts` above 0, empty retrieval, or PSS well over baseline.
-   - Restore the three units to `venv/` (`git show HEAD~1:deploy/<unit>` or the previous
-     commit's copies).
+   - Restore the three units to `venv/`. The step-6 backup has the exact live copies; the
+     2026-10-22 run's is `/root/sfda-copilot-units.bak-20261022-121507/`. Failing that, use
+     `git show ed35d5d~1:deploy/<unit>`. Name the commit: `HEAD~1` stops meaning the
+     pre-switch units as soon as anything else lands.
    - Run `daemon-reload` and `restart`.
    - Nothing needs rebuilding.
    - Record what failed in `TODO.md` before trying again.
 
-After about a week without a rollback, delete `venv/`, record the switch date and the
-measured PSS here, and merge `refactor/py314-modernize`.
+After about a week without a rollback (so not before 2026-10-29):
+
+- Re-measure PSS under real traffic and record it in the run record.
+- Delete `venv/` and the step-6 unit backup.
+- Merge `refactor/py314-modernize`, which moves the ruff and mypy pins to 3.14.
+
+### Run record, 2026-10-22
+
+- **Step 1.** apt's 3.14.4 failed the version check. uv 0.13.5 installed CPython **3.14.9**,
+  a GIL build; glibc is 2.43.
+- **Step 3.** The lock installed with every hash matching, and `pip check` was clean. torch
+  is `2.12.0+cpu`, with no CUDA packages. `venv-3.14/` is 1.6 GB.
+- **Step 4.** 3 passed. Each load warns that scikit-learn 1.8.0 is unpickling TF-IDF objects
+  written by 1.7.2 (`InconsistentVersionWarning`). Search results were correct. The warning
+  stays until the next corpus build re-pickles them.
+- **Step 5.** 200 in English and Arabic. `smoke_real.py`:
+  - First token after 2.73 s.
+  - 4 valid citations, 0 hallucinated, 0 legacy prose citations.
+  - Allowance claim and release worked through `service_role`.
+
+  The pulled code also booted on `venv/` (gunicorn 23.0.0) with a 200, so the rollback was
+  proven against the deployed code.
+
+- **Step 6.** Switched at 12:15 UTC. The backup is at
+  `/root/sfda-copilot-units.bak-20261022-121507/`, and all five `diff`s were silent.
+- **Step 7.**
+  - `NRestarts=0`.
+  - HTTPS through nginx returned 200 in English and Arabic.
+  - The startup log has no single-worker warning.
+  - Both timers ran from `venv-3.14`. The orphan check was started by hand and succeeded;
+    deletion-reconcile ran on its 12:28 schedule, succeeded, and had nothing due.
+  - PSS right after start: master 446 MB, worker 287 MB, resource tracker 13 MB, about
+    **0.75 GB**. The 1.4 GB baseline above was taken after 71 requests, and a fresh worker
+    reads low until copy-on-write pages diverge. Re-measure under traffic before calling
+    this a saving.
+  - **Not yet recorded:** a streamed answer through the live `/api/chat/stream` in English
+    and in Arabic. It needs a signed-in reader. Fill this in when it has been done.
+- **New, not a regression.** faiss-cpu 1.14.2 ships one generic `_swigfaiss.abi3.so`, and
+  its loader logs that the AVX2 and AVX-512 modules are missing. 1.12.0 shipped both
+  variants, and this CPU has AVX2. The cost has not been measured; at this corpus size it is
+  unlikely to show.
+- **Fixed afterwards.** gunicorn 26's control socket logged a permission error at every boot.
+  It is now disabled in `gunicorn.conf.py`; see _Gunicorn version_ above. That takes effect
+  on the next restart.
 
 ## nginx: what the proxy actually sets
 

@@ -2,10 +2,11 @@
 # package, so there is deliberately no [build-system]/[project] section here.
 
 [tool.ruff]
-# py310, deliberately, while production moves to 3.14. CI and requirements.lock
-# already run 3.14, but until the VPS switch is verified its old 3.10 venv is
-# the rollback target, so every commit must still run on 3.10. This moves to
-# py314 in one commit with the code that needs it, after the switch
+# py310, deliberately. Production has run 3.14 since 2026-10-22, but until the VPS
+# retires its old venv (CPython 3.12.15, not the 3.10 this comment used to name)
+# that venv is the rollback target, so every commit must still run on it. 3.10 is
+# stricter than that needs, and is held rather than bumped twice. This moves to
+# py314 in one commit with the code that needs it, after the old venv is retired
 # (docs/OPERATIONS.md, "Moving production to Python 3.14").
 target-version = "py310"
 line-length = 100

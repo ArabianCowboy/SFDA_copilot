@@ -3,15 +3,17 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 STATUS: CURRENT AUTHORITY — working agreement for agents and new contributors.
-Last verified against code 2026-10-21.
+Last verified against code 2026-10-22.
 
 SFDA Copilot: a bilingual (EN/AR, RTL) Flask + Supabase + LLM app that answers questions
-from the official SFDA guideline corpus and cites its sources. **Production is moving from
-Python 3.10 to 3.14, and the code floor is still 3.10 until the move is verified.** CI and the
-hash-pinned `requirements.lock` already run 3.14, but the VPS's old 3.10 venv is the rollback
-target, so every commit must still run on 3.10 — `ruff`'s `target-version` and `mypy`'s
-`python_version` stay pinned to 3.10 in `pyproject.toml` for exactly that reason, and move to
-3.14 only after the switch (`docs/OPERATIONS.md`, _Moving production to Python 3.14_).
+from the official SFDA guideline corpus and cites its sources. **Production has run Python
+3.14 since 2026-10-22, and the code floor stays at 3.10 until the old venv is retired.**
+Production, CI and the hash-pinned `requirements.lock` all run 3.14. The VPS keeps its previous
+venv as the rollback target. That venv is CPython 3.12.15, not the 3.10 this file used to
+name. So every commit must still run there, and `ruff`'s `target-version` and `mypy`'s
+`python_version` stay pinned to 3.10 in `pyproject.toml`. That is stricter than 3.12 needs,
+and it is held on purpose rather than bumped twice. Both move to 3.14 once the old venv is
+retired (`docs/OPERATIONS.md`, _Moving production to Python 3.14_).
 Production and CI install `requirements.lock`; regenerate it with
 `scripts/lock_requirements.py`, never by hand. No bundler, no runtime `node_modules` — the
 frontend is still plain JS loaded from CDNs — but `node_modules/` now exists as local/CI-only
