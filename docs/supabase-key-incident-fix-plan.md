@@ -302,6 +302,12 @@ and `docs/OPERATIONS.md`'s deploy checklist calls for a `pip install` whenever t
 changes, which this change does. That install moves the VPS to these versions if it
 runs others. Nobody has checked what it runs now.
 
+**Superseded in part, 2026-10-21.** Production is moving to Python 3.14, and CI and the
+lock already run it, so the "resolve under 3.10" instruction below is history, not current
+guidance. The two pins survived unchanged and import cleanly under 3.14. The install path the paragraph above
+describes changed: production and CI now install the hash-pinned `requirements.lock`
+(`docs/OPERATIONS.md`, _Dependency lock_), not `requirements.txt` directly.
+
 `requirements.txt` pins nothing relevant: `supabase` (line 35) and `httpx`
 (line 41) are bare; `postgrest`, `supabase_auth`, `pydantic` are transitive. No
 lock file, no `constraints.txt`.

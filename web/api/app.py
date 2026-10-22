@@ -382,7 +382,7 @@ ASSET_VERSION = "warm100"
 # hand-type this value into a JS docstring or any other comment; that duplication
 # is exactly what let static/js/app.js and admin.js drift out of step before both
 # were cleaned up. See CLAUDE.md rule 9 for when a commit must bump this.
-APP_VERSION = "0.9.0 (Beta)"
+APP_VERSION = "0.10.0 (Beta)"
 
 # The privacy policy's own version, recorded on every consent grant
 # (docs/ARCHITECTURE.md#account-page-and-profile; reasoning in

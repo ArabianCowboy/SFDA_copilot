@@ -40,7 +40,7 @@ sentence_transformers>=5.5.1
 # shapes, so a silent upgrade on the next deploy can change what counts as an
 # outage. It pins its own siblings (postgrest, supabase-auth, realtime,
 # storage3) to its release, so pin it alone — never the siblings. Resolved and
-# imported under Python 3.10, the production floor; bump deliberately.
+# imported under both Python 3.10 and 3.14 (requirements.lock); bump deliberately.
 supabase==2.30.1
 # Already arrives with supabase, but named here because the app imports it
 # directly: web/api/app.py classifies httpx.TransportError as an outage rather

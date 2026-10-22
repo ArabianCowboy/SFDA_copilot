@@ -1,5 +1,5 @@
 STATUS: CURRENT AUTHORITY — how to set up, run, test and deploy this project.
-Last verified against code 2026-10-15.
+Last verified against code 2026-10-21.
 
 # SFDA Copilot
 
@@ -38,8 +38,9 @@ endorsed by, or operated by the Saudi Food and Drug Authority.
 
 ### Prerequisites
 
-- **Python 3.10** — what production runs and what CI tests against
-  (`.github/workflows/tests.yml`); newer works locally, but code must stay 3.10-compatible
+- **Python 3.14** — what production is moving to and what CI tests against
+  (`.github/workflows/tests.yml`). Until that move is verified, code must also still run
+  on 3.10, the rollback target; `pyproject.toml` holds ruff and mypy there
 - A **Supabase** project
 - An **OpenAI** API key (optional for local work — see the demo mode below)
 - **Node.js** for linting only — `npm install` once, so the pre-commit hooks can run
@@ -134,7 +135,7 @@ sfda-copilot/
 ├── TODO.md                 # open bugs and planned work, each with the cost of fixing it
 ├── requirements.txt        # runtime dependencies
 ├── requirements-dev.txt    # test and lint tooling: pytest, playwright, ruff, mypy, pre-commit
-├── pyproject.toml          # ruff and mypy config, both pinned to Python 3.10
+├── pyproject.toml          # ruff and mypy config, held at Python 3.10 until the 3.14 move
 ├── pytest.ini              # test paths and the browser / integration markers
 ├── package.json            # CDN libraries for npm audit, plus eslint / prettier / markdownlint
 ├── .pre-commit-config.yaml # ruff, eslint, prettier and markdownlint on every commit
