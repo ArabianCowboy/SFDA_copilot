@@ -6,6 +6,8 @@ a live outbound beacon under the previous `'self' data: https:` policy. See
 docs/archive/2026-09-23_security-hardening.md Task 1.
 """
 
+from unittest.mock import patch
+
 from web.api.app import create_app, realtime_ws_origins
 
 
@@ -49,12 +51,18 @@ def test_no_directive_admits_the_retired_icon_cdn(monkeypatch):
     """`cdn.lordicon.com` sat in script-src and connect-src with no `lord-icon`
     element or reference anywhere in the tree. A script origin nobody uses is
     attack surface nobody watches; removed 2026-09-23. The non-testing app
-    needs a key to boot, which CI has no `.env` to supply."""
+    needs a key to boot, which CI has no `.env` to supply.
+
+    The search engine is stubbed to fail construction, which the app survives
+    by design. Left real, this test's outcome depended on the machine: with the
+    embedding model cached but no active build, startup deliberately refuses
+    (ManifestValidationError), so the CSP was never reached."""
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
-    for testing in (True, False):
-        policy = (
-            create_app(testing=testing).test_client().get("/").headers["Content-Security-Policy"]
-        )
+    apps = [create_app(testing=True)]
+    with patch("web.api.app.ImprovedSearchEngine", side_effect=RuntimeError("no corpus here")):
+        apps.append(create_app(testing=False))
+    for app in apps:
+        policy = app.test_client().get("/").headers["Content-Security-Policy"]
         assert "lordicon" not in policy
 
 
