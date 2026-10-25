@@ -242,11 +242,19 @@ dispatches with `on[frame.event]?.()`, which silently drops names it does not kn
 
 ## No bundler
 
-Browser-native ES modules. No `node_modules`, no build step, no bundler. Bootstrap
+Browser-native ES modules. No runtime `node_modules`, no build step, no bundler. Bootstrap
 5.3, DOMPurify, marked and supabase-js load from jsDelivr at pinned versions.
 `package.json` exists so `npm audit` covers what users actually run; **its versions
 must stay in sync with the CDN URLs** in `static/js/modules/{ui,stream-render,services}.js`
-and the templates. Nothing tests that coupling.
+and the templates. `test_frontend_architecture.py` checks this coupling for Marked: both
+CDN imports must match the exact version in `package.json` and the lockfile. The other
+libraries' CDN pins still need manual verification.
+
+Markdown output is sanitized with DOMPurify before insertion, then decorated and bound
+to citation buttons. `test_markdown_rendering.py` exercises that real browser pipeline
+through streaming chat, stored-history hydration, and blocking chat in English and Arabic
+at phone and desktop widths. It also checks unsafe HTML/link removal, each incremental
+render, and final replacement with the server's canonical answer, including an empty one.
 
 Icons are not a dependency: every glyph is inline SVG from `web/utils/icons.py`, so
 there is no webfont to download or to fail.
@@ -277,6 +285,23 @@ cannot reach it.
 
 **Bump `ASSET_VERSION` in `web/api/app.py` in any commit touching CSS or JS.** Do not
 write the current value into any document; the durable instruction is _bump it_.
+
+---
+
+## A validated, versioned search index is required outside testing
+
+`SearchIndex._resolve_paths()` requires `web/processed_data/active_build.txt` to identify
+an existing directory under `web/processed_data/builds/`. The build contains the chunk CSV,
+FAISS index, TF-IDF assets, and `manifest.json`; row counts and the configured embedding
+model/dimension are validated when it is loaded. Missing or empty selection, a dangling
+selection, or manifest validation failure refuses normal application startup.
+
+There is deliberately no fallback to loose artifacts directly under `web/processed_data/`:
+those files cannot establish which embedding model and corpus produced the index. The
+generated directory is Git-ignored, so fetching application code does not provision it.
+Build/activate commands and mock-only startup are documented in
+[`README.md`](../README.md#install-and-run). Testing mode registers mock services instead
+of loading an index; a passing mocked test suite does not prove a local search build exists.
 
 ---
 
@@ -808,6 +833,7 @@ run by hand — see the last row of this table.
 | `test_css_contract.py`          | 16 banned physical CSS properties across every `static/css/*.css`. Escape hatch: a trailing `/* physical-ok: <reason> */`. `width`/`height` are tracked but not gated.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `test_frontend_architecture.py` | `static/js/modules/services.js` and `static/js/admin/services.js` import no view or state module and name neither `ErrorHandler` nor `DOMCache`; handlers own every user-facing failure; the console never imports the chat shell (5 forbidden names × 4 files); auth and account flows read the catalogue instead of literals, with the old literals banned by name so a revert fails loudly; 12 English strings frozen verbatim; Arabic covers every key under **both** `runtime` and `page`.                                                                                                                                                                                                                                                                                                                                                                     |
 | `test_composer.py`              | Zero icon-webfont markup; more than 10 inline SVGs actually rendered; **every** module URL carries the current `ASSET_VERSION`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `test_markdown_rendering.py`    | Real Marked/DOMPurify rendering through streaming, stored history, and blocking chat; English/Arabic phone and desktop layout; clickable citations outside code; unsafe HTML/link removal; sanitized incremental renders and canonical final-answer replacement.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | `test_deep_link_contract.py`    | No LLM call before the ownership check (`call_count == 0`); foreign ≡ nonexistent, byte-identical; no `Set-Cookie` on `/c/<id>`; uppercase id 301s to canonical; `X-Robots-Tag`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | `test_rtl.py`                   | Direction resolution and language selection; `page.*` never reaches the browser.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | `test_admin_page.py`            | The closed 11-key `runtime.*` top-level list; the console catalogue never ships to the landing page.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |

@@ -59,10 +59,21 @@ pip install -r requirements.txt
 
 cp .env.example .env            # then fill in real values
 
+# First real-search setup: build and activate the index from the PDFs in data/
+python -m web.services.data_processing
+
 python web/api/app.py           # host and port come from web/config.yaml
 ```
 
 Open <http://localhost:5001>.
+
+The processing command runs from the repository root and can take a while. It writes a
+versioned build, validates it, then selects it through `web/processed_data/active_build.txt`.
+Generated indexes are not checked into Git. On an existing installation, inspect
+`python -m web.services.build_registry list` before rebuilding; a trusted existing build can
+be selected with `python -m web.services.build_registry activate <build_id>` instead.
+Loose legacy files directly under `web/processed_data/` are not a usable active build.
+For UI-only work without an index, use the demo mode below.
 
 ### Without an API key
 
@@ -223,15 +234,22 @@ assertions, listed with their thresholds in
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md#what-is-mechanically-enforced). The ones most
 likely to catch you:
 
-| Test                            | What it will not let you do                                                         |
-| ------------------------------- | ----------------------------------------------------------------------------------- |
-| `test_css_contract.py`          | Author a physical CSS property that cannot mirror under RTL                         |
-| `test_frontend_architecture.py` | Cross a module boundary, hardcode a UI string, or let Arabic lag English by one key |
-| `test_composer.py`              | Ship an icon webfont, or a module URL without the current `ASSET_VERSION`           |
-| `test_admin_page.py`            | Add a new top-level `runtime.*` string namespace                                    |
-| `test_deep_link_contract.py`    | Make `/c/<uuid>` reveal whether a conversation exists                               |
+| Test                            | What it will not let you do                                                                               |
+| ------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `test_css_contract.py`          | Author a physical CSS property that cannot mirror under RTL                                               |
+| `test_frontend_architecture.py` | Cross a module boundary, hardcode a UI string, or let Arabic lag English by one key                       |
+| `test_markdown_rendering.py`    | Break Markdown formatting, sanitization, or clickable citations across stream, history, and blocking chat |
+| `test_composer.py`              | Ship an icon webfont, or a module URL without the current `ASSET_VERSION`                                 |
+| `test_admin_page.py`            | Add a new top-level `runtime.*` string namespace                                                          |
+| `test_deep_link_contract.py`    | Make `/c/<uuid>` reveal whether a conversation exists                                                     |
 
 **Bump `ASSET_VERSION` in `web/api/app.py` in any commit touching CSS or JS.**
+
+The Markdown version-sync test in `test_frontend_architecture.py` also checks that
+`package.json`, `package-lock.json`, and both Marked CDN imports agree. The browser
+regressions cover English/Arabic at phone and desktop widths, malicious HTML and unsafe
+links, incremental rendering, and canonical-answer replacement, using the real parser
+and DOMPurify rather than doubles.
 
 ### Smoke check against the real stack
 
@@ -359,6 +377,15 @@ Branch, make the change, add tests for it, and make sure `python -m pytest`,
 ---
 
 ## Troubleshooting
+
+**Startup refuses to load an index because `active_build.txt` is missing or empty** — no
+versioned search build is selected. This is a local data/setup error, not a missing Python
+package or a frontend dependency failure. Run `python -m web.services.build_registry list`
+from the repository root. If no builds exist, run `python -m web.services.data_processing`
+with the source PDFs in `data/`; if a trusted build exists, activate its id, then restart
+the app. Do not fabricate a manifest or point the loader at legacy loose files to bypass
+validation. For a mock-only session, use `FLASK_TESTING=true python web/api/app.py` and
+open `/?testing=true` instead.
 
 **Streaming stalls or arrives all at once** — a proxy is buffering. See _Running in
 production_.

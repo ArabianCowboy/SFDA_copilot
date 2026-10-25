@@ -16,7 +16,7 @@
  * DOM matches what the non-streaming path would have produced.
  */
 
-import { marked } from 'https://cdn.jsdelivr.net/npm/marked@12.0.2/+esm';
+import { marked } from 'https://cdn.jsdelivr.net/npm/marked@18.1.1/+esm';
 import DOMPurify from 'https://cdn.jsdelivr.net/npm/dompurify@3.4.16/+esm';
 
 const FENCE_LINE = /^\s{0,3}(```|~~~)/;

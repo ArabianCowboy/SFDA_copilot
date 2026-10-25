@@ -1,10 +1,26 @@
 """Small architecture contracts for the browser-facing modules."""
 
+import json
+import re
 from pathlib import Path
 
 MODULES = Path("static/js/modules")
 ADMIN = Path("static/js/admin")
 ACCOUNT = Path("static/js/account")
+
+
+def test_markdown_cdn_versions_match_the_audited_dependency():
+    """npm audit must cover the parser actually loaded in both browser paths."""
+    package = json.loads(Path("package.json").read_text(encoding="utf-8"))
+    lock = json.loads(Path("package-lock.json").read_text(encoding="utf-8"))
+    version = package["dependencies"]["marked"]
+
+    assert lock["packages"][""]["dependencies"]["marked"] == version
+    assert lock["packages"]["node_modules/marked"]["version"] == version
+    for name in ("ui.js", "stream-render.js"):
+        source = (MODULES / name).read_text(encoding="utf-8")
+        versions = re.findall(r"https://cdn\.jsdelivr\.net/npm/marked@([^/]+)/\+esm", source)
+        assert versions == [version], f"{name} must load the audited marked@{version}"
 
 
 def test_services_module_has_no_view_or_state_dependencies():

@@ -3,7 +3,7 @@
  * Message rendering, typing indicator, FAQ list and send-button state.
  */
 
-import { marked } from 'https://cdn.jsdelivr.net/npm/marked@12.0.2/+esm';
+import { marked } from 'https://cdn.jsdelivr.net/npm/marked@18.1.1/+esm';
 import DOMPurify from 'https://cdn.jsdelivr.net/npm/dompurify@3.4.16/+esm';
 
 import { CONFIG, prefersReducedMotion } from './config.js';
