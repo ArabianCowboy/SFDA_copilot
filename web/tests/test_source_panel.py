@@ -19,6 +19,7 @@ The passages now live in a panel — the rail at >=1200px, a bottom sheet below
 import re
 from pathlib import Path
 
+import pytest
 import yaml
 from playwright.sync_api import Page, expect
 
@@ -1026,23 +1027,48 @@ def test_late_history_cannot_resurrect_a_conversation_the_reader_ended(browser_p
 # ── Arabic ──────────────────────────────────────────────────────────────────
 
 
-def test_the_panel_renders_in_arabic_rtl(sourced_page: Page):
+@pytest.mark.parametrize(
+    "viewport", [WIDE, {"width": 390, "height": 844}], ids=["desktop", "mobile"]
+)
+def test_the_panel_renders_in_arabic_rtl(sourced_page: Page, viewport):
     """Arabic is not a translation layer, so this ships in both directions."""
-    sourced_page.set_viewport_size(WIDE)
+    sourced_page.set_viewport_size(viewport)
     sourced_page.evaluate("() => localStorage.setItem('lang', 'ar')")
     sourced_page.goto("/?testing=true&lang=ar")
     expect(sourced_page.locator("html")).to_have_attribute("dir", "rtl")
 
     _ask(sourced_page, "ما الذي يجب أن يتضمنه الملف؟")
-    sourced_page.locator(".source-trigger").click()
+    trigger = sourced_page.locator(".source-trigger")
+    expect(trigger).to_have_text("المصادر · 2 مستندات · 3 مقاطع نصية")
+    expect(trigger).to_be_in_viewport()
+    trigger.click()
 
-    tabs = sourced_page.locator("#source-panel .spine-tab")
-    expect(tabs).to_have_count(3)
-    spine = sourced_page.locator("#source-panel .shelf-spine").first.bounding_box()
-    assert spine and spine["width"] > 40, "spine collapsed under RTL"
+    expect(sourced_page.locator("#source-panel-title")).to_have_text("مصادر هذه الإجابة")
+    expect(sourced_page.locator("#source-panel .source-panel-close")).to_have_attribute(
+        "aria-label", "إغلاق المصادر"
+    )
 
-    # Page numbers stay LTR-isolated so bidi cannot reorder them inside Arabic.
-    expect(sourced_page.locator("#source-panel .tab-page").first).to_have_attribute("dir", "ltr")
+    if viewport["width"] >= 1200:
+        tabs = sourced_page.locator("#source-panel .spine-tab")
+        expect(tabs).to_have_count(3)
+        spine = sourced_page.locator("#source-panel .shelf-spine").first.bounding_box()
+        assert spine and spine["width"] > 40, "spine collapsed under RTL"
+
+        # Page numbers stay LTR-isolated so bidi cannot reorder them inside Arabic.
+        expect(sourced_page.locator("#source-panel .tab-page").first).to_have_attribute(
+            "dir", "ltr"
+        )
+        tabs.first.click()
+        expect(sourced_page.locator("#source-panel .passage-close")).to_have_attribute(
+            "aria-label", "إغلاق المقطع النصي"
+        )
+    else:
+        # Mobile presents the excerpts as a list, not the desktop shelf.
+        expect(sourced_page.locator("#source-panel .source-card")).to_have_count(3)
+        expect(sourced_page.locator("#source-panel .source-group-doc")).to_have_count(2)
+        expect(sourced_page.locator("#source-panel .source-page").first).to_have_attribute(
+            "dir", "ltr"
+        )
 
 
 def test_ranking_figures_read_right_to_left_in_arabic(sourced_page: Page):

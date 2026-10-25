@@ -226,6 +226,47 @@ def test_placeholders_interpolate():
     assert t("runtime.auth.loggedInAs", email="a@b.co") == "Logged in as: a@b.co"
 
 
+@pytest.mark.parametrize(
+    "key,wording",
+    [
+        ("stage.retrieved", "مقطعًا نصيًا"),
+        ("stage.retrievedOne", "مقطع نصي واحد"),
+        ("robot.retrieved", "المقاطع النصية"),
+        ("robot.foundPassages", "مقطعًا نصيًا"),
+        ("robot.foundPassage", "مقطع نصي واحد"),
+        ("cite.passagesOne", "مقطع نصي واحد"),
+        ("cite.passagesMany", "مقاطع نصية"),
+        ("cite.datedNote", "المقاطع النصية"),
+        ("cite.closePassage", "إغلاق المقطع النصي"),
+        ("cite.diagnosticsNote", "المقاطع النصية المسترجعة"),
+        ("admin.analytics.quality.uncited", "مقاطع نصية"),
+        ("admin.analytics.quality.citedPerAnswer", "المقاطع النصية"),
+        ("admin.analytics.quality.retrievedPerAnswer", "المقاطع النصية"),
+        ("admin.settings.maxContextResults", "المقاطع النصية"),
+    ],
+)
+def test_arabic_passage_labels_describe_text_excerpts(key, wording):
+    t = make_translator(load_catalog("ar"))
+    text = t(f"runtime.{key}", count=3, n=3)
+    assert wording in text
+    assert "مقتطف" not in text
+    assert "{" not in text  # Count placeholders must still interpolate.
+
+
+def test_arabic_citations_keep_source_and_document_labels_distinct(client):
+    cite = _runtime_catalogue(page(client, "/?lang=ar"))["cite"]
+    assert cite["marker"] == "المصدر {n}"
+    assert cite["sourcesLabel"] == "المصادر"
+    assert cite["sourcesOne"] == "مصدر واحد"
+    assert cite["sourcesMany"] == "{n} مصادر"
+    assert cite["docsOne"] == "مستند واحد"
+    assert cite["docsMany"] == "{n} مستندات"
+    assert cite["panelTitle"] == "مصادر هذه الإجابة"
+    assert cite["close"] == "إغلاق المصادر"
+    assert cite["passagesOne"] == "مقطع نصي واحد"
+    assert cite["passagesMany"].format(n=3) == "3 مقاطع نصية"
+
+
 def test_runtime_subset_excludes_server_only_strings():
     runtime = runtime_subset(load_catalog("en"))
     assert "chat" in runtime and "robot" in runtime
