@@ -4,23 +4,34 @@ import json
 import re
 from pathlib import Path
 
+import pytest
+
 MODULES = Path("static/js/modules")
 ADMIN = Path("static/js/admin")
 ACCOUNT = Path("static/js/account")
 
 
-def test_markdown_cdn_versions_match_the_audited_dependency():
-    """npm audit must cover the parser actually loaded in both browser paths."""
+@pytest.mark.parametrize("dependency", ["marked", "dompurify"])
+def test_markdown_cdn_versions_match_the_audited_dependency(dependency):
+    """Both rendering paths must share the audited parser and sanitizer versions."""
     package = json.loads(Path("package.json").read_text(encoding="utf-8"))
     lock = json.loads(Path("package-lock.json").read_text(encoding="utf-8"))
-    version = package["dependencies"]["marked"]
+    version = package["dependencies"][dependency]
 
-    assert lock["packages"][""]["dependencies"]["marked"] == version
-    assert lock["packages"]["node_modules/marked"]["version"] == version
-    for name in ("ui.js", "stream-render.js"):
-        source = (MODULES / name).read_text(encoding="utf-8")
-        versions = re.findall(r"https://cdn\.jsdelivr\.net/npm/marked@([^/]+)/\+esm", source)
-        assert versions == [version], f"{name} must load the audited marked@{version}"
+    assert lock["packages"][""]["dependencies"][dependency] == version
+    assert lock["packages"][f"node_modules/{dependency}"]["version"] == version
+    for path in MODULES.glob("*.js"):
+        source = path.read_text(encoding="utf-8")
+        versions = re.findall(rf"https://cdn\.jsdelivr\.net/npm/{dependency}@([^/]+)/\+esm", source)
+        expected = [version] if path.name == "stream-render.js" else []
+        assert versions == expected, f"{path.name} must share the audited {dependency}@{version}"
+
+
+def test_ui_uses_the_shared_markdown_sanitization_boundary():
+    source = (MODULES / "ui.js").read_text(encoding="utf-8")
+
+    assert "import { MarkdownStream, renderMarkdown } from './stream-render.js';" in source
+    assert "contentDiv.innerHTML = renderMarkdown(text);" in source
 
 
 def test_services_module_has_no_view_or_state_dependencies():

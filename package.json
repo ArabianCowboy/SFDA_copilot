@@ -1,10 +1,10 @@
 {
-  "//": "No bundler: `dependencies` are loaded in the browser from cdn.jsdelivr.net and are listed here only so `npm audit` covers what users actually run. Their versions are pinned exactly and MUST be kept in sync with the URLs in static/js/modules/ui.js, static/js/modules/stream-render.js, static/js/modules/services.js and web/templates/*.html. `devDependencies` are local/CI lint tooling (the npm scripts below and the pre-commit hooks); nothing in node_modules is served.",
+  "//": "No bundler: `dependencies` are loaded in the browser from cdn.jsdelivr.net and are listed here only so `npm audit` covers what users actually run. Their versions are pinned exactly and MUST be kept in sync with the URLs in static/js/modules/stream-render.js, static/js/modules/services.js and web/templates/*.html. `devDependencies` are local/CI lint tooling (the npm scripts below and the pre-commit hooks); nothing in node_modules is served.",
   "type": "module",
   "dependencies": {
     "@supabase/supabase-js": "2.74.0",
     "bootstrap": "5.3.0",
-    "dompurify": "3.4.16",
+    "dompurify": "3.4.17",
     "marked": "18.1.1"
   },
   "devDependencies": {
@@ -13,6 +13,12 @@
     "globals": "^17.11.0",
     "markdownlint-cli2": "^0.24.0",
     "prettier": "^3.9.6"
+  },
+  "// overrides": "GHSA-238p-pmpm-9mq7: the math extension still requests vulnerable KaTeX ^0.16.0. Remove this scoped override when upstream supports >=0.18.2.",
+  "overrides": {
+    "micromark-extension-math": {
+      "katex": "0.18.2"
+    }
   },
   "scripts": {
     "lint": "eslint static/js",

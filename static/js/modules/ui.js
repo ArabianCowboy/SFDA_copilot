@@ -3,16 +3,13 @@
  * Message rendering, typing indicator, FAQ list and send-button state.
  */
 
-import { marked } from 'https://cdn.jsdelivr.net/npm/marked@18.1.1/+esm';
-import DOMPurify from 'https://cdn.jsdelivr.net/npm/dompurify@3.4.16/+esm';
-
 import { CONFIG, prefersReducedMotion } from './config.js';
 import { DOMCache, logError } from './dom.js';
 import { AppState } from './state.js';
 import { Utils } from './utils.js';
 import { RobotStateManager } from './robot.js';
 import { bindCitations, renderSourceTrigger, nextMessageId } from './citations.js';
-import { MarkdownStream } from './stream-render.js';
+import { MarkdownStream, renderMarkdown } from './stream-render.js';
 import { I18n } from './i18n.js';
 import { iconMarkup } from './icons.js';
 
@@ -38,7 +35,7 @@ const INCOMPLETE_COPY = {
 function createMessageContent(text, isBot) {
   const contentDiv = DOMCache.createElement('div', 'message-content');
   if (isBot) {
-    contentDiv.innerHTML = DOMPurify.sanitize(marked.parse(text), { USE_PROFILES: { html: true } });
+    contentDiv.innerHTML = renderMarkdown(text);
   } else {
     contentDiv.textContent = text;
   }

@@ -17,11 +17,14 @@
  */
 
 import { marked } from 'https://cdn.jsdelivr.net/npm/marked@18.1.1/+esm';
-import DOMPurify from 'https://cdn.jsdelivr.net/npm/dompurify@3.4.16/+esm';
+import DOMPurify from 'https://cdn.jsdelivr.net/npm/dompurify@3.4.17/+esm';
 
 const FENCE_LINE = /^\s{0,3}(```|~~~)/;
 
-const sanitize = (html) => DOMPurify.sanitize(html, { USE_PROFILES: { html: true } });
+/** One HTML-only sanitization boundary for streaming, history and blocking answers. */
+export function renderMarkdown(text) {
+  return DOMPurify.sanitize(marked.parse(text), { USE_PROFILES: { html: true } });
+}
 
 /** Split into [markdown-complete prefix, still-changing tail]. */
 export function splitAtSafeBoundary(text) {
@@ -104,13 +107,13 @@ export class MarkdownStream {
 
     if (safe.length > this.committedLength) {
       const fresh = safe.slice(this.committedLength);
-      this.committed.insertAdjacentHTML('beforeend', sanitize(marked.parse(fresh)));
+      this.committed.insertAdjacentHTML('beforeend', renderMarkdown(fresh));
       this.committedLength = safe.length;
       this.decorate(this.committed);
     }
 
     if (!tableIsIncomplete(tail)) {
-      this.pending.innerHTML = sanitize(marked.parse(stabilise(tail)));
+      this.pending.innerHTML = renderMarkdown(stabilise(tail));
       this.decorate(this.pending);
     }
   }
@@ -141,7 +144,7 @@ export class MarkdownStream {
        shown fabricated text instead. */
     if (typeof canonicalText === 'string') this.buffer = canonicalText;
 
-    this.committed.innerHTML = sanitize(marked.parse(this.buffer));
+    this.committed.innerHTML = renderMarkdown(this.buffer);
     this.pending.remove();
     this.decorate(this.committed);
     return this.buffer;
