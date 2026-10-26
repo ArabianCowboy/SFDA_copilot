@@ -245,10 +245,10 @@ dispatches with `on[frame.event]?.()`, which silently drops names it does not kn
 Browser-native ES modules. No runtime `node_modules`, no build step, no bundler. Bootstrap
 5.3, DOMPurify, marked and supabase-js load from jsDelivr at pinned versions.
 `package.json` exists so `npm audit` covers what users actually run; **its versions
-must stay in sync with the CDN URLs** in `static/js/modules/{ui,stream-render,services}.js`
-and the templates. `test_frontend_architecture.py` checks this coupling for Marked: both
-CDN imports must match the exact version in `package.json` and the lockfile. The other
-libraries' CDN pins still need manual verification.
+must stay in sync with the CDN URLs** in `static/js/` and the templates.
+`test_frontend_architecture.py` checks this coupling for Marked, DOMPurify, Supabase JS
+and Bootstrap: every CDN pin must match the exact version in `package.json` and the
+lockfile. Bootstrap checks cover both CSS and JavaScript across all four templates.
 
 Markdown output is sanitized with DOMPurify before insertion, then decorated and bound
 to citation buttons. `test_markdown_rendering.py` exercises that real browser pipeline

@@ -11,20 +11,40 @@ ADMIN = Path("static/js/admin")
 ACCOUNT = Path("static/js/account")
 
 
-@pytest.mark.parametrize("dependency", ["marked", "dompurify"])
-def test_markdown_cdn_versions_match_the_audited_dependency(dependency):
-    """Both rendering paths must share the audited parser and sanitizer versions."""
+@pytest.mark.parametrize(
+    ("dependency", "expected_sources"),
+    [
+        ("marked", {"static/js/modules/stream-render.js": 1}),
+        ("dompurify", {"static/js/modules/stream-render.js": 1}),
+        ("@supabase/supabase-js", {"static/js/modules/services.js": 1}),
+        (
+            "bootstrap",
+            {
+                "web/templates/index.html": 2,
+                "web/templates/admin.html": 1,
+                "web/templates/account.html": 1,
+                "web/templates/privacy.html": 1,
+            },
+        ),
+    ],
+)
+def test_cdn_versions_match_the_audited_dependency(dependency, expected_sources):
+    """Every runtime CDN pin must match the manifest and resolved audit version."""
     package = json.loads(Path("package.json").read_text(encoding="utf-8"))
     lock = json.loads(Path("package-lock.json").read_text(encoding="utf-8"))
     version = package["dependencies"][dependency]
 
     assert lock["packages"][""]["dependencies"][dependency] == version
     assert lock["packages"][f"node_modules/{dependency}"]["version"] == version
-    for path in MODULES.glob("*.js"):
-        source = path.read_text(encoding="utf-8")
-        versions = re.findall(rf"https://cdn\.jsdelivr\.net/npm/{dependency}@([^/]+)/\+esm", source)
-        expected = [version] if path.name == "stream-render.js" else []
-        assert versions == expected, f"{path.name} must share the audited {dependency}@{version}"
+    pattern = rf"https://cdn\.jsdelivr\.net/npm/{re.escape(dependency)}@([^/\s\"'<>]+)"
+    sources = [*Path("static/js").rglob("*.js"), *Path("web/templates").rglob("*.html")]
+    actual = {}
+    for path in sources:
+        versions = re.findall(pattern, path.read_text(encoding="utf-8"))
+        if versions:
+            actual[path.as_posix()] = versions
+    expected = {path: [version] * count for path, count in expected_sources.items()}
+    assert actual == expected, f"CDN pins must share the audited {dependency}@{version}"
 
 
 def test_ui_uses_the_shared_markdown_sanitization_boundary():
