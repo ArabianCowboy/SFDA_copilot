@@ -12,7 +12,7 @@
     "eslint": "^10.9.0",
     "globals": "^17.11.0",
     "markdownlint-cli2": "^0.24.0",
-    "prettier": "^3.9.6"
+    "prettier": "^3.9.10"
   },
   "// overrides": "GHSA-238p-pmpm-9mq7: the math extension still requests vulnerable KaTeX ^0.16.0. Remove this scoped override when upstream supports >=0.18.2.",
   "overrides": {
