@@ -2,7 +2,7 @@
   "//": "No bundler: `dependencies` are loaded in the browser from cdn.jsdelivr.net and are listed here only so `npm audit` covers what users actually run. Their versions are pinned exactly and MUST be kept in sync with the URLs in static/js/modules/stream-render.js, static/js/modules/services.js and web/templates/*.html. `devDependencies` are local/CI lint tooling (the npm scripts below and the pre-commit hooks); nothing in node_modules is served.",
   "type": "module",
   "dependencies": {
-    "@supabase/supabase-js": "2.74.0",
+    "@supabase/supabase-js": "2.118.0",
     "bootstrap": "5.3.8",
     "dompurify": "3.4.17",
     "marked": "18.1.1"

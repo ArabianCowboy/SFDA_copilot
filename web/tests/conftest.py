@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 from datetime import datetime, timezone
+from pathlib import Path
 from threading import Thread
 
 import pytest
@@ -76,7 +77,7 @@ export function createClient() {
     lastUserUpdate: null,
     updateUserError: null,
     lastSignOutScope: null,
-    signOutError: null,       // signOut() returns this error, keeps the session, emits nothing
+    signOutError: null,       // global/local still clear the session before returning this error
     signUpError: null,
     // Password-change reauthentication (account/handlers.js). Off by
     // default — most tests exercise the plain updateUser({password}) path.
@@ -145,10 +146,9 @@ export function createClient() {
         // behaviour account/handlers.js relies on ("Sign out everywhere
         // else" must not sign the reader out of the tab they clicked it
         // from). Only 'global'/'local' end THIS session in the mock.
-        if (scope === 'others') return { error: null };
-        // supabase-js 2.74.0's _signOut returns a failed revocation's error
-        // BEFORE _removeSession, so the session survives and no SIGNED_OUT fires.
-        if (state.signOutError) return { error: new Error(state.signOutError) };
+        const error = state.signOutError ? new Error(state.signOutError) : null;
+        if (scope === 'others') return { error };
+        // Unlike 2.74.0, 2.118.0 clears this session even if revocation fails.
         state.user = null;
         writeStoredUser(null);
         // Opt-in realism for test_logout_single_post.py: the real client's
@@ -161,7 +161,7 @@ export function createClient() {
         } else {
           queueMicrotask(() => state.authCallback?.('SIGNED_OUT', null));
         }
-        return { error: null };
+        return { error };
       },
       /* Password-change reauthentication (account/handlers.js). Sets a flag
          the mocked updateUser() below checks, mirroring the server-side
@@ -628,6 +628,21 @@ def route_chat_sessions(page, body):
     )
 
 
+def mock_supabase(context):
+    """Share one audited SDK interception across normal and bfcache browser contexts."""
+    version = json.loads(Path("package.json").read_text(encoding="utf-8"))["dependencies"][
+        "@supabase/supabase-js"
+    ]
+    context.route(
+        f"**/@supabase/supabase-js@{version}/+esm",
+        lambda route: route.fulfill(
+            status=200,
+            content_type="application/javascript",
+            body=SUPABASE_BROWSER_MOCK,
+        ),
+    )
+
+
 @pytest.fixture
 def browser_page(page):
     """A browser page with deterministic Supabase and chat responses.
@@ -641,14 +656,7 @@ def browser_page(page):
     network reachable from either tab.
     """
     context = page.context
-    context.route(
-        "**/@supabase/supabase-js@2.74.0/+esm",
-        lambda route: route.fulfill(
-            status=200,
-            content_type="application/javascript",
-            body=SUPABASE_BROWSER_MOCK,
-        ),
-    )
+    mock_supabase(context)
     context.route(
         "**/api/chat",
         lambda route: route.fulfill(
