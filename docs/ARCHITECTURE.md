@@ -249,6 +249,8 @@ must stay in sync with the CDN URLs** in `static/js/` and the templates.
 `test_frontend_architecture.py` checks this coupling for Marked, DOMPurify, Supabase JS
 and Bootstrap: every CDN pin must match the exact version in `package.json` and the
 lockfile. Bootstrap checks cover both CSS and JavaScript across all four templates.
+`test_bootstrap_cdn.py` also loads the real CDN assets in English and Arabic to verify
+that the browser accepts their integrity hashes and runs the audited Bootstrap version.
 
 Markdown output is sanitized with DOMPurify before insertion, then decorated and bound
 to citation buttons. `test_markdown_rendering.py` exercises that real browser pipeline
