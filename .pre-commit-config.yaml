@@ -1,7 +1,7 @@
 # Python hooks use the well-maintained astral-sh mirror. JS/Markdown hooks are
 # `local` rather than the pre-commit.com mirrors (`mirrors-eslint`,
 # `mirrors-prettier`) — those mirrors lag badly behind current tool releases
-# (mirrors-prettier tops out at v3.1.0; this repo pins prettier ^3.9.6), so a
+# (mirrors-prettier tops out at v3.1.0; see package.json for this repo's version), so a
 # local hook calling the npm-installed binary directly is both simpler and
 # guaranteed to match the version `npm run lint`/`format` actually use.
 repos:
