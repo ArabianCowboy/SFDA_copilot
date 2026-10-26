@@ -628,6 +628,21 @@ def route_chat_sessions(page, body):
     )
 
 
+def mock_supabase(context):
+    """Share one audited SDK interception across normal and bfcache browser contexts."""
+    version = json.loads(Path("package.json").read_text(encoding="utf-8"))["dependencies"][
+        "@supabase/supabase-js"
+    ]
+    context.route(
+        f"**/@supabase/supabase-js@{version}/+esm",
+        lambda route: route.fulfill(
+            status=200,
+            content_type="application/javascript",
+            body=SUPABASE_BROWSER_MOCK,
+        ),
+    )
+
+
 @pytest.fixture
 def browser_page(page):
     """A browser page with deterministic Supabase and chat responses.
@@ -641,17 +656,7 @@ def browser_page(page):
     network reachable from either tab.
     """
     context = page.context
-    version = json.loads(Path("package.json").read_text(encoding="utf-8"))["dependencies"][
-        "@supabase/supabase-js"
-    ]
-    context.route(
-        f"**/@supabase/supabase-js@{version}/+esm",
-        lambda route: route.fulfill(
-            status=200,
-            content_type="application/javascript",
-            body=SUPABASE_BROWSER_MOCK,
-        ),
-    )
+    mock_supabase(context)
     context.route(
         "**/api/chat",
         lambda route: route.fulfill(

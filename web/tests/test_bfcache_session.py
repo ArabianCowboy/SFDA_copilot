@@ -23,9 +23,9 @@ from playwright.sync_api import Page, expect
 
 from .conftest import (
     SSE_CHAT_MOCK,
-    SUPABASE_BROWSER_MOCK,
     chat_history,
     chat_sessions,
+    mock_supabase,
     stored_answer,
     stored_session,
 )
@@ -53,12 +53,7 @@ def bfcache_page(browser_type, base_url):
     context.add_init_script(
         "window.addEventListener('pageshow', (e) => window.__recordPageshow(e.persisted, location.pathname));"
     )
-    context.route(
-        "**/@supabase/supabase-js@2.74.0/+esm",
-        lambda r: r.fulfill(
-            status=200, content_type="application/javascript", body=SUPABASE_BROWSER_MOCK
-        ),
-    )
+    mock_supabase(context)
     context.route(
         "**/api/chat/stream",
         lambda r: r.fulfill(status=200, content_type="text/event-stream", body=SSE_CHAT_MOCK),

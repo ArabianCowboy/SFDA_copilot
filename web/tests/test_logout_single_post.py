@@ -7,7 +7,7 @@ listener posts only for a sign-out this tab did not start (a revocation, a
 failed refresh, another tab), because on those paths nothing else ends the
 Flask session. These tests count the requests per press.
 
-Two event timings are covered on purpose. supabase-js 2.74.0 AWAITS every
+Two event timings are covered on purpose. The real Supabase SDK AWAITS every
 subscriber inside `signOut()` (`_removeSession` -> `_notifyAllSubscribers`); the
 conftest mock fires `SIGNED_OUT` on a microtask after `signOut()` returns. The
 `__mockSignOutAwaitsSubscribers` knob switches the mock to the real ordering.
