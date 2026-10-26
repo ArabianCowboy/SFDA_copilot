@@ -111,7 +111,7 @@ def test_logout_button_posts_once_in_the_demo(browser_page: Page) -> None:
 
 
 def test_logout_button_posts_once_when_sign_out_fails(authenticated_page: Page) -> None:
-    """Case (d): a failed revocation keeps the session and emits no SIGNED_OUT."""
+    """A failed revocation still clears the session and emits SIGNED_OUT in 2.118.0."""
     page = authenticated_page
     page.evaluate("() => { window.__supabaseState.signOutError = 'network down'; }")
     posts = _record_logout_posts(page)
@@ -229,15 +229,14 @@ def test_the_suppression_does_not_outlive_its_sign_out(
 def test_the_suppression_does_not_outlive_a_sign_out_that_threw(
     authenticated_page: Page,
 ) -> None:
-    """The throw path must clear it too: the session survived the failed
-    sign-out, and its later revocation is a SIGNED_OUT nobody else posts for."""
+    """A getSession failure precedes SDK signOut, so a later revocation still posts."""
     page = authenticated_page
-    page.evaluate("() => { window.__supabaseState.signOutError = 'network down'; }")
+    page.evaluate("() => { window.__supabaseState.sessionError = 'network down'; }")
     posts = _record_logout_posts(page)
     _press_logout(page)
     assert len(posts) == 1
 
-    page.evaluate("() => { window.__supabaseState.signOutError = null; }")
+    page.evaluate("() => { window.__supabaseState.sessionError = null; }")
     _revoke(page)
     page.wait_for_timeout(SETTLE_MS)
     assert len(posts) == 2

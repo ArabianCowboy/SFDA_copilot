@@ -442,6 +442,13 @@ that, for reasons specific to each (recovery: PKCE, see
 `web/services/account_recovery.py`'s module docstring). So today: **signup,
 recovery and logout are server-mediated; login is browser-direct.**
 
+`test_supabase_sdk.py` loads the real browser CDN SDK and application services, stubbing
+only provider HTTP/WebSocket traffic. It covers login, chat, persisted and refreshed
+sessions, PKCE callbacks, isolated recovery storage, logout and private notifications.
+The SDK clears the current local session even when upstream logout fails (except with
+`scope: 'others'`); browser doubles must mirror that behavior. These tests do not verify
+a live project's configuration or its Realtime authorization policies.
+
 **That rule has exactly one deliberate exception, and it is bounded.** Deletion
 step-up (`_verify_current_password`, `web/api/account.py`) calls GoTrue's
 `sign_in_with_password` server-side for the caller — the same shape the route

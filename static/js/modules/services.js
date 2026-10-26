@@ -3,7 +3,7 @@
  * Supabase auth, profile CRUD, FAQ fetch and the chat API call.
  */
 
-import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.74.0/+esm';
+import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/+esm';
 
 /* Deliberately NOT global: a /g regex carries lastIndex between calls, and
    this one is reused across every drain of the stream buffer. */
