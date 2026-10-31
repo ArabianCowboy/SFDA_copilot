@@ -5,7 +5,7 @@
     "@supabase/supabase-js": "2.118.0",
     "bootstrap": "5.3.8",
     "dompurify": "3.4.17",
-    "marked": "18.1.1"
+    "marked": "18.1.2"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
