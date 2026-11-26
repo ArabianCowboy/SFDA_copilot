@@ -111,7 +111,7 @@ def test_logout_button_posts_once_in_the_demo(browser_page: Page) -> None:
 
 
 def test_logout_button_posts_once_when_sign_out_fails(authenticated_page: Page) -> None:
-    """A failed revocation still clears the session and emits SIGNED_OUT in 2.118.0."""
+    """A failed revocation still signs this device out, through the local fallback."""
     page = authenticated_page
     page.evaluate("() => { window.__supabaseState.signOutError = 'network down'; }")
     posts = _record_logout_posts(page)
