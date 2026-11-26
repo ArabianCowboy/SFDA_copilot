@@ -12,7 +12,8 @@ Three things belong here and are not yet written up, all filed as open entries i
 section below records as an assumption precisely because nobody has looked. When any of
 them is settled, the answer goes in this file.
 
-Five sections follow: transactional email, the registrations pause, database recovery,
+Six sections follow: transactional email, the registrations pause, the repeat-sign-up
+password trigger, database recovery,
 Supabase API keys, and how the application server is launched. As other out-of-repo state
 gets documented, add it as a sibling section rather than a new file.
 
@@ -299,6 +300,48 @@ session. That would need a code change first, not just a dashboard toggle.
 up_; _Allow manual linking_ and _Allow anonymous sign-ins_ are both off, which is the
 wanted state — this application never calls GoTrue's identity-linking or anonymous
 sign-in APIs.
+
+---
+
+# The repeat-sign-up password trigger on `auth.users`
+
+**Status:** live since 2026-11-26 (`20261126203313_clear_password_on_repeat_signup_email.sql`).
+It covers every app on this Auth project, Thaqib included. What it does and why:
+`docs/ARCHITECTURE.md#authentication-and-the-blueprint-gate`. The case it leaves open
+is in `TODO.md`.
+
+**Rollback** is one statement. Use this one, not `drop trigger`: `postgres` does not own
+`auth.users`, so `drop trigger` fails with `42501`.
+
+```sql
+drop function public.clear_password_on_repeat_signup_email() cascade;
+```
+
+**Recheck after Supabase changes Auth.** Supabase upgrades GoTrue unattended. The trigger
+reads `confirmation_sent_at` and `phone_confirmed_at` through `to_jsonb`, so an upgrade
+cannot be blocked by it. But if GoTrue ever stops writing `auth.users.confirmation_sent_at`,
+which is possible as it moves tokens to `auth.one_time_tokens`, the trigger stops working
+without any error. Paste `supabase/tests/repeat_signup_password.test.sql` into
+`execute_sql`, and confirm one real second sign-up still clears a password.
+
+**Do not confirm an unconfirmed account by hand** (dashboard, or admin
+`email_confirm: true`). That keeps whatever password the first sign-up set, and the
+trigger never sees it.
+
+**Run record, 2026-11-26** (live, two plus-addressed throwaway accounts):
+
+| Step                                                              | Result                                                                                                           |
+| ----------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| A: sign up once, confirm from the email, sign in                  | `200`; the profile row was created                                                                               |
+| B: second sign-up within 60 s of the first                        | `429` "only request this after 36 s"; password and `confirmation_sent_at` unchanged (the open case in `TODO.md`) |
+| B: second sign-up after 60 s, with a different password           | `200`; `encrypted_password` became NULL                                                                          |
+| B: confirm from the newest email, then sign in with each password | Both `400 invalid_credentials`                                                                                   |
+| B: Forgot password, set a new one from the link, sign in          | `200`; the old password still `400`                                                                              |
+| A: sign in again afterwards                                       | `200`                                                                                                            |
+
+The advisors were unchanged before and after. The dry run first proved the same behaviour
+in a rolled-back transaction, and the test failed against an earlier draft that wiped
+admin-set passwords.
 
 ---
 

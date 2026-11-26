@@ -34,6 +34,7 @@ bottom of this file: [How this file works](#how-this-file-works).
 
 - [A deletion request may leave the requesting access token usable until it expires](#a-deletion-request-may-leave-the-requesting-access-token-usable-until-it-expires) — diagnosed, unconfirmed; one bearer-token call decides it.
 - [Leaked-password protection is disabled in Supabase Auth](#leaked-password-protection-is-disabled-in-supabase-auth) — blocked on a Pro-plan upgrade, not code.
+- [Clicking the first confirmation email still confirms a pre-registered account with the stranger's password](#clicking-the-first-confirmation-email-still-confirms-a-pre-registered-account-with-the-strangers-password) — the repeat-sign-up case is closed by a trigger; this case is deferred until after Thaqib 0.6.0 (options A/B, plus an MFA check).
 - [A silent truncation from a provider that omits `finish_reason` is still undetected](#a-silent-truncation-from-a-provider-that-omits-finish_reason-is-still-undetected) — diagnosed; needs `include_usage`, not a different default.
 - [An empty answer toasts "failed to send", which is the wrong thing](#an-empty-answer-toasts-failed-to-send-which-is-the-wrong-thing) — cosmetic, needs a bilingual key pair.
 - [`max_tokens` has no floor, and a low one guarantees empty answers](#max_tokens-has-no-floor-and-a-low-one-guarantees-empty-answers) — not started; prevention rather than the reporting that now exists.
@@ -244,6 +245,56 @@ audit pass also fixed what it could reach via `apply_migration` (revoking
 public `EXECUTE` on the `handle_new_user` signup trigger, pinning
 `handle_profile_update`'s `search_path`, and optimizing the RLS policies on
 `profiles`/`users`).
+
+---
+
+### Clicking the first confirmation email still confirms a pre-registered account with the stranger's password
+
+**Where:** The shared Supabase Auth project (SFDA Copilot and Thaqib), GoTrue's
+`signup.go` and `mail.go`; and `public.handle_new_user()`
+(`supabase/migrations/20260823014034_marketing_consent_record.sql`). The partial fix is
+the trigger `public.clear_password_on_repeat_signup_email` and its test,
+`supabase/tests/repeat_signup_password.test.sql`.
+
+**What is wrong.** Someone signs up with another person's address. GoTrue sends the
+confirmation to that person. The trigger clears the stranger's password only when a
+**second** confirmation email goes out. Two paths send no second email:
+
+- The owner clicks the first email without ever signing up, or a corporate mail scanner
+  (Safe Links and similar) opens the `GET /verify` link for them.
+- The owner's own sign-up is refused with 429: either within 60 s of the first, or because
+  the shared 30 emails/hour limit was used up. GoTrue checks both limits before it writes
+  `confirmation_sent_at` (read in `sendConfirmation`, 2026-11-26), so the trigger never
+  fires. The owner then clicks the first email.
+
+Either way the account is confirmed with the stranger's password. Separately,
+`handle_new_user` copies the first sign-up's names and `marketing_consent` into
+`profiles`, so a stranger can record a marketing consent the owner never gave.
+
+**Who it reaches.** Nobody known. The damage is narrow: the click does not sign the owner
+in. Copilot's PKCE client drops the link's tokens (`static/js/modules/services.js:115`),
+and Thaqib's flow state belongs to the stranger's browser. So the owner has to use Forgot
+password to get in, and GoTrue's password change logs out every other session
+(`UpdatePassword`). What remains is the stranger's access to an empty account until the
+owner resets the password. During that time the stranger can edit the profile and, if MFA
+is enabled, enroll a factor. The forged consent remains even after the reset.
+
+**How it was found.** An adversarial review of the trigger plan (Antigravity, Gemini 4
+Neon XHigh, 2026-11-26), then checked against GoTrue `master` source. That mail scanners
+really open these links is not tested.
+
+**What fixing it would disturb.** Deferred until after Thaqib 0.6.0. The options:
+
+- **A, cheap.** Make the confirmation email lead to a page with a button, or use a 6-digit
+  code (`{{ .Token }}`), so a scanner cannot confirm without a person. That is a dashboard
+  template change in both apps' flows. Also decide whether sign-up consent counts only
+  once the owner has signed in, which reopens the consent record in `handle_new_user`.
+  Check whether MFA is enabled.
+- **B, full close.** Clear the password at every first confirmation, and have every new
+  user choose one right after confirming. Thaqib already has that page. Copilot would need
+  a confirmation landing that keeps a session: today its Flask-mediated sign-up link
+  arrives as an implicit fragment that the PKCE client drops. Every new user pays one
+  extra step.
 
 ---
 

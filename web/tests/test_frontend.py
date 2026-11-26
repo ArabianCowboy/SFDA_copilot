@@ -156,6 +156,8 @@ def test_login_failure_is_presented_by_handler(browser_page: Page):
 
     expect(browser_page.locator("#auth-error")).to_be_visible()
     expect(browser_page.locator("#auth-error")).to_contain_text("Incorrect email or password.")
+    # A repeat sign-up clears the password, so the error points at recovery.
+    expect(browser_page.locator("#auth-error")).to_contain_text("Forgot your password?")
 
 
 def test_faq_and_chat_success(authenticated_page: Page):

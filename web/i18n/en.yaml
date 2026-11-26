@@ -198,6 +198,9 @@ runtime:
     loggedInAs: 'Logged in as: {email}' # frozen
     notLoggedIn: 'Not logged in'
     invalidCredentials: 'Incorrect email or password.' # frozen
+    # Appended to invalidCredentials. Signing up twice before confirming clears
+    # the password (20261126203313_clear_password_on_repeat_signup_email.sql).
+    invalidCredentialsHint: 'If your password doesn’t work, use “Forgot your password?” to set a new one.'
     accountDisabled: 'Chat access for this account has been turned off. Contact your administrator if you think this is a mistake.'
     emailNotConfirmed: 'Please confirm your email before logging in.'
     alreadyRegistered: 'This email address is already linked to an account. Please log in instead of creating a new one.'

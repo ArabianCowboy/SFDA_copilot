@@ -153,7 +153,7 @@ export const ErrorHandler = {
     /* Built per call, not once at module load, so the catalogue is already
        populated and a language switch is reflected. */
     const errorMap = {
-      'invalid login credentials': I18n.t('auth.invalidCredentials'),
+      'invalid login credentials': `${I18n.t('auth.invalidCredentials')} ${I18n.t('auth.invalidCredentialsHint')}`,
       'email not confirmed': I18n.t('auth.emailNotConfirmed'),
       'user already registered': I18n.t('auth.alreadyRegistered'),
       'to be a valid email': I18n.t('auth.invalidEmail'),
