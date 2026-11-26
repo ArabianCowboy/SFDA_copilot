@@ -76,6 +76,10 @@ logs/
 # build artifacts a fresh clone won't have).
 web/processed_data/
 
+# Supabase CLI per-machine state: the linked project ref and the CLI's
+# version check. Supabase's own `supabase init` ignores it too.
+supabase/.temp/
+
 # Impeccable design tooling.
 # Tracked deliberately (shared, team-wide state — do NOT ignore the directory):
 #   .impeccable/design.json       design-system sidecar, the companion to DESIGN.md
