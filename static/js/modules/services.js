@@ -3,7 +3,7 @@
  * Supabase auth, profile CRUD, FAQ fetch and the chat API call.
  */
 
-import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/+esm';
+import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.119.2/+esm';
 
 /* Deliberately NOT global: a /g regex carries lastIndex between calls, and
    this one is reused across every drain of the stream buffer. */
@@ -517,7 +517,15 @@ export const Services = {
        on a password change by itself. A property that matters this much should
        not rest on a default that a future version is free to change. */
     const { error } = await this.supabase.auth.signOut({ scope: 'global' });
-    if (error) throw error;
+    if (error) {
+      /* Since supabase-js 2.119 a failed `global` keeps this device signed in,
+         so a retry can still revoke the server session. Logging out on a shared
+         machine must not depend on GoTrue answering, so `local` clears this
+         device first (then tries to revoke its own token). The failure is still
+         reported. */
+      await this.supabase.auth.signOut({ scope: 'local' });
+      throw error;
+    }
     return { signedOut: true, sessionMissing: false };
   },
 

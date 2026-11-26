@@ -507,6 +507,13 @@ its job — `endRecovery` shares the teardown and must keep the recovery form's 
 reload left is `handleLogout`'s `redirectToHomeIfNeeded()`, a fallback for the paths where no
 `SIGNED_OUT` arrives (the demo, a throwing `signOut`, `sessionMissing`).
 
+**Logging out always signs this device out, even when GoTrue fails.** Since supabase-js 2.119 a
+failed `signOut({ scope: 'global' })` keeps the local session, so that the server session can be
+revoked on a retry. `Services.logout` then calls `signOut({ scope: 'local' })`, which clears the
+device before its own request, and still throws the original error. The trade is deliberate. On
+a shared machine, a reader who pressed Log out must not stay signed in. The cost is that other
+sessions survive a failed global sign-out. `test_supabase_sdk.py` pins this against the real SDK.
+
 **Late answers are discarded by generation, not by luck.** A request that outlives the reader
 who made it checks the counter it stamped: `resetGeneration` (chat requests and the stream),
 `transcriptEpoch` (history), `selectionEpoch` (sidebar), `identityCheckId` (identity and

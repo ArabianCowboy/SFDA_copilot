@@ -77,7 +77,7 @@ export function createClient() {
     lastUserUpdate: null,
     updateUserError: null,
     lastSignOutScope: null,
-    signOutError: null,       // global/local still clear the session before returning this error
+    signOutError: null,       // a failed 'global' keeps the session; 'local' clears it anyway
     signUpError: null,
     // Password-change reauthentication (account/handlers.js). Off by
     // default — most tests exercise the plain updateUser({password}) path.
@@ -147,8 +147,9 @@ export function createClient() {
         // else" must not sign the reader out of the tab they clicked it
         // from). Only 'global'/'local' end THIS session in the mock.
         const error = state.signOutError ? new Error(state.signOutError) : null;
-        if (scope === 'others') return { error };
-        // Unlike 2.74.0, 2.118.0 clears this session even if revocation fails.
+        // Since 2.119 a failed 'global' keeps this session; 'local' always
+        // clears it first. Services.logout falls back to 'local' for that.
+        if (scope === 'others' || (scope === 'global' && error)) return { error };
         state.user = null;
         writeStoredUser(null);
         // Opt-in realism for test_logout_single_post.py: the real client's
