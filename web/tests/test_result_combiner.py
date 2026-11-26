@@ -134,7 +134,8 @@ def test_combine_fuses_real_faiss_and_tfidf_scores_and_ranks_them(combiner: Resu
         }
         for r in results
     ]
-    assert rows == [pytest.approx(row, abs=1e-6, rel=0) for row in EXPECTED]
+    # abs alone is already absolute-only; an explicit rel makes pytest>=9.2 reject the str fields.
+    assert rows == [pytest.approx(row, abs=1e-6) for row in EXPECTED]
 
 
 def test_final_k_keeps_the_top_of_the_same_ranking(combiner: ResultCombiner):
