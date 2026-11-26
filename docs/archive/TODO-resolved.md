@@ -43,6 +43,41 @@ recording.
 
 ## [HISTORICAL] Resolved bugs
 
+### [HISTORICAL] ~~Two lint-tooling advisories have no patched release~~ — RESOLVED 2026-11-27
+
+**Where:** `package-lock.json`, under `markdownlint-cli2@0.24.0`. `braces@3.0.3` arrives via
+`micromatch`, and `katex@0.16.47` via `markdownlint` → `micromark-extension-math`. Dependabot
+alert #29 (katex) is open; `npm audit` also reports GHSA-vfj7-8cjw-p6xm (braces).
+
+**What is wrong.** braces' stack-exhaustion advisory covers every published version, and katex's
+fix (0.18.2) sits outside the `^0.16.0` range `micromark-extension-math` declares. `npm audit
+fix --force` proposes a markdownlint-cli2 _downgrade_ for both, which reopens the advisories
+the 2026-10-21 bump to 0.24.0 closed.
+
+**Who it reaches.** Nobody at runtime. Both parse this repo's own Markdown and glob patterns on
+a developer machine or in CI; nothing in `node_modules` is served.
+
+**How it was found.** The 2026-10-21 Dependabot triage (`gh api …/dependabot/alerts`) and
+`npm audit` after the markdownlint-cli2 bump.
+
+**What fixing it would disturb.** Nothing until upstream ships: then a lockfile refresh. Forcing
+katex 0.18.2 through an `overrides` entry is possible but unverified against
+`micromark-extension-math`, and markdownlint does not render math, so it buys nothing.
+
+**Closed 2026-11-27.** Neither advisory is open any more, and neither closed the way this
+entry predicted. braces' GHSA-vfj7-8cjw-p6xm was **withdrawn** upstream on 2026-10-23, so no
+release was ever needed and `braces@3.0.3` stays in the tree. katex alert #29 was fixed on
+2026-10-25 by the scoped `overrides` entry in `package.json` (`micromark-extension-math` →
+`katex@0.18.2`), the route this entry called unverified. It has run since without a lint
+failure. The same 2026-11-27 Dependabot check found one new alert, #36 (re2js
+GHSA-gg6h-894w-4m9c, high, dev-only via `markdownlint@0.42.0`'s exact `re2js@2.8.6` pin).
+A plain `npm audit fix` cleared it within the existing ranges: `markdownlint-cli2@0.24.2` →
+`markdownlint@0.42.2` → `re2js@2.9.1`. The same fix cleared minimatch's moderate advisory via
+`eslint@10.15.0`. `npm audit` now reports 0 vulnerabilities, and `lint`, `format:check`,
+`lint:md` and the Markdown prettier check all pass on the new tooling.
+
+---
+
 ### [HISTORICAL] ~~Console tabs chosen with the arrow keys never run their lazy loaders~~ — FIXED 2026-09-24
 
 **Where:** `static/js/admin/handlers.js`, the tablist `keydown` handler (`ArrowRight`,
