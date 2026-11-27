@@ -124,7 +124,21 @@ declare
     ['service_role','profile_last_seen','SELECT'], ['service_role','profile_last_seen','INSERT'],
     ['service_role','profile_last_seen','UPDATE'], ['service_role','profile_last_seen','DELETE'],
     ['service_role','profile_last_seen','TRUNCATE'], ['service_role','profile_last_seen','REFERENCES'],
-    ['service_role','profile_last_seen','TRIGGER']
+    ['service_role','profile_last_seen','TRIGGER'],
+
+    -- countries (20261127230444): shared reference data, SELECT only for the
+    -- browser roles (granted below), nothing else for anyone. service_role
+    -- holds nothing: Flask never reads it, and both Apps' pages do so directly.
+    ['anon','countries','INSERT'], ['anon','countries','UPDATE'],
+    ['anon','countries','DELETE'], ['anon','countries','TRUNCATE'],
+    ['anon','countries','REFERENCES'], ['anon','countries','TRIGGER'],
+    ['authenticated','countries','INSERT'], ['authenticated','countries','UPDATE'],
+    ['authenticated','countries','DELETE'], ['authenticated','countries','TRUNCATE'],
+    ['authenticated','countries','REFERENCES'], ['authenticated','countries','TRIGGER'],
+    ['service_role','countries','SELECT'], ['service_role','countries','INSERT'],
+    ['service_role','countries','UPDATE'], ['service_role','countries','DELETE'],
+    ['service_role','countries','TRUNCATE'], ['service_role','countries','REFERENCES'],
+    ['service_role','countries','TRIGGER']
   ];
 
   -- Triples that MUST be granted. Just as important: a test that only asserts
@@ -150,15 +164,18 @@ declare
     -- it — which is why neither of those tables needs a DELETE grant of its
     -- own. Asserted here so that revoking it "for consistency" fails loudly
     -- rather than silently breaking the sidebar.
-    ['authenticated','chat_sessions','DELETE']
+    ['authenticated','chat_sessions','DELETE'],
+    -- countries: Thaqib's signed-out sign-up page reads the list as anon.
+    ['anon','countries','SELECT'], ['authenticated','countries','SELECT']
   ];
 
   -- The seven columns 20260814005509 re-granted per column after revoking the
-  -- table verbs. This is the boundary the profiles table revoke had to not
-  -- break, and the interaction is the whole risk in that migration.
+  -- table verbs, plus country (20261127230444). This is the boundary the
+  -- profiles table revoke had to not break, and the interaction is the whole
+  -- risk in that migration.
   writable_columns text[] := array[
     'id','first_name','family_name','age','organization','specialization',
-    'preferences'
+    'preferences','country'
   ];
   -- The four consent columns the 03 pending migration revoked (UPDATE and
   -- INSERT alike): granting moved to the service-role-only

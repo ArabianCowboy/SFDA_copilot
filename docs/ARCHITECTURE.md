@@ -353,8 +353,11 @@ function running as the table owner, which is the posture `profile_last_seen` es
 A reader learns their own allowance through `get_reader_quota`, which returns counts and
 tier labels but deliberately not the operator's `reason` or `set_by`.
 
-**Browser-direct tables** — `profiles`, and only `profiles`:
+**Browser-direct tables** — `profiles` for writing, and `countries` for reading only:
 
+- `countries` (`20261127230444`) is the ISO 3166-1 list shared with Thaqib, the other
+  App on these Accounts. `anon` and `authenticated` hold `SELECT` and nothing else, and
+  `profiles.country` references it. Everything below is about `profiles`.
 - Read and write straight from the browser to PostgREST under RLS.
 - Column protection is a **column-level `REVOKE` plus a trigger**, because RLS
   restricts rows and cannot restrict columns. `profiles.role`, `tier` and

@@ -28,7 +28,7 @@ declare
   summary text;
   bad text;
 
-  -- The four documented exemptions, and the whole of them. All four are
+  -- The five documented exemptions, and the whole of them. All five are
   -- argued in supabase/README.md's standing-findings table:
   --
   --   is_active_account       — a chat RLS USING clause evaluates it AS THE
@@ -43,11 +43,17 @@ declare
   --                           — the grace-window answer: a pending reader must
   --                             reach their own cancel path past the same
   --                             freeze. Lands with supabase/pending/09.
+  --   accounts_by_country     — Thaqib's admin page calls it with the
+  --                             administrator's own session; counts only, and
+  --                             it refuses anyone but an enabled, active
+  --                             admin (42501). The one exemption that reads
+  --                             across Accounts. See 20261127230444.
   --
-  -- Adding a fourth name here is a decision, not a fix. If a function needs to
+  -- Adding a sixth name here is a decision, not a fix. If a function needs to
   -- be on this list, it needs a row in that table first.
   browser_callable text[] := array['is_active_account','update_own_preferences',
-    'update_own_marketing_consent','account_deletion_is_pending'];
+    'update_own_marketing_consent','account_deletion_is_pending',
+    'accounts_by_country'];
 
   -- Called only from inside other SECURITY DEFINER functions, which execute as
   -- its owner. Granted to nobody, service_role included — granting it would
@@ -66,7 +72,7 @@ declare
   analytics_readers text[] := array['admin_top_questions','admin_citation_stats'];
 begin
   -- 1. Nothing in public is executable by anon. No exceptions, including the
-  --    four above — none is reachable without a session.
+  --    five above — none is reachable without a session.
   n := n + 1;
   select string_agg(p.proname, ', ' order by p.proname) into bad
     from pg_proc p
@@ -84,7 +90,7 @@ begin
      and has_function_privilege('authenticated', p.oid, 'EXECUTE')
      and not (p.proname = any(browser_callable));
   if bad is not null then
-    raise exception 'FAIL function_acls — authenticated can execute beyond the four '
+    raise exception 'FAIL function_acls — authenticated can execute beyond the five '
       'documented exemptions: %', bad;
   end if;
 

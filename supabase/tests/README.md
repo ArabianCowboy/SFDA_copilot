@@ -22,6 +22,7 @@ function BODY, and a body is not visible in any catalogue assertion.
 | `rls_chat.test.sql`               | Reader-to-reader isolation, and that no browser-direct write path exists                                                        |
 | `rpc_behaviour.test.sql`          | The actor gate, receipt lifecycle, replay, source normalisation, question clamp, the last-seen throttle, bulk tier moves        |
 | `repeat_signup_password.test.sql` | The `auth.users` trigger that clears a password at a repeat sign-up email, its rollback line, and the profile trigger beside it |
+| `country_on_accounts.test.sql`    | The 247-row `countries` list, sign-up Country coercion, and who `accounts_by_country()` refuses                                 |
 
 `rpc_behaviour.test.sql` is the one that would otherwise rot: every behaviour it
 covers was verified once, by hand, on the day it was written. A manual
