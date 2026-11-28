@@ -1114,7 +1114,7 @@ page:
     collectHeading: 'What we collect'
     collectIntro: 'Depending on how you use the product, we collect:'
     collectAccount: 'Your email address and password, used to sign you in. Your password is never stored in a form we can read — GoTrue, our authentication provider, stores only a salted hash.'
-    collectProfile: 'The profile details you choose to add — first name, family name, organization, specialization — and, only if you opt in separately, your age.'
+    collectProfile: 'The profile details you choose to add — first name, family name, country, organization, specialization — and, only if you opt in separately, your age.'
     collectQuestions: 'The questions you ask and the answers you receive, stored so you can return to a conversation later. Do not enter patient identifiers, clinical-trial subject data, or other confidential material into the chat box — see the notice shown in the app itself.'
     collectTechnical: 'Ordinary technical data every web service collects — request logs, error reports — used only to keep the product running and secure.'
     useHeading: 'How we use it'

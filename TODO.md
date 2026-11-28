@@ -1845,8 +1845,10 @@ the only way to restamp is a fake withdraw-then-grant, which would write a false
 
 **Who it reaches.** Every reader who has granted marketing consent, the first time the policy
 changes materially. Nobody yet — `PRIVACY_POLICY_VERSION` has moved only between draft strings
-(`2026-08-23-draft-1` → `2026-09-18-draft-2` on 2026-09-18), and a draft-to-draft retention edit
-is not a material change to what was consented to.
+(`2026-08-23-draft-1` → `2026-09-18-draft-2` on 2026-09-18, then `2026-11-28-draft-3` on
+2026-11-28), and a draft-to-draft retention edit is not a material change to what was consented
+to. `draft-3` adds Country to the profile details `/privacy` lists. An existing consenter has no
+Country unless they add one themselves, so nobody was re-asked.
 
 **How it was found.** An adversarial review of `docs/archive/2026-09-18_account-and-trust.md` on 2026-09-18,
 then verified against the trigger source.

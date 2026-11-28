@@ -394,7 +394,7 @@ APP_VERSION = "0.10.3 (Beta)"
 # DRAFT: written to unblock Step 6's engineering per the product owner's own
 # instruction (2026-08-23) -- bump this string whenever /privacy's substance
 # changes, including when the draft is replaced with reviewed content.
-PRIVACY_POLICY_VERSION = "2026-09-18-draft-2"
+PRIVACY_POLICY_VERSION = "2026-11-28-draft-3"
 
 # Every ES module under static/js/modules, mapped to its versioned URL. A
 # browser-native import map is the only way to version static imports without a

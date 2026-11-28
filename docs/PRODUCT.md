@@ -78,7 +78,7 @@ Supporting mechanisms, all confirmed in the shipped product:
 - Answers stream token-by-token over SSE. Reading happens _while_ the answer is
   still being written, and users scroll back mid-stream to re-read.
 - Users check citations. Provenance is used, not decorative.
-- Profiles carry a first name, family name, optional age, organization,
+- Profiles carry a first name, family name, optional age, country, organization,
   specialization and stored preferences (theme, language, default search scope) —
   the product knows something about who is asking. Readers manage this at
   `/account`, a server-rendered page; there is no profile modal.
