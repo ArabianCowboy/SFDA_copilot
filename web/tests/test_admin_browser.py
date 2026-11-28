@@ -807,6 +807,7 @@ ACCOUNTS = [
         "is_disabled": False,
         "last_sign_in_at": None,
         "has_profile": True,
+        "country": "SA",
     },
     # The only seeded account that has ever signed in. Every entry here used to
     # carry None, so the people table's date path was never rendered by a test
@@ -846,6 +847,7 @@ DETAILS = {
         "id": "test-user-id",
         "email": "test@example.com",
         "has_profile": True,
+        "country": "EG",
         "role": "user",
         "tier": "free",
         "is_disabled": False,
@@ -941,6 +943,9 @@ def _open_people(page: Page, *, lang: str = "", accounts=None) -> None:
         limit = int((query_params.get("limit") or ["50"])[0])
         offset = int((query_params.get("offset") or ["0"])[0])
         rows = [a for a in account_list if needle in a["email"].lower()]
+        country = (query_params.get("country") or [""])[0]
+        if country:
+            rows = [a for a in rows if a.get("country") == country]
         sliced = rows[offset : offset + limit]
         _json(
             route,
@@ -3081,7 +3086,7 @@ def test_the_users_table_shows_which_tier_each_account_is_in(browser_page: Page)
     headers = table.locator("thead th")
     # The tier membership work added a leading select column ahead of email,
     # role, tier... — see docs/ARCHITECTURE.md#reader-quota.
-    expect(headers).to_have_count(7)
+    expect(headers).to_have_count(8)
     expect(headers.nth(3)).to_have_text(I18N_TIER_COLUMN)
 
     # The key, in the mono face — the same form the Activity table prints.
@@ -3090,6 +3095,34 @@ def test_the_users_table_shows_which_tier_each_account_is_in(browser_page: Page)
     expect(admin_tier).to_have_text("staff")
     expect(admin_tier).to_have_class("admin-cell-machine")
     expect(table.locator("tbody tr").nth(1).locator("td").nth(3)).to_have_text("free")
+
+
+def test_the_users_table_shows_each_account_country_by_name(browser_page: Page):
+    _open_people(browser_page)
+    table = browser_page.locator("#people-table")
+    expect(table.locator("thead th").nth(4)).to_have_text("Country")
+    expect(table.locator("tbody tr").first.locator("td").nth(4)).to_have_text("Saudi Arabia")
+    expect(table.locator("tbody tr").nth(1).locator("td").nth(4)).to_have_text("—")
+
+
+def test_the_people_list_filters_by_country(browser_page: Page):
+    _open_people(browser_page)
+    select = browser_page.locator("#people-country-filter")
+    expect(select).to_be_enabled()
+    with browser_page.expect_request(
+        lambda r: "/admin/api/users?" in r.url and "country=SA" in r.url
+    ):
+        select.select_option("SA")
+    rows = browser_page.locator("#people-table tbody tr")
+    expect(rows).to_have_count(1)
+    expect(rows.first).to_contain_text("admin@example.com")
+
+
+def test_the_account_page_shows_the_country(browser_page: Page):
+    _open_people(browser_page)
+    browser_page.locator(".admin-account-open", has_text="test@example.com").click()
+    expect(browser_page.locator("#people-detail")).to_contain_text("Country")
+    expect(browser_page.locator("#people-detail")).to_contain_text("Egypt")
 
 
 I18N_TIER_COLUMN = "Tier"

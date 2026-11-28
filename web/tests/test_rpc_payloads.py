@@ -207,6 +207,17 @@ def test_list_users_sends_the_tier_key_when_filtering():
     )
 
 
+def test_list_users_sends_the_country_code_only_when_filtering():
+    """p_country only when set, so the unfiltered list keeps working against
+    the 4-argument function a rollback of 20261128120917 would restore."""
+    client = RecordingClient(data=[])
+    SupabaseAdminBackend(client).list_users(limit=10, offset=0, search=None, country="SA")
+    assert _only_call(client) == (
+        "admin_list_users",
+        {"p_limit": 10, "p_offset": 0, "p_search": None, "p_country": "SA"},
+    )
+
+
 def test_set_users_tier_sends_every_id_even_when_none_is_a_uuid():
     """The RPC takes text and reports a non-uuid as missing itself, after its
     actor and tier checks. Short-circuiting here would skip those refusals."""

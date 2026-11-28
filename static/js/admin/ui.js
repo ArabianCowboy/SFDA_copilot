@@ -943,6 +943,7 @@ export function renderUsers({
     'columnEmail',
     'columnRole',
     'columnTier',
+    'columnCountry',
     'columnAccess',
     'columnLastSignIn',
     'columnActions',
@@ -1015,6 +1016,10 @@ export function renderUsers({
        operator who needs the label is one click from the account page. */
     const tier = machineCell(user.tier || '—');
 
+    // A name in the console's language; the list carries only the code.
+    const country = document.createElement('td');
+    country.textContent = user.country ? countryName(user.country) : '—';
+
     const access = document.createElement('td');
     access.textContent = I18n.t(
       user.is_disabled ? 'admin.people.accessDisabled' : 'admin.people.accessAllowed',
@@ -1050,7 +1055,7 @@ export function renderUsers({
     go.setAttribute('aria-hidden', 'true');
     go.innerHTML = iconMarkup('chevron-right', 14);
 
-    row.append(selectTd, email, role, tier, access, seen, go);
+    row.append(selectTd, email, role, tier, country, access, seen, go);
     tbody.appendChild(row);
   });
 
@@ -1981,6 +1986,13 @@ export function renderAccountDetail(account, entries, selfId = null, tiers = [])
     I18n.t('admin.account.lastSeen'),
     account.last_seen_at ? { when: account.last_seen_at } : { text: I18n.t('admin.people.never') },
   );
+  // Read-only here: the reader sets it at signup or on /account, and once set
+  // it can be changed but not cleared (Thaqib's C173).
+  if (account.has_profile) {
+    fact(facts, I18n.t('admin.account.country'), {
+      text: account.country ? countryName(account.country) : I18n.t('admin.account.countryUnset'),
+    });
+  }
   // Read-only consent record (docs/ARCHITECTURE.md#account-page-and-profile;
   // reasoning in docs/archive/2026-08-23_profile-refactor.md Step 6): current
   // state, plus whichever of grant/withdrawal time is the current one —

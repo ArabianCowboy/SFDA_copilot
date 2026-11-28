@@ -376,13 +376,23 @@ def users() -> Response | tuple[Response, int]:
     tier = request.args.get("tier") or None
     if tier is not None and not TIER_KEY_RE.fullmatch(tier):
         return jsonify({"error": "invalid_tier"}), 422
+    # Empty or absent means no filter, as for tier ("All countries" sends "").
+    # Anything else must be an ISO code, the shape public.countries enforces:
+    # any other value could only ever match nothing, so it is refused.
+    country = request.args.get("country") or None
+    if country is not None and not re.fullmatch(r"[A-Z]{2}", country):
+        return jsonify({"error": "invalid_country"}), 422
 
     backend = current_app.config["admin_backend"]()
     if backend is None:
         return jsonify({"error": "storage_unavailable"}), 503
 
     rows, total = backend.list_users(
-        limit=limit, offset=offset, search=request.args.get("q") or None, tier=tier
+        limit=limit,
+        offset=offset,
+        search=request.args.get("q") or None,
+        tier=tier,
+        country=country,
     )
     return jsonify(
         {

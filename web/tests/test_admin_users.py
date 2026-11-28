@@ -99,6 +99,27 @@ def test_the_orphan_is_absent_under_a_tier_filter_but_present_under_all(client):
     assert orphan["has_profile"] is False
 
 
+def test_the_list_can_be_filtered_to_one_country_and_carries_it(client):
+    """`?country=EG` returns only the seeded Egyptian reader; every row carries
+    `country`, null where unset."""
+    body = client.get("/admin/api/users?country=EG", headers=ADMIN).get_json()
+    assert [u["email"] for u in body["users"]] == ["test@example.com"]
+    assert body["users"][0]["country"] == "EG"
+
+    unfiltered = client.get("/admin/api/users", headers=ADMIN).get_json()["users"]
+    assert {u["email"]: u["country"] for u in unfiltered}["disabled@example.com"] is None
+
+    detail = client.get("/admin/api/users/test-admin-id", headers=ADMIN).get_json()
+    assert detail["user"]["country"] == "SA"
+
+
+@pytest.mark.parametrize("value", ["sa", "SAU", "S1", "X"])
+def test_a_bad_country_filter_is_refused(client, value):
+    response = client.get(f"/admin/api/users?country={value}", headers=ADMIN)
+    assert response.status_code == 422
+    assert response.get_json() == {"error": "invalid_country"}
+
+
 def test_a_bad_tier_filter_is_refused(client):
     response = client.get("/admin/api/users?tier=Bad-Key!", headers=ADMIN)
     assert response.status_code == 422

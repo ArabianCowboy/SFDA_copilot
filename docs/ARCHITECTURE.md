@@ -368,7 +368,10 @@ tier labels but deliberately not the operator's `reason` or `set_by`.
   enforced in the client only; a set-to-NULL trigger would need its own migration. The console's Overview makes one more browser-direct call, `accounts_by_country()`,
   on the admin's own session after Flask's `_gate()` has admitted them. The function refuses
   anyone but an enabled admin itself, and Flask's service-role client cannot call it, because
-  it reads `auth.uid()`. Everything below is about `profiles`.
+  it reads `auth.uid()`. The People list and the account page show each account's Country,
+  and the list filters by it (`admin_list_users`' `p_country`, `admin_get_user`, migration
+  `20261128120917`), through Flask's service-role client like every other console read.
+  Everything below is about `profiles`.
 - Read and write straight from the browser to PostgREST under RLS.
 - Column protection is a **column-level `REVOKE` plus a trigger**, because RLS
   restricts rows and cannot restrict columns. `profiles.role`, `tier` and

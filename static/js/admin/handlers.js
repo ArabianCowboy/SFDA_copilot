@@ -9,6 +9,7 @@
 import { ErrorHandler } from '../modules/dom.js';
 import { I18n } from '../modules/i18n.js';
 import { newRequestId, Services } from '../modules/services.js';
+import { fillCountrySelect } from '../modules/countries.js';
 import { AdminRequestError } from './services.js';
 import {
   clearSettingsErrors,
@@ -886,6 +887,8 @@ export async function initPeopleTab(services) {
      the matching option in. `tiers` is undefined until the catalogue arrives
      and null if it could not be read. */
   const tierFilter = document.getElementById('people-tier-filter');
+  // Read off its select: nothing but the operator sets it.
+  const countryFilter = document.getElementById('people-country-filter');
   let tier = '';
   let destination = '';
   let tiers;
@@ -928,6 +931,7 @@ export async function initPeopleTab(services) {
         limit: targetLimit,
         offset: targetOffset,
         tier: targetTier,
+        country: countryFilter?.value || '',
         signal: controller.signal,
       });
       if (mine !== generation || seq !== requestSequence) return;
@@ -1069,6 +1073,16 @@ export async function initPeopleTab(services) {
     tier = tierFilter.value;
     offset = 0;
     loadPage({ targetOffset: 0, callerActiveId: 'people-tier-filter' });
+  });
+
+  /* Filled from the shared list (public.countries). A failed read leaves the
+     select disabled on "All countries", so the list is simply unfiltered. */
+  Services.listCountries()
+    .then((countries) => fillCountrySelect(countryFilter, countries))
+    .catch((error) => console.error('[SFDA Copilot admin] country list failed', error));
+  countryFilter?.addEventListener('change', () => {
+    offset = 0;
+    loadPage({ targetOffset: 0, callerActiveId: 'people-country-filter' });
   });
 
   /* The detail view is reachable only from this list, and the list serves one

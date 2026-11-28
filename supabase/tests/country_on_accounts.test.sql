@@ -8,7 +8,10 @@
 --     and never fails the sign-up over it;
 --   * accounts_by_country() refuses a signed-out caller, a reader and a
 --     disabled admin with its own 42501, and an enabled admin's counts add up
---     to every Account, one without a Profile row included.
+--     to every Account, one without a Profile row included;
+--   * the console's account reads (20261128120917): admin_get_user and
+--     admin_list_users project country, and admin_list_users' p_country
+--     filter returns only that country's Accounts.
 --
 -- THE FIXTURES ARE SYNTHETIC: auth.users rows on unroutable addresses, so
 -- copilot's on_auth_user_created fires exactly as at a real sign-up.
@@ -24,6 +27,7 @@ declare
   n int := 0;
   v_id uuid;
   v_reader uuid;
+  v_sa uuid;
   v_admin uuid := gen_random_uuid();
   v_orphan uuid := gen_random_uuid();
   v_got text;
@@ -94,7 +98,29 @@ begin
         '(expected %)', left(metas[i]::text, 40), v_got, expected[i];
     end if;
     v_reader := v_id;  -- any of these is an ordinary reader for part 3
+    if i = 1 then v_sa := v_id; end if;
   end loop;
+
+  -- 2b. The console's account reads (service_role in production; postgres here).
+  n := n + 1;
+  if (select country from public.admin_get_user(v_sa)) is distinct from 'SA' then
+    raise exception 'FAIL country_on_accounts — admin_get_user does not return country';
+  end if;
+
+  n := n + 1;
+  if (select country from public.admin_list_users(1, 0, 'country-test+' || v_sa, null))
+     is distinct from 'SA' then
+    raise exception 'FAIL country_on_accounts — admin_list_users does not project country';
+  end if;
+
+  n := n + 1;
+  if exists (select 1 from public.admin_list_users(200, 0, null, null, 'SA')
+              where country is distinct from 'SA')
+     or (select count(*) from public.admin_list_users(200, 0, 'country-test+', null, 'SA')) <> 3
+     or (select count(*) from public.admin_list_users(200, 0, 'country-test+', null, 'XK')) <> 0 then
+    raise exception 'FAIL country_on_accounts — admin_list_users p_country does not filter '
+      'to that country alone';
+  end if;
 
   -- 3. Who may count. Fixtures: an admin, and an Account with no Profile row.
   insert into auth.users (instance_id, id, aud, role, email, encrypted_password,

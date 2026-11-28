@@ -213,13 +213,21 @@ class AdminBackend(Protocol):
         ...
 
     def list_users(
-        self, *, limit: int, offset: int, search: str | None, tier: str | None = None
+        self,
+        *,
+        limit: int,
+        offset: int,
+        search: str | None,
+        tier: str | None = None,
+        country: str | None = None,
     ) -> tuple:
         """``(rows, total)``. Emails come from auth, standing from profiles.
 
         ``tier`` filters on the stored ``profiles.tier``, so an account with no
-        profile row never appears under a tier. Every row carries
-        ``has_profile`` so the console can make such an account unselectable.
+        profile row never appears under a tier; ``country`` (an ISO code)
+        filters on ``profiles.country`` the same way. Every row carries
+        ``has_profile`` so the console can make such an account unselectable,
+        and ``country`` (null when unset).
         """
         ...
 
@@ -564,7 +572,13 @@ class SupabaseAdminBackend:
     # ── Accounts ──────────────────────────────────────────────────────────────
 
     def list_users(
-        self, *, limit: int, offset: int, search: str | None, tier: str | None = None
+        self,
+        *,
+        limit: int,
+        offset: int,
+        search: str | None,
+        tier: str | None = None,
+        country: str | None = None,
     ) -> tuple:
         # p_tier only when filtering, so the unfiltered list -- People and the
         # Overview count -- also works against the 3-argument function a
@@ -572,6 +586,9 @@ class SupabaseAdminBackend:
         params = {"p_limit": limit, "p_offset": offset, "p_search": search or None}
         if tier:
             params["p_tier"] = tier
+        # The same rollback reasoning, for 20261128120917.
+        if country:
+            params["p_country"] = country
         response = self._client.rpc("admin_list_users", params).execute()
         rows = getattr(response, "data", None) or []
         # `total` is carried on every row by the window in the function, so a
@@ -1202,6 +1219,7 @@ class InMemoryAdminBackend:
                 "created_at": "2026-01-01T00:00:00+00:00",
                 "last_sign_in_at": "2026-08-14T00:00:00+00:00",
                 "email_identity_verified": True,
+                "country": "SA",
             },
             {
                 "id": "test-user-id",
@@ -1214,6 +1232,7 @@ class InMemoryAdminBackend:
                 "created_at": "2026-02-01T00:00:00+00:00",
                 "last_sign_in_at": "2026-08-13T00:00:00+00:00",
                 "email_identity_verified": True,
+                "country": "EG",
             },
             {
                 "id": "test-disabled-id",
@@ -1246,7 +1265,13 @@ class InMemoryAdminBackend:
         ]
 
     def list_users(
-        self, *, limit: int, offset: int, search: str | None, tier: str | None = None
+        self,
+        *,
+        limit: int,
+        offset: int,
+        search: str | None,
+        tier: str | None = None,
+        country: str | None = None,
     ) -> tuple:
         rows = self._users
         if search:
@@ -1256,9 +1281,14 @@ class InMemoryAdminBackend:
         # carries a display `free` but has no profile row to be in a tier.
         if tier is not None:
             rows = [r for r in rows if r.get("has_profile", True) and r["tier"] == tier]
-        # `has_profile` on every row, matching admin_list_users' projection, so
-        # the console can refuse to select an account it cannot move.
-        listed = [{**r, "has_profile": r.get("has_profile", True)} for r in rows]
+        if country is not None:
+            rows = [r for r in rows if r.get("country") == country]
+        # `has_profile` and `country` on every row, matching admin_list_users'
+        # projection, so the console can refuse to select an account it cannot move.
+        listed = [
+            {**r, "has_profile": r.get("has_profile", True), "country": r.get("country")}
+            for r in rows
+        ]
         return listed[offset : offset + limit], len(rows)
 
     # ── The deletion ledger ───────────────────────────────────────────────
@@ -1391,6 +1421,7 @@ class InMemoryAdminBackend:
             "first_name": first_name,
             "family_name": family_name,
             "age": row.get("age"),
+            "country": row.get("country"),
             # Mirrors the real generated column (profiles.full_name), not a
             # stored field — first_name/family_name are the source of truth
             # here too, matching production after the identity cutover.

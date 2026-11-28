@@ -132,9 +132,11 @@ export function createAdminServices(getToken) {
       request('registrations', { method: 'PUT', body: { signup_enabled: signupEnabled } }),
 
     /** Accounts and their standing. */
-    users: ({ limit = 50, offset = 0, q = '', tier = '', signal } = {}) => {
-      const query = `users?limit=${limit}&offset=${offset}&q=${encodeURIComponent(q)}`;
-      return request(tier ? `${query}&tier=${encodeURIComponent(tier)}` : query, { signal });
+    users: ({ limit = 50, offset = 0, q = '', tier = '', country = '', signal } = {}) => {
+      const params = new URLSearchParams({ limit, offset, q });
+      if (tier) params.set('tier', tier);
+      if (country) params.set('country', country);
+      return request(`users?${params}`, { signal });
     },
 
     /** Change a role or chat access. Refusals arrive as 409 with a code. */
