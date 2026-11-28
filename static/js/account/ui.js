@@ -193,6 +193,7 @@ export function populateIdentityForm(profile) {
     country.add(new Option(countryName(profile.country), profile.country));
   }
   country.value = profile.country || '';
+  dropCountryUnset();
   el('identity-age').value = profile.age ?? '';
   el('identity-organization').value = profile.organization || '';
   el('identity-specialization').value = profile.specialization || '';
@@ -202,11 +203,19 @@ export function populateIdentityForm(profile) {
   form.dataset.snapshot = JSON.stringify(readIdentityForm());
 }
 
+/** Once a Country is saved it can be changed but not cleared (Thaqib's C173),
+ * so "Not set" leaves the choices. A disabled select (list not loaded) keeps
+ * its lone saved option and stays out of the write. */
+export function dropCountryUnset() {
+  const country = el('identity-country');
+  if (country?.value && !country.disabled && country.options[0]?.value === '') country.remove(0);
+}
+
 export function readIdentityForm() {
   return {
     first_name: el('identity-first-name')?.value.trim() || null,
     family_name: el('identity-family-name')?.value.trim() || null,
-    // undefined (list not loaded) drops out of the upsert, leaving it as is.
+    // undefined ("Not set", or list not loaded) drops out of the upsert.
     country: readCountrySelect(el('identity-country')),
     age: el('identity-age')?.value === '' ? null : Number(el('identity-age').value),
     organization: el('identity-organization')?.value.trim() || null,

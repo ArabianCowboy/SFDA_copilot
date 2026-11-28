@@ -345,7 +345,7 @@ export const Handlers = {
           {
             first_name: firstName,
             family_name: familyName,
-            country: readCountrySelect(form.querySelector('#signup-country')) || undefined,
+            country: readCountrySelect(form.querySelector('#signup-country')),
             marketing_consent: consented,
             // No policy version here: /auth/signup stamps
             // PRIVACY_POLICY_VERSION server-side, so a client can no longer

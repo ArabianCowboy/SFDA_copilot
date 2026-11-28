@@ -58,25 +58,65 @@ def test_saving_identity_sends_the_writable_columns_and_shows_the_note(authentic
     )
 
 
-def test_country_saves_a_code_and_clears_to_null(authenticated_page: Page):
-    """Blank is a real choice here ("Not set" clears it), unlike at sign-up."""
+def _wire_body(page: Page) -> dict:
+    """The JSON body supabase-js sends, where an undefined value drops out."""
+    return page.evaluate("JSON.parse(JSON.stringify(window.__supabaseState.lastProfileUpdate))")
+
+
+def test_a_saved_country_can_be_changed_but_not_cleared(authenticated_page: Page):
+    """Thaqib's C173, adopted by the owner: once set, no "Not set" to choose,
+    and a different country saves."""
+    authenticated_page.add_init_script("window.__profileCountry = 'SA';")
+    authenticated_page.goto("/account")
+    select = authenticated_page.locator("#identity-country")
+    expect(select).to_be_enabled()
+    expect(select).to_have_value("SA")
+    expect(select.locator("option[value='']")).to_have_count(0)
+
+    select.select_option("EG")
+    authenticated_page.locator("#identity-form").evaluate("(f) => f.requestSubmit()")
+    expect(authenticated_page.locator("#identity-saved-note")).to_be_visible()
+    assert _wire_body(authenticated_page)["country"] == "EG"
+
+
+def test_an_unset_country_stays_out_of_the_write_until_chosen(authenticated_page: Page):
+    """NULL starts at "Not set"; saving other fields never sends country.
+    Once a country is saved, "Not set" leaves the choices."""
     authenticated_page.goto("/account")
     select = authenticated_page.locator("#identity-country")
     expect(select).to_be_enabled()
     expect(select).to_have_value("")
 
     form = authenticated_page.locator("#identity-form")
-    select.select_option("EG")
+    authenticated_page.locator("#identity-first-name").fill("Updated")
     form.evaluate("(f) => f.requestSubmit()")
     expect(authenticated_page.locator("#identity-saved-note")).to_be_visible()
-    assert authenticated_page.evaluate("window.__supabaseState.lastProfileUpdate.country") == "EG"
+    sent = _wire_body(authenticated_page)
+    assert sent["first_name"] == "Updated"
+    assert "country" not in sent
 
-    select.select_option("")
+    select.select_option("AE")
     form.evaluate("(f) => f.requestSubmit()")
-    # null, not absent: an absent key would leave EG in place.
     authenticated_page.wait_for_function(
-        "() => window.__supabaseState.lastProfileUpdate.country === null"
+        "() => window.__supabaseState.lastProfileUpdate.country === 'AE'"
     )
+    expect(select.locator("option[value='']")).to_have_count(0)
+    expect(select).to_have_value("AE")
+
+
+def test_no_code_path_sends_a_null_country(authenticated_page: Page):
+    """The one function every Country write goes through returns a code or
+    undefined, never null, even for a blank enabled select."""
+    authenticated_page.goto("/account")
+    got = authenticated_page.evaluate(
+        """async () => {
+          const { readCountrySelect } = await import('/static/js/modules/countries.js');
+          const s = document.createElement('select');
+          s.add(new Option('Not set', ''));
+          return [readCountrySelect(s) === undefined, readCountrySelect(null) === undefined];
+        }"""
+    )
+    assert got == [True, True]
 
 
 @pytest.mark.parametrize(

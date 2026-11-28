@@ -10,6 +10,7 @@ import { Services } from '../modules/services.js';
 import { ThemeManager } from '../modules/theme.js';
 import { I18n } from '../modules/i18n.js';
 import {
+  dropCountryUnset,
   readIdentityForm,
   setIdentityDirty,
   setIdentitySaving,
@@ -96,6 +97,7 @@ export function bindIdentityForm(getUserId) {
     try {
       const updates = readIdentityForm();
       await Services.updateProfile(userId, updates);
+      dropCountryUnset();
       form.dataset.snapshot = JSON.stringify(updates);
       showIdentitySaved();
     } catch (error) {

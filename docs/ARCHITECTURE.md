@@ -361,9 +361,11 @@ tier labels but deliberately not the operator's `reason` or `set_by`.
   `Services.listCountries` and fill one optional select (`modules/countries.js`): the
   codes come from the table, the names from the browser's `Intl.DisplayNames` in the page's
   language. Signup sends the code as `country` metadata, which `/auth/signup` allow-lists.
-  `/account` saves it, or `null` for "Not set". If the read fails the select stays disabled
-  and `country` is left out of the write, so a list that never loaded cannot clear a saved
-  value. The console's Overview makes one more browser-direct call, `accounts_by_country()`,
+  `/account` saves it. Once set, it can be changed but never cleared (Thaqib's C173, adopted
+  2026-11-28): "Not set" is offered only while it is NULL, and is then left out of the write.
+  No code path sends `country = null`. If the read fails the select stays disabled and
+  `country` is left out of the write. The save is browser-direct (PostgREST), so this is
+  enforced in the client only; a set-to-NULL trigger would need its own migration. The console's Overview makes one more browser-direct call, `accounts_by_country()`,
   on the admin's own session after Flask's `_gate()` has admitted them. The function refuses
   anyone but an enabled admin itself, and Flask's service-role client cannot call it, because
   it reads `auth.uid()`. Everything below is about `profiles`.

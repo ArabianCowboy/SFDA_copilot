@@ -34,8 +34,10 @@ export function countryName(code, fallback = code) {
   );
 }
 
-/** The value to write: a code, null to clear, or undefined to leave it alone. */
+/** The value to write: a code, or undefined to leave the column alone. Never
+ * null: once set, a Country can be changed but not cleared (Thaqib's C173,
+ * adopted by the owner 2026-11-28). */
 export function readCountrySelect(select) {
   if (!select || select.disabled) return undefined;
-  return select.value || null;
+  return select.value || undefined;
 }
