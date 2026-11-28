@@ -218,6 +218,19 @@ cannot: the advisors do not check grants, which is why the four grant-layer defe
 `docs/archive/2026-08-28_database-improvement.md` opens with were invisible to both the linter and CI.
 Each file raises `PASS …` or `FAIL …`; see `supabase/tests/README.md`.
 
+### Rows in `list_migrations` with no file here
+
+These belong to another App on this project. They are expected, not drift: do not add a
+file, delete the row, or change their schema from this repo.
+
+| version          | name               | owner and effect                                                                                        |
+| ---------------- | ------------------ | ------------------------------------------------------------------------------------------------------- |
+| `20261128113941` | `usage_statistics` | Thaqib; the file is in its repo. Creates schema `thaqib`, which only reads this schema and `auth.users` |
+
+One effect reaches this app's data: `thaqib.account_counts.account` references
+`auth.users` with `on delete cascade`, so deleting an Account also deletes its Thaqib usage
+counts.
+
 ### Checking that a migration touched no rows
 
 Grant, policy and function migrations are not supposed to move data, and that is worth
