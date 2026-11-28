@@ -2809,7 +2809,7 @@ def test_the_overview_tab_is_not_empty(browser_page: Page):
 
     # Tier membership, resolved to the console's language like every other
     # surface that prints a tier label.
-    table = body.locator("table")
+    table = body.locator("table:not(#overview-country-table)")
     expect(table).to_be_visible()
     expect(table.locator("tbody tr")).to_have_count(2)
     expect(table).to_contain_text("Free")
@@ -2838,7 +2838,7 @@ def test_the_overview_figures_lead_to_the_tab_that_owns_them(browser_page: Page)
 def test_one_failed_request_does_not_empty_the_whole_overview(browser_page: Page):
     """`Promise.allSettled`, not `Promise.all`.
 
-    Four requests back this panel. A landing tab that renders nothing because
+    Five requests back this panel. A landing tab that renders nothing because
     one of them failed would be a worse arrival than the empty panel it
     replaced, so each section stands or falls on its own.
     """
@@ -2847,7 +2847,7 @@ def test_one_failed_request_does_not_empty_the_whole_overview(browser_page: Page
 
     # The three figures and the membership table are unaffected.
     expect(body).to_contain_text("1290")
-    expect(body.locator("table tbody tr")).to_have_count(2)
+    expect(body.locator("table:not(#overview-country-table) tbody tr")).to_have_count(2)
     # And the section that failed says so rather than showing an empty list.
     expect(body.locator(".admin-empty")).to_be_visible()
 
@@ -2894,7 +2894,7 @@ def test_a_200_whose_body_is_not_an_object_does_not_blank_the_overview(browser_p
     body = browser_page.locator("#overview-body")
     # The section whose request was unusable says so; every other one renders.
     expect(body.locator(".admin-facts .admin-fact")).to_have_count(3)
-    expect(body.locator("table tbody tr")).to_have_count(2)
+    expect(body.locator("table:not(#overview-country-table) tbody tr")).to_have_count(2)
     expect(body.locator(".admin-overview-feed li")).to_have_count(len(AUDIT["entries"]))
     expect(body).to_contain_text("—")
 
@@ -2936,7 +2936,82 @@ def test_an_unavailable_tier_catalogue_says_so_rather_than_reporting_none(browse
     # The membership zone is present and states the problem; it does not vanish,
     # and it does not draw an empty table implying nobody is in any tier.
     expect(body.locator(".admin-empty").first).to_be_visible()
-    expect(body.locator("table")).to_have_count(0)
+    expect(body.locator("table:not(#overview-country-table)")).to_have_count(0)
+
+
+def test_the_overview_counts_accounts_by_country(browser_page: Page):
+    """accounts_by_country() on the admin's own session, in the database's
+    order; a NULL country is the "Not set" row, and names follow the console's
+    language. The double serves SA 3, NULL 2, EG 1."""
+    _overview_console(browser_page)
+    rows = browser_page.locator("#overview-body #overview-country-table tbody tr")
+    expect(rows).to_have_count(3)
+    expect(rows.nth(0)).to_contain_text("Saudi Arabia")
+    expect(rows.nth(0)).to_contain_text("3")
+    expect(rows.nth(1)).to_contain_text("Not set")
+    expect(rows.nth(2)).to_contain_text("Egypt")
+
+    _overview_console(browser_page, lang="&lang=ar")
+    expected = browser_page.evaluate(
+        "() => new Intl.DisplayNames(['ar'], { type: 'region' }).of('SA')"
+    )
+    expect(
+        browser_page.locator("#overview-body #overview-country-table tbody tr").first
+    ).to_contain_text(expected)
+
+
+def test_a_refused_country_count_says_so_and_the_rest_renders(browser_page: Page):
+    """The function's own 42501 for anyone but an enabled admin, or any other
+    failure, is one unavailable section, never a blank Overview."""
+    browser_page.add_init_script(
+        "window.__accountsByCountryError = 'an enabled administrator is required';"
+    )
+    _overview_console(browser_page)
+    body = browser_page.locator("#overview-body")
+
+    expect(body.locator("#overview-country-table")).to_have_count(0)
+    expect(body.locator("p.admin-empty")).to_have_text("Could not load this just now.")
+    expect(body).to_contain_text("1290")
+    expect(body.locator("table:not(#overview-country-table) tbody tr")).to_have_count(2)
+
+    # A failed count leaves the tab to retry, even though Flask's reads loaded.
+    browser_page.evaluate("() => { window.__supabaseState.accountsByCountryError = null; }")
+    browser_page.locator("#tab-tiers").click()
+    browser_page.locator("#tab-overview").click()
+    expect(body.locator("#overview-country-table")).to_be_visible()
+
+
+def test_a_flask_outage_is_retried_even_when_the_country_count_loaded(browser_page: Page):
+    """The country count is a second failure domain (PostgREST, not Flask).
+    Its success must not mark the Overview loaded while all four Flask reads
+    failed, or reopening the tab would never retry them."""
+    down = {"on": True}
+
+    def flask(body):
+        def handler(route):
+            if down["on"]:
+                route.fulfill(status=500, body="{}")
+            else:
+                route.fulfill(status=200, content_type="application/json", body=json.dumps(body))
+
+        return handler
+
+    _route_identity(browser_page, status=200, body=ADMIN_IDENTITY)
+    browser_page.route("**/admin/api/tiers", flask(TIERS_RESPONSE))
+    browser_page.route(
+        "**/admin/api/registrations", flask({"signup_enabled": True, "default": True})
+    )
+    browser_page.route("**/admin/api/audit*", flask(AUDIT))
+    browser_page.route("**/admin/api/users?*", flask({"users": list(ACCOUNTS), "total": 1290}))
+    browser_page.goto("/admin?testing=true")
+    body = browser_page.locator("#overview-body")
+    expect(body.locator("#overview-country-table")).to_be_visible()
+    expect(body).not_to_contain_text("1290")
+
+    down["on"] = False
+    browser_page.locator("#tab-tiers").click()
+    browser_page.locator("#tab-overview").click()
+    expect(body).to_contain_text("1290")
 
 
 def test_every_overview_figure_opens_the_tab_that_owns_it(browser_page: Page):
@@ -2989,7 +3064,7 @@ def test_the_overview_navigation_ignores_an_id_that_is_not_a_tab(browser_page: P
 
 def test_the_overview_respects_the_language_toggle(browser_page: Page):
     _overview_console(browser_page, lang="&lang=ar")
-    table = browser_page.locator("#overview-body table")
+    table = browser_page.locator("#overview-body table:not(#overview-country-table)")
     expect(table).to_contain_text("\u0645\u062c\u0627\u0646\u064a")
     expect(table).not_to_contain_text("Free")
 

@@ -8,7 +8,7 @@
 
 import { ErrorHandler } from '../modules/dom.js';
 import { I18n } from '../modules/i18n.js';
-import { newRequestId } from '../modules/services.js';
+import { newRequestId, Services } from '../modules/services.js';
 import { AdminRequestError } from './services.js';
 import {
   clearSettingsErrors,
@@ -1744,7 +1744,7 @@ export function initAnalyticsTab(services) {
 /**
  * The Overview tab.
  *
- * Four requests, each awaited independently and each allowed to fail on its
+ * Five requests, each awaited independently and each allowed to fail on its
  * own. `Promise.allSettled`, not `Promise.all`: this is the console's landing
  * tab, and one slow audit query must not be able to leave an operator looking
  * at the empty panel this replaced. A section whose request failed says so;
@@ -1768,8 +1768,9 @@ export function initOverviewTab(services) {
       services.tiers(),
       services.audit({ limit: 5, offset: 0 }),
       services.registrations(),
+      Services.accountsByCountry(),
     ]);
-    const [users, tiers, audit, registrations] = results;
+    const [users, tiers, audit, registrations, byCountry] = results;
 
     /* `?? null`, never `?? []`. renderOverview draws "could not load this" for
        null and "nothing yet" for an empty list, and collapsing the two would
@@ -1779,12 +1780,17 @@ export function initOverviewTab(services) {
       tiers: value(tiers, (v) => v.tiers ?? null),
       entries: value(audit, (v) => v.entries ?? null),
       signup: value(registrations, (v) => v.signup_enabled ?? null),
+      countries: value(byCountry, (v) => (Array.isArray(v) ? v : null)),
     });
 
     /* Nothing arrived at all — a dropped connection rather than one bad route.
        The guard above is still right for the double-click race, but leaving it
        set would make a transient failure permanent for the whole session. */
-    if (results.every((result) => result.status === 'rejected')) loaded = false;
+    /* Two failure domains: the four Flask reads, and the browser-direct
+       country count. Either one failing whole leaves the tab to retry, so a
+       success in one cannot pin an outage in the other. */
+    const flaskDown = [users, tiers, audit, registrations].every((r) => r.status === 'rejected');
+    if (flaskDown || byCountry.status === 'rejected') loaded = false;
   }
 
   markOverviewStale = () => {

@@ -293,6 +293,10 @@ runtime:
       manageTiers: 'إدارة الفئات'
       seeAllActivity: 'عرض كل النشاط'
       unavailable: 'تعذّر تحميل البيانات حاليًا.'
+      countriesHeading: 'الحسابات حسب البلد'
+      countryColumn: 'البلد'
+      accountsColumn: 'الحسابات'
+      countryUnset: 'غير محدد'
     analytics:
       heading: 'المحادثات المحفوظة'
       source: 'تعتمد هذه الأرقام على المحادثات المحفوظة. وعند حذف محادثة أو حساب، لا تعود الأسئلة المرتبطة به ضمن هذه الأرقام؛ لذلك قد تنخفض الأرقام بمرور الوقت.'

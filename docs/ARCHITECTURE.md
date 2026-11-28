@@ -363,7 +363,10 @@ tier labels but deliberately not the operator's `reason` or `set_by`.
   language. Signup sends the code as `country` metadata, which `/auth/signup` allow-lists.
   `/account` saves it, or `null` for "Not set". If the read fails the select stays disabled
   and `country` is left out of the write, so a list that never loaded cannot clear a saved
-  value. Everything below is about `profiles`.
+  value. The console's Overview makes one more browser-direct call, `accounts_by_country()`,
+  on the admin's own session after Flask's `_gate()` has admitted them. The function refuses
+  anyone but an enabled admin itself, and Flask's service-role client cannot call it, because
+  it reads `auth.uid()`. Everything below is about `profiles`.
 - Read and write straight from the browser to PostgREST under RLS.
 - Column protection is a **column-level `REVOKE` plus a trigger**, because RLS
   restricts rows and cannot restrict columns. `profiles.role`, `tier` and

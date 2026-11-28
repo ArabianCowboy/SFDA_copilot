@@ -65,8 +65,10 @@
     <script>
         /* The anon key, exactly as the reader page ships it. The console needs a
            Supabase client to read the signed-in session out of localStorage and
-           turn it into a bearer token; it never queries a table with it. The
-           service-role key is server-side only and appears in no template. */
+           turn it into a bearer token. It makes one PostgREST call of its own,
+           accounts_by_country() for the Overview, which the database answers
+           only for an enabled admin's session. The service-role key is
+           server-side only and appears in no template. */
         window.SUPABASE_URL = {{ SUPABASE_URL | tojson }};
         window.SUPABASE_ANON_KEY = {{ SUPABASE_ANON_KEY | tojson }};
         window.__I18N = {{ i18n_runtime | tojson }};

@@ -378,10 +378,12 @@ default is worse than no default: it teaches the person arriving that this room 
 opening, and they stop looking. It is assembled entirely from routes the other tabs already
 call (accounts, signup state, tier membership, the last five audit rows), so it adds no
 endpoint and stores nothing, and **every figure on it links to the tab that owns it** — an
-overview that cannot be acted on is a poster. Its four requests are `Promise.allSettled`, never
+overview that cannot be acted on is a poster. Its five requests are `Promise.allSettled`, never
 `Promise.all`: a landing tab that renders nothing because one query timed out would be worse
 than the empty panel it replaced, so each section stands or falls alone and the one that failed
-says so.
+says so. **One exception, added 2026-11-28:** _Accounts by country_ is read from
+`accounts_by_country()` on the admin's own session, not from a route another tab calls. It is
+one cheap `group by` over Accounts, and it links nowhere because no tab owns Country.
 
 **The saved-conversation figures are their own tab, the last one, so Overview's rule holds as
 written.** `[TASTE]` They have endpoints of their own — three `/admin/api/analytics/*`

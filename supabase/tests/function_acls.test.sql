@@ -43,7 +43,8 @@ declare
   --                           — the grace-window answer: a pending reader must
   --                             reach their own cancel path past the same
   --                             freeze. Lands with supabase/pending/09.
-  --   accounts_by_country     — Thaqib's admin page calls it with the
+  --   accounts_by_country     — Thaqib's admin page and copilot's console
+  --                             Overview call it with the
   --                             administrator's own session; counts only, and
   --                             it refuses anyone but an enabled, active
   --                             admin (42501). The one exemption that reads

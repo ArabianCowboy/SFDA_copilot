@@ -417,6 +417,10 @@ runtime:
       manageTiers: 'Manage tiers'
       seeAllActivity: 'See all activity'
       unavailable: 'Could not load this just now.'
+      countriesHeading: 'Accounts by country'
+      countryColumn: 'Country'
+      accountsColumn: 'Accounts'
+      countryUnset: 'Not set'
     analytics:
       heading: 'Saved conversations'
       source: 'Counted from conversations users have saved. When a user deletes a conversation, or an account is deleted, its questions leave these figures — so a number here can go down.'

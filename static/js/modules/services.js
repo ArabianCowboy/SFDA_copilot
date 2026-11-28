@@ -908,6 +908,20 @@ export const Services = {
     return data;
   },
 
+  /**
+   * Accounts per Country, `[{ country, count }]`, with a NULL `country` row
+   * for Accounts that have none. Browser-direct on purpose: the function
+   * reads `auth.uid()` and refuses anyone but an enabled admin (42501), so it
+   * runs on the admin's own session and cannot go through Flask's
+   * service-role client. 20261127230444_country_on_accounts.sql.
+   */
+  async accountsByCountry() {
+    if (!this.supabase) throw new Error('Supabase client not initialized.');
+    const { data, error } = await this.supabase.rpc('accounts_by_country');
+    if (error) throw error;
+    return data;
+  },
+
   async updateProfile(userId, updates) {
     if (!this.supabase) throw new Error('Supabase client not initialized.');
     const { error } = await this.supabase

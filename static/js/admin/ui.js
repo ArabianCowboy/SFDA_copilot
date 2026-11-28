@@ -14,6 +14,7 @@
 
 import { I18n } from '../modules/i18n.js';
 import { iconElement, iconMarkup } from '../modules/icons.js';
+import { countryName } from '../modules/countries.js';
 
 /* IN TEMPLATE ORDER, and this list is load-bearing: `selectTab` hides every
    panel it knows about and unhides the one it was given, so a tab present in
@@ -2812,18 +2813,26 @@ export function setBulkSelectionState(count) {
  * adds no endpoint, no RPC and no stored state: how many accounts there are,
  * whether signup is open, how the tiers divide the readership, and the last few
  * things anybody did. Every figure here is a link to the tab that owns it — an
- * overview that cannot be acted on is a poster.
+ * overview that cannot be acted on is a poster. The one exception is Accounts
+ * by country: `accounts_by_country()` on the admin's own session, linking
+ * nowhere because no tab owns Country (DESIGN.md, "A landing surface…").
  *
  * The saved-conversation aggregates are not this function's: they have
  * endpoints of their own and a tab of their own (`#analytics-body`, last in the
  * tablist), fetched on first activation, so a slow `group by` can never delay
  * the four figures here.
  *
- * Failure is per-section, not per-panel. Four requests back this and any one
+ * Failure is per-section, not per-panel. Five requests back this and any one
  * of them can fail on its own; a panel that renders nothing because the audit
  * query timed out would be a worse landing than the empty one it replaced.
  */
-export function renderOverview({ total = null, tiers = null, entries = null, signup = null } = {}) {
+export function renderOverview({
+  total = null,
+  tiers = null,
+  entries = null,
+  signup = null,
+  countries = null,
+} = {}) {
   const body = el('overview-body');
   if (!body) return;
   body.textContent = '';
@@ -2898,6 +2907,36 @@ export function renderOverview({ total = null, tiers = null, entries = null, sig
     zone.append(overviewLink('tab-tiers', I18n.t('admin.overview.manageTiers')));
     body.appendChild(zone);
   }
+
+  /* ── Where readers are ──────────────────────────────────────────────────
+     Every Account counted once, those without a Country in the "Not set" row,
+     in the order the database ranks them (most first). Names are the
+     browser's, in the console's language; the database holds codes. */
+  const where = section(I18n.t('admin.overview.countriesHeading'));
+  if (countries === null) {
+    where.append(emptyLine(I18n.t('admin.overview.unavailable')));
+  } else {
+    const table = document.createElement('table');
+    table.className = 'admin-table';
+    table.id = 'overview-country-table';
+    const headRow = table.createTHead().insertRow();
+    for (const key of ['countryColumn', 'accountsColumn']) {
+      const th = document.createElement('th');
+      th.scope = 'col';
+      th.textContent = I18n.t(`admin.overview.${key}`);
+      headRow.append(th);
+    }
+    const tbody = table.createTBody();
+    for (const { country, count } of countries) {
+      const row = tbody.insertRow();
+      row.insertCell().textContent = country
+        ? countryName(country)
+        : I18n.t('admin.overview.countryUnset');
+      row.insertCell().append(machineValue(String(count)));
+    }
+    where.append(table);
+  }
+  body.appendChild(where);
 
   /* ── The last few things anybody did ────────────────────────────────────
      Five rows, not fifty: this is "has anything happened", and the Activity

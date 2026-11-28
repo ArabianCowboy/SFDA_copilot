@@ -72,6 +72,15 @@ export function createClient() {
       { code: 'AE', name: 'United Arab Emirates' },
     ],
     countriesError: window.__countriesError ?? null,
+    // accounts_by_country(), which the console's Overview calls with the
+    // admin's own session; the real function refuses anyone else (42501).
+    accountsByCountry: [
+      { country: 'SA', count: 3 },
+      { country: null, count: 2 },
+      { country: 'EG', count: 1 },
+    ],
+    // Read at createClient, so a test can refuse the Overview's boot-time call.
+    accountsByCountryError: window.__accountsByCountryError ?? null,
     authCallback: null,
     lastProfileUpdate: null,
     lastPreferencesPatch: null,
@@ -239,6 +248,11 @@ export function createClient() {
        records a withdrawal, mirroring the withdrawal-only RPC's real effect
        (consent false, plus age cleared when p_clear_age rides along). */
     async rpc(name, params) {
+      if (name === 'accounts_by_country') {
+        return state.accountsByCountryError
+          ? { data: null, error: new Error(state.accountsByCountryError) }
+          : { data: state.accountsByCountry, error: null };
+      }
       if (name === 'update_own_marketing_consent') {
         if (state.consentWithdrawError) {
           return { data: null, error: new Error(state.consentWithdrawError) };
