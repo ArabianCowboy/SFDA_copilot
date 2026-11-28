@@ -17,6 +17,7 @@ import { Services } from './modules/services.js';
 import { installSessionResetOnEnd } from './modules/session-reset.js';
 import { ThemeManager } from './modules/theme.js';
 import { initLanguageToggle } from './modules/i18n.js';
+import { fillCountrySelect } from './modules/countries.js';
 import {
   showRecord,
   showSignedOut,
@@ -80,10 +81,13 @@ const Account = {
       // site (docs/archive/2026-08-23_profile-refactor.md §0.3-H) — this page has no
       // shared AppState to be stale against in the first place, but the
       // principle is the same: what is shown here is what is true now.
-      const [profile, identity] = await Promise.all([
+      const [profile, identity, countries] = await Promise.all([
         Services.getProfile(user.id),
         Services.getIdentity().catch(() => null),
+        Services.listCountries().catch(() => null),
       ]);
+      // Before populateIdentityForm, which selects the saved code among these.
+      fillCountrySelect(document.getElementById('identity-country'), countries);
 
       renderRecordHead(profile, user);
       renderStanding({

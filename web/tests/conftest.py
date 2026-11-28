@@ -53,6 +53,7 @@ export function createClient() {
       first_name: 'Test',
       family_name: 'User',
       age: null,
+      country: window.__profileCountry ?? null,
       // Mirrors the real generated column post-cutover
       // (20260822225415_profile_identity_atomic_cutover.sql): first_name
       // and family_name are the source of truth, full_name is derived.
@@ -62,6 +63,15 @@ export function createClient() {
       preferences: { theme: 'light' },
       marketing_consent: false,
     },
+    // A slice of public.countries (Services.listCountries); countriesError
+    // makes that read fail, which leaves every Country select disabled.
+    // Both read at createClient, so a test can fail the read a page makes at boot.
+    countries: window.__countries ?? [
+      { code: 'SA', name: 'Saudi Arabia' },
+      { code: 'EG', name: 'Egypt' },
+      { code: 'AE', name: 'United Arab Emirates' },
+    ],
+    countriesError: window.__countriesError ?? null,
     authCallback: null,
     lastProfileUpdate: null,
     lastPreferencesPatch: null,
@@ -193,7 +203,15 @@ export function createClient() {
         return { data: { user: state.user ?? { id: 'test-user-id', email: 'test@example.com' } }, error: null };
       },
     },
-    from() {
+    from(table) {
+      if (table === 'countries') {
+        return {
+          select: async () =>
+            state.countriesError
+              ? { data: null, error: new Error(state.countriesError) }
+              : { data: state.countries, error: null },
+        };
+      }
       const query = {
         select() { return query; },
         eq() { return query; },

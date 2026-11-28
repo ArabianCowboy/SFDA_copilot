@@ -1,6 +1,7 @@
 """Browser coverage for the account page: the record, the standing line,
 identity save, and the instant-apply preferences."""
 
+import pytest
 from playwright.sync_api import Page, expect
 
 
@@ -55,6 +56,55 @@ def test_saving_identity_sends_the_writable_columns_and_shows_the_note(authentic
     assert "full_name" not in sent, (
         "full_name is a generated column and cannot be written since the identity cutover"
     )
+
+
+def test_country_saves_a_code_and_clears_to_null(authenticated_page: Page):
+    """Blank is a real choice here ("Not set" clears it), unlike at sign-up."""
+    authenticated_page.goto("/account")
+    select = authenticated_page.locator("#identity-country")
+    expect(select).to_be_enabled()
+    expect(select).to_have_value("")
+
+    form = authenticated_page.locator("#identity-form")
+    select.select_option("EG")
+    form.evaluate("(f) => f.requestSubmit()")
+    expect(authenticated_page.locator("#identity-saved-note")).to_be_visible()
+    assert authenticated_page.evaluate("window.__supabaseState.lastProfileUpdate.country") == "EG"
+
+    select.select_option("")
+    form.evaluate("(f) => f.requestSubmit()")
+    # null, not absent: an absent key would leave EG in place.
+    authenticated_page.wait_for_function(
+        "() => window.__supabaseState.lastProfileUpdate.country === null"
+    )
+
+
+@pytest.mark.parametrize(
+    "boot",
+    ["window.__countriesError = 'down';", "window.__countries = [];"],
+    ids=["error", "empty"],
+)
+def test_an_unloaded_country_list_shows_the_saved_one_and_leaves_it_alone(
+    authenticated_page: Page, boot
+):
+    """A failed or empty read leaves the select disabled. It still shows the
+    saved Country, and the save does not clear what it could not offer."""
+    authenticated_page.add_init_script(f"window.__profileCountry = 'SA'; {boot}")
+    authenticated_page.goto("/account")
+    select = authenticated_page.locator("#identity-country")
+    expect(select).to_be_disabled()
+    expect(select).to_have_value("SA")
+    expect(select.locator("option:checked")).to_have_text("Saudi Arabia")
+
+    authenticated_page.locator("#identity-first-name").fill("Updated")
+    authenticated_page.locator("#identity-form").evaluate("(f) => f.requestSubmit()")
+    expect(authenticated_page.locator("#identity-saved-note")).to_be_visible()
+    # The JSON body supabase-js sends, where an undefined value drops out.
+    sent = authenticated_page.evaluate(
+        "JSON.parse(JSON.stringify(window.__supabaseState.lastProfileUpdate))"
+    )
+    assert sent["first_name"] == "Updated"
+    assert "country" not in sent
 
 
 def test_theme_choice_applies_instantly_and_persists(authenticated_page: Page):

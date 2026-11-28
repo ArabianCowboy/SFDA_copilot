@@ -243,6 +243,11 @@
   font: inherit;
 }
 
+/* Room for the chevron, which the symmetric padding above would run text under. */
+select.account-input {
+  padding-inline-end: var(--space-7);
+}
+
 .account-input:focus {
   outline: none;
   border-color: var(--signal);

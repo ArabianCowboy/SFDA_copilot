@@ -76,6 +76,7 @@ def test_family_name_is_optional(browser_page: Page, signup_capture):
     assert sent["family_name"] == ""
     assert sent["marketing_consent"] is False
     assert "age" not in sent
+    assert "country" not in sent  # left at "Not set"
 
 
 def test_signup_sends_both_names_as_signup_metadata(browser_page: Page, signup_capture):
@@ -202,3 +203,75 @@ def test_signup_sends_consent_context_when_marketing_is_ticked(browser_page: Pag
     # attribution theatrics — it proves nothing about what was shown).
     # web/tests/test_account_consent_grant.py pins the stamping itself.
     assert "marketing_consent_policy_version" not in sent
+
+
+def _open_signup(page: Page, path: str = "/"):
+    page.goto(path)
+    page.locator("#auth-button-main").click()
+    page.locator("#signup-tab").click()
+
+
+def test_signup_offers_the_country_list_named_in_the_page_language(browser_page: Page):
+    """Codes come from public.countries; names are the browser's own, in the
+    page's language, sorted by that name. The double serves SA, EG, AE."""
+    _open_signup(browser_page)
+    select = browser_page.locator("#signup-country")
+    expect(select).to_be_enabled()
+    assert select.locator("option").evaluate_all("os => os.map(o => o.value)") == [
+        "",
+        "EG",
+        "SA",
+        "AE",
+    ]
+    expect(select.locator("option[value='SA']")).to_have_text("Saudi Arabia")
+
+    _open_signup(browser_page, "/?lang=ar")
+    expected = browser_page.evaluate(
+        "() => new Intl.DisplayNames(['ar'], { type: 'region' }).of('SA')"
+    )
+    expect(browser_page.locator("#signup-country option[value='SA']")).to_have_text(expected)
+    assert expected != "Saudi Arabia"
+
+
+def test_signup_sends_the_chosen_country_code(browser_page: Page, signup_capture):
+    _open_signup(browser_page)
+    browser_page.locator("#signup-first-name").fill("Amina")
+    browser_page.locator("#signup-country").select_option("SA")
+    browser_page.locator("#signup-email").fill("amina@example.com")
+    browser_page.locator("#signup-password").fill("ValidPass1")
+    browser_page.locator("#signup-terms").check()
+    browser_page.locator("#signup-form").evaluate("(f) => f.requestSubmit()")
+
+    expect(browser_page.locator("#signup-sent")).to_be_visible()
+    assert signup_capture[0]["country"] == "SA"
+
+
+def test_a_failed_country_read_still_lets_the_reader_sign_up(browser_page: Page, signup_capture):
+    """Country is optional: a failed read leaves the select disabled and sends
+    nothing for it, and the sign-up itself goes through."""
+    browser_page.goto("/")
+    browser_page.evaluate("() => { window.__supabaseState.countriesError = 'down'; }")
+    browser_page.locator("#auth-button-main").click()
+    browser_page.locator("#signup-tab").click()
+    expect(browser_page.locator("#signup-country")).to_be_disabled()
+
+    browser_page.locator("#signup-first-name").fill("Noura")
+    browser_page.locator("#signup-email").fill("noura@example.com")
+    browser_page.locator("#signup-password").fill("ValidPass1")
+    browser_page.locator("#signup-terms").check()
+    browser_page.locator("#signup-form").evaluate("(f) => f.requestSubmit()")
+
+    expect(browser_page.locator("#signup-sent")).to_be_visible()
+    assert "country" not in signup_capture[0]
+
+
+def test_a_failed_country_read_is_retried_when_the_modal_reopens(browser_page: Page):
+    browser_page.add_init_script("window.__countriesError = 'down';")
+    _open_signup(browser_page)
+    expect(browser_page.locator("#signup-country")).to_be_disabled()
+
+    browser_page.locator("#authModal .btn-close").click()
+    expect(browser_page.locator("#authModal")).to_be_hidden()
+    browser_page.evaluate("() => { window.__supabaseState.countriesError = null; }")
+    browser_page.locator("#auth-button-main").click()
+    expect(browser_page.locator("#signup-country")).to_be_enabled()

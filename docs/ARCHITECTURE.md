@@ -357,7 +357,13 @@ tier labels but deliberately not the operator's `reason` or `set_by`.
 
 - `countries` (`20261127230444`) is the ISO 3166-1 list shared with Thaqib, the other
   App on these Accounts. `anon` and `authenticated` hold `SELECT` and nothing else, and
-  `profiles.country` references it. Everything below is about `profiles`.
+  `profiles.country` references it. The signup form and `/account` read it through
+  `Services.listCountries` and fill one optional select (`modules/countries.js`): the
+  codes come from the table, the names from the browser's `Intl.DisplayNames` in the page's
+  language. Signup sends the code as `country` metadata, which `/auth/signup` allow-lists.
+  `/account` saves it, or `null` for "Not set". If the read fails the select stays disabled
+  and `country` is left out of the write, so a list that never loaded cannot clear a saved
+  value. Everything below is about `profiles`.
 - Read and write straight from the browser to PostgREST under RLS.
 - Column protection is a **column-level `REVOKE` plus a trigger**, because RLS
   restricts rows and cannot restrict columns. `profiles.role`, `tier` and

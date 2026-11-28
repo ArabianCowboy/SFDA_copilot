@@ -1028,6 +1028,8 @@ page:
     firstName: 'First name'
     familyName: 'Family name'
     age: 'Age'
+    country: 'Country'
+    countryUnset: 'Not set'
     ageHint: 'Used for audience segmentation — optional.'
     organization: 'Organization'
     specialization: 'Specialization'

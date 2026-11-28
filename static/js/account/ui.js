@@ -6,6 +6,7 @@
  */
 
 import { I18n } from '../modules/i18n.js';
+import { countryName, readCountrySelect } from '../modules/countries.js';
 
 const el = (id) => document.getElementById(id);
 
@@ -185,6 +186,13 @@ export function populateIdentityForm(profile) {
 
   el('identity-first-name').value = profile.first_name || '';
   el('identity-family-name').value = profile.family_name || '';
+  const country = el('identity-country');
+  // A list that never loaded holds only "Not set"; show the saved Country
+  // anyway (the select stays disabled, so it is still left out of the save).
+  if (profile.country && ![...country.options].some((o) => o.value === profile.country)) {
+    country.add(new Option(countryName(profile.country), profile.country));
+  }
+  country.value = profile.country || '';
   el('identity-age').value = profile.age ?? '';
   el('identity-organization').value = profile.organization || '';
   el('identity-specialization').value = profile.specialization || '';
@@ -198,6 +206,8 @@ export function readIdentityForm() {
   return {
     first_name: el('identity-first-name')?.value.trim() || null,
     family_name: el('identity-family-name')?.value.trim() || null,
+    // undefined (list not loaded) drops out of the upsert, leaving it as is.
+    country: readCountrySelect(el('identity-country')),
     age: el('identity-age')?.value === '' ? null : Number(el('identity-age').value),
     organization: el('identity-organization')?.value.trim() || null,
     specialization: el('identity-specialization')?.value.trim() || null,

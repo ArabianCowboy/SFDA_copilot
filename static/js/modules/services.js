@@ -887,12 +887,24 @@ export const Services = {
     const { data, error } = await this.supabase
       .from('profiles')
       .select(
-        'id, first_name, family_name, age, full_name, organization, specialization, preferences, marketing_consent',
+        'id, first_name, family_name, age, country, full_name, organization, specialization, preferences, marketing_consent',
       )
       .eq('id', userId)
       .single();
 
     if (error && error.code !== 'PGRST116') throw error;
+    return data;
+  },
+
+  /**
+   * The shared Country list, `public.countries` (readable by anon and
+   * authenticated, written by migrations only). The one copy of the list:
+   * nothing in this repo keeps its own.
+   */
+  async listCountries() {
+    if (!this.supabase) throw new Error('Supabase client not initialized.');
+    const { data, error } = await this.supabase.from('countries').select('code, name');
+    if (error) throw error;
     return data;
   },
 

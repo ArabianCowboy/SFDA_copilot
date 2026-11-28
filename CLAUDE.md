@@ -113,8 +113,9 @@ in its own directory.
 
 **Two database access patterns.** Chat tables are Flask-mediated: RLS on, _no write policies_,
 all writes through `security definer` RPCs filtered on `p_owner_id`. Do not "fix" that by
-adding a policy. `profiles` is the one browser-direct table, and its column protection is a
-`REVOKE` plus a trigger because RLS restricts rows, not columns.
+adding a policy. `profiles` is the one browser-direct table it writes, and its column protection
+is a `REVOKE` plus a trigger because RLS restricts rows, not columns. `countries` is read
+browser-direct too, and is written by migrations only.
 
 **Identity is three layers.** Enforcement lives in `app.py` (`_get_token_from_request`,
 `_authenticate_request`, `@auth_required`); `web/services/token_verification_cache.py`

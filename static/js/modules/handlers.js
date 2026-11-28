@@ -14,6 +14,7 @@ import { I18n } from './i18n.js';
 import { SourcePanel } from './source-panel.js';
 import { resetCitationState } from './citations.js';
 import { Route } from './route.js';
+import { fillCountrySelect, readCountrySelect } from './countries.js';
 
 /* Sent with every chat request so the model answers in the reader's language. */
 const I18N_LANG = I18n.lang;
@@ -164,6 +165,23 @@ export const Handlers = {
     DOMCache.get(CONFIG.SELECTORS.SIGNUP_FORM)?.addEventListener('submit', (e) =>
       this.handleAuthFormSubmit(e, 'signup'),
     );
+
+    // The Country list is read when the sign-in/up modal opens, not on every
+    // page load, and again on the next open only if that read failed. A
+    // failure leaves the select disabled: Country must never block a sign-up.
+    let countriesRequested = false;
+    DOMCache.get(CONFIG.SELECTORS.AUTH_MODAL)?.addEventListener('show.bs.modal', () => {
+      if (countriesRequested) return;
+      countriesRequested = true;
+      Services.listCountries()
+        .then((countries) =>
+          fillCountrySelect(document.getElementById('signup-country'), countries),
+        )
+        .catch((error) => {
+          countriesRequested = false;
+          logError(error, 'listCountries');
+        });
+    });
 
     // The age field reveals only when marketing consent is ticked
     // (docs/ARCHITECTURE.md#account-page-and-profile; reasoning in
@@ -327,6 +345,7 @@ export const Handlers = {
           {
             first_name: firstName,
             family_name: familyName,
+            country: readCountrySelect(form.querySelector('#signup-country')) || undefined,
             marketing_consent: consented,
             // No policy version here: /auth/signup stamps
             // PRIVACY_POLICY_VERSION server-side, so a client can no longer

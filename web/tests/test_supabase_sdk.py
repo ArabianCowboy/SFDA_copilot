@@ -86,6 +86,9 @@ def provider(page: Page):
             route.fulfill(status=204)
         elif url.path == "/rest/v1/profiles":
             route.fulfill(json={"id": USER["id"], "first_name": "SDK", "preferences": {}})
+        elif url.path == "/rest/v1/countries":
+            # The signup form's Country list, read when the auth modal opens.
+            route.fulfill(json=[{"code": "SA", "name": "Saudi Arabia"}])
         else:
             raise AssertionError(f"Unexpected provider request: {request.method} {url.path}")
 

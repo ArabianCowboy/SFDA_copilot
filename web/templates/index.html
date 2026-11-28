@@ -278,6 +278,19 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
                                     </label>
                                 </div>
 
+                                <!-- Optional. Filled from public.countries when the
+                                     modal first opens (modules/countries.js); it
+                                     stays disabled, and is never sent, if that
+                                     read fails. A select, so no phone keyboard. -->
+                                <div class="form-floating mb-3">
+                                    <select class="form-select" id="signup-country" autocomplete="country" disabled>
+                                        <option value="">{{ t('page.account.countryUnset') }}</option>
+                                    </select>
+                                    <label for="signup-country">
+                                        {{ icon('globe', 15) }}<span>{{ t('page.account.country') }}</span>
+                                    </label>
+                                </div>
+
                                 <div class="form-floating mb-3">
                                     <input type="email" class="form-control" id="signup-email" placeholder=" " required
                                         autocomplete="username">

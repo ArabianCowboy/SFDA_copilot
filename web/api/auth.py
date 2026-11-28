@@ -123,6 +123,9 @@ SIGNUP_METADATA_KEYS = (
     "marketing_consent",
     "marketing_consent_language",
     "age",
+    # An ISO code from public.countries; handle_new_user stores NULL for
+    # anything not on that list (20261127230444_country_on_accounts.sql).
+    "country",
 )
 
 

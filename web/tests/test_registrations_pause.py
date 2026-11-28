@@ -446,6 +446,7 @@ def test_only_allow_listed_metadata_keys_are_forwarded(client):
                 "first_name": "Amina",
                 "family_name": "",
                 "marketing_consent": False,
+                "country": "SA",
                 "is_admin_hint": True,  # NOT allow-listed — must not be forwarded
                 "role": "admin",  # NOT allow-listed
             },
@@ -453,7 +454,12 @@ def test_only_allow_listed_metadata_keys_are_forwarded(client):
 
     sent = supabase.auth.sign_up.call_args[0][0]
     metadata = sent["options"]["data"]
-    assert metadata == {"first_name": "Amina", "family_name": "", "marketing_consent": False}
+    assert metadata == {
+        "first_name": "Amina",
+        "family_name": "",
+        "marketing_consent": False,
+        "country": "SA",
+    }
 
 
 # ── Real GoTrue refusals: sign_up() RAISES, it never returns .error ────────

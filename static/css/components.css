@@ -486,10 +486,31 @@
 /* Floating labels carry a glyph, so they lay out as a row rather than letting
    the SVG drop the label's own baseline. */
 .form-floating > label {
+  /* Bootstrap's LTR build pins the label with a physical `left: 0`, which left
+     every Arabic label on the far side of its right-aligned text (and on top
+     of a select's chevron). Logical, so it follows the page's direction. */
+  inset-inline: 0 auto;
   display: flex;
   align-items: center;
   gap: var(--space-2);
   color: var(--fg-muted);
+}
+/* The floated label shrinks toward its own start corner and nudges inward;
+   Bootstrap's LTR build does both toward the left. */
+[dir='rtl'] .form-floating > label {
+  transform-origin: 100% 0;
+}
+[dir='rtl']
+  .form-floating
+  > :is(
+    .form-control:focus,
+    .form-control:not(:placeholder-shown),
+    .form-control-plaintext,
+    .form-select,
+    .form-control:-webkit-autofill
+  )
+  ~ label {
+  transform: scale(0.85) translateY(-0.5rem) translateX(-0.15rem);
 }
 .form-floating > label .icon {
   color: var(--fg-faint);
@@ -518,6 +539,32 @@
   border: 1px solid var(--hairline-strong);
   border-radius: var(--radius-sm);
   color: var(--fg-primary);
+}
+/* Bootstrap pins the chevron with a physical `right` and we load the LTR
+   build, so under RTL it would sit over the right-aligned text. Moved, with
+   its room, to the other side. background-position has no logical keywords. */
+[dir='rtl'] .form-select {
+  background-position: left 0.75rem center; /* physical-ok: background-position has no logical form; this IS the RTL branch */
+}
+/* Only the floating one: account.css and admin.css size their own selects'
+   padding logically, and this must not outrank them. */
+[dir='rtl'] .form-floating > .form-select {
+  padding-inline: 0.75rem 2.25rem;
+}
+/* The same for validated text inputs: Bootstrap pins their check / alert icon
+   on the physical right, where the (now start-side) Arabic label sits. */
+/* :dir(), not [dir]: a dir="auto" name field holding Latin text is LTR. */
+.was-validated .form-control:is(:valid, :invalid):dir(rtl) {
+  padding-inline: 0.75rem calc(1.5em + 0.75rem);
+  background-position: left calc(0.375em + 0.1875rem) center; /* physical-ok: background-position has no logical form; this IS the RTL branch */
+}
+/* Bootstrap's validated select adds a check icon beside the chevron, both on
+   the physical right. Mirrored; only :valid, since no select here is required. */
+[dir='rtl'] .was-validated .form-select:valid:not([multiple]):not([size]) {
+  padding-inline: 0.75rem 4.125rem;
+  background-position:
+    left 0.75rem center,
+    center left 2.25rem; /* physical-ok: background-position has no logical form; this IS the RTL branch */
 }
 .form-control:focus,
 .form-select:focus {

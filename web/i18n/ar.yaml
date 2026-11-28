@@ -855,6 +855,8 @@ page:
     firstName: 'الاسم الأول'
     familyName: 'اسم العائلة'
     age: 'العمر'
+    country: 'البلد'
+    countryUnset: 'غير محدد'
     ageHint: 'يُستخدم لتصنيف الجمهور — اختياري.'
     organization: 'الجهة'
     specialization: 'التخصص'

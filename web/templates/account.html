@@ -183,6 +183,16 @@
                         </div>
                     </div>
 
+                    <!-- Filled from public.countries on load (modules/countries.js).
+                         Stays disabled, and out of the save, if that read fails. -->
+                    <div class="account-field">
+                        <label class="account-label" for="identity-country">{{ t('page.account.country') }}</label>
+                        <select class="form-select account-input" id="identity-country" name="country"
+                            autocomplete="country" disabled>
+                            <option value="">{{ t('page.account.countryUnset') }}</option>
+                        </select>
+                    </div>
+
                     <div class="account-field">
                         <label class="account-label" for="identity-age">{{ t('page.account.age') }}</label>
                         <input type="number" class="account-input account-input-age" id="identity-age" name="age"
